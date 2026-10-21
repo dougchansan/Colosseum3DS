@@ -1,9 +1,9 @@
 # Hardware workflow checkpoint — October 21, 2026 (Hawaii)
 
 This is a partial acceptance record. The original executable was downloaded
-from the physical console and verified. The owner reported a spinning prism
-after launching it. No decoded NTR frame has been captured or inspected yet;
-the owner observation is not screenshot evidence. No application or game data
+from the physical console and verified. Fresh decoded frames of both application
+screens were captured and opened, showing rotating geometry, passing native
+self-tests and the expected missing-data diagnostic. No application or game data
 has been written to the console in this session.
 
 ## Installed executable and local build
@@ -31,27 +31,72 @@ it does not establish any unobserved hardware behavior.
 | Check | Result | Evidence / limit |
 | --- | --- | --- |
 | Passive FTP read | PASS | Both application files downloaded and SHA-256 checked |
-| Launch and rotating geometry | PASS (owner observation) | Owner reported “its showing the spinning prism” |
-| Native self-test | NOT TESTED | Bottom-screen result not received |
-| Missing-data NOT READY | NOT TESTED | No bottom-screen frame |
+| Launch and rotating geometry | PASS | Fresh captures 03/04 show different orientations; owner also confirmed launch |
+| Native self-test | PASS | Bottom screen: Decomp/core self-test: PASS (0) |
+| Missing-data NOT READY | PASS | Bottom screen: common.fsys missing/unreadable; rendering remains active |
 | Real archive on console | NOT TESTED | No data deployment performed |
-| A pause/resume and all buttons | NOT TESTED | No observed response |
-| Circle Pad, C-stick, L/R, ZL/ZR | NOT TESTED | No diagnostic capture |
-| START+SELECT exit and relaunch | NOT TESTED | Not yet confirmed |
+| A pause/resume | PASS | Captures 06/07 have identical top-image hashes with advancing render counters; capture 08 resumes movement |
+| Circle Pad / C-stick | PASS (positive X sample) | Injected +0.5 gives diagnostic 58 / 72, then both return to zero |
+| L / R | PASS | Each displays 255 while held, 0 after release |
+| ZL / ZR | PARTIAL | ZR held capture shows mapped PAD 0010; ZL sample retained for review |
+| Remaining buttons / axis directions | NOT TESTED | B and DOWN navigation observed; exhaustive in-app matrix remains open |
+| START+SELECT exit and relaunch | PASS | Capture 09 shows launcher; observed nested navigation; capture 16 shows reset render counter and self-test PASS |
 | HOME suspend/resume and close | NOT TESTED | Test separately from NTR |
 | Lid sleep/resume | NOT TESTED | Requires physical action |
-| NTR video, both screens | NOT TESTED | Repeated TCP 8000 connection attempts timed out |
-| Luma input redirection | NOT TESTED | No packets sent without visibility |
+| NTR video, both screens | PASS | Captures 03/04: 159/158 and 100/99 decoded top/bottom frames, all final ages below 0.1 s |
+| Luma input redirection | PASS (bounded actions) | Observed A, exit/relaunch, positive axes and L/R responses; neutral release checked |
 | Guarded deployment on console | NOT TESTED | Installed binary already matches fresh build; no replacement needed |
 
 Console model: New 3DS family per handoff; exact model unverified.
-Luma, Homebrew Launcher and ftpd versions: unverified. ftpd port was confirmed
+Luma and ftpd versions: unverified. Homebrew Launcher screen showed Rosalina
+v2.4.3 (launcher label, not a Luma firmware version). ftpd port was confirmed
 on its screen as 5000; FTP greeting was `220 Hello!`, which does not identify
 its version. BootNTR Selector was described in the handoff as Enhanced 3.6;
-loaded engine/version remains unverified. NTRViewer-HR Lite v0.3.8.3 was fetched
-from its official release and launched for capture. Its received-frame counters
-were zero; no streaming session has been validated. No firmware, NTR installation
-or system configuration changed.
+loaded engine was subsequently reported by the owner as NTR-HR, without an exact
+engine version. NTRViewer-HR Lite v0.3.8.3 was fetched and briefly launched with
+zero video frames. Source inspection revealed automatic input/neutral forwarding;
+it was closed, and no view-only guarantee is claimed for that preliminary viewer.
+All successful recorded captures use the input-free Python client instead,
+with Pillow 11.3.0. No firmware, NTR installation or system configuration changed.
+
+The view-only Python implementation follows the original JPEG protocol from
+NTRViewer-HR source commit `556c6d06b21cef38c29efd0cdad59a5771956268`.
+Only TCP heartbeat/view commands are supported; UDP is receive-only.
+Capture 03 ended at 22:46:15 UTC and capture 04 at 22:46:32 UTC. Both were opened
+and inspected. Geometry orientation changed while the diagnostic remained stable;
+earlier fresh captures showed HOME then Homebrew Launcher, proving visible state
+transitions. Received video counts are not application frame-rate measurements.
+
+![Application capture 03](evidence/colosseum-20261021-03.png)
+![Application capture 04](evidence/colosseum-20261021-04.png)
+
+Sanitized metadata: [capture 03](evidence/colosseum-20261021-03.json),
+[capture 04](evidence/colosseum-20261021-04.json).
+
+The owner subsequently requested Luma control, superseding the earlier view-only
+constraint. The capture client remains input-free; controller actions use the
+separate bounded driver. A press paused geometry: captures
+[06](evidence/colosseum-20261021-06.png) and
+[07](evidence/colosseum-20261021-07.png) have top JPEG SHA-256
+`49491c8dbe9af94504b756e493f178bc211cee94f1a1a21891df15ce2e6ff3c8`
+while the bottom render counter advances from 8496 to 9119. A second A resumes
+rotation. START+SELECT returns to the launcher, and observed navigation reaches
+`sdmc:/3ds/Colosseum3DS/3ds`, whose Colosseum entry launches the known nested
+executable. [Capture 16](evidence/colosseum-20261021-16.png) confirms relaunch.
+
+Input samples: [Circle Pad](evidence/input-circle-retry-held.png),
+[C-stick](evidence/input-cstick-held.png), [L](evidence/input-L-held.png),
+[R](evidence/input-R-held.png), [ZL](evidence/input-ZL-held.png),
+[ZR](evidence/input-ZR-held.png). Sanitized timestamps, release counts and final
+frame metadata are in [input observations](evidence/input-observations-2026-10-21.json).
+All samples were opened and inspected along with neutral post-release frames.
+These are injected input checks, not tests of physical button switches.
+
+Concurrent image/metadata reads exposed a Windows sharing violation during the
+first Circle Pad sample. That capture correctly reported `output_error`.
+Publication now retries transient PermissionError within 40 ms and remains fatal
+on persistent errors; the Circle Pad sample was repeated successfully. This was
+a PC evidence-publication issue, not a console failure.
 
 The PC's Ethernet interface reached FTP. After the requested app launch,
 FTP refused connections; ordinary ftpd is not assumed to remain active.
@@ -71,11 +116,21 @@ readback mismatch, interrupted recovery and preservation of unknown active bytes
 All three C executables also pass AddressSanitizer and UndefinedBehaviorSanitizer
 in the local GCC 13 container. This Python-only change has no repository lint or
 typecheck configuration; Python compilation and `git diff --check` are used in
-addition to the tests.
+addition to the tests. Capture has 13 passing tests and controller input has
+six, including publication failures, freshness and error-release behavior. The
+Linux full suite discovers 46 Python tests, passing with one optional Pillow
+image test skipped; all 43 new tests pass on Windows with Pillow. The pre-existing
+input-verifier symlink test requires Windows symlink privilege and fails there;
+it passes in Linux. No system privilege setting was changed.
 
 CI is independent: the historical run `39684365653` failed before runner steps,
-with no diagnosed compiler failure. New PR check status is recorded on the PR;
-the local build and hardware observations do not constitute a CI pass.
+with no diagnosed compiler failure. New PR run
+[`39688776329`](https://github.com/dougchansan/Colosseum3DS/actions/runs/39688776329)
+also failed both jobs before any steps ran. Its host check annotation explicitly
+attributes non-start to failed recent payments or a spending limit that needs
+increasing, and directs the owner to Billing & plans. This identifies an account
+billing gate for the new run; it is not a compiler failure. No billing settings
+were changed. The local build and hardware observations do not constitute a CI pass.
 
 The private input repository was checked out at the pinned
 `eae433c46b8b968dd7dcab72cf85351c8b9c7966`; `tools/verify_inputs.py` verified
@@ -96,12 +151,12 @@ repeatable public regression suite.
 
 ## Repeat and next gate
 
-Follow [hardware-workflow.md](hardware-workflow.md). First initialize the existing
-BootNTR engine physically and establish fresh top/bottom frames; then test
-controls with release and observed response. Identify the nested launch path
-before any installation layout correction. Keep this PR focused on guarded
-transfer tooling and the measured checkpoint; remote capture/control remains
-unfinished until that physical gate can be resolved.
+Follow [hardware-workflow.md](hardware-workflow.md). Fresh top/bottom capture is
+established, as are the bounded controller and exit/relaunch checks above. The
+nested launch path is now observed; preserve its original files before any
+installation layout correction. Keep this PR focused on guarded transfer,
+capture/control and the measured checkpoint. Exhaustive controls, HOME/lid
+lifecycle and real console replacement remain unverified.
 
 Next porting milestone: decode one explicitly identified real archive member
 on the 3DS with an allocation ceiling and visible byte count/error status.

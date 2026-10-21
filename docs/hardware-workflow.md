@@ -2,9 +2,10 @@
 
 `tools/hardware.py` uses Python 3's standard library. It collects FTP evidence
 and replaces only the two application files under `/3ds/Colosseum3DS`.
-Launch, screen capture and controller verification remain manual gates. This
-first tool does not automate NTR, send input, prepare SD game data or claim a
-complete automated smoke test.
+The separate `tools/ntr_capture.py` captures both screens without an input
+transport. `tools/luma_input.py` sends short explicit controller actions with
+neutral release. Observed responses remain acceptance gates. These tools
+do not prepare SD game data or claim a complete automated smoke test.
 
 ## Inspect before replacing
 
@@ -76,6 +77,30 @@ unacknowledged rename did not execute. Old backups are deliberately retained.
 
 ## Launch, observe, control, verify
 
+With the installed NTR engine already loaded and no other stream client active,
+use the optional capture tool on a Python environment that already has Pillow:
+
+```sh
+python tools/ntr_capture.py --host CONSOLE_IP --bind PC_LAN_IP --output private/hardware/capture-01 --duration 8
+```
+
+It binds receive-only UDP 8001 before requesting original JPEG streaming through
+TCP 8000. Its only outbound messages are heartbeat and view-stream requests;
+there is no controller, touch or UDP send path. Captures are bounded to 15 seconds.
+Do not start another client while someone is viewing: NTR streams to the latest
+requesting client. Closing a capture's sockets does not prove streaming is disabled
+on the console. No NTR installation or firmware change is performed.
+
+The new output directory contains `top.jpg`, `bottom.jpg`, `both.png`, `frames.json`
+and `capture.json`. Images publish through temporary-file replacement. Success
+requires at least two decoded frames from each screen, with both latest frames
+no older than three seconds at capture end. Open the images and compare visible
+changes across separate captures before reporting application behavior. Frame
+counts measure received video, not application rendering performance. Original
+JPEG compatibility is the only supported protocol; lossless, KCP and audio are
+outside this tool. Pillow is optional for the rest of the repository; no new
+package is required for FTP or native builds.
+
 1. With ftpd active, inspect or transfer and verify the files.
 2. Exit ftpd; launch Colosseum3DS in Homebrew Launcher. FTP normally stops.
 3. Observe both screens. Record self-test and archive status separately.
@@ -89,10 +114,30 @@ unacknowledged rename did not execute. Old backups are deliberately retained.
    is needed. Record HOME and lid tests independently, with NTR inactive where
    necessary to separate streaming restrictions from application behavior.
 
+After enabling Luma/Rosalina InputRedirection, use the separate controller tool
+only with visible screens and authorization to control the console:
+
+```sh
+python tools/luma_input.py --host CONSOLE_IP --bind PC_LAN_IP --button A --duration 0.15 --evidence private/hardware/a-01.json
+python tools/luma_input.py --host CONSOLE_IP --circle 0.5 0 --duration 0.15 --evidence private/hardware/circle-01.json
+python tools/luma_input.py --host CONSOLE_IP --cstick 0.5 0 --duration 0.15 --evidence private/hardware/cstick-01.json
+python tools/luma_input.py --host CONSOLE_IP --button START --button SELECT --duration 0.15 --evidence private/hardware/exit-01.json
+```
+
+Actions last at most half a second and attempt three neutral releases in a
+`finally` block, including after a hold-send error. UDP cannot guarantee delivery:
+verify the response and neutral diagnostics in fresh captures. Stop on a release
+error or lost visibility. Single buttons and START+SELECT are supported; other
+combinations, HOME, POWER and touch are excluded. Analog coordinates are finite
+values in [-1, 1], with right/up positive. The evidence destination is reserved
+before any send and records sends separately from receipt verification.
+
 Record the exact console, launcher, Luma, ftpd, BootNTR Selector, loaded NTR
 engine and viewer versions before diagnosing compatibility. Selector version
 does not identify the engine. Do not replace the installed NTR automatically.
-If NTR control is unavailable, request the physical launch/initialization step;
+When operating under a view-only request, keep all controls physical and do not
+start viewers that automatically forward input. If NTR control is unavailable,
+request the physical launch/initialization step;
 do not navigate blindly or claim a screenshot was captured.
 
 Primary references: [ftpd](https://github.com/mtheall/ftpd),
