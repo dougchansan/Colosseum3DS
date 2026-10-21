@@ -118,8 +118,8 @@ in the local GCC 13 container. This Python-only change has no repository lint or
 typecheck configuration; Python compilation and `git diff --check` are used in
 addition to the tests. Capture has 13 passing tests and controller input has
 six, including publication failures, freshness and error-release behavior. The
-Linux full suite discovers 46 Python tests, passing with one optional Pillow
-image test skipped; all 43 new tests pass on Windows with Pillow. The pre-existing
+Linux full suite discovers 46 Python tests, passing with two optional Pillow
+tests skipped; all 43 new tests pass on Windows with Pillow. The pre-existing
 input-verifier symlink test requires Windows symlink privilege and fails there;
 it passes in Linux. No system privilege setting was changed.
 
@@ -131,6 +131,15 @@ attributes non-start to failed recent payments or a spending limit that needs
 increasing, and directs the owner to Billing & plans. This identifies an account
 billing gate for the new run; it is not a compiler failure. No billing settings
 were changed. The local build and hardware observations do not constitute a CI pass.
+
+At the owner's request, both native jobs and the manual private verifier now
+target a dedicated online Windows/Docker runner with `colosseum3ds-local` labels.
+The existing runner for another repository was preserved. The first local run
+reached execution and exposed CRLF in generated PowerShell here-strings passed
+to Bash; explicit LF normalization fixes it. The exact corrected workflow scripts
+were executed successfully from CRLF `.ps1` files for host, sanitizer and ARM
+checks. The PR's latest checks record the subsequent remote Actions result;
+see [local CI operation](local-ci.md) for listener restart and tool requirements.
 
 The private input repository was checked out at the pinned
 `eae433c46b8b968dd7dcab72cf85351c8b9c7966`; `tools/verify_inputs.py` verified

@@ -46,6 +46,7 @@ jobs:
           make verify-source
           make test
           '@
+          $script = $script.Replace("`r`n", "`n")
           docker run --rm --mount $mount --workdir /work gcc:13 bash -lc $script
           if ($LASTEXITCODE -ne 0) { throw "Host checks failed ($LASTEXITCODE)" }
       - name: Bounds and undefined-behavior checks in Linux
@@ -56,6 +57,7 @@ jobs:
           make clean
           make test CFLAGS='-std=c11 -O1 -g -Wall -Wextra -Wpedantic -Werror -fsanitize=address,undefined -fno-omit-frame-pointer' LDFLAGS='-fsanitize=address,undefined'
           '@
+          $script = $script.Replace("`r`n", "`n")
           docker run --rm --mount $mount --workdir /work gcc:13 bash -lc $script
           if ($LASTEXITCODE -ne 0) { throw "Sanitizer checks failed ($LASTEXITCODE)" }
 
@@ -88,6 +90,7 @@ jobs:
           cd dist
           sha256sum Colosseum3DS.3dsx Colosseum3DS.smdh > SHA256SUMS
           '@
+          $script = $script.Replace("`r`n", "`n")
           docker run --rm --mount $mount --workdir /work devkitpro/devkitarm@sha256:116afba8df8453961de2936ffab20dd441edf4d682856c1ec8b0e53d7ed0bbf5 bash -lc $script
           if ($LASTEXITCODE -ne 0) { throw "ARM checks failed ($LASTEXITCODE)" }
       - uses: actions/upload-artifact@v4
