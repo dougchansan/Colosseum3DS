@@ -1,5 +1,6 @@
 import ast
 import importlib.util
+import itertools
 import io
 from pathlib import Path
 import struct
@@ -17,6 +18,28 @@ def packet(frame, screen=1, index=0, data=b"jpeg", end=True):
 
 
 class CaptureTests(unittest.TestCase):
+    def test_listen_only_receives_existing_stream_without_tcp_or_sends(self):
+        state = MagicMock()
+        state.counters = {"top": 2, "bottom": 2}
+        state.metadata = {"top": {"counter": 2}, "bottom": {"counter": 2}}
+        state.received_monotonic = {"top": 0, "bottom": 0}
+        udp = MagicMock()
+        udp.recvfrom.return_value = (packet(1), ("192.0.2.1", 8001))
+        with tempfile.TemporaryDirectory() as directory, \
+             patch.object(ntr, "Images", return_value=state), \
+             patch.object(ntr.socket, "socket") as factory, \
+             patch.object(ntr.socket, "create_connection") as control, \
+             patch.object(ntr.select, "select", return_value=([udp], [], [])) as select, \
+             patch.object(ntr.time, "monotonic", side_effect=itertools.count(0, 0.1)):
+            factory.return_value.__enter__.return_value = udp
+            report = ntr.capture("192.0.2.1", "192.0.2.2", Path(directory) / "new", 0.5, listen_only=True)
+        control.assert_not_called()
+        udp.sendto.assert_not_called()
+        self.assertEqual(select.call_args.args[0], [udp])
+        state.accept.assert_called_once()
+        self.assertEqual(report["status"], "passed")
+        self.assertTrue(report["listen_only"])
+
     def test_atomic_publication_retries_transient_windows_sharing_denial(self):
         with tempfile.TemporaryDirectory() as directory:
             target = Path(directory) / "frames.json"

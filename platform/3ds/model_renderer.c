@@ -26,14 +26,14 @@ static int fail(char *error, size_t capacity, const char *message)
 static void fit_camera(const C3Model *model)
 {
     float center[3], half[3];
-    const float yaw_cos = 0.866025404f, yaw_sin = 0.5f;
+    const float yaw_cos = -0.866025404f, yaw_sin = -0.5f;
     for (unsigned i = 0; i < 3; ++i) {
         half[i] = (model->bounds[i + 3] - model->bounds[i]) * 0.5f;
         center[i] = (model->bounds[i + 3] + model->bounds[i]) * 0.5f;
     }
-    float x_span = 2.0f * (yaw_cos * half[0] + yaw_sin * half[2]);
+    float x_span = 2.0f * (fabsf(yaw_cos) * half[0] + fabsf(yaw_sin) * half[2]);
     float y_span = 2.0f * half[1];
-    float z_span = 2.0f * (yaw_sin * half[0] + yaw_cos * half[2]);
+    float z_span = 2.0f * (fabsf(yaw_sin) * half[0] + fabsf(yaw_cos) * half[2]);
     if (x_span < 0.001f) x_span = 0.001f;
     if (y_span < 0.001f) y_span = 0.001f;
     if (z_span < 0.001f) z_span = 0.001f;

@@ -55,6 +55,7 @@ jobs:
           $mount = "type=bind,source=$env:GITHUB_WORKSPACE,target=/work"
           $script = @'
           set -euo pipefail
+          git config --global --add safe.directory /work/vendor/gekkoctr
           make clean
           make test CFLAGS='-std=c11 -O1 -g -Wall -Wextra -Wpedantic -Werror -fsanitize=address,undefined -fno-omit-frame-pointer' LDFLAGS='-fsanitize=address,undefined'
           '@

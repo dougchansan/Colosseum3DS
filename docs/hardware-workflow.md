@@ -91,6 +91,12 @@ Do not start another client while someone is viewing: NTR streams to the latest
 requesting client. Closing a capture's sockets does not prove streaming is disabled
 on the console. No NTR installation or firmware change is performed.
 
+If an already-running stream still sends fresh UDP frames but the NTR control
+port will not accept a new connection, add `--listen-only`. This mode sends
+nothing and receives the existing stream without TCP control or reconfiguration.
+Keep the same source-address checks and image freshness requirements; an open
+UDP socket alone does not establish video.
+
 The new output directory contains `top.jpg`, `bottom.jpg`, `both.png`, `frames.json`
 and `capture.json`. Images publish through temporary-file replacement. Success
 requires at least two decoded frames from each screen, with both latest frames
