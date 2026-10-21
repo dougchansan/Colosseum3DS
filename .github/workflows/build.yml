@@ -48,7 +48,7 @@ jobs:
       - name: Record the ARM toolchain
         run: |
           "$DEVKITARM/bin/arm-none-eabi-gcc" --version
-          dkp-pacman -Q devkitARM libctru citro3d 3ds-tools
+          dkp-pacman -Q
       - name: Compile native ARM homebrew
         run: make -f Makefile.3ds -j2
       - name: Stage only the homebrew executable and notices

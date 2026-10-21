@@ -10,6 +10,10 @@ routines on ARM, exercises the PICA GPU and controls, and probes the original
 archive format. It does not boot the title screen, render game models, run a
 battle, or load/save a game. Supplying disc files does not unlock gameplay yet.
 
+The first `.3dsx` has been cross-compiled successfully with devkitARM GCC
+16.1.0. Host and sanitizer checks pass; physical-device testing remains
+pending. See the [validation record](docs/VALIDATION.md).
+
 ## What is implemented
 
 | Component | Current behavior |
@@ -87,7 +91,8 @@ python3 tools/verify_inputs.py --orig ../pkmn-colosseum-build/orig/GC6E01
 The verifier requires all 26 canonical hashes from the pinned decomp. The
 normal ARM build does not need private originals, a GameCube compiler, or a
 private access token. An optional manual `Verify private reference inputs`
-workflow performs the same check inside the existing private build image;
+workflow performs the same check inside the verified private build image
+pinned by digest in `source-lock.json`;
 the Colosseum3DS repository must have read access to that GHCR package.
 
 The private repository does **not** contain the full disc filesystem.

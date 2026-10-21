@@ -19,7 +19,9 @@ make -f Makefile.3ds -j2
 
 The outputs are `build-3ds/Colosseum3DS.3dsx`, `.smdh` and `.elf`. A successful
 host build alone does not establish that these ARM artifacts build or boot.
-The CI ARM job and a real-device run are separate verification steps.
+An actual ARM build succeeded on October 21, 2026; the result, toolchain
+versions and output hashes are in [VALIDATION.md](VALIDATION.md). The CI runner
+and real-device gates remain separate.
 
 ## Run
 

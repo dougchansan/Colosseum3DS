@@ -26,6 +26,6 @@ jobs:
         run: |
           docker run --rm --entrypoint python3 \
             -v "$GITHUB_WORKSPACE:/verify:ro" \
-            ghcr.io/dougchansan/pkmn-colosseum-build:main \
+            ghcr.io/dougchansan/pkmn-colosseum-build@sha256:66e4fe838b6fe86dd97c72b08ade1520a5dd728640063678bf16bfa17e28c812 \
             /verify/tools/verify_inputs.py --orig /orig/GC6E01
       # No cache or artifact: original game bytes stay inside the private job.

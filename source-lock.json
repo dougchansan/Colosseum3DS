@@ -11,7 +11,9 @@
     "repository": "dougchansan/pkmn-colosseum-build",
     "commit": "eae433c46b8b968dd7dcab72cf85351c8b9c7966",
     "path": "orig/GC6E01",
-    "canonical_manifest": "config/GC6E01/build.sha1"
+    "canonical_manifest": "config/GC6E01/build.sha1",
+    "container": "ghcr.io/dougchansan/pkmn-colosseum-build@sha256:66e4fe838b6fe86dd97c72b08ade1520a5dd728640063678bf16bfa17e28c812",
+    "validation_run": "https://github.com/dougchansan/pkmn-colosseum-build/actions/runs/38674909620"
   },
   "native_translation_units": [
     "src/hsd/random.c",

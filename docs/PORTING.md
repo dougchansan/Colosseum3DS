@@ -65,9 +65,14 @@ The pinned private tree contains all 26 configured originals. In this session,
 canonical content SHA-1 values. `main.dol` (3,779,808 bytes) and `common_rel.rel`
 (1,369,520 bytes) were present but the connector returned empty file content;
 their bytes could not be rehashed here. No 26/26 session verification is claimed.
-Run `tools/verify_inputs.py` locally or the manual private-image workflow to
-check every byte. The existing private build-image pipeline also has its own
-original validation; its state is not inferred from the presence of files.
+The existing private-image pipeline provides an additional verified result:
+[run 38674909620](https://github.com/dougchansan/pkmn-colosseum-build/actions/runs/38674909620)
+at the exact pinned private commit passed all 26 original hashes both before
+building and inside the resulting image on October 14, 2026 (Hawaii time). Its
+canonical manifest is byte-identical to the pinned Count-Sheep manifest. The
+published image digest is pinned in `source-lock.json` and the manual verifier
+workflow. This is observed prior CI evidence, distinct from the 24 files
+rehashed in this session. `tools/verify_inputs.py` can repeat all 26 locally.
 
 The private input repository does not contain the complete disc assets. A
 verified extracted disc is required for `common.fsys`, other archives, textures,
