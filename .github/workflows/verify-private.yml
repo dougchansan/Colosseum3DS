@@ -1,0 +1,31 @@
+name: Verify private reference inputs
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  original-hashes:
+    if: github.event.repository.private == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Check every original against the pinned canonical hashes
+        run: |
+          docker run --rm --entrypoint python3 \
+            -v "$GITHUB_WORKSPACE:/verify:ro" \
+            ghcr.io/dougchansan/pkmn-colosseum-build:main \
+            /verify/tools/verify_inputs.py --orig /orig/GC6E01
+      # No cache or artifact: original game bytes stay inside the private job.

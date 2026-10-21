@@ -127,4 +127,3 @@ Only source, build configuration and synthetic test fixtures belong in this
 repository or its build artifact. Original game files and extracted assets
 stay in private/local input directories. The upstream source carries its own
 license and provenance notices; see [THIRD_PARTY.md](THIRD_PARTY.md).
-

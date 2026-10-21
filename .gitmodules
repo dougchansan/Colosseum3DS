@@ -1,0 +1,3 @@
+[submodule "vendor/colosseum"]
+	path = vendor/colosseum
+	url = https://github.com/Count-Sheep/pkmn-colosseum.git

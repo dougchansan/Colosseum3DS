@@ -1,0 +1,37 @@
+{
+  "commit": "51bfe4314a218dfaf9592fc80723c50498d0ee55",
+  "files": [
+    {
+      "path": "src/hsd/random.c",
+      "sha256": "5cbf926074e0efc33caafa312333cc7b62b7d4124eaea1af238952feb2ececd5"
+    },
+    {
+      "path": "src/game/GScolsys2Util_exact_8010C77C.c",
+      "sha256": "5a193afe18987c6680eaf66333f9d9fa21c7f53a90a71205dc34a8dafd981d28"
+    },
+    {
+      "path": "src/game/pokemon_range_8012795C.c",
+      "sha256": "686f4dbd1bfb44c0c851b603d6442c1cc6a83cc503ffceabbfd13b35f391d4d8"
+    },
+    {
+      "path": "include/game/gs_colsys.h",
+      "sha256": "6f712db10a68bb65b5719bd225b13e3d842964b46261b7edad589f4abb58f352"
+    },
+    {
+      "path": "include/game/pokemon_evolution.h",
+      "sha256": "4be4b79d3ff494f6deef8a219053243a47d6df88059fad5d276743f389023e22"
+    },
+    {
+      "path": "config/GC6E01/build.sha1",
+      "sha256": "b93a2376ddcf56a73e71474324202ab7ae068d1bfe0efc3c70fc830b6bb6b5fe"
+    },
+    {
+      "path": "LICENSE",
+      "sha256": "efd57688af76588cbd5b19285134db48d0f1693589d672458d5dcd3d09709c12"
+    },
+    {
+      "path": "NOTICE",
+      "sha256": "30908e1c7de4a26cb3dcd0fd8fd5c84ecd246e5b8b3aa2c884319e0470a20c5e"
+    }
+  ]
+}

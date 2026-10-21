@@ -1,0 +1,70 @@
+# Native New 3DS build using devkitPro's maintained 3ds_rules.
+.SUFFIXES:
+.DEFAULT_GOAL := all
+
+ifeq ($(strip $(DEVKITPRO)),)
+$(error DEVKITPRO is not set; install the devkitPro 3ds-dev group)
+endif
+DEVKITARM ?= $(DEVKITPRO)/devkitARM
+include $(DEVKITARM)/3ds_rules
+
+TARGET := Colosseum3DS
+BUILD := build-3ds
+SOURCES := platform/3ds src
+INCLUDES := include compat/include vendor/colosseum/include platform/3ds
+ARCH := -march=armv6k -mtune=mpcore -mfloat-abi=hard -mtp=soft
+CFLAGS := -g -O2 -Wall -Wextra -std=gnu11 -mword-relocations \
+          -ffunction-sections -fdata-sections $(ARCH)
+CFLAGS += $(INCLUDE) -D__3DS__ $(C3_EXTRA_CFLAGS)
+ASFLAGS := -g $(ARCH)
+LDFLAGS = -specs=3dsx.specs -g $(ARCH) -Wl,--gc-sections,-Map,$(notdir $*.map)
+LIBS := -lcitro3d -lctru -lm
+LIBDIRS := $(CTRULIB)
+
+export APP_TITLE := Colosseum3DS
+export APP_DESCRIPTION := Native port bring-up; not playable
+export APP_AUTHOR := Colosseum3DS contributors
+
+ifneq ($(BUILD),$(notdir $(CURDIR)))
+
+export OUTPUT := $(CURDIR)/$(BUILD)/$(TARGET)
+export TOPDIR := $(CURDIR)
+export VPATH := $(foreach dir,$(SOURCES),$(CURDIR)/$(dir))
+export DEPSDIR := $(CURDIR)/$(BUILD)
+export LD := $(CC)
+
+CFILES := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.c)))
+PICAFILES := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.v.pica)))
+export OFILES_SOURCES := $(CFILES:.c=.o)
+export OFILES := $(PICAFILES:.v.pica=.shbin.o) $(OFILES_SOURCES)
+export HFILES := $(PICAFILES:.v.pica=_shbin.h)
+export INCLUDE := $(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir)) \
+                  $(foreach dir,$(LIBDIRS),-I$(dir)/include) -I$(CURDIR)/$(BUILD)
+export LIBPATHS := $(foreach dir,$(LIBDIRS),-L$(dir)/lib)
+export _3DSXDEPS := $(OUTPUT).smdh
+export _3DSXFLAGS := --smdh=$(OUTPUT).smdh
+
+.PHONY: all clean
+all: $(BUILD)
+	$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile.3ds
+
+$(BUILD):
+	mkdir -p $@
+
+clean:
+	rm -rf $(BUILD)
+
+else
+
+all: $(OUTPUT).3dsx
+$(OUTPUT).3dsx: $(OUTPUT).elf $(_3DSXDEPS)
+$(OUTPUT).elf: $(OFILES)
+$(OFILES_SOURCES): $(HFILES)
+
+%.shbin.o %_shbin.h: %.shbin
+	$(bin2o)
+
+.PRECIOUS: %.shbin
+-include $(DEPSDIR)/*.d
+
+endif

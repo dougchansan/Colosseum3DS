@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "region": "GC6E01",
+  "revision": 0,
+  "decomp": {
+    "repository": "Count-Sheep/pkmn-colosseum",
+    "commit": "51bfe4314a218dfaf9592fc80723c50498d0ee55",
+    "path": "vendor/colosseum"
+  },
+  "private_inputs": {
+    "repository": "dougchansan/pkmn-colosseum-build",
+    "commit": "eae433c46b8b968dd7dcab72cf85351c8b9c7966",
+    "path": "orig/GC6E01",
+    "canonical_manifest": "config/GC6E01/build.sha1"
+  },
+  "native_translation_units": [
+    "src/hsd/random.c",
+    "src/game/GScolsys2Util_exact_8010C77C.c",
+    "src/game/pokemon_range_8012795C.c"
+  ]
+}

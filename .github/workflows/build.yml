@@ -1,0 +1,68 @@
+name: Native port checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-port-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  host:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - name: Verify the reviewed source snapshot
+        run: make verify-source
+      - name: Host regression checks
+        run: make test
+      - name: Bounds and undefined-behavior checks
+        run: |
+          make clean
+          make test CFLAGS='-std=c11 -O1 -g -Wall -Wextra -Wpedantic -Werror -fsanitize=address,undefined -fno-omit-frame-pointer' LDFLAGS='-fsanitize=address,undefined'
+
+  new3ds:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    container:
+      image: devkitpro/devkitarm:latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - name: Verify the reviewed source snapshot
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE/vendor/colosseum"
+          python3 tools/verify_source.py
+      - name: Record the ARM toolchain
+        run: |
+          "$DEVKITARM/bin/arm-none-eabi-gcc" --version
+          dkp-pacman -Q devkitARM libctru citro3d 3ds-tools
+      - name: Compile native ARM homebrew
+        run: make -f Makefile.3ds -j2
+      - name: Stage only the homebrew executable and notices
+        run: |
+          mkdir dist
+          cp build-3ds/Colosseum3DS.3dsx build-3ds/Colosseum3DS.smdh dist/
+          cp README.md LICENSE THIRD_PARTY.md dist/
+          cp vendor/colosseum/LICENSE dist/LICENSE-upstream
+          cp vendor/colosseum/NOTICE dist/NOTICE-upstream
+          cd dist
+          sha256sum Colosseum3DS.3dsx Colosseum3DS.smdh > SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Colosseum3DS-native-bringup
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14
