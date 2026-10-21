@@ -1,0 +1,15 @@
+{
+  "host": "192.168.1.100",
+  "port": 5000,
+  "username": "anonymous",
+  "password_env": "COLOSSEUM_FTP_PASSWORD",
+  "timeout_seconds": 15,
+  "app_directory": "/3ds/Colosseum3DS",
+  "git_commit": null,
+  "build_configuration": "Makefile.3ds",
+  "toolchain": null,
+  "expected_installed_sha256": {
+    "Colosseum3DS.3dsx": null,
+    "Colosseum3DS.smdh": null
+  }
+}

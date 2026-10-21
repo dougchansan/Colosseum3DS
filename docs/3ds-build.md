@@ -25,6 +25,10 @@ and real-device gates remain separate.
 
 ## Run
 
+For passive FTP inspection, guarded replacement and the manual launch/observe
+handoff, see [the local hardware workflow](hardware-workflow.md). Its transfer
+checks do not establish screen capture or input redirection.
+
 Copy the `.3dsx` and `.smdh` into `sd:/3ds/Colosseum3DS/` and launch with an
 up-to-date homebrew launcher on a New Nintendo 3DS, New 3DS XL or New 2DS XL.
 The executable rejects original-model 3DS/2DS hardware. It requests New 3DS
