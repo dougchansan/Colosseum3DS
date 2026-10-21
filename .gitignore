@@ -19,3 +19,4 @@ __pycache__/
 *.rel
 *.fsys
 *.cia
+*.c3m

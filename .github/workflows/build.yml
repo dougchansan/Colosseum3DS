@@ -43,6 +43,7 @@ jobs:
           $script = @'
           set -euo pipefail
           git config --global --add safe.directory /work/vendor/colosseum
+          git config --global --add safe.directory /work/vendor/gekkoctr
           make verify-source
           make test
           '@
@@ -101,6 +102,7 @@ jobs:
           $script = @'
           set -euo pipefail
           git config --global --add safe.directory /work/vendor/colosseum
+          git config --global --add safe.directory /work/vendor/gekkoctr
           python3 tools/verify_source.py
           "$DEVKITARM/bin/arm-none-eabi-gcc" --version
           dkp-pacman -Q
@@ -110,6 +112,7 @@ jobs:
           cp README.md LICENSE THIRD_PARTY.md dist/
           cp vendor/colosseum/LICENSE dist/LICENSE-upstream
           cp vendor/colosseum/NOTICE dist/NOTICE-upstream
+          cp vendor/gekkoctr/LICENSE dist/LICENSE-GekkoCTR-GPLv3
           cd dist
           sha256sum Colosseum3DS.3dsx Colosseum3DS.smdh > SHA256SUMS
           '@

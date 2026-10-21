@@ -20,6 +20,11 @@ See the [hardware checkpoint](docs/hardware-validation-2026-10-21.md) and the
 
 ## What is implemented
 
+This development branch adds a [native textured Eevee scene](docs/gekkoctr-model-scene.md)
+through pinned GekkoCTR components. Its private preparation tool uses actual
+skeletal animation; the game itself remains unplayable. A prepared local pack
+selects the scene, while missing scene data retains the original smoke test.
+
 | Component | Current behavior |
 | --- | --- |
 | Native source integration | Three explicitly selected translation units from a pinned, unmodified decomp submodule; exact source/header hashes checked |

@@ -23,3 +23,29 @@ future local data-extraction references. It is not a source submodule and its
 original DOL/REL bytes are not copied into this project or release artifacts.
 No source-code license grants rights to game assets, trademarks, original
 game binaries, or proprietary compiler distributions.
+
+## GekkoCTR native graphics integration
+
+`vendor/gekkoctr` pins `dougchansan/GekkoCTR` at
+`0f2032c6d641c78ebf4e6a418ecb51e04c0c62d8`, licensed under GNU GPL version 3.
+The combined model-preview executable includes GPL-covered graphics code and is
+distributed under GPLv3 terms, with corresponding source available in this
+repository and its pinned source submodules. The existing MIT notices remain
+applicable to their source files; the root MIT notice alone does not describe
+the license of the combined executable. Preserve the donor's full `LICENSE`
+and this notice with binary distributions. See [GPLv3](https://www.gnu.org/licenses/gpl-3.0.html).
+
+The linked donor translation units are explicitly listed in `source-lock.json`.
+The generated CTR backend adapts its frame/texture capacities and resource
+cleanup; its provenance and exact transformations remain visible in
+`tools/prepare_gekko_backend.py`. No guest execution, memory arena, FIFO parser,
+or emulator bridge is linked. The donor's `docs/INDEPENDENCE.md` remains in its
+submodule.
+
+`vendor/hsd-importer` pins StarsMmd's Blender GameCube importer at
+`dc71de837978a6a2fe8c5082f2840cfafb135235`, also GPLv3. Its parsing, planning
+and skeletal bake helpers are used by the optional offline preparation tool,
+not linked into the ARM executable. Preserve its upstream license and notices.
+The required Blender runtime is an external tool. Neither source license grants
+permission to redistribute extracted Pokémon models, textures or animations;
+prepared `.c3m` packs remain local/private and are excluded from CI artifacts.

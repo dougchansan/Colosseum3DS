@@ -128,7 +128,8 @@ Actions last at most half a second and attempt three neutral releases in a
 `finally` block, including after a hold-send error. UDP cannot guarantee delivery:
 verify the response and neutral diagnostics in fresh captures. Stop on a release
 error or lost visibility. Single buttons and START+SELECT are supported; other
-combinations, HOME, POWER and touch are excluded. Analog coordinates are finite
+combinations, POWER and touch are excluded. HOME is an explicit single-button
+action for observed menu navigation; it also receives neutral cleanup. Analog coordinates are finite
 values in [-1, 1], with right/up positive. The evidence destination is reserved
 before any send and records sends separately from receipt verification.
 
