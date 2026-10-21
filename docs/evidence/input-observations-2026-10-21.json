@@ -1,0 +1,292 @@
+[
+  {
+    "port": 4950,
+    "buttons": [],
+    "duration_seconds": 0.5,
+    "circle_pad": [
+      0.5,
+      0.0
+    ],
+    "c_stick": [
+      0,
+      0
+    ],
+    "started_utc": "2026-10-21T22:53:21.780109+00:00",
+    "hold_sent": 30,
+    "release_attempted": 3,
+    "release_sent": 3,
+    "release_errors": [],
+    "status": "sent",
+    "receipt_verified": false,
+    "limits": "UDP sends only; console receipt and visible response require observation",
+    "held_image": "input-circle-retry-held.png",
+    "held_image_sha256": "08429bede6e0879ad43b90cf4560741eae9595f5b40f1ae977739e30a611095f",
+    "held_frames": {
+      "top": {
+        "frame_id": 111,
+        "counter": 8,
+        "received_utc": "2026-10-21T22:53:22.071359+00:00"
+      },
+      "bottom": {
+        "frame_id": 110,
+        "counter": 7,
+        "received_utc": "2026-10-21T22:53:22.040395+00:00"
+      }
+    },
+    "final_frames": {
+      "top": {
+        "frame_id": 183,
+        "counter": 80,
+        "received_utc": "2026-10-21T22:53:25.682045+00:00"
+      },
+      "bottom": {
+        "frame_id": 182,
+        "counter": 79,
+        "received_utc": "2026-10-21T22:53:25.655853+00:00"
+      }
+    }
+  },
+  {
+    "port": 4950,
+    "buttons": [],
+    "duration_seconds": 0.5,
+    "circle_pad": [
+      0,
+      0
+    ],
+    "c_stick": [
+      0.5,
+      0.0
+    ],
+    "started_utc": "2026-10-21T22:51:55.540874+00:00",
+    "hold_sent": 29,
+    "release_attempted": 3,
+    "release_sent": 3,
+    "release_errors": [],
+    "status": "sent",
+    "receipt_verified": false,
+    "limits": "UDP sends only; console receipt and visible response require observation",
+    "held_image": "input-cstick-held.png",
+    "held_image_sha256": "7102f9bb180ba58add5daa17463b07f34dcda8c3b0698f1784877fc3985764bd",
+    "held_frames": {
+      "top": {
+        "frame_id": 184,
+        "counter": 7,
+        "received_utc": "2026-10-21T22:51:55.800554+00:00"
+      },
+      "bottom": {
+        "frame_id": 184,
+        "counter": 7,
+        "received_utc": "2026-10-21T22:51:55.826656+00:00"
+      }
+    },
+    "final_frames": {
+      "top": {
+        "frame_id": 0,
+        "counter": 79,
+        "received_utc": "2026-10-21T22:51:59.428913+00:00"
+      },
+      "bottom": {
+        "frame_id": 0,
+        "counter": 79,
+        "received_utc": "2026-10-21T22:51:59.462247+00:00"
+      }
+    }
+  },
+  {
+    "port": 4950,
+    "buttons": [
+      "L"
+    ],
+    "duration_seconds": 0.5,
+    "circle_pad": [
+      0,
+      0
+    ],
+    "c_stick": [
+      0,
+      0
+    ],
+    "started_utc": "2026-10-21T22:52:06.238086+00:00",
+    "hold_sent": 29,
+    "release_attempted": 3,
+    "release_sent": 3,
+    "release_errors": [],
+    "status": "sent",
+    "receipt_verified": false,
+    "limits": "UDP sends only; console receipt and visible response require observation",
+    "held_image": "input-L-held.png",
+    "held_image_sha256": "4bf68046ba13612cd9e89fb56c41eabcc74d82144fbd775e377bd2312d39b537",
+    "held_frames": {
+      "bottom": {
+        "frame_id": 141,
+        "counter": 8,
+        "received_utc": "2026-10-21T22:52:06.528952+00:00"
+      },
+      "top": {
+        "frame_id": 141,
+        "counter": 7,
+        "received_utc": "2026-10-21T22:52:06.501905+00:00"
+      }
+    },
+    "final_frames": {
+      "bottom": {
+        "frame_id": 212,
+        "counter": 79,
+        "received_utc": "2026-10-21T22:52:10.092247+00:00"
+      },
+      "top": {
+        "frame_id": 213,
+        "counter": 79,
+        "received_utc": "2026-10-21T22:52:10.118317+00:00"
+      }
+    }
+  },
+  {
+    "port": 4950,
+    "buttons": [
+      "R"
+    ],
+    "duration_seconds": 0.5,
+    "circle_pad": [
+      0,
+      0
+    ],
+    "c_stick": [
+      0,
+      0
+    ],
+    "started_utc": "2026-10-21T22:52:15.908609+00:00",
+    "hold_sent": 30,
+    "release_attempted": 3,
+    "release_sent": 3,
+    "release_errors": [],
+    "status": "sent",
+    "receipt_verified": false,
+    "limits": "UDP sends only; console receipt and visible response require observation",
+    "held_image": "input-R-held.png",
+    "held_image_sha256": "3ac41586724ed5dc5a8e788f51c106c89c7cb071faf68d5192a2ebc5a8ab49d9",
+    "held_frames": {
+      "bottom": {
+        "frame_id": 77,
+        "counter": 7,
+        "received_utc": "2026-10-21T22:52:16.158069+00:00"
+      },
+      "top": {
+        "frame_id": 78,
+        "counter": 7,
+        "received_utc": "2026-10-21T22:52:16.182948+00:00"
+      }
+    },
+    "final_frames": {
+      "bottom": {
+        "frame_id": 150,
+        "counter": 80,
+        "received_utc": "2026-10-21T22:52:19.838284+00:00"
+      },
+      "top": {
+        "frame_id": 150,
+        "counter": 79,
+        "received_utc": "2026-10-21T22:52:19.802274+00:00"
+      }
+    }
+  },
+  {
+    "port": 4950,
+    "buttons": [
+      "ZL"
+    ],
+    "duration_seconds": 0.5,
+    "circle_pad": [
+      0,
+      0
+    ],
+    "c_stick": [
+      0,
+      0
+    ],
+    "started_utc": "2026-10-21T22:52:27.954911+00:00",
+    "hold_sent": 30,
+    "release_attempted": 3,
+    "release_sent": 3,
+    "release_errors": [],
+    "status": "sent",
+    "receipt_verified": false,
+    "limits": "UDP sends only; console receipt and visible response require observation",
+    "held_image": "input-ZL-held.png",
+    "held_image_sha256": "650ea6e62a19f44e41c4aa133014348939137d05c5eb342016a3e4dddf630e31",
+    "held_frames": {
+      "top": {
+        "frame_id": 62,
+        "counter": 8,
+        "received_utc": "2026-10-21T22:52:28.241719+00:00"
+      },
+      "bottom": {
+        "frame_id": 61,
+        "counter": 7,
+        "received_utc": "2026-10-21T22:52:28.218013+00:00"
+      }
+    },
+    "final_frames": {
+      "top": {
+        "frame_id": 134,
+        "counter": 80,
+        "received_utc": "2026-10-21T22:52:31.867173+00:00"
+      },
+      "bottom": {
+        "frame_id": 133,
+        "counter": 79,
+        "received_utc": "2026-10-21T22:52:31.843480+00:00"
+      }
+    }
+  },
+  {
+    "port": 4950,
+    "buttons": [
+      "ZR"
+    ],
+    "duration_seconds": 0.5,
+    "circle_pad": [
+      0,
+      0
+    ],
+    "c_stick": [
+      0,
+      0
+    ],
+    "started_utc": "2026-10-21T22:52:41.555950+00:00",
+    "hold_sent": 29,
+    "release_attempted": 3,
+    "release_sent": 3,
+    "release_errors": [],
+    "status": "sent",
+    "receipt_verified": false,
+    "limits": "UDP sends only; console receipt and visible response require observation",
+    "held_image": "input-ZR-held.png",
+    "held_image_sha256": "6b5c385fe326025348ed4afcbb3bce080f48700bfd9e8b5e4af4f2ea7f8968fa",
+    "held_frames": {
+      "top": {
+        "frame_id": 76,
+        "counter": 7,
+        "received_utc": "2026-10-21T22:52:41.797868+00:00"
+      },
+      "bottom": {
+        "frame_id": 76,
+        "counter": 7,
+        "received_utc": "2026-10-21T22:52:41.825368+00:00"
+      }
+    },
+    "final_frames": {
+      "top": {
+        "frame_id": 149,
+        "counter": 80,
+        "received_utc": "2026-10-21T22:52:45.457290+00:00"
+      },
+      "bottom": {
+        "frame_id": 148,
+        "counter": 79,
+        "received_utc": "2026-10-21T22:52:45.438429+00:00"
+      }
+    }
+  }
+]

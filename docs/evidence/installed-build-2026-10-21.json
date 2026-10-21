@@ -1,0 +1,17 @@
+{
+  "utc": "2026-10-21T22:36:04.692671+00:00",
+  "remote_dir": "/3ds/Colosseum3DS/3ds/Colosseum3DS",
+  "files": [
+    {
+      "name": "Colosseum3DS.3dsx",
+      "bytes": 181088,
+      "sha256": "75d5c4b93781f68bf25f3cc8f58d49376d70e2564d793f3101eff3b4d0a167a8"
+    },
+    {
+      "name": "Colosseum3DS.smdh",
+      "bytes": 14016,
+      "sha256": "aa4ea04bc11d878a77367dd4ac801367070b140108c7b16cedee49f83834daf6"
+    }
+  ],
+  "evidence_scope": "Downloaded via passive FTP from physical console; no writes"
+}

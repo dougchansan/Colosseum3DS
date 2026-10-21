@@ -3,6 +3,7 @@
 /dist/
 /private/
 /data/
+/.omx/
 __pycache__/
 *.pyc
 *.elf

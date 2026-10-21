@@ -1,0 +1,2 @@
+# Optional capture/image-test dependency; FTP and native builds do not need it.
+Pillow==11.3.0

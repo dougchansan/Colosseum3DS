@@ -13,53 +13,109 @@ concurrency:
   group: native-port-${{ github.ref }}
   cancel-in-progress: true
 
+# Checkout must preserve reviewed byte hashes on the Windows runner.
+env:
+  GIT_CONFIG_COUNT: '2'
+  GIT_CONFIG_KEY_0: core.autocrlf
+  GIT_CONFIG_VALUE_0: 'false'
+  GIT_CONFIG_KEY_1: core.eol
+  GIT_CONFIG_VALUE_1: lf
+
+defaults:
+  run:
+    shell: pwsh
+
 jobs:
   host:
-    runs-on: ubuntu-latest
+    if: >-
+      github.event.repository.private == true &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [self-hosted, Windows, X64, colosseum3ds-local]
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - name: Verify source and run host regression checks in Linux
+        run: |
+          $mount = "type=bind,source=$env:GITHUB_WORKSPACE,target=/work"
+          $script = @'
+          set -euo pipefail
+          git config --global --add safe.directory /work/vendor/colosseum
+          make verify-source
+          make test
+          '@
+          $script = $script.Replace("`r`n", "`n")
+          docker run --rm --mount $mount --workdir /work gcc:13 bash -lc $script
+          if ($LASTEXITCODE -ne 0) { throw "Host checks failed ($LASTEXITCODE)" }
+      - name: Bounds and undefined-behavior checks in Linux
+        run: |
+          $mount = "type=bind,source=$env:GITHUB_WORKSPACE,target=/work"
+          $script = @'
+          set -euo pipefail
+          make clean
+          make test CFLAGS='-std=c11 -O1 -g -Wall -Wextra -Wpedantic -Werror -fsanitize=address,undefined -fno-omit-frame-pointer' LDFLAGS='-fsanitize=address,undefined'
+          '@
+          $script = $script.Replace("`r`n", "`n")
+          docker run --rm --mount $mount --workdir /work gcc:13 bash -lc $script
+          if ($LASTEXITCODE -ne 0) { throw "Sanitizer checks failed ($LASTEXITCODE)" }
+
+  capture:
+    if: >-
+      github.event.repository.private == true &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [self-hosted, Windows, X64, colosseum3ds-local]
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: recursive
           persist-credentials: false
-      - name: Verify the reviewed source snapshot
-        run: make verify-source
-      - name: Host regression checks
-        run: make test
-      - name: Bounds and undefined-behavior checks
+      - name: Run capture publication tests with pinned Pillow
         run: |
-          make clean
-          make test CFLAGS='-std=c11 -O1 -g -Wall -Wextra -Wpedantic -Werror -fsanitize=address,undefined -fno-omit-frame-pointer' LDFLAGS='-fsanitize=address,undefined'
+          $mount = "type=bind,source=$env:GITHUB_WORKSPACE,target=/work"
+          $script = @'
+          set -eu
+          python -m pip install --no-cache-dir -r requirements-capture-test.txt
+          python -c "import PIL; from PIL import Image; print('Pillow', PIL.__version__)"
+          python -m unittest discover -s tests -p 'test_ntr_capture.py' -v
+          '@
+          $script = $script.Replace("`r`n", "`n")
+          docker run --rm --mount $mount --workdir /work python:3.12-slim sh -c $script
+          if ($LASTEXITCODE -ne 0) { throw "Capture checks failed ($LASTEXITCODE)" }
 
   new3ds:
-    runs-on: ubuntu-latest
+    if: >-
+      github.event.repository.private == true &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [self-hosted, Windows, X64, colosseum3ds-local]
     timeout-minutes: 20
-    container:
-      image: devkitpro/devkitarm:latest
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
           persist-credentials: false
-      - name: Verify the reviewed source snapshot
+      - name: Verify source, record toolchain, compile and stage native ARM homebrew
         run: |
-          git config --global --add safe.directory "$GITHUB_WORKSPACE/vendor/colosseum"
+          $mount = "type=bind,source=$env:GITHUB_WORKSPACE,target=/work"
+          $script = @'
+          set -euo pipefail
+          git config --global --add safe.directory /work/vendor/colosseum
           python3 tools/verify_source.py
-      - name: Record the ARM toolchain
-        run: |
           "$DEVKITARM/bin/arm-none-eabi-gcc" --version
           dkp-pacman -Q
-      - name: Compile native ARM homebrew
-        run: make -f Makefile.3ds -j2
-      - name: Stage only the homebrew executable and notices
-        run: |
-          mkdir dist
+          make -f Makefile.3ds -j2
+          mkdir -p dist
           cp build-3ds/Colosseum3DS.3dsx build-3ds/Colosseum3DS.smdh dist/
           cp README.md LICENSE THIRD_PARTY.md dist/
           cp vendor/colosseum/LICENSE dist/LICENSE-upstream
           cp vendor/colosseum/NOTICE dist/NOTICE-upstream
           cd dist
           sha256sum Colosseum3DS.3dsx Colosseum3DS.smdh > SHA256SUMS
+          '@
+          $script = $script.Replace("`r`n", "`n")
+          docker run --rm --mount $mount --workdir /work devkitpro/devkitarm@sha256:116afba8df8453961de2936ffab20dd441edf4d682856c1ec8b0e53d7ed0bbf5 bash -lc $script
+          if ($LASTEXITCODE -ne 0) { throw "ARM checks failed ($LASTEXITCODE)" }
       - uses: actions/upload-artifact@v4
         with:
           name: Colosseum3DS-native-bringup
