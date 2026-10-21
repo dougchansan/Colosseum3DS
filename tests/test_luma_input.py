@@ -1,7 +1,10 @@
 import importlib.util
+from contextlib import redirect_stdout
+import io
 import json
 from pathlib import Path
 import struct
+import signal
 import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
@@ -84,6 +87,88 @@ class LumaTests(unittest.TestCase):
             with self.assertRaises(FileExistsError):
                 luma.send_action("192.0.2.1", ["A"], 0.1, path)
             factory.assert_not_called()
+
+    def check_sigint(self, phase, release_error=False):
+        udp = MagicMock()
+        udp.getsockname.return_value = ("192.0.2.2", 1234)
+        neutral_attempts = 0
+        interrupted = False
+
+        def send(data, address):
+            nonlocal neutral_attempts, interrupted
+            if data == luma.NEUTRAL:
+                neutral_attempts += 1
+                if phase == "release_send" and neutral_attempts == 1:
+                    interrupted = True
+                    signal.raise_signal(signal.SIGINT)
+                if release_error and neutral_attempts == 2:
+                    raise OSError("neutral transmission failed")
+            return 20
+
+        def sleep(seconds):
+            nonlocal interrupted
+            if not interrupted and ((phase == "release_sleep" and neutral_attempts == 1)
+                                    or (phase == "hold" and neutral_attempts == 0)):
+                interrupted = True
+                signal.raise_signal(signal.SIGINT)
+
+        udp.sendto.side_effect = send
+        previous = signal.signal(signal.SIGINT, signal.default_int_handler)
+        try:
+            with tempfile.TemporaryDirectory() as directory, \
+                 patch.object(luma.socket, "socket") as factory, \
+                 patch.object(luma.time, "sleep", side_effect=sleep), \
+                 patch.object(luma.time, "monotonic", return_value=0), redirect_stdout(io.StringIO()):
+                factory.return_value.__enter__.return_value = udp
+                evidence = Path(directory) / "action.json"
+                result = luma.main(["--host", "192.0.2.1", "--button", "A", "--duration", "0.01",
+                                    "--evidence", str(evidence)])
+                report = json.loads(evidence.read_text())
+                factory.return_value.__exit__.assert_called_once()
+                # The evidence handle has also closed and can be reopened.
+                with evidence.open("a"):
+                    pass
+            self.assertEqual(signal.getsignal(signal.SIGINT), signal.default_int_handler)
+            with self.assertRaises(KeyboardInterrupt):
+                signal.raise_signal(signal.SIGINT)
+        finally:
+            signal.signal(signal.SIGINT, previous)
+        self.assertTrue(interrupted)
+        self.assertEqual(result, 1)
+        self.assertEqual(report["status"], "cancelled")
+        self.assertTrue(report["cancelled"])
+        self.assertEqual(report["error"], "Interrupted")
+        self.assertEqual(report["hold_sent"], 1)
+        self.assertEqual(report["release_attempted"], 3)
+        self.assertEqual(report["release_sent"], 2 if release_error else 3)
+        self.assertFalse(report["receipt_verified"])
+        self.assertTrue(all(call.args[0] == luma.NEUTRAL for call in udp.sendto.call_args_list[-3:]))
+        return report
+
+    def test_sigint_during_first_neutral_send_is_deferred(self):
+        self.check_sigint("release_send")
+
+    def test_sigint_during_release_sleep_is_deferred(self):
+        self.check_sigint("release_sleep")
+
+    def test_sigint_during_hold_still_releases_and_reports_cancellation(self):
+        self.check_sigint("hold")
+
+    def test_deferred_sigint_does_not_hide_release_transmission_failure(self):
+        report = self.check_sigint("release_send", release_error=True)
+        self.assertEqual(report["release_errors"], ["neutral transmission failed"])
+
+    def test_release_oserror_preserves_remaining_attempts(self):
+        udp = MagicMock()
+        udp.sendto.side_effect = [20, OSError("neutral transmission failed"), 20, 20]
+        udp.getsockname.return_value = ("192.0.2.2", 1234)
+        with tempfile.TemporaryDirectory() as directory:
+            report = self.run_action(udp, Path(directory) / "action.json", 0.01)
+        self.assertEqual(report["status"], "release_error")
+        self.assertEqual(report["release_attempted"], 3)
+        self.assertEqual(report["release_sent"], 2)
+        self.assertEqual(report["release_errors"], ["neutral transmission failed"])
+        self.assertFalse(report["cancelled"])
 
 
 if __name__ == "__main__":

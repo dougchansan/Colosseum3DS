@@ -7,12 +7,15 @@ ui_input_redirection.c at 556c6d06b21cef38c29efd0cdad59a5771956268.
 UDP send success does not prove console receipt or a visible action.
 """
 import argparse
+from contextlib import contextmanager
 import datetime
 import json
 import math
+import signal
 from pathlib import Path
 import socket
 import struct
+import threading
 import time
 
 HID_BITS = {"A": 0, "B": 1, "SELECT": 2, "START": 3,
@@ -20,6 +23,29 @@ HID_BITS = {"A": 0, "B": 1, "SELECT": 2, "START": 3,
             "R": 8, "L": 9, "X": 10, "Y": 11}
 BUTTONS = tuple(HID_BITS) + ("ZL", "ZR")
 NEUTRAL = struct.pack("<5I", 0xfff, 0x02000000, 0x007ff7ff, 0x80800081, 0)
+
+
+@contextmanager
+def defer_cleanup_sigint(report):
+    """Finish bounded release attempts before reporting a CLI cancellation.
+
+    Luma retains the last injected state during UDP silence. On the main thread,
+    defer SIGINT throughout cleanup; Python only delivers signals there. Worker
+    callers leave process-wide signal handling to their main thread.
+    """
+    previous = None
+    if threading.current_thread() is threading.main_thread():
+        previous = signal.getsignal(signal.SIGINT)
+
+        def cancelled(signum, frame):
+            report["cancelled"] = True
+
+        signal.signal(signal.SIGINT, cancelled)
+    try:
+        yield
+    finally:
+        if previous is not None:
+            signal.signal(signal.SIGINT, previous)
 
 
 def packet(buttons=(), circle_pad=(0, 0), c_stick=(0, 0)):
@@ -66,6 +92,7 @@ def send_action(host, buttons, duration, evidence, bind=None, circle_pad=(0, 0),
               "started_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
               "hold_sent": 0, "release_attempted": 0, "release_sent": 0,
               "release_errors": [], "status": "failed", "receipt_verified": False,
+              "cancelled": False,
               "limits": "UDP sends only; console receipt and visible response require observation"}
     # Exclusive creation reserves the evidence destination before any network write.
     with Path(evidence).open("x") as log:
@@ -90,19 +117,25 @@ def send_action(host, buttons, duration, evidence, bind=None, circle_pad=(0, 0),
                         if remaining > 0:
                             time.sleep(min(1 / 60, remaining))
                 finally:
-                    for _ in range(3):
-                        report["release_attempted"] += 1
-                        try:
-                            send(NEUTRAL)
-                            report["release_sent"] += 1
-                        except OSError as exc:
-                            report["release_errors"].append(str(exc))
-                        time.sleep(1 / 60)
+                    with defer_cleanup_sigint(report):
+                        for _ in range(3):
+                            report["release_attempted"] += 1
+                            try:
+                                send(NEUTRAL)
+                                report["release_sent"] += 1
+                            except OSError as exc:
+                                report["release_errors"].append(str(exc) or type(exc).__name__)
+                            time.sleep(1 / 60)
                 report["local_source_address"] = udp.getsockname()[0]
                 report["status"] = "sent" if report["release_sent"] == 3 else "release_error"
         except (OSError, KeyboardInterrupt) as exc:
-            report["error"] = str(exc) or "Interrupted"
+            if isinstance(exc, KeyboardInterrupt):
+                report["cancelled"] = True
+            report["error"] = str(exc) or ("Interrupted" if report["cancelled"] else type(exc).__name__)
         finally:
+            if report["cancelled"]:
+                report["status"] = "cancelled"
+                report.setdefault("error", "Interrupted")
             log.seek(0)
             log.truncate()
             json.dump(report, log, indent=2)

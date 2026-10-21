@@ -61,6 +61,29 @@ jobs:
           docker run --rm --mount $mount --workdir /work gcc:13 bash -lc $script
           if ($LASTEXITCODE -ne 0) { throw "Sanitizer checks failed ($LASTEXITCODE)" }
 
+  capture:
+    if: >-
+      github.event.repository.private == true &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [self-hosted, Windows, X64, colosseum3ds-local]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Run capture publication tests with pinned Pillow
+        run: |
+          $mount = "type=bind,source=$env:GITHUB_WORKSPACE,target=/work"
+          $script = @'
+          set -eu
+          python -m pip install --no-cache-dir -r requirements-capture-test.txt
+          python -c "import PIL; from PIL import Image; print('Pillow', PIL.__version__)"
+          python -m unittest discover -s tests -p 'test_ntr_capture.py' -v
+          '@
+          $script = $script.Replace("`r`n", "`n")
+          docker run --rm --mount $mount --workdir /work python:3.12-slim sh -c $script
+          if ($LASTEXITCODE -ne 0) { throw "Capture checks failed ($LASTEXITCODE)" }
+
   new3ds:
     if: >-
       github.event.repository.private == true &&

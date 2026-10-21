@@ -281,8 +281,9 @@ def main(argv=None):
         if evidence.get("cleanup_errors"):
             evidence["status"] = "failed"
             evidence["error"] = "Temporary-file cleanup requires manual review"
-    except (OSError, ValueError, KeyError, ftplib.Error) as exc:
-        evidence["error"] = str(exc)
+    except (OSError, EOFError, ValueError, KeyError, ftplib.Error) as exc:
+        evidence["error"] = str(exc) or ("FTP control connection closed unexpectedly (EOFError)"
+                                         if isinstance(exc, EOFError) else type(exc).__name__)
     finally:
         if ftp is not None:
             try:

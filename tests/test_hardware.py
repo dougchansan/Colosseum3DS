@@ -318,6 +318,30 @@ class HardwareTests(unittest.TestCase):
         self.assertEqual(result, 1)
         ftp.assert_not_called()
 
+    def test_empty_ftp_eof_writes_useful_failure_manifest(self):
+        for phase in ("connect", "inspect"):
+            with self.subTest(phase=phase):
+                config = self.root / (phase + ".json")
+                config.write_text(json.dumps({"host": "192.0.2.10"}))
+                evidence = self.root / (phase + "-evidence")
+                with patch.object(hardware.socket, "getaddrinfo", return_value=[]), \
+                     patch.object(hardware.ftplib, "FTP") as factory:
+                    ftp = factory.return_value
+                    ftp.sock.getsockname.return_value = ("192.0.2.2", 1234)
+                    ftp.sendcmd.return_value = "215 UNIX Type: L8"
+                    if phase == "connect":
+                        ftp.connect.side_effect = EOFError()
+                    else:
+                        ftp.retrbinary.side_effect = EOFError()
+                    result = hardware.main(["inspect", "--config", str(config), "--evidence", str(evidence)])
+                    ftp.close.assert_called_once()
+                manifest = json.loads((evidence / "manifest.json").read_text())
+                self.assertEqual(result, 1)
+                self.assertEqual(manifest["status"], "failed")
+                self.assertIn("FTP control connection closed unexpectedly", manifest["error"])
+                self.assertFalse(manifest.get("deployment_verified", False))
+                self.assertFalse(manifest.get("rollback_verified", False))
+
 
 if __name__ == "__main__":
     unittest.main()

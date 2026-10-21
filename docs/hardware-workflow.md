@@ -132,6 +132,13 @@ combinations, HOME, POWER and touch are excluded. Analog coordinates are finite
 values in [-1, 1], with right/up positive. The evidence destination is reserved
 before any send and records sends separately from receipt verification.
 
+The CLI defers SIGINT during the bounded neutral-release sequence and restores
+the previous signal handler afterward. Cancellation during the hold or cleanup
+is recorded as `cancelled` and returns nonzero; release-send failures remain in
+`release_errors`. Luma preserves the last injected state during UDP silence,
+so completed sends still require a fresh observed neutral diagnostic. Forced
+process termination and a lost network cannot guarantee release delivery.
+
 Record the exact console, launcher, Luma, ftpd, BootNTR Selector, loaded NTR
 engine and viewer versions before diagnosing compatibility. Selector version
 does not identify the engine. Do not replace the installed NTR automatically.

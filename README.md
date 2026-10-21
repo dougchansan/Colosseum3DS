@@ -11,8 +11,12 @@ archive format. It does not boot the title screen, render game models, run a
 battle, or load/save a game. Supplying disc files does not unlock gameplay yet.
 
 The first `.3dsx` has been cross-compiled successfully with devkitARM GCC
-16.1.0. Host and sanitizer checks pass; physical-device testing remains
-pending. See the [validation record](docs/VALIDATION.md).
+16.1.0. Host and sanitizer checks pass. Partial physical-device validation
+proves rendering, native self-tests, the missing-data diagnostic, sampled input,
+and exit/relaunch. Guarded deployment/rollback, a real archive on console,
+exhaustive controls, HOME behavior and lid sleep/resume remain unverified.
+See the [hardware checkpoint](docs/hardware-validation-2026-10-21.md) and the
+[historical initial validation record](docs/VALIDATION.md).
 
 ## What is implemented
 
@@ -45,7 +49,19 @@ make verify-source
 make test
 ```
 
-Host checks need a C11 compiler, Make, Python 3 and Git. The New 3DS application
+Host checks need a C11 compiler, Make, Python 3 and Git. Capture image tests
+and the NTR capture tool additionally use optional Pillow:
+
+```sh
+python3 -m pip install -r requirements-capture-test.txt
+python3 -c "import PIL; from PIL import Image; print('Pillow', PIL.__version__)"
+python3 -m unittest discover -s tests -p 'test_ntr_capture.py' -v
+```
+
+Pillow is not required for FTP tools or native builds. The dedicated CI capture
+job installs the pinned dependency and requires its import before running both
+image-publication tests, so a missing Pillow installation fails that check.
+The New 3DS application
 needs the official devkitPro `3ds-dev` group, including devkitARM, libctru,
 citro3d and 3ds-tools:
 
@@ -58,8 +74,7 @@ Outputs are `build-3ds/Colosseum3DS.3dsx` and
 also cross-compiles and uploads `Colosseum3DS-native-bringup` after a successful
 ARM job. Its artifact contains the application and notices, without disc data.
 The workflow records compiler/package versions; the container currently uses
-the official `devkitpro/devkitarm:latest` tag, so the toolchain itself is not
-yet pinned to an image digest.
+the official devkitPro image pinned by digest in the workflow.
 
 Copy the `.3dsx` and `.smdh` to `sd:/3ds/Colosseum3DS/` and launch using the
 Homebrew Launcher on a New 3DS family device. A stock original 3DS/2DS is not
