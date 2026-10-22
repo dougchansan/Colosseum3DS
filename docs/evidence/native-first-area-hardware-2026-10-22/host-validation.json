@@ -1,0 +1,23 @@
+{
+  "asan_options": "detect_leaks=0:halt_on_error=1",
+  "source_identities": 9,
+  "c_suites_normal": 10,
+  "python_full": {
+    "numpy": "2.4.3",
+    "python": "3.12",
+    "tests": 133,
+    "result": "passed",
+    "skips": 0,
+    "pillow": "11.3.0"
+  },
+  "ubsan_options": "halt_on_error=1:print_stacktrace=1",
+  "sanitized_python_regressions": {
+    "shader_lifecycle": 1,
+    "texture_binding": 4,
+    "result": "passed"
+  },
+  "c_suites_asan_ubsan": 10,
+  "sanitizer_cflags": "-std=c11 -O1 -g -Wall -Wextra -Wpedantic -Werror -fsanitize=address,undefined -fno-omit-frame-pointer -fno-pie -no-pie",
+  "arm_build_performed": false,
+  "verification": "renderer texture binding fix working tree"
+}

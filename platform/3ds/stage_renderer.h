@@ -19,4 +19,10 @@ int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
                           C3TitleRenderStats *stats, char *error, size_t capacity);
 void c3_stage_renderer_shutdown(void);
 
+/* Nonblocking completion barrier. Busy leaves all renderer ownership intact.
+ * try_shutdown deletes resources only after this barrier succeeds. Requires
+ * sole Citro3D ownership and no frame-end hook that submits GPU work. */
+bool c3_stage_renderer_is_idle(void);
+bool c3_stage_renderer_try_shutdown(void);
+
 #endif

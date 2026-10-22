@@ -7,7 +7,7 @@ HEADERS += vendor/colosseum/include/game/gs_colsys.h vendor/colosseum/include/ga
 UPSTREAM = vendor/colosseum/src/hsd/random.c vendor/colosseum/src/game/GScolsys2Util_exact_8010C77C.c vendor/colosseum/src/game/pokemon_range_8012795C.c
 
 .PHONY: all test clean 3ds verify-source
-all: build/test_core build/test_data build/test_pokemon build/test_model build/test_movie build/test_save build/test_title build/test_field build/test_game_menu build/test_game_state
+all: build/test_core build/test_data build/test_pokemon build/test_model build/test_movie build/test_save build/test_title build/test_field build/test_game_menu build/test_game_state build/test_render_recovery
 
 build:
 	mkdir -p $@
@@ -45,6 +45,9 @@ build/save_codec.c: tools/prepare_save_codec.py vendor/colosseum/src/game/memcar
 build/test_save: tests/test_save.c src/save.c src/save_codec.h include/colosseum3ds/save.h build/save_codec.c
 	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_save.c src/save.c build/save_codec.c $(LDFLAGS) -o $@
 
+build/test_render_recovery: tests/test_render_recovery.c platform/3ds/render_recovery.c platform/3ds/render_recovery.h platform/3ds/n3ds_platform.h | build
+	$(CC) $(CPPFLAGS) -Iplatform/3ds -DC3_RECOVERY_HOST_TEST $(CFLAGS) tests/test_render_recovery.c platform/3ds/render_recovery.c $(LDFLAGS) -o $@
+
 test: all
 	./build/test_core
 	./build/test_data
@@ -56,6 +59,7 @@ test: all
 	./build/test_field
 	./build/test_game_menu
 	./build/test_game_state
+	./build/test_render_recovery
 	python3 -m unittest discover -s tests -p 'test_*.py'
 
 verify-source:

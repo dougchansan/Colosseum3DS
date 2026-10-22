@@ -1,0 +1,40 @@
+{
+  "source": "https://github.com/xzn/ntrviewer-hr/tree/556c6d06b21cef38c29efd0cdad59a5771956268",
+  "duration_seconds": 15.0,
+  "view_only": true,
+  "input_packets_sent": 0,
+  "udp_packets": 3268,
+  "decode_errors": 0,
+  "status": "passed",
+  "listen_only": true,
+  "frames": {
+    "bottom": {
+      "frame_id": 32,
+      "counter": 299,
+      "received_utc": "2026-10-22T05:14:52.483855+00:00"
+    },
+    "top": {
+      "frame_id": 32,
+      "counter": 298,
+      "received_utc": "2026-10-22T05:14:52.456905+00:00"
+    }
+  },
+  "counters": {
+    "top": 298,
+    "bottom": 299
+  },
+  "screen_age_seconds": {
+    "top": 0.0470000000204891,
+    "bottom": 0.015000000013969839
+  },
+  "freshness_requirement": "Both screens >=2 decoded frames and latest age <=3 seconds",
+  "rejected_packets": 0,
+  "elapsed_seconds": 15.0,
+  "image_sha256": "65139bd180a0a904237a5242f5e346613b7fc93cbcb41af974c16b8763084404",
+  "tested_commit": "536dbd3864ce21f196439860f2a1889a4c9b3072",
+  "last_markers": [
+    "title_gpu 0 after_end",
+    "title_gpu 1 before_begin"
+  ],
+  "interpretation": "First draw call returns; second begin stalls. GPU completion versus VBlank synchronization not yet distinguished. Pre-end cmd_usage0 was cached, not a submitted-command count."
+}

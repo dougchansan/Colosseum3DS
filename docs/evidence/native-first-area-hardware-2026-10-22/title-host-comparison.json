@@ -1,0 +1,50 @@
+{
+  "windows_sha256": "0019ee50b41ba3b59fe7f783cdf15b04c67cb378777f1491dd4c1a9d862b69d2",
+  "linux_sha256": "01e9fcb2cef12fbfed267673ced008e866eaa61d4a8906da3d6e34be9493dfe9",
+  "header_equal": true,
+  "sections": {
+    "vertices": {
+      "offset": 128,
+      "bytes": 691080,
+      "differing_bytes": 0
+    },
+    "batches": {
+      "offset": 691208,
+      "bytes": 4816,
+      "differing_bytes": 0
+    },
+    "texture_descriptors": {
+      "offset": 696024,
+      "bytes": 480,
+      "differing_bytes": 0
+    },
+    "clips": {
+      "offset": 696504,
+      "bytes": 48,
+      "differing_bytes": 0
+    },
+    "lights": {
+      "offset": 696552,
+      "bytes": 192,
+      "differing_bytes": 0,
+      "differing_words": 0,
+      "max_absolute_delta": 0.0
+    },
+    "frames": {
+      "offset": 696744,
+      "bytes": 12380400,
+      "differing_bytes": 854996,
+      "differing_words": 249732,
+      "max_absolute_delta": 3.552713678800501e-15,
+      "maximum_magnitude_among_differences": 4.455191771057798e-11,
+      "all_differences_below_1e_minus_12": false
+    },
+    "pixels": {
+      "offset": 13077144,
+      "bytes": 5275904,
+      "differing_bytes": 0
+    }
+  },
+  "metadata_except_output_hash_equal": true,
+  "cause_evidence": "Same checked converter, same admitted archive/member identities, identical metadata except output hash; only sampled float32 frame section differs across Windows NumPy 2.4.3 and Ubuntu NumPy 2.3.5. All differing values are near zero. Base emulator bytes unavailable for direct comparison."
+}

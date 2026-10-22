@@ -145,7 +145,9 @@ int main(void)
             printf("Mesh Y %.3f..%.3f\nGPU calls %lu verts %lu\n",
                    (double)low,(double)high,(unsigned long)stats.draw_calls,(unsigned long)stats.vertices);
         }
-        if(c3_stage_renderer_draw(models,count,&camera,1,&stats,error,sizeof error)) {okay=0;break;}
+        int result=c3_stage_renderer_draw(models,count,&camera,1,&stats,error,sizeof error);
+        if(result==C3_RENDER_BUSY){svcSleepThread(1000000);continue;}
+        if(result==C3_RENDER_ERROR){okay=0;break;}
         fprintf(trace,"%lu,%.6f,%.6f,%lu,%d,%d,%04x,%.6f,%.6f,%.6f,%.6f,%lu,%lu,%d,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%lu,%lu,%lu\n",
                 (unsigned long)frame,(double)elapsed,(double)delta,(unsigned long)map.spawns[spawn_row].source_index,
                 input.stick_x,input.stick_y,input.held,(double)player.position[0],(double)player.position[1],
@@ -159,7 +161,7 @@ int main(void)
     }
 done:
     if(trace){fprintf(trace,"# end okay=%d error=%s\n",okay,error);fclose(trace);}
-    c3_stage_renderer_shutdown();
+    while(!c3_stage_renderer_try_shutdown()){aptMainLoop();svcSleepThread(1000000);}
     if(!okay) {
         consoleClear();printf("ORIGINAL MAP / WES VISUAL PROBE\nNo gameplay or saved progress\n\nFAIL\n%s\n",error);
         c3_n3ds_wait_for_exit();

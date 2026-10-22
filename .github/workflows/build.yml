@@ -108,6 +108,8 @@ jobs:
           python3 tools/verify_source.py
           "$DEVKITARM/bin/arm-none-eabi-gcc" --version
           dkp-pacman -Q
+          python3 -c "import shutil; assert shutil.which('picasso'), 'Picasso is required for shader regression'"
+          python3 -m unittest discover -s tests -p 'test_title_shader.py' -v
           make -f Makefile.3ds -j2
           mkdir -p dist
           cp build-3ds/Colosseum3DS.3dsx build-3ds/Colosseum3DS.smdh dist/

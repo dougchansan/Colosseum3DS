@@ -30,7 +30,6 @@ static C3D_Tex textures[C3_STAGE_MAX_TEXTURES];
 static const C3TitleTexture *texture_sources[C3_STAGE_MAX_TEXTURES];
 static uint32_t texture_count, vertex_count;
 static size_t gpu_buffer_bytes;
-
 static int fail(char *error, size_t capacity, const char *message)
 {
     if (error && capacity) snprintf(error, capacity, "%s", message);
@@ -545,7 +544,7 @@ int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
                         return fail(error, capacity, "Dual-texture material requires zero TEV0 endpoints.");
         }
     }
-    if (!C3D_FrameBegin(C3D_FRAME_SYNCDRAW)) return fail(error, capacity, "Title frame begin failed.");
+    if (!C3D_FrameBegin(C3D_FRAME_NONBLOCK)) return C3_RENDER_BUSY;
     /* FrameBegin drains the previous GPU queue before this single bounded
      * arena is overwritten. No CPU buffer is reused within an open frame. */
     uint64_t start = svcGetSystemTick();
@@ -647,8 +646,11 @@ int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
                  * saturates, making bright opaque surfaces too bright. */
                 combiner(batch, material, 1.0f);
                 C3D_TexBind(0, &textures[binding->textures[batch->texture]]);
+                /* Citro3D reads the texture type for units above zero before
+                 * binding it. Keep a valid base texture on unused unit one;
+                 * this material's combiner does not sample that unit. */
                 C3D_TexBind(1, batch->flags & (C3_TITLE_DUAL_MODULATE | C3_TITLE_REFLECTION_BLEND) ?
-                    &textures[binding->textures[batch->texture2]] : NULL);
+                    &textures[binding->textures[batch->texture2]] : &textures[binding->textures[batch->texture]]);
                 C3D_DrawArrays(GPU_TRIANGLES, batch->first, batch->count);
                 if (stats) { stats->draw_calls++; stats->vertices += batch->count; }
                 if (batch->flags & C3_TITLE_SPECULAR) {
@@ -683,7 +685,8 @@ int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
         C3D_TexEnv *overlay = C3D_GetTexEnv(0);
         C3D_TexEnvSrc(overlay, C3D_Both, GPU_PRIMARY_COLOR, GPU_PRIMARY_COLOR, GPU_PRIMARY_COLOR);
         C3D_TexEnvFunc(overlay, C3D_Both, GPU_REPLACE);
-        C3D_TexBind(0, NULL); C3D_TexBind(1, NULL);
+        /* The overlay samples only primary color. Retain valid texture
+         * bindings: Citro3D cannot accept NULL on texture unit one. */
         C3D_CullFace(GPU_CULL_NONE);
         C3D_DepthTest(false, GPU_ALWAYS, GPU_WRITE_COLOR);
         C3D_AlphaTest(false, GPU_ALWAYS, 0);
@@ -740,4 +743,22 @@ void c3_title_renderer_shutdown(void)
 void c3_stage_renderer_shutdown(void)
 {
     c3_title_renderer_shutdown();
+}
+
+bool c3_stage_renderer_is_idle(void)
+{
+    if (!c3d_started) return true;
+    if (!C3D_FrameBegin(C3D_FRAME_NONBLOCK)) return false;
+    /* Close the acquired frame without adding GPU commands. Existing scene
+     * memory remains owned until the caller chooses to resume or shut down.
+     * Keep this frame empty; GPU-producing frame-end hooks are not allowed. */
+    C3D_FrameEnd(0);
+    return true;
+}
+
+bool c3_stage_renderer_try_shutdown(void)
+{
+    if (!c3_stage_renderer_is_idle()) return false;
+    c3_title_renderer_shutdown();
+    return true;
 }

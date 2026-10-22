@@ -26,6 +26,8 @@ typedef struct {
 /* Graphics/console are initialized even on failure, so callers can show errors. */
 int c3_n3ds_init(char *error, size_t capacity);
 bool c3_n3ds_poll(C3N3dsInput *input);
+/* Replay menu button edges consumed during a short cooperative render wait. */
+void c3_n3ds_defer_buttons(uint16_t pressed);
 uint64_t c3_n3ds_time_us(void);
 /* Monotonic application time excluding actual APT suspension/sleep. SD/GPU
  * stalls still count; elapsed duration alone is never treated as suspension. */
