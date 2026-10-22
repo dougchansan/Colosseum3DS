@@ -647,8 +647,11 @@ int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
                  * saturates, making bright opaque surfaces too bright. */
                 combiner(batch, material, 1.0f);
                 C3D_TexBind(0, &textures[binding->textures[batch->texture]]);
+                /* Citro3D reads the texture type for units above zero before
+                 * binding it. Keep a valid base texture on unused unit one;
+                 * this material's combiner does not sample that unit. */
                 C3D_TexBind(1, batch->flags & (C3_TITLE_DUAL_MODULATE | C3_TITLE_REFLECTION_BLEND) ?
-                    &textures[binding->textures[batch->texture2]] : NULL);
+                    &textures[binding->textures[batch->texture2]] : &textures[binding->textures[batch->texture]]);
                 C3D_DrawArrays(GPU_TRIANGLES, batch->first, batch->count);
                 if (stats) { stats->draw_calls++; stats->vertices += batch->count; }
                 if (batch->flags & C3_TITLE_SPECULAR) {
@@ -683,7 +686,8 @@ int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
         C3D_TexEnv *overlay = C3D_GetTexEnv(0);
         C3D_TexEnvSrc(overlay, C3D_Both, GPU_PRIMARY_COLOR, GPU_PRIMARY_COLOR, GPU_PRIMARY_COLOR);
         C3D_TexEnvFunc(overlay, C3D_Both, GPU_REPLACE);
-        C3D_TexBind(0, NULL); C3D_TexBind(1, NULL);
+        /* The overlay samples only primary color. Retain valid texture
+         * bindings: Citro3D cannot accept NULL on texture unit one. */
         C3D_CullFace(GPU_CULL_NONE);
         C3D_DepthTest(false, GPU_ALWAYS, GPU_WRITE_COLOR);
         C3D_AlphaTest(false, GPU_ALWAYS, 0);
