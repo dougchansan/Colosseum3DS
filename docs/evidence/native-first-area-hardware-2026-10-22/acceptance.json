@@ -1,11 +1,11 @@
 {
   "status": "CPU recovery controls physically verified; title rendering/first-area acceptance still blocked by a noncompleting GPU queue",
-  "tested_commit": "203cf6da34957d058de2dcb462a8daefeca99a57",
-  "tested_3dsx_sha256": "6f28bec622eabdac9b3df614e78728b2a049795c15b3dfb7237370a53fdf2388",
-  "tested_3dsx_bytes": 311228,
+  "tested_commit": "7a4a74613d01e3a4598da6e26c14f5bb701be83f",
+  "tested_3dsx_sha256": "d068396046553294eb597f7e38996e3fa393865a8f36e90928e5bbe65fc2b1a1",
+  "tested_3dsx_bytes": 315324,
   "diagnostic_commit": "536dbd3864ce21f196439860f2a1889a4c9b3072",
   "diagnostic_sha256": "4254c47bd712d5fcce72e1c46ebbb4f9b7b9d92a82af4238c0f3f26eb29e834f",
-  "diagnostic_installed": true,
+  "diagnostic_installed": false,
   "pass": [
     "14 prepared asset hashes and staged/final transfer verification",
     "Core selftest PASS",
@@ -60,7 +60,8 @@
         "sha256": "f3fad3feb7b42caab0a647bb392050bf72e4507593cded5a16819cc1c68e5a55"
       }
     ],
-    "physical_scope": "Watchdog CPU recovery, remote X/A/STARTSELECT receipt, NTR continuity; normal title rendering and completed exit remain blocked"
+    "physical_scope": "Watchdog CPU recovery, remote X/A/STARTSELECT receipt, NTR continuity; normal title rendering and completed exit remain blocked",
+    "installed": true
   },
   "recovery_controls": [
     "A: resume when GPU is idle",
@@ -76,5 +77,13 @@
     "NTRfreshthroughout, waittime advances"
   ],
   "gpu_queue_result": "Remained busy beyond221seconds; no cleanexit claimed",
-  "snapshot_contents_downloaded": false
+  "snapshot_contents_downloaded": false,
+  "earlier_tested_repair": {
+    "tested_commit": "203cf6da34957d058de2dcb462a8daefeca99a57",
+    "tested_3dsx_sha256": "6f28bec622eabdac9b3df614e78728b2a049795c15b3dfb7237370a53fdf2388",
+    "tested_3dsx_bytes": 311228
+  },
+  "diagnostic_was_tested": true,
+  "current_installed_runtime": "7a4a74613d01e3a4598da6e26c14f5bb701be83f",
+  "current_state": "CPU recovery remains responsive; exit pending until GPU queue completes"
 }
