@@ -46,6 +46,11 @@
   ],
   "files": [
     {
+      "file": ".gitattributes",
+      "bytes": 101,
+      "sha256": "9a3d2c185d522490f793e3ac90818bea584854cd664f5d484cf5c68444559e94"
+    },
+    {
       "file": "clean-exit.png",
       "bytes": 133757,
       "sha256": "b9405ca4cd9330acb82f9fc2efe8e1a60df680864835c44f62d32034164bd5e8"
@@ -67,8 +72,8 @@
     },
     {
       "file": "continued-state.json",
-      "bytes": 998,
-      "sha256": "1247ff9536b5316a249fdc98ac2ad8327cca4eed58a564d0fb1244e1d554460a"
+      "bytes": 955,
+      "sha256": "ba55c6a1537723706ff8755806412dd09d219086322b3e02d27ec0130b1b7726"
     },
     {
       "file": "explicit-save.mp4",
@@ -82,8 +87,8 @@
     },
     {
       "file": "installed-assets.json",
-      "bytes": 14762,
-      "sha256": "ec43f203e7c619d8961e2f52411698de484469b5aa61f3c7a6fc3c3cfd5901be"
+      "bytes": 14439,
+      "sha256": "8db3645f71dfbe545791a82cc104b70bc646492541ea05b2efdf9856763cdcf3"
     },
     {
       "file": "party-before-save.png",
@@ -92,13 +97,13 @@
     },
     {
       "file": "README.md",
-      "bytes": 5295,
-      "sha256": "77ed794066e7fad9288e89007527dada203e665fddec33305b1509e111e30f58"
+      "bytes": 5505,
+      "sha256": "22d67be977b735d9ac83183a6d232900713b0aef421e3d3327bb4b7f304b3f9f"
     },
     {
       "file": "recordings.json",
-      "bytes": 1405,
-      "sha256": "db4abd809c314ccb40bbc75846a6ffc31ff35ddc513e911d52f48bc8e5642954"
+      "bytes": 1363,
+      "sha256": "a13d2859b2578715fc56479a18ab9c8cd22bac76eb9aad24dc9dcd0c5ac2cfec"
     },
     {
       "file": "save-confirmation.png",
@@ -117,8 +122,9 @@
     },
     {
       "file": "saved-state.json",
-      "bytes": 998,
-      "sha256": "1247ff9536b5316a249fdc98ac2ad8327cca4eed58a564d0fb1244e1d554460a"
+      "bytes": 955,
+      "sha256": "ba55c6a1537723706ff8755806412dd09d219086322b3e02d27ec0130b1b7726"
     }
-  ]
+  ],
+  "artifact_hash_policy": "Canonical LF for text reports; raw device trace and binary bytes retained by scoped attributes"
 }

@@ -54,3 +54,5 @@ The verifier reuses the independent slot decoder and source initializer. It chec
 These short H264 files encode actual NTR combined-screen PNG samples in capture-time order, with no generated scenes or audio. Sample timestamp durations are retained; the final sample is repeated only to preserve its duration. [recordings.json](recordings.json) contains hashes, dimensions, frame counts and durations. The files were locally probed; repository retrieval is verified after publication. NTR delivery rate and recording sampling rate are not gameplay FPS.
 
 Lid sleep and audible audio remain outside this persistence check. No complete battle or result/writeback acceptance is claimed. The console is left in ftpd with the fresh WES regression save retained separately from any completed-save testing.
+
+Text evidence uses canonical LF repository bytes; scoped attributes retain those line endings. Raw device traces and binary recordings are preserved byte-for-byte. The file hashes in verification.json bind those repository artifacts, excluding the manifest itself.
