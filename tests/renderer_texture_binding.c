@@ -33,7 +33,7 @@ static unsigned draws, overlays, binds;
 static C3D_Tex *bound[2], *expected_second;
 
 enum {
-    C3D_FRAME_SYNCDRAW, C3D_CLEAR_ALL, C3D_RGB, C3D_Both,
+    C3D_FRAME_NONBLOCK, C3D_CLEAR_ALL, C3D_RGB, C3D_Both,
     GPU_VERTEX_SHADER, GPU_FLOAT, GPU_ALWAYS, GPU_NEVER, GPU_GREATER,
     GPU_EQUAL, GPU_GEQUAL, GPU_LESS, GPU_NOTEQUAL, GPU_LEQUAL,
     GPU_WRITE_COLOR, GPU_WRITE_ALL, GPU_CULL_BACK_CCW, GPU_CULL_FRONT_CCW,
@@ -43,13 +43,11 @@ enum {
     SYSCLOCK_ARM11 = 268123480
 };
 #define NOOP(...) ((void)0)
-#define C3D_FrameBegin(...) true
 #define C3D_GetDrawingTime(...) 0.0f
-#define C3D_GetCmdBufUsage(...) 0.0f
+#define C3D_GetCmdBufUsage(...) 0.25f
 #define C3D_GetAttrInfo(...) NULL
 #define C3D_GetBufInfo(...) NULL
 #define C3D_GetTexEnv(...) NULL
-#define svcGetSystemTick(...) UINT64_C(0)
 #define GSPGPU_FlushDataCache NOOP
 #define C3D_RenderTargetClear NOOP
 #define C3D_FrameDrawOn NOOP
@@ -72,12 +70,37 @@ enum {
 #define C3D_ImmSendAttrib NOOP
 #define C3D_ImmDrawEnd NOOP
 #define gfxFlushBuffers NOOP
+#define consoleClear NOOP
 #define C3D_FrameEnd NOOP
 #define prepare_specular NOOP
 #define raster_color NOOP
 #define raster_specular NOOP
 #define view_normal(view, source, output) memcpy(output, source, sizeof(float)*3)
 #define combiner NOOP
+
+static uint64_t simulated_ticks;
+static unsigned begin_attempts;
+static uint64_t svcGetSystemTick(void)
+{ simulated_ticks += SYSCLOCK_ARM11 / 1000; return simulated_ticks; }
+static uint32_t C3D_FrameCounter(int screen)
+{ return 100 + (uint32_t)screen + (uint32_t)(simulated_ticks / (SYSCLOCK_ARM11 / 60)); }
+static bool C3D_FrameBegin(unsigned flags)
+{
+    assert(flags == C3D_FRAME_NONBLOCK);
+    ++begin_attempts;
+    return getenv("C3_TEST_GPU_BUSY") == NULL;
+}
+static bool aptMainLoop(void) { return true; }
+static void svcSleepThread(int64_t duration)
+{
+    if (duration == 100000000) {
+        assert(getenv("C3_TEST_GPU_BUSY") && begin_attempts > 1);
+        assert(simulated_ticks >= UINT64_C(3) * SYSCLOCK_ARM11);
+        assert(draws == 0 && binds == 0 && overlays == 0);
+        puts("HOST_PARK_SENTINEL");
+        exit(91);
+    }
+}
 
 static int fail(char *error, size_t capacity, const char *message)
 { snprintf(error, capacity, "%s", message); return -1; }
@@ -138,13 +161,18 @@ int main(int argc, char **argv)
     C3TitleRenderStats stats;
     char error[128] = {0};
     const C3Title *models[] = {&title};
-    for (unsigned frame = 0; frame < 3; ++frame)
+    for (unsigned frame = 0; frame < 5; ++frame) {
+        unsigned old_draws = draws, old_overlays = overlays;
         assert(c3_stage_renderer_draw(models, 1, &title.pose.camera, fade,
                                       &stats, error, sizeof(error)) == 0);
-    assert(draws == 3 && binds == 6);
-    assert(overlays == 3 * (unsigned)(fade < 1.0f));
-    assert(stats.draw_calls == 1 + overlays / 3 && stats.vertices == 3 + overlays);
-    assert(diagnostic_frame == 2);
+        assert(draws - old_draws == (unsigned)(frame != 0));
+        assert(overlays - old_overlays == (unsigned)(frame == 2 || (frame >= 3 && fade < 1.0f)));
+    }
+    assert(draws == 4 && binds == 8);
+    assert(overlays == 1 + 2 * (unsigned)(fade < 1.0f));
+    assert(stats.draw_calls == 1 + (unsigned)(fade < 1.0f));
+    assert(stats.vertices == 3 + 3 * (unsigned)(fade < 1.0f));
+    assert(diagnostic_frame == 4);
     assert(!error[0]);
     return 0;
 }
