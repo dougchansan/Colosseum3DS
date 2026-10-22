@@ -34,3 +34,5 @@ Original BattleMain and FIFO sources include medium-confidence or candidate func
 The existing semantic-oracle pilot admits only three relocation-free integer leaves. It is not presently an initializer/action-call-graph oracle; extend and qualify it or use original-game instrumentation before claiming original-execution parity.
 
 PR5's separate physical route and remaining hardware limits are recorded in [the physical evidence](evidence/native-story-hardware-2026-10-22/README.md).
+
+The separate [physical shop Save/Continue evidence](evidence/shop-save-continue-hardware-2026-10-22/README.md) closes the earlier persistence gap: the fresh WES primary save and all decoded party/checkpoint/flag fields remained unchanged after a load-only fresh-process Continue. This does not supply a combat result or qualify battle integration.

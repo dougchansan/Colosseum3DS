@@ -11,3 +11,8 @@ Explicit shop Save/fresh-process Continue, lid sleep and audible audio were not 
 31 of 35 prepared hashes match the published emulator bundle. Four same-length C3T files differ: title, exterior map3 and NPC0/NPC1. Title/map3 reproduce earlier local Windows exports, but the original PR5 reference bytes were unavailable for direct residual comparison. Do not call the four files bit-identical or infer NPC residual sizes. The exact tested identities are in asset-identities.json; prepared source/runtime/story/shop/battle packs match the reference.
 
 See verification.json, build.json and the actual downloaded boot-trace.log. Images are captures of both real console screens, not generated scenes.
+
+
+The specific Save/fresh-process Continue gap in this historical run was later
+closed by the [physical shop persistence check](../shop-save-continue-hardware-2026-10-22/README.md).
+The earlier first-visit and encounter-10 acceptance above remains valid.
