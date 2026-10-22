@@ -45,8 +45,9 @@ class RendererTextureBindingTests(unittest.TestCase):
                                         capture_output=True, text=True)
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                 expected = ("render_probe submitted=1 stage=clear\n"
-                            "render_probe submitted=2 stage=geometry\n"
-                            "render_probe submitted=3 stage=geometry_overlay\n") if probe else ""
+                            "render_probe submitted=2 stage=safe_triangle\n"
+                            "render_probe submitted=3 stage=geometry\n"
+                            "render_probe submitted=4 stage=geometry_overlay\n") if probe else ""
                 self.assertEqual(result.stdout, expected)
 
     def test_busy_returns_and_retains_ownership_until_idle_teardown(self):

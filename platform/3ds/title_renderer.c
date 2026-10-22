@@ -31,7 +31,7 @@ static const C3TitleTexture *texture_sources[C3_STAGE_MAX_TEXTURES];
 static uint32_t texture_count, vertex_count;
 static size_t gpu_buffer_bytes;
 #ifdef C3_RENDER_GPU_PROBE
-/* Diagnostic builds isolate three submissions while retaining the ordinary
+/* Diagnostic builds isolate four submissions while retaining the ordinary
  * nonblocking draw/recovery contract. Production builds omit the probe. */
 static unsigned probe_submissions;
 #endif
@@ -586,6 +586,20 @@ int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
             }
         }
     }
+#ifdef C3_RENDER_GPU_PROBE
+    if (probe_submissions == 1) {
+        /* Exercise the production shader/fetch layout with bounded clip-space
+         * data before introducing authored transforms, textures or materials. */
+        static const float positions[3][3] = {{-0.5f,-0.5f,-0.5f},
+                                             {0.5f,-0.5f,-0.5f}, {0,0.5f,-0.5f}};
+        memset(vertices, 0, 3 * sizeof(*vertices));
+        for (unsigned i = 0; i < 3; ++i) {
+            memcpy(vertices[i].pos, positions[i], sizeof(vertices[i].pos));
+            vertices[i].rgba[i] = vertices[i].rgba[3] = 1.0f;
+        }
+        Mtx_Identity(&mvp);
+    }
+#endif
     GSPGPU_FlushDataCache(vertices, (size_t)vertex_count * sizeof(*vertices));
     C3D_RenderTargetClear(target, C3D_CLEAR_ALL, 0x000000FF, 0);
     C3D_FrameDrawOn(target);
@@ -616,7 +630,7 @@ int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
      * model/batch order is retained; dynamic depth sorting is not invented. */
     unsigned passes = count > 1 ? 2u : 1u;
 #ifdef C3_RENDER_GPU_PROBE
-    if (probe_submissions == 0) passes = 0; /* Clear/transfer only. */
+    if (probe_submissions < 2) passes = 0; /* Clear or synthetic triangle. */
 #endif
     for (unsigned pass = 0; pass < passes; ++pass) {
         for (size_t model = 0; model < count; ++model) {
@@ -687,10 +701,29 @@ int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
             }
         }
     }
+#ifdef C3_RENDER_GPU_PROBE
+    if (probe_submissions == 1) {
+        C3D_BufInfo *buffers = C3D_GetBufInfo();
+        BufInfo_Init(buffers);
+        BufInfo_Add(buffers, vertices, sizeof(*vertices), 5, 0x43210);
+        for (int stage = 0; stage < 6; ++stage) C3D_TexEnvInit(C3D_GetTexEnv(stage));
+        C3D_TexEnv *color = C3D_GetTexEnv(0);
+        C3D_TexEnvSrc(color, C3D_Both, GPU_PRIMARY_COLOR, GPU_PRIMARY_COLOR, GPU_PRIMARY_COLOR);
+        C3D_TexEnvFunc(color, C3D_Both, GPU_REPLACE);
+        C3D_TexBind(0, &textures[scenes[0].textures[0]]);
+        C3D_TexBind(1, &textures[scenes[0].textures[0]]);
+        C3D_CullFace(GPU_CULL_NONE);
+        C3D_DepthTest(false, GPU_ALWAYS, GPU_WRITE_COLOR);
+        C3D_AlphaTest(false, GPU_ALWAYS, 0);
+        C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_ONE, GPU_ZERO, GPU_ONE, GPU_ZERO);
+        C3D_DrawArrays(GPU_TRIANGLES, 0, 3);
+        if (stats) { stats->draw_calls++; stats->vertices += 3; }
+    }
+#endif
     fade = clamp01(fade);
 #ifdef C3_RENDER_GPU_PROBE
-    if (probe_submissions < 2) fade = 1.0f; /* No overlay for clear/geometry. */
-    else if (probe_submissions == 2) fade = 0.5f; /* Original immediate overlay. */
+    if (probe_submissions < 3) fade = 1.0f; /* No overlay for initial probes. */
+    else if (probe_submissions == 3) fade = 0.5f; /* Original immediate overlay. */
 #endif
     if (fade < 1.0f) {
         C3D_Mtx identity;
@@ -727,8 +760,8 @@ int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
     gfxFlushBuffers();
     C3D_FrameEnd(0);
 #ifdef C3_RENDER_GPU_PROBE
-    if (probe_submissions < 3) {
-        static const char *const stages[] = {"clear", "geometry", "geometry_overlay"};
+    if (probe_submissions < 4) {
+        static const char *const stages[] = {"clear", "safe_triangle", "geometry", "geometry_overlay"};
         printf("render_probe submitted=%u stage=%s\n", probe_submissions + 1,
                stages[probe_submissions]);
         gfxFlushBuffers();

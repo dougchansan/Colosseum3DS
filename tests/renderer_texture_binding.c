@@ -32,7 +32,7 @@ static const C3TitleTexture *texture_sources[C3_STAGE_MAX_TEXTURES];
 static uint32_t texture_count = 2;
 static bool c3d_started = true, program_started = true, queued_busy, frame_open;
 static void *target = (void *)1, *shader = (void *)2;
-static int program, mvp_location, color_pass_location;
+static int program, mvp_location, color_pass_location, last_matrix;
 static unsigned draws, overlays, binds;
 static unsigned gpu_writes, releases, frame_ends;
 static C3D_Tex *bound[2], *expected_second;
@@ -60,7 +60,6 @@ enum {
 #define C3D_FrameDrawOn NOOP
 #define C3D_SetViewport NOOP
 #define C3D_BindProgram NOOP
-#define C3D_FVUnifMtx4x4 NOOP
 #define C3D_FVUnifSet NOOP
 #define AttrInfo_Init NOOP
 #define AttrInfo_AddLoader NOOP
@@ -73,7 +72,6 @@ enum {
 #define C3D_TexEnvSrc NOOP
 #define C3D_TexEnvFunc NOOP
 #define C3D_TexEnvInit NOOP
-#define Mtx_Identity NOOP
 #define C3D_ImmSendAttrib NOOP
 #define C3D_ImmDrawEnd NOOP
 #define gfxFlushBuffers NOOP
@@ -87,6 +85,9 @@ static uint64_t simulated_ticks;
 static unsigned begin_attempts;
 static uint64_t svcGetSystemTick(void)
 { simulated_ticks += SYSCLOCK_ARM11 / 1000; return simulated_ticks; }
+static void Mtx_Identity(C3D_Mtx *matrix) { *matrix = 1; }
+static void C3D_FVUnifMtx4x4(int shader_type, int location, const C3D_Mtx *matrix)
+{ last_matrix = *matrix; ++gpu_writes; }
 static bool C3D_FrameBegin(unsigned flags)
 {
     assert(flags == C3D_FRAME_NONBLOCK);
@@ -135,6 +136,18 @@ static void C3D_DrawArrays(int primitive, unsigned first, unsigned count)
 {
     assert(primitive == GPU_TRIANGLES && first == 0 && count == 3);
     assert(bound[0] == &textures[4]);
+#ifdef C3_RENDER_GPU_PROBE
+    if (probe_submissions == 1) {
+        assert(bound[1] == &textures[4] && last_matrix == 1);
+        assert(sizeof(*vertices) == 56);
+        assert(vertices[0].pos[0] == -0.5f && vertices[1].pos[0] == 0.5f);
+        assert(vertices[2].pos[0] == 0 && vertices[2].pos[1] == 0.5f);
+        for (unsigned i = 0; i < 3; ++i) {
+            assert(vertices[i].pos[2] == -0.5f);
+            assert(vertices[i].rgba[i] == 1 && vertices[i].rgba[3] == 1);
+        }
+    } else
+#endif
     assert(bound[1] == expected_second);
     ++draws;
 }
@@ -202,14 +215,14 @@ int main(int argc, char **argv)
         puts("BUSY returned; ownership retained; idle teardown verified");
         return 0;
     }
-    for (unsigned frame = 0; frame < 4; ++frame) {
+    for (unsigned frame = 0; frame < 5; ++frame) {
         unsigned old_draws = draws, old_overlays = overlays;
 #ifdef C3_RENDER_GPU_PROBE
         unsigned old_writes = gpu_writes, old_ends = frame_ends;
         queued_busy = true;
         assert(c3_stage_renderer_draw(models, 1, &title.pose.camera, fade,
                                       &stats, error, sizeof(error)) == C3_RENDER_BUSY);
-        assert(probe_submissions == (frame < 3 ? frame : 3));
+        assert(probe_submissions == (frame < 4 ? frame : 4));
         assert(gpu_writes == old_writes && frame_ends == old_ends);
         queued_busy = false;
 #endif
@@ -217,20 +230,20 @@ int main(int argc, char **argv)
                                       &stats, error, sizeof(error)) == C3_RENDER_OK);
 #ifdef C3_RENDER_GPU_PROBE
         assert(draws - old_draws == (unsigned)(frame != 0));
-        assert(overlays - old_overlays == (unsigned)(frame == 2 || (frame == 3 && fade < 1.0f)));
+        assert(overlays - old_overlays == (unsigned)(frame == 3 || (frame == 4 && fade < 1.0f)));
 #else
         assert(draws - old_draws == 1);
         assert(overlays - old_overlays == (unsigned)(fade < 1.0f));
 #endif
     }
 #ifdef C3_RENDER_GPU_PROBE
-    assert(draws == 3 && binds == 6 && probe_submissions == 3);
+    assert(draws == 4 && binds == 8 && probe_submissions == 4);
     assert(overlays == 1 + (unsigned)(fade < 1.0f));
 #else
-    assert(draws == 4 && binds == 8);
-    assert(overlays == 4 * (unsigned)(fade < 1.0f));
+    assert(draws == 5 && binds == 10);
+    assert(overlays == 5 * (unsigned)(fade < 1.0f));
 #endif
-    assert(frame_ends == 4);
+    assert(frame_ends == 5);
     assert(stats.draw_calls == 1 + (unsigned)(fade < 1.0f));
     assert(stats.vertices == 3 + 3 * (unsigned)(fade < 1.0f));
     assert(!error[0]);
