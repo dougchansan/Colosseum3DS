@@ -17,6 +17,10 @@ console. It displays GPU readiness, elapsed wait and input status:
 - **START+SELECT:** request application exit. The request remains latched until
   the queue is idle and teardown is safe.
 
+HOME is already available for normal app switching through `tools/luma_input.py`
+with `--button HOME --duration 0.15` and a fresh `--evidence` filename. It is a
+system action; during a known GPU wedge it can block in the suspend hook below.
+
 The loop sleeps between polls, updates the screen periodically and flushes
 trace heartbeats. It performs no gameplay updates or save writes. Once a
 watchdog-paused scene resumes, its delta-time baseline resets, avoiding a
@@ -76,8 +80,8 @@ and [validation](evidence/native-first-area-hardware-2026-10-22/recovery-validat
 
 This executable has now been physically tested on the New3DS. The watchdog
 entered CPU recovery after three seconds while NTR continued receiving fresh
-screens. X appeared as `PAD0400`, A displayed “Resume request queued,” and
-START+SELECT displayed “Exit requested.” X remained observable after exit was
+screens. X appeared as `PAD0400`, A displayed "Resume request queued," and
+START+SELECT displayed "Exit requested." X remained observable after exit was
 pending, and the wait timer continued beyond 221 seconds. All four tested input
 actions completed three neutral releases. No NTR reload or reboot occurred
 between launch and these control checks.
@@ -85,9 +89,11 @@ between launch and these control checks.
 The GPU queue still did not complete. This establishes CPU input/recovery
 control during this rendering stall; **it does not establish a working title or
 a completed app exit**. Exit remains deferred to avoid releasing in-flight
-storage. The new trace snapshot contents have not yet been retrieved because
-ftpd is not running while the app remains in recovery. HOME was deliberately
-not tested against the known blocking suspend hook.
+storage. After the owner restarted the console, FTP readback confirmed the timeout,
+resume request, exit request, and X snapshot records before and after exit.
+The recovered trace is 117978 bytes, SHA-256
+`533b8b23911cb4ac5141702eb5daada5ee7fbb2a66ad0c789647540dcff024f0`.
+HOME was deliberately not tested against the known blocking suspend hook.
 
 [Physical control captures](evidence/native-first-area-hardware-2026-10-22/recovery-inputs.json)
 and [deployment verification](evidence/native-first-area-hardware-2026-10-22/recovery-deployment.json)

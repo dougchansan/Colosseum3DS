@@ -24,7 +24,7 @@
     "Audible PCM and AVsync",
     "Field loading time and responsiveness"
   ],
-  "recovery": "START+SELECT and HOME sent with neutral cleanup; fresh screens show no response. User asked to reset/reload existing NTR/open ftpd; next diagnostic build ready.",
+  "recovery": "CPU recovery X/A/START+SELECT verified; GPU queue remained busy. Owner restarted; FTP and NTR reachable.",
   "engine_changes": "No CFW/NTR replacement or update performed",
   "save_writes": 0,
   "diagnostic_3dsx_bytes": 311956,
@@ -77,7 +77,7 @@
     "NTRfreshthroughout, waittime advances"
   ],
   "gpu_queue_result": "Remained busy beyond221seconds; no cleanexit claimed",
-  "snapshot_contents_downloaded": false,
+  "snapshot_contents_downloaded": true,
   "earlier_tested_repair": {
     "tested_commit": "203cf6da34957d058de2dcb462a8daefeca99a57",
     "tested_3dsx_sha256": "6f28bec622eabdac9b3df614e78728b2a049795c15b3dfb7237370a53fdf2388",
@@ -85,5 +85,16 @@
   },
   "diagnostic_was_tested": true,
   "current_installed_runtime": "7a4a74613d01e3a4598da6e26c14f5bb701be83f",
-  "current_state": "CPU recovery remains responsive; exit pending until GPU queue completes"
+  "current_state": "Owner restarted; existing NTR and ftpd reachable; installed recovery runtime retained.",
+  "recovery_trace": {
+    "bytes": 117978,
+    "sha256": "533b8b23911cb4ac5141702eb5daada5ee7fbb2a66ad0c789647540dcff024f0",
+    "events_confirmed": [
+      "timeout",
+      "snapshot",
+      "retry",
+      "exit_requested",
+      "snapshot after exit request"
+    ]
+  }
 }
