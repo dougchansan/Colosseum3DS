@@ -110,3 +110,5 @@ verify-source:
 
 clean:
 	rm -rf build build-3ds build-3ds-boot
+
+include tests/battle-init.mk
