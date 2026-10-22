@@ -1,0 +1,119 @@
+#ifndef COLOSSEUM3DS_TITLE_H
+#define COLOSSEUM3DS_TITLE_H
+
+#include <stddef.h>
+#include <stdint.h>
+
+#define C3_TITLE_MAX_BONES 64u
+#define C3_TITLE_MAX_VERTICES 32768u
+#define C3_TITLE_MAX_BATCHES 64u
+#define C3_TITLE_MAX_TEXTURES 32u
+#define C3_TITLE_MAX_CLIPS 3u
+#define C3_TITLE_MAX_FRAMES 4096u
+#define C3_TITLE_MAX_LIGHTS 8u
+#define C3_TITLE_MAX_FILE_BYTES (24u * 1024u * 1024u)
+
+enum {
+    C3_TITLE_CULL_BACK = 1u,
+    C3_TITLE_CULL_FRONT = 2u,
+    C3_TITLE_TRANSLUCENT = 4u,
+    C3_TITLE_ADDITIVE = 8u,       /* SRC_ALPHA, ONE instead of ONE_MINUS_SRC_ALPHA */
+    C3_TITLE_LIT = 16u,
+    C3_TITLE_VERTEX_COLOR = 32u,
+    C3_TITLE_VERTEX_ALPHA = 64u,
+    C3_TITLE_SPECULAR = 128u,
+    C3_TITLE_TEV_LERP = 256u,    /* texture RGB becomes lerp(tev0, konst, texture RGB) */
+    C3_TITLE_NO_DEPTH_WRITE = 512u
+};
+
+typedef struct {
+    float pos[3], normal[3], uv[2];
+    uint8_t rgba[4];
+    uint32_t bone;
+} C3TitleVertex;
+
+typedef struct {
+    float pos[3], normal[3], uv[2];
+    uint8_t rgba[4];
+} C3TitleDrawVertex;
+
+typedef struct {
+    uint32_t first, count, texture, flags;
+    /* Raw HSD texture-map selectors. Title color uses 0=pass, 3=blend,
+     * 4=modulate; alpha uses 0=pass, 2=blend, 3=modulate. Blend uses
+     * texture_blend as lerp(input, texture, factor). For lit materials the
+     * diffuse lighting factor multiplies the result after the texture stage. */
+    uint32_t color_mode, alpha_mode, render_mode, texture_flags;
+    float diffuse[3], ambient[3], specular[3], shininess, alpha, texture_blend;
+    uint32_t alpha_ref0, alpha_ref1, alpha_compare0, alpha_compare1, alpha_op, depth_compare;
+} C3TitleBatch;
+
+typedef struct {
+    uint32_t width, height, wrap_s, wrap_t; /* 0=clamp, 1=repeat, 2=mirror */
+    const uint8_t *pixels;                 /* top row first, RGBA8 */
+    size_t size;
+} C3TitleTexture;
+
+typedef struct { uint32_t first_frame, frame_count, loop; } C3TitleClip;
+
+typedef struct {
+    /* Raw LOBJ flags: low two bits ambient=0/infinite=1/point=2;
+     * bit2 diffuse, bit3 specular, bit4 alpha, bit5 hidden. */
+    uint32_t flags, attenuation_flags;
+    float rgba[4], pos[3], interest[3];
+    float reference_brightness, reference_distance, distance_function;
+} C3TitleLight;
+
+typedef struct {
+    float uv_scale[2], uv_offset[2];
+    float alpha, visible;
+    float tev0[3], konst[3];
+} C3TitleMaterialState;
+
+typedef struct {
+    float eye[3], target[3], roll, fov_y_degrees, near_plane, far_plane, aspect;
+} C3TitleCamera;
+
+typedef struct {
+    float matrices[C3_TITLE_MAX_BONES][12]; /* row-major affine 3x4 */
+    C3TitleMaterialState materials[C3_TITLE_MAX_BATCHES];
+    C3TitleCamera camera;
+} C3TitlePose;
+
+typedef struct {
+    uint8_t *file_data;
+    size_t file_bytes, resident_bytes;
+    C3TitleVertex *vertices;
+    C3TitleDrawVertex *draw_vertices;
+    C3TitleBatch *batches;
+    C3TitleTexture *textures;
+    C3TitleClip clips[C3_TITLE_MAX_CLIPS];
+    C3TitleLight lights[C3_TITLE_MAX_LIGHTS];
+    C3TitlePose pose;
+    uint32_t bone_count, vertex_count, batch_count, texture_count;
+    uint32_t clip_count, frame_count, light_count, frame_offset, frame_bytes;
+    float fps;
+    uint32_t active_clip;
+    float active_frame;
+} C3Title;
+
+/* Zero-initialize before first use. Owns its file and decoded geometry after
+ * success. Parse copies the caller's bytes; load reads directly into owned
+ * storage. Returns 1 on success, 0 on failure. A failed replacement preserves
+ * the previously loaded title. Source coordinates are right-handed world
+ * space scaled by the pinned importer's factor 0.10. The renderer reads
+ * draw_vertices, batches, textures, pose and lights. */
+int c3_title_load(C3Title *title, const char *path, char *error, size_t capacity);
+int c3_title_parse(C3Title *title, const void *data, size_t bytes, char *error, size_t capacity);
+void c3_title_close(C3Title *title);
+
+/* Select and sample one authored clip. Clips 0/1 clamp at their last sample;
+ * clip 2 loops. Finite negative seconds clamp to zero; NaN/Inf or invalid
+ * clip fails without changing the pose. Matrix/UV/alpha/camera samples lerp;
+ * visibility and quantized TEV colors hold the earlier sample. Returns 1 on
+ * success, 0 on failure. It transforms
+ * rigid vertices/normals and top-origin UVs; RGBA stays the original vertex
+ * channel so the renderer can apply the batch's HSD material source rules. */
+int c3_title_animate(C3Title *title, uint32_t clip, float seconds);
+
+#endif

@@ -27,6 +27,9 @@ typedef struct {
 int c3_n3ds_init(char *error, size_t capacity);
 bool c3_n3ds_poll(C3N3dsInput *input);
 uint64_t c3_n3ds_time_us(void);
+/* Monotonic application time excluding actual APT suspension/sleep. SD/GPU
+ * stalls still count; elapsed duration alone is never treated as suspension. */
+uint64_t c3_n3ds_active_time_us(void);
 const char *c3_n3ds_data_root(void);
 void c3_n3ds_wait_for_exit(void);
 void c3_n3ds_shutdown(void);

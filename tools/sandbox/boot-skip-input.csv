@@ -1,0 +1,7 @@
+# A during the original logos must not skip them.
+60,35,0x0100,0,0,0,0
+# A advances the title entrance; a later START checks the configured card file.
+800,40,0x0100,0,0,0,0
+1100,40,0x0008,0,0,0,0
+1200,60,0x0c00,16000,-16000,24000,-24000
+1400,40,0x000c,0,0,0,0

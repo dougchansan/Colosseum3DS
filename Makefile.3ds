@@ -9,9 +9,13 @@ DEVKITARM ?= $(DEVKITPRO)/devkitARM
 include $(DEVKITARM)/3ds_rules
 
 TARGET := Colosseum3DS
+ifeq ($(C3_BOOT_ONLY),1)
+BUILD := build-3ds-boot
+else
 BUILD := build-3ds
-SOURCES := platform/3ds src build-3ds/gekko vendor/gekkoctr/runtime
-INCLUDES := build-3ds/gekko/include include compat/include vendor/colosseum/include platform/3ds \
+endif
+SOURCES := platform/3ds src build $(BUILD)/gekko vendor/gekkoctr/runtime
+INCLUDES := $(BUILD)/gekko/include include compat/include vendor/colosseum/include platform/3ds src \
             vendor/gekkoctr/include vendor/gekkoctr/platform/ctr/include
 GEKKO_CFILES := gx.c gx_texture.c gx_material.c gx_scene.c
 PYTHON ?= python3
@@ -19,7 +23,11 @@ ARCH := -march=armv6k -mtune=mpcore -mfloat-abi=hard -mtp=soft
 CFLAGS := -g -O2 -Wall -Wextra -std=gnu11 -mword-relocations \
           -ffunction-sections -fdata-sections $(ARCH)
 CFLAGS += $(INCLUDE) -D__3DS__ $(C3_EXTRA_CFLAGS)
-CFLAGS += -DC3_BUILD_ID=\"$(shell git rev-parse --short=12 HEAD)\"
+C3_BUILD_ID ?= $(shell git rev-parse --short=12 HEAD)
+CFLAGS += -DC3_BUILD_ID=\"$(C3_BUILD_ID)\"
+ifeq ($(C3_BOOT_ONLY),1)
+CFLAGS += -DC3_BOOT_ONLY
+endif
 ASFLAGS := -g $(ARCH)
 LDFLAGS = -specs=3dsx.specs -g $(ARCH) -Wl,--gc-sections,-Map,$(notdir $*.map)
 LIBS := -lcitro3d -lctru -lm
@@ -37,7 +45,14 @@ export VPATH := $(foreach dir,$(SOURCES),$(CURDIR)/$(dir))
 export DEPSDIR := $(CURDIR)/$(BUILD)
 export LD := $(CC)
 
-CFILES := $(notdir $(wildcard platform/3ds/*.c src/*.c)) ctr_gx_citro3d.c $(GEKKO_CFILES)
+CFILES := $(notdir $(wildcard platform/3ds/*.c src/*.c)) save_codec.c
+ifeq ($(C3_BOOT_ONLY),1)
+# A focused native boot target also works without the optional C3M/Gekko
+# preview dependency. Keep its object directory separate from the full build.
+CFILES := $(filter-out model_renderer.c model_scene.c,$(CFILES))
+else
+CFILES += ctr_gx_citro3d.c $(GEKKO_CFILES)
+endif
 PICAFILES := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.v.pica)))
 export OFILES_SOURCES := $(CFILES:.c=.o)
 export OFILES := $(PICAFILES:.v.pica=.shbin.o) $(OFILES_SOURCES)
@@ -46,11 +61,21 @@ export INCLUDE := $(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir)) \
                   $(foreach dir,$(LIBDIRS),-I$(dir)/include) -I$(CURDIR)/$(BUILD)
 export LIBPATHS := $(foreach dir,$(LIBDIRS),-L$(dir)/lib)
 export _3DSXDEPS := $(OUTPUT).smdh
-export _3DSXFLAGS := --smdh=$(OUTPUT).smdh --romfs=$(CURDIR)/$(BUILD)/romfs
+export _3DSXFLAGS := --smdh=$(OUTPUT).smdh
+ifneq ($(C3_BOOT_ONLY),1)
+export _3DSXFLAGS += --romfs=$(CURDIR)/$(BUILD)/romfs
+endif
 
-.PHONY: all clean prepare-gekko
-all: prepare-gekko $(BUILD)/romfs/p5_material.shbin
+.PHONY: all clean prepare-gekko prepare-save
+ifeq ($(C3_BOOT_ONLY),1)
+all: prepare-save | $(BUILD)
+else
+all: prepare-save prepare-gekko $(BUILD)/romfs/p5_material.shbin
+endif
 	$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile.3ds
+
+prepare-save:
+	$(PYTHON) tools/prepare_save_codec.py
 
 prepare-gekko: | $(BUILD)
 	$(PYTHON) tools/prepare_gekko_backend.py --output $(BUILD)/gekko
@@ -68,13 +93,16 @@ clean:
 else
 
 all: $(OUTPUT).3dsx
-$(OUTPUT).3dsx: $(OUTPUT).elf $(_3DSXDEPS) $(TOPDIR)/$(BUILD)/romfs/p5_material.shbin
+$(OUTPUT).3dsx: $(OUTPUT).elf $(_3DSXDEPS)
+ifneq ($(C3_BOOT_ONLY),1)
+$(OUTPUT).3dsx: $(TOPDIR)/$(BUILD)/romfs/p5_material.shbin
+endif
 $(OUTPUT).elf: $(OFILES)
 $(OFILES_SOURCES): $(HFILES)
 # Embed the actual built commit even when only documentation changed.
 .PHONY: force-build-id
 force-build-id:
-model_scene.o: force-build-id
+model_scene.o boot_scene.o: force-build-id
 
 %.shbin.o %_shbin.h: %.shbin
 	$(bin2o)

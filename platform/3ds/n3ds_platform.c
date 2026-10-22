@@ -6,6 +6,26 @@
 
 static bool graphics_started;
 static uint16_t previous_buttons;
+static aptHookCookie clock_hook;
+static unsigned clock_pause_mask;
+static uint64_t clock_pause_start, clock_paused_us;
+static LightLock clock_lock;
+
+static void application_clock_hook(APT_HookType hook, void *context)
+{
+    unsigned previous_mask;
+    uint64_t now = c3_n3ds_time_us();
+    (void)context;
+    LightLock_Lock(&clock_lock);
+    previous_mask = clock_pause_mask;
+    if (hook == APTHOOK_ONSUSPEND) clock_pause_mask |= 1u;
+    else if (hook == APTHOOK_ONRESTORE) clock_pause_mask &= ~1u;
+    else if (hook == APTHOOK_ONSLEEP) clock_pause_mask |= 2u;
+    else if (hook == APTHOOK_ONWAKEUP) clock_pause_mask &= ~2u;
+    if (!previous_mask && clock_pause_mask) clock_pause_start = now;
+    if (previous_mask && !clock_pause_mask) clock_paused_us += now - clock_pause_start;
+    LightLock_Unlock(&clock_lock);
+}
 
 static uint16_t map_buttons(uint32_t keys)
 {
@@ -47,6 +67,10 @@ int c3_n3ds_init(char *error, size_t capacity)
     gfxSetDoubleBuffering(GFX_BOTTOM, false);
     consoleInit(GFX_BOTTOM, NULL);
     previous_buttons = 0;
+    LightLock_Init(&clock_lock);
+    clock_pause_mask = 0;
+    clock_pause_start = clock_paused_us = 0;
+    aptHook(&clock_hook, application_clock_hook, NULL);
     result = APT_CheckNew3DS(&is_new);
     if (R_FAILED(result)) {
         snprintf(error, capacity, "New 3DS detection failed: 0x%08lX", (unsigned long)result);
@@ -93,6 +117,17 @@ uint64_t c3_n3ds_time_us(void)
          + (ticks % SYSCLOCK_ARM11) * UINT64_C(1000000) / SYSCLOCK_ARM11;
 }
 
+uint64_t c3_n3ds_active_time_us(void)
+{
+    uint64_t now, paused;
+    LightLock_Lock(&clock_lock);
+    now = c3_n3ds_time_us();
+    paused = clock_paused_us;
+    if (clock_pause_mask) paused += now - clock_pause_start;
+    LightLock_Unlock(&clock_lock);
+    return now - paused;
+}
+
 const char *c3_n3ds_data_root(void)
 {
     return "sdmc:/3ds/Colosseum3DS/data";
@@ -112,6 +147,7 @@ void c3_n3ds_wait_for_exit(void)
 void c3_n3ds_shutdown(void)
 {
     if (graphics_started) {
+        aptUnhook(&clock_hook);
         osSetSpeedupEnable(false);
         gfxExit();
         graphics_started = false;

@@ -7,7 +7,7 @@ HEADERS += vendor/colosseum/include/game/gs_colsys.h vendor/colosseum/include/ga
 UPSTREAM = vendor/colosseum/src/hsd/random.c vendor/colosseum/src/game/GScolsys2Util_exact_8010C77C.c vendor/colosseum/src/game/pokemon_range_8012795C.c
 
 .PHONY: all test clean 3ds verify-source
-all: build/test_core build/test_data build/test_pokemon build/test_model
+all: build/test_core build/test_data build/test_pokemon build/test_model build/test_movie build/test_save build/test_title
 
 build:
 	mkdir -p $@
@@ -24,11 +24,26 @@ build/test_pokemon: tests/test_pokemon.c src/decomp_pokemon.c $(HEADERS) $(UPSTR
 build/test_model: tests/test_model.c src/model.c include/colosseum3ds/model.h | build
 	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_model.c src/model.c $(LDFLAGS) -lm -o $@
 
+build/test_movie: tests/test_movie.c src/movie.c include/colosseum3ds/movie.h | build
+	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_movie.c src/movie.c $(LDFLAGS) -o $@
+
+build/test_title: tests/test_title.c src/title.c include/colosseum3ds/title.h | build
+	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_title.c src/title.c $(LDFLAGS) -lm -o $@
+
+build/save_codec.c: tools/prepare_save_codec.py vendor/colosseum/src/game/memcard.c | build
+	python3 tools/prepare_save_codec.py
+
+build/test_save: tests/test_save.c src/save.c src/save_codec.h include/colosseum3ds/save.h build/save_codec.c
+	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_save.c src/save.c build/save_codec.c $(LDFLAGS) -o $@
+
 test: all
 	./build/test_core
 	./build/test_data
 	./build/test_pokemon
 	./build/test_model
+	./build/test_movie
+	./build/test_save
+	./build/test_title
 	python3 -m unittest discover -s tests -p 'test_*.py'
 
 verify-source:
@@ -38,4 +53,4 @@ verify-source:
 	$(MAKE) -f Makefile.3ds
 
 clean:
-	rm -rf build build-3ds
+	rm -rf build build-3ds build-3ds-boot

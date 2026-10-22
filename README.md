@@ -4,11 +4,14 @@ A native **New Nintendo 3DS / New 3DS XL / New 2DS XL** port project for
 Pokémon Colosseum, based on Count-Sheep's decompilation and the maintainer's
 private GC6E01 build inputs.
 
-**Current milestone: native bring-up. The game is not playable.**
-This version builds a homebrew application, executes selected real decompiled
-routines on ARM, exercises the PICA GPU and controls, and probes the original
-archive format. It does not boot the title screen, run a
-battle, or load/save a game. Supplying disc files does not unlock gameplay yet.
+**Current milestone: native boot logos and animated title. The game is not playable.**
+With privately prepared GC6E01 assets, this branch plays the original two boot
+videos and renders the live 3D title entrance and title loop on ARM/PICA.
+START reaches a card-file check using the original save codec, then stops at
+the explicitly unported main-menu/game-state boundary. Native input and
+recoverable SD save-file storage are implemented; creating and continuing
+playable game progress still require the original state bridge.
+See [native boot, reproduction and current limits](docs/native-boot.md).
 
 The first `.3dsx` has been cross-compiled successfully with devkitARM GCC
 16.1.0. Host and sanitizer checks pass. Partial physical-device validation
@@ -20,20 +23,25 @@ See the [hardware checkpoint](docs/hardware-validation-2026-10-21.md) and the
 
 ## What is implemented
 
-This development branch adds a [native textured Eevee scene](docs/gekkoctr-model-scene.md)
-through pinned GekkoCTR components. Its private preparation tool uses actual
-skeletal animation; the game itself remains unplayable. A prepared local pack
-selects the scene, while missing scene data retains the original smoke test.
+The [native title route](docs/native-boot.md) uses the original title's 31 joints,
+43 mesh batches, 20 textures, camera and material animations. Its bounded
+renderer uses Citro3D directly because that scene exceeds the earlier Gekko
+adapter's vertex/texture capacities. The [native textured Eevee scene](docs/gekkoctr-model-scene.md)
+still uses the pinned GekkoCTR components. A `boot/` directory selects the boot
+route; otherwise a prepared Eevee pack selects its preview, and missing scene
+data retains the original smoke test.
 The [model hardware record](docs/gekkoctr-hardware-2026-10-21.md) includes distinct
 physical poses, a 600-frame benchmark and tracked memory use.
 
 | Component | Current behavior |
 | --- | --- |
-| Native source integration | Three explicitly selected translation units from a pinned, unmodified decomp submodule; exact source/header hashes checked |
+| Native source integration | Three selected translation units plus five original memory-card codec functions generated from pinned `memcard.c`; exact source hashes checked |
 | Pokémon stats | Actual `pokemonSetLevelBasisStatus` with a native record adapter: IVs, EVs, nature rounding, HP changes, fainting and Shedinja handling |
 | Other game/library routines | Actual HSD random-number generator and GS collision side-plane helper |
-| 3DS platform | New-model detection, speedup request, GameCube-style button mapping, Circle Pad/C-stick, monotonic time, SD reads and clean exit |
-| Graphics | Original GPU smoke geometry and one prepared textured skeletal Eevee through native GekkoCTR/Citro3D; no full HSD game renderer |
+| 3DS platform | New-model detection, speedup request, GameCube PAD mapping, Circle Pad/C-stick, actual APT suspend-aware time, SD I/O and exit |
+| Boot media | Streaming original TPC and GS-logo movie frames; optional TPC PCM through NDSP; external logo/title music remains unconnected |
+| Graphics | Live original title geometry/animation/material subset through Citro3D, plus the existing GekkoCTR Eevee route; no general gameplay renderer |
+| Saves | Original slot codec, checksums, newest-valid selection, corruption recovery, GCI/raw validation and verified `.tmp`/`.bak` storage; no playable state serialization yet |
 | Data | Streaming, bounded FSYS reader and LZSS decoder with explicit big-endian fields and caller-owned output buffers |
 | Input provenance | Pinned private build reference, canonical hash verifier and local extracted-disc preparation tool |
 | Validation | Host regression tests, malformed-data tests, sanitizer job, and a devkitARM cross-build workflow |
@@ -89,10 +97,11 @@ the target. See [3DS build and hardware checks](docs/3ds-build.md).
 
 Controls for this bring-up application:
 
-- Circle Pad rotates the test geometry; A pauses automatic rotation.
-- X retries the `common.fsys` directory probe.
-- START + SELECT exits.
-- The bottom screen displays native self-test, input and archive status.
+- Boot logos play to completion, matching their original input rules.
+- A/B/START advances the title entrance. At PRESS START, A/START runs the card check.
+- START + SELECT exits every route.
+- The bottom screen reports native self-test, mapped inputs and the current integration boundary.
+- With no boot assets, the existing preview controls remain: Circle Pad rotates the smoke geometry, A pauses, and X retries its archive probe.
 
 ## Use the private build inputs
 
@@ -137,10 +146,10 @@ directory; decoded member support is available to subsequent loaders.
    absolute memory accesses and PowerPC cooperative thread switching.
 2. Provide native `common_rel`/map module registration and endian-aware tables.
    ARM cannot run the original PPC REL code or its `_prolog` functions.
-3. Implement the first HSD model/texture loader and a constrained GX/TEV to
-   PICA renderer, then display one actual game scene with measured memory use.
-4. Bring up title/menu flow, timing, audio and save services; then a complete
-   battle and an overworld scene.
+3. Extend the working title/Eevee subsets to the original HSD runtime needed
+   by the next game scene, with measured resource use.
+4. Connect the original floor `0x3A1` menu, MusyX music, game-state serializer
+   and resume path; then a complete battle and an overworld scene.
 5. Profile on physical New 3DS hardware before setting a performance target.
 
 See [porting decisions and blockers](docs/PORTING.md),
