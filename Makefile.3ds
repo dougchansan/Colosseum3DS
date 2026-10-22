@@ -102,7 +102,7 @@ $(OFILES_SOURCES): $(HFILES)
 # Embed the actual built commit even when only documentation changed.
 .PHONY: force-build-id
 force-build-id:
-model_scene.o boot_scene.o: force-build-id
+model_scene.o boot_scene.o render_recovery.o: force-build-id
 
 %.shbin.o %_shbin.h: %.shbin
 	$(bin2o)
