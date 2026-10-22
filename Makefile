@@ -7,7 +7,7 @@ HEADERS += vendor/colosseum/include/game/gs_colsys.h vendor/colosseum/include/ga
 UPSTREAM = vendor/colosseum/src/hsd/random.c vendor/colosseum/src/game/GScolsys2Util_exact_8010C77C.c vendor/colosseum/src/game/pokemon_range_8012795C.c
 
 .PHONY: all test clean 3ds verify-source
-all: build/test_core build/test_data build/test_pokemon build/test_model build/test_movie build/test_save build/test_title build/test_field build/test_game_menu build/test_game_state build/test_render_recovery build/test_area build/test_area_camera build/test_area_lights build/test_story build/test_field_story build/test_battle
+all: build/test_core build/test_data build/test_pokemon build/test_model build/test_movie build/test_save build/test_title build/test_field build/test_game_menu build/test_game_state build/test_render_recovery build/test_area build/test_area_camera build/test_area_lights build/test_story build/test_field_story build/test_battle build/test_battle_action build/test_battle_rng
 
 build:
 	mkdir -p $@
@@ -52,6 +52,19 @@ build/test_field_story: tests/test_field_story.c $(FIELD_STORY_SOURCES) $(HEADER
 build/test_battle: tests/test_battle.c src/battle.c include/colosseum3ds/battle.h build/save_codec.c
 	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_battle.c src/battle.c build/save_codec.c $(LDFLAGS) -o $@
 
+BATTLE_ACTION_UPSTREAM = $(addprefix vendor/colosseum/,$(shell python3 -c "import json; print(' '.join(f['path'] for f in json.load(open('config/battle-action-source-files.json'))['files']))"))
+build/battle_action_original.inc: tools/prepare_battle_action.py config/battle-action-source-files.json source-lock.json $(BATTLE_ACTION_UPSTREAM) | build
+	python3 tools/prepare_battle_action.py
+
+build/test_battle_action: tests/test_battle_action.c src/battle_action.c include/colosseum3ds/battle_action.h build/battle_action_original.inc
+	$(CC) $(CPPFLAGS) -Ibuild $(CFLAGS) tests/test_battle_action.c src/battle_action.c $(LDFLAGS) -o $@
+
+build/battle_rng_source.h: tools/prepare_battle_rng.py config/battle-rng-source-files.json vendor/colosseum/src/hsd/random.c vendor/colosseum/src/game/gs_math_range_800E09E8.c | build
+	python3 tools/prepare_battle_rng.py
+
+build/test_battle_rng: tests/test_battle_rng.c src/battle_rng.c src/decomp_rng.c include/colosseum3ds/battle_rng.h build/battle_rng_source.h $(UPSTREAM)
+	$(CC) $(CPPFLAGS) -Ibuild $(CFLAGS) tests/test_battle_rng.c src/battle_rng.c src/decomp_rng.c $(LDFLAGS) -o $@
+
 build/test_game_menu: tests/test_game_menu.c platform/3ds/game_menu.c platform/3ds/game_menu.h platform/3ds/n3ds_platform.h | build
 	$(CC) $(CPPFLAGS) -Iplatform/3ds -DC3_MENU_HOST_TEST $(CFLAGS) tests/test_game_menu.c platform/3ds/game_menu.c $(LDFLAGS) -lm -o $@
 
@@ -85,6 +98,8 @@ test: all
 	./build/test_story
 	./build/test_field_story
 	./build/test_battle
+	./build/test_battle_action
+	./build/test_battle_rng
 	python3 -m unittest discover -s tests -p 'test_*.py'
 
 verify-source:

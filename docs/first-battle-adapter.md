@@ -162,3 +162,10 @@ and rewards. Then connect the native menu and presentation event sink, and
 finally resume the original GSVM return path. Until that backend exists, the
 entry request remains blocked and later story flags remain the original
 script's responsibility.
+
+
+The next headless foundation now provides isolated source-derived RNG and the
+original action-queue control slice. It does not provide combat callbacks, an
+initialized opponent, a battle result or GSVM resumption. See
+[native-battle-foundation.md](native-battle-foundation.md) for the exact ABI,
+source authority, validation and remaining qualification gates.

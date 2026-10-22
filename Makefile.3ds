@@ -15,7 +15,7 @@ else
 BUILD := build-3ds
 endif
 SOURCES := platform/3ds src build $(BUILD)/gekko vendor/gekkoctr/runtime
-INCLUDES := $(BUILD)/gekko/include include compat/include vendor/colosseum/include platform/3ds src \
+INCLUDES := $(BUILD)/gekko/include include compat/include vendor/colosseum/include platform/3ds src build \
             vendor/gekkoctr/include vendor/gekkoctr/platform/ctr/include
 GEKKO_CFILES := gx.c gx_texture.c gx_material.c gx_scene.c
 PYTHON ?= python3
@@ -66,16 +66,22 @@ ifneq ($(C3_BOOT_ONLY),1)
 export _3DSXFLAGS += --romfs=$(CURDIR)/$(BUILD)/romfs
 endif
 
-.PHONY: all clean prepare-gekko prepare-save
+.PHONY: all clean prepare-gekko prepare-save prepare-battle-action prepare-battle-rng
 ifeq ($(C3_BOOT_ONLY),1)
-all: prepare-save | $(BUILD)
+all: prepare-save prepare-battle-action prepare-battle-rng | $(BUILD)
 else
-all: prepare-save prepare-gekko $(BUILD)/romfs/p5_material.shbin
+all: prepare-save prepare-battle-action prepare-battle-rng prepare-gekko $(BUILD)/romfs/p5_material.shbin
 endif
 	$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile.3ds
 
 prepare-save:
 	$(PYTHON) tools/prepare_save_codec.py
+
+prepare-battle-action:
+	$(PYTHON) tools/prepare_battle_action.py
+
+prepare-battle-rng:
+	$(PYTHON) tools/prepare_battle_rng.py
 
 prepare-gekko: | $(BUILD)
 	$(PYTHON) tools/prepare_gekko_backend.py --output $(BUILD)/gekko
