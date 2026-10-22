@@ -1,0 +1,44 @@
+name: PR7 source snapshot
+on:
+  push:
+    branches: [work/pr7-source-snapshot]
+    paths: [.github/workflows/pr7-source-snapshot.yml]
+permissions:
+  contents: read
+jobs:
+  source:
+    if: github.event.repository.private == true
+    runs-on: [self-hosted, Windows, X64, colosseum3ds-local]
+    timeout-minutes: 10
+    env:
+      GIT_CONFIG_COUNT: '2'
+      GIT_CONFIG_KEY_0: core.autocrlf
+      GIT_CONFIG_VALUE_0: 'false'
+      GIT_CONFIG_KEY_1: core.eol
+      GIT_CONFIG_VALUE_1: lf
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - name: Archive tracked source only
+        shell: pwsh
+        run: |
+          $out = Join-Path $env:RUNNER_TEMP "pr7-source-$env:GITHUB_RUN_ID"
+          New-Item -ItemType Directory -Path $out -ErrorAction Stop | Out-Null
+          git archive --format=zip --output="$out/root.zip" HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Root source archive failed' }
+          $identities = @(@{path='.';sha=(git rev-parse HEAD)})
+          foreach ($name in @('colosseum','gekkoctr','hsd-importer')) {
+            git -C "vendor/$name" archive --format=zip --output="$out/$name.zip" HEAD
+            if ($LASTEXITCODE -ne 0) { throw "Source archive failed: $name" }
+            $identities += @{path="vendor/$name";sha=(git -C "vendor/$name" rev-parse HEAD)}
+          }
+          $identities | ConvertTo-Json | Set-Content "$out/identities.json"
+          Get-ChildItem "$out/*.zip" | Get-FileHash -Algorithm SHA256 | Select-Object @{n='file';e={Split-Path $_.Path -Leaf}},Hash | ConvertTo-Json | Set-Content "$out/hashes.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PR7-pinned-sources
+          path: ${{ runner.temp }}/pr7-source-${{ github.run_id }}/
+          if-no-files-found: error
+          retention-days: 3
