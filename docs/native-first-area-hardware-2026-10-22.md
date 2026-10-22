@@ -15,23 +15,38 @@ first title draw. The next committed diagnostic build is ready; device recovery
 is required to install it. Do not interpret this report as a completed first-area
 gate or use the earlier Eevee benchmark as field performance.
 
-## Cooperative control recovery implementation (not yet deployed)
+## CPU control recovery physically verified
 
-The subsequent user-requested control change supersedes the unrun controlled
-probe. The implementation now returns BUSY immediately, keeps CPU input/trace
-handling active, displays a watchdog recovery view, and defers resource release
-until GPU quiescence. Temporary probe stages and console markers are removed.
-[Recovery controls, ownership and limits](render-recovery.md) describe the exact
-behavior, including the Citro3D HOME suspend-hook limitation.
+The user-requested cooperative controller supersedes the unrun controlled probe.
+Source `7a4a74613d01e3a4598da6e26c14f5bb701be83f` was deployed and read back:
+315324 bytes, SHA-256
+`d068396046553294eb597f7e38996e3fa393865a8f36e90928e5bbe65fc2b1a1`.
+The CPU recovery view appeared after three seconds; NTR remained fresh and its
+wait timer continued. Remote X was visibly received as `PAD0400`, A queued resume,
+and START+SELECT queued exit. X was still received after exit was pending. Every
+action completed three neutral releases, and no NTR reload or restart occurred
+between these control tests.
 
-Ready source `7a4a74613d01e3a4598da6e26c14f5bb701be83f` builds a 315324-byte executable,
-SHA-256 `d068396046553294eb597f7e38996e3fa393865a8f36e90928e5bbe65fc2b1a1`.
-Host verification covers 734 recovery checks, eleven native suites/ASan/UBSan,
-and 134 Python tests with NumPy/Pillow and zero skips. The pinned ARM build passes.
-This binary remains uninstalled because the older 536 diagnostic is still frozen.
-Hardware acceptance and the original title-stall root cause remain unverified.
-The next action is recovery/deployment of this runtime, not the historical 654
-probe described below.
+![Recovery acknowledges resume input](evidence/native-first-area-hardware-2026-10-22/recovery-resume-queued.png)
+![X still received during deferred exit](evidence/native-first-area-hardware-2026-10-22/recovery-X-after-exit.png)
+
+The GPU queue stayed busy beyond 221 seconds, so safe exit did not complete.
+The controller fixes the lost CPU-control behavior for this wait, not the
+underlying GPU submission fault. Nonblocking begin still reporting busy also
+rules out SYNCDRAW's VBlank wait as the sole cause. The original rendering cause
+still needs isolated GPU submission work. HOME was not invoked because the
+pinned SDK's suspend hook can block on the queue. New snapshot contents await
+trace retrieval at the next ftpd session; receipt of X is visually verified,
+not yet an on-disk readback claim.
+
+[Recovery controls and limits](render-recovery.md),
+[hardware input evidence](evidence/native-first-area-hardware-2026-10-22/recovery-inputs.json),
+[build identity](evidence/native-first-area-hardware-2026-10-22/recovery-build.json),
+and [deployment](evidence/native-first-area-hardware-2026-10-22/recovery-deployment.json)
+document the exact scope. Host checks cover 734 recovery assertions, eleven
+native suites/ASan/UBSan and 134 Python tests with NumPy/Pillow and zero skips.
+The pinned ARM build and standalone probe builds pass. Title/menu, field and
+Save/Continue acceptance remain incomplete.
 
 ## Subsequent title-stall isolation (historical probe)
 

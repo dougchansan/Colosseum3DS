@@ -14,7 +14,8 @@
   "leak_sanitizer": "No separate leak-coverage claim",
   "review": "No remaining fatal ownership/liveness findings after transition-exit regression fix",
   "arm": "normal pinned ARM compile/link passed; forced recovery build-ID refresh verified",
-  "physical": "not yet deployed; installed536 diagnostic still blocks at second frame",
+  "physical": "PASS: watchdog after3s, PAD0400 X receipt before/after pending exit, Aresume request, STARTSELECT deferredexit, freshNTR throughout; underlyingGPUqueue stillbusy",
   "source_commit": "7a4a74613d01e3a4598da6e26c14f5bb701be83f",
-  "standalone_probes": "Five graphics variants plus actual-field probe compile/link with pinned ARM; runtime/pixel outputs not rerun"
+  "standalone_probes": "Five graphics variants plus actual-field probe compile/link with pinned ARM; runtime/pixel outputs not rerun",
+  "trace_snapshot_contents_downloaded": false
 }

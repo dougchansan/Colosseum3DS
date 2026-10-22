@@ -74,10 +74,23 @@ their build IDs even for incremental documentation-only rebuilds.
 [Build identity](evidence/native-first-area-hardware-2026-10-22/recovery-build.json)
 and [validation](evidence/native-first-area-hardware-2026-10-22/recovery-validation.json).
 
-This executable is **not yet physically tested**. The installed older diagnostic
-still freezes before it can accept an update. One physical reset, existing NTR
-reload and ftpd are needed to install this recovery-capable version. Preserve
-the current boot trace before relaunching. Then verify the recovery controls,
-normal title progress and repeated clean exit/relaunch without reloading NTR.
-The wider [first-area acceptance record](native-first-area-hardware-2026-10-22.md)
-remains incomplete; no New Game/Save/Continue result is claimed here.
+This executable has now been physically tested on the New3DS. The watchdog
+entered CPU recovery after three seconds while NTR continued receiving fresh
+screens. X appeared as `PAD0400`, A displayed “Resume request queued,” and
+START+SELECT displayed “Exit requested.” X remained observable after exit was
+pending, and the wait timer continued beyond 221 seconds. All four tested input
+actions completed three neutral releases. No NTR reload or reboot occurred
+between launch and these control checks.
+
+The GPU queue still did not complete. This establishes CPU input/recovery
+control during this rendering stall; **it does not establish a working title or
+a completed app exit**. Exit remains deferred to avoid releasing in-flight
+storage. The new trace snapshot contents have not yet been retrieved because
+ftpd is not running while the app remains in recovery. HOME was deliberately
+not tested against the known blocking suspend hook.
+
+[Physical control captures](evidence/native-first-area-hardware-2026-10-22/recovery-inputs.json)
+and [deployment verification](evidence/native-first-area-hardware-2026-10-22/recovery-deployment.json)
+record the tested run. The wider
+[first-area acceptance record](native-first-area-hardware-2026-10-22.md)
+remains incomplete; no New Game/Save/Continue result is claimed.
