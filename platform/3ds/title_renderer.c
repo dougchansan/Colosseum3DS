@@ -30,6 +30,11 @@ static C3D_Tex textures[C3_STAGE_MAX_TEXTURES];
 static const C3TitleTexture *texture_sources[C3_STAGE_MAX_TEXTURES];
 static uint32_t texture_count, vertex_count;
 static size_t gpu_buffer_bytes;
+#ifdef C3_RENDER_GPU_PROBE
+/* Diagnostic builds isolate three submissions while retaining the ordinary
+ * nonblocking draw/recovery contract. Production builds omit the probe. */
+static unsigned probe_submissions;
+#endif
 static int fail(char *error, size_t capacity, const char *message)
 {
     if (error && capacity) snprintf(error, capacity, "%s", message);
@@ -190,6 +195,9 @@ int c3_stage_renderer_init(const C3Title *const *models, size_t count,
             return fail(error, capacity, "Combined stage vertex arena exceeds its bound.");
         total_vertices += models[i]->vertex_count;
     }
+#ifdef C3_RENDER_GPU_PROBE
+    probe_submissions = 0;
+#endif
     if (!C3D_Init(C3D_DEFAULT_CMDBUF_SIZE)) return fail(error, capacity, "Scene citro3d initialization failed.");
     c3d_started = true;
     target = C3D_RenderTargetCreate(240, 400, GPU_RB_RGBA8, GPU_RB_DEPTH24_STENCIL8);
@@ -607,6 +615,9 @@ int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
      * cannot disappear behind a late opaque pack. Within each class, source
      * model/batch order is retained; dynamic depth sorting is not invented. */
     unsigned passes = count > 1 ? 2u : 1u;
+#ifdef C3_RENDER_GPU_PROBE
+    if (probe_submissions == 0) passes = 0; /* Clear/transfer only. */
+#endif
     for (unsigned pass = 0; pass < passes; ++pass) {
         for (size_t model = 0; model < count; ++model) {
             const C3Title *title = models[model];
@@ -677,6 +688,10 @@ int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
         }
     }
     fade = clamp01(fade);
+#ifdef C3_RENDER_GPU_PROBE
+    if (probe_submissions < 2) fade = 1.0f; /* No overlay for clear/geometry. */
+    else if (probe_submissions == 2) fade = 0.5f; /* Original immediate overlay. */
+#endif
     if (fade < 1.0f) {
         C3D_Mtx identity;
         Mtx_Identity(&identity);
@@ -711,6 +726,15 @@ int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
     }
     gfxFlushBuffers();
     C3D_FrameEnd(0);
+#ifdef C3_RENDER_GPU_PROBE
+    if (probe_submissions < 3) {
+        static const char *const stages[] = {"clear", "geometry", "geometry_overlay"};
+        printf("render_probe submitted=%u stage=%s\n", probe_submissions + 1,
+               stages[probe_submissions]);
+        gfxFlushBuffers();
+        ++probe_submissions;
+    }
+#endif
     if (error && capacity) error[0] = '\0';
     return 0;
 }

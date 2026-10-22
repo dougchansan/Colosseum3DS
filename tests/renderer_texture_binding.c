@@ -36,6 +36,9 @@ static int program, mvp_location, color_pass_location;
 static unsigned draws, overlays, binds;
 static unsigned gpu_writes, releases, frame_ends;
 static C3D_Tex *bound[2], *expected_second;
+#ifdef C3_RENDER_GPU_PROBE
+static unsigned probe_submissions;
+#endif
 
 enum {
     C3D_FRAME_NONBLOCK, C3D_CLEAR_ALL, C3D_RGB, C3D_Both,
@@ -182,6 +185,9 @@ int main(int argc, char **argv)
         assert(releases == 0 && scene_count == 1 && vertices == storage && target);
         assert(texture_count == 2 && c3d_started && program_started && shader);
         assert(gpu_writes == 0 && frame_ends == 0);
+#ifdef C3_RENDER_GPU_PROBE
+        assert(probe_submissions == 0);
+#endif
         queued_busy = false;
         assert(c3_stage_renderer_is_idle());
         assert(frame_ends == 1 && gpu_writes == 0 && releases == 0);
@@ -196,12 +202,35 @@ int main(int argc, char **argv)
         puts("BUSY returned; ownership retained; idle teardown verified");
         return 0;
     }
-    for (unsigned frame = 0; frame < 3; ++frame) {
+    for (unsigned frame = 0; frame < 4; ++frame) {
+        unsigned old_draws = draws, old_overlays = overlays;
+#ifdef C3_RENDER_GPU_PROBE
+        unsigned old_writes = gpu_writes, old_ends = frame_ends;
+        queued_busy = true;
+        assert(c3_stage_renderer_draw(models, 1, &title.pose.camera, fade,
+                                      &stats, error, sizeof(error)) == C3_RENDER_BUSY);
+        assert(probe_submissions == (frame < 3 ? frame : 3));
+        assert(gpu_writes == old_writes && frame_ends == old_ends);
+        queued_busy = false;
+#endif
         assert(c3_stage_renderer_draw(models, 1, &title.pose.camera, fade,
                                       &stats, error, sizeof(error)) == C3_RENDER_OK);
+#ifdef C3_RENDER_GPU_PROBE
+        assert(draws - old_draws == (unsigned)(frame != 0));
+        assert(overlays - old_overlays == (unsigned)(frame == 2 || (frame == 3 && fade < 1.0f)));
+#else
+        assert(draws - old_draws == 1);
+        assert(overlays - old_overlays == (unsigned)(fade < 1.0f));
+#endif
     }
-    assert(draws == 3 && binds == 6 && frame_ends == 3);
-    assert(overlays == 3 * (unsigned)(fade < 1.0f));
+#ifdef C3_RENDER_GPU_PROBE
+    assert(draws == 3 && binds == 6 && probe_submissions == 3);
+    assert(overlays == 1 + (unsigned)(fade < 1.0f));
+#else
+    assert(draws == 4 && binds == 8);
+    assert(overlays == 4 * (unsigned)(fade < 1.0f));
+#endif
+    assert(frame_ends == 4);
     assert(stats.draw_calls == 1 + (unsigned)(fade < 1.0f));
     assert(stats.vertices == 3 + 3 * (unsigned)(fade < 1.0f));
     assert(!error[0]);
