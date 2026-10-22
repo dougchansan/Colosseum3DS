@@ -22,9 +22,11 @@ class RendererTextureBindingTests(unittest.TestCase):
         cls.addClassCleanup(cls.temporary.cleanup)
         cls.directory = Path(cls.temporary.name)
         source = (ROOT / "platform/3ds/title_renderer.c").read_text()
+        diagnostic = source[source.index("static unsigned diagnostic_frame;"):
+                            source.index("static int fail(")]
         draw = source[source.index("int c3_stage_renderer_draw("):
                       source.index("int c3_title_renderer_draw(")]
-        (cls.directory / "title_renderer_draw.inc").write_text(draw)
+        (cls.directory / "title_renderer_draw.inc").write_text(diagnostic + draw)
         cls.executable = cls.directory / "binding-test"
         result = subprocess.run(cls.compiler + cls.cflags + [
             "-I", str(ROOT / "include"), "-I", str(ROOT / "platform/3ds"),
@@ -37,6 +39,10 @@ class RendererTextureBindingTests(unittest.TestCase):
         result = subprocess.run([str(self.executable), str(flags), str(fade)],
                                 capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(result.stdout.count("before_begin\n"), 2)
+        self.assertEqual(result.stdout.count("after_end\n"), 2)
+        self.assertEqual(result.stdout.count("cmd_usage "), 2)
+        self.assertNotIn("title_gpu 2 ", result.stdout)
 
     def test_single_texture(self):
         self.check_draw(0, 1)

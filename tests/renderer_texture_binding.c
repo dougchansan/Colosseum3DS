@@ -45,6 +45,7 @@ enum {
 #define NOOP(...) ((void)0)
 #define C3D_FrameBegin(...) true
 #define C3D_GetDrawingTime(...) 0.0f
+#define C3D_GetCmdBufUsage(...) 0.0f
 #define C3D_GetAttrInfo(...) NULL
 #define C3D_GetBufInfo(...) NULL
 #define C3D_GetTexEnv(...) NULL
@@ -137,11 +138,13 @@ int main(int argc, char **argv)
     C3TitleRenderStats stats;
     char error[128] = {0};
     const C3Title *models[] = {&title};
-    assert(c3_stage_renderer_draw(models, 1, &title.pose.camera, fade,
-                                  &stats, error, sizeof(error)) == 0);
-    assert(draws == 1 && binds == 2);
-    assert(overlays == (unsigned)(fade < 1.0f));
-    assert(stats.draw_calls == 1 + overlays && stats.vertices == 3 + 3 * overlays);
+    for (unsigned frame = 0; frame < 3; ++frame)
+        assert(c3_stage_renderer_draw(models, 1, &title.pose.camera, fade,
+                                      &stats, error, sizeof(error)) == 0);
+    assert(draws == 3 && binds == 6);
+    assert(overlays == 3 * (unsigned)(fade < 1.0f));
+    assert(stats.draw_calls == 1 + overlays / 3 && stats.vertices == 3 + overlays);
+    assert(diagnostic_frame == 2);
     assert(!error[0]);
     return 0;
 }

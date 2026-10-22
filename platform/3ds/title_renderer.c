@@ -30,6 +30,16 @@ static C3D_Tex textures[C3_STAGE_MAX_TEXTURES];
 static const C3TitleTexture *texture_sources[C3_STAGE_MAX_TEXTURES];
 static uint32_t texture_count, vertex_count;
 static size_t gpu_buffer_bytes;
+static unsigned diagnostic_frame;
+
+/* Temporary hardware isolation: retain the last completed CPU step on the
+ * bottom console if a GPU submission or synchronization call stalls. */
+static void renderer_diagnostic(const char *step)
+{
+    if (diagnostic_frame >= 2) return;
+    printf("title_gpu %u %s\n", diagnostic_frame, step);
+    gfxFlushBuffers();
+}
 
 static int fail(char *error, size_t capacity, const char *message)
 {
@@ -191,6 +201,7 @@ int c3_stage_renderer_init(const C3Title *const *models, size_t count,
             return fail(error, capacity, "Combined stage vertex arena exceeds its bound.");
         total_vertices += models[i]->vertex_count;
     }
+    diagnostic_frame = 0;
     if (!C3D_Init(C3D_DEFAULT_CMDBUF_SIZE)) return fail(error, capacity, "Scene citro3d initialization failed.");
     c3d_started = true;
     target = C3D_RenderTargetCreate(240, 400, GPU_RB_RGBA8, GPU_RB_DEPTH24_STENCIL8);
@@ -545,7 +556,9 @@ int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
                         return fail(error, capacity, "Dual-texture material requires zero TEV0 endpoints.");
         }
     }
+    renderer_diagnostic("before_begin");
     if (!C3D_FrameBegin(C3D_FRAME_SYNCDRAW)) return fail(error, capacity, "Title frame begin failed.");
+    renderer_diagnostic("after_begin");
     /* FrameBegin drains the previous GPU queue before this single bounded
      * arena is overwritten. No CPU buffer is reused within an open frame. */
     uint64_t start = svcGetSystemTick();
@@ -580,6 +593,7 @@ int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
         }
     }
     GSPGPU_FlushDataCache(vertices, (size_t)vertex_count * sizeof(*vertices));
+    renderer_diagnostic("after_cpu_flush");
     C3D_RenderTargetClear(target, C3D_CLEAR_ALL, 0x000000FF, 0);
     C3D_FrameDrawOn(target);
     /* Preserve the authored camera aspect rather than stretching its image.
@@ -677,6 +691,7 @@ int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
             }
         }
     }
+    renderer_diagnostic("after_arrays");
     fade = clamp01(fade);
     if (fade < 1.0f) {
         C3D_Mtx identity;
@@ -704,6 +719,7 @@ int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
             C3D_ImmSendAttrib(0, 0, 0, 1);
         }
         C3D_ImmDrawEnd();
+        renderer_diagnostic("after_immediate");
         if (stats) { stats->draw_calls++; stats->vertices += 3; }
     }
     if (stats) {
@@ -711,7 +727,12 @@ int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
         stats->gpu_buffer_bytes = gpu_buffer_bytes;
     }
     gfxFlushBuffers();
+    if (diagnostic_frame < 2)
+        printf("title_gpu %u cmd_usage %.3f\n", diagnostic_frame, (double)C3D_GetCmdBufUsage());
+    renderer_diagnostic("before_end");
     C3D_FrameEnd(0);
+    renderer_diagnostic("after_end");
+    if (diagnostic_frame < 2) ++diagnostic_frame;
     if (error && capacity) error[0] = '\0';
     return 0;
 }

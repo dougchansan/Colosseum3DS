@@ -262,7 +262,16 @@ static int run_title(FILE *trace, int core_status, C3GameState *state,
             printf("START + SELECT: exit\n");
             next_status = now + UINT64_C(250000);
         }
-        if (c3_title_renderer_draw(title, fade, &stats, error, capacity)) { result = -1; break; }
+        if (frames < 2 && trace) {
+            fprintf(trace, "title_draw_begin frame=%u wall_us=%llu\n", frames,
+                    (unsigned long long)c3_n3ds_time_us()); fflush(trace);
+        }
+        int draw_result = c3_title_renderer_draw(title, fade, &stats, error, capacity);
+        if (frames < 2 && trace) {
+            fprintf(trace, "title_draw_end frame=%u result=%d wall_us=%llu\n", frames, draw_result,
+                    (unsigned long long)c3_n3ds_time_us()); fflush(trace);
+        }
+        if (draw_result) { result = -1; break; }
         ++frames;
     }
     if (trace) {
