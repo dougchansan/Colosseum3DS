@@ -1,0 +1,158 @@
+[
+  {
+    "path": "sys/main.dol",
+    "sha1": "870e8b9693ca780782d80f22a6a4572d8ba9458f",
+    "expected_sha1": "870e8b9693ca780782d80f22a6a4572d8ba9458f",
+    "ok": true
+  },
+  {
+    "path": "files/common_rel.rel",
+    "sha1": "e816761813900aa0fd4f87d012b3b2a19d2f003e",
+    "expected_sha1": "e816761813900aa0fd4f87d012b3b2a19d2f003e",
+    "ok": true
+  },
+  {
+    "path": "files/mail.rel",
+    "sha1": "28bc997c8bc065db08fefc3c361fd5982e39dcbc",
+    "expected_sha1": "28bc997c8bc065db08fefc3c361fd5982e39dcbc",
+    "ok": true
+  },
+  {
+    "path": "files/S1_out.rel",
+    "sha1": "ba3cfcf9f5c5bbc717774acd06f2b3526f414b59",
+    "expected_sha1": "ba3cfcf9f5c5bbc717774acd06f2b3526f414b59",
+    "ok": true
+  },
+  {
+    "path": "files/pocket_menu.rel",
+    "sha1": "77ab4475c3dda3b2a7bca406adaa565d89fc0d9e",
+    "expected_sha1": "77ab4475c3dda3b2a7bca406adaa565d89fc0d9e",
+    "ok": true
+  },
+  {
+    "path": "files/worldmap_menu_rel.rel",
+    "sha1": "09653861366421e1d6c81698074a70b3d55625da",
+    "expected_sha1": "09653861366421e1d6c81698074a70b3d55625da",
+    "ok": true
+  },
+  {
+    "path": "files/S1_shop_1F.rel",
+    "sha1": "db78b6f44ca01c2090ec197117f5169494fbb6bf",
+    "expected_sha1": "db78b6f44ca01c2090ec197117f5169494fbb6bf",
+    "ok": true
+  },
+  {
+    "path": "files/S1_out_bf.rel",
+    "sha1": "99b73a7bc9206c2afc5733ef3c4a5b0e169aec20",
+    "expected_sha1": "99b73a7bc9206c2afc5733ef3c4a5b0e169aec20",
+    "ok": true
+  },
+  {
+    "path": "files/pda_menu.rel",
+    "sha1": "bb6cf191e805504034493e61c42a8de70ca36e6b",
+    "expected_sha1": "bb6cf191e805504034493e61c42a8de70ca36e6b",
+    "ok": true
+  },
+  {
+    "path": "files/M1_out.rel",
+    "sha1": "99055f9741b4c61583ca33749fa7c120a3163010",
+    "expected_sha1": "99055f9741b4c61583ca33749fa7c120a3163010",
+    "ok": true
+  },
+  {
+    "path": "files/M1_pc_1F.rel",
+    "sha1": "93c70532f39515bfec46a296f9320f148d4ada34",
+    "expected_sha1": "93c70532f39515bfec46a296f9320f148d4ada34",
+    "ok": true
+  },
+  {
+    "path": "files/M1_pc_B1.rel",
+    "sha1": "d754050147e539176a73a443fc50e440f8042536",
+    "expected_sha1": "d754050147e539176a73a443fc50e440f8042536",
+    "ok": true
+  },
+  {
+    "path": "files/M1_houseA_1F.rel",
+    "sha1": "58087a5c18ed1cc36ffc21846935b8407e47a0dd",
+    "expected_sha1": "58087a5c18ed1cc36ffc21846935b8407e47a0dd",
+    "ok": true
+  },
+  {
+    "path": "files/M1_houseA_2F.rel",
+    "sha1": "b0633667d12ad8d6ae77d096784070aff9697575",
+    "expected_sha1": "b0633667d12ad8d6ae77d096784070aff9697575",
+    "ok": true
+  },
+  {
+    "path": "files/M1_houseB_1F.rel",
+    "sha1": "28421e879a21bcf447543654d4ccd246309f255b",
+    "expected_sha1": "28421e879a21bcf447543654d4ccd246309f255b",
+    "ok": true
+  },
+  {
+    "path": "files/M1_houseC_1F.rel",
+    "sha1": "14dce2d47eeab97905f57e93d7c2078f06f8ca01",
+    "expected_sha1": "14dce2d47eeab97905f57e93d7c2078f06f8ca01",
+    "ok": true
+  },
+  {
+    "path": "files/M1_shop_1F.rel",
+    "sha1": "86185ad8a2a265af74aca8ea3c493f5f0f5eb874",
+    "expected_sha1": "86185ad8a2a265af74aca8ea3c493f5f0f5eb874",
+    "ok": true
+  },
+  {
+    "path": "files/M1_shop_2F.rel",
+    "sha1": "824fa7bcaba906b4317f302606d38e7efbcbb706",
+    "expected_sha1": "824fa7bcaba906b4317f302606d38e7efbcbb706",
+    "ok": true
+  },
+  {
+    "path": "files/M1_gym_1F.rel",
+    "sha1": "4a9d6dc26d279a9abb01dd41dd50ccc589a88412",
+    "expected_sha1": "4a9d6dc26d279a9abb01dd41dd50ccc589a88412",
+    "ok": true
+  },
+  {
+    "path": "files/M1_gym_B1.rel",
+    "sha1": "9b11f873e8344ba63f7cd72bdf08294fdc2efbd8",
+    "expected_sha1": "9b11f873e8344ba63f7cd72bdf08294fdc2efbd8",
+    "ok": true
+  },
+  {
+    "path": "files/M1_stadium_1F.rel",
+    "sha1": "32b5c0ee6c26606e582cadfccb1cd84396944d39",
+    "expected_sha1": "32b5c0ee6c26606e582cadfccb1cd84396944d39",
+    "ok": true
+  },
+  {
+    "path": "files/M1_carde_1.rel",
+    "sha1": "466e5fabeb4001a83264941b4a01187c9920e1e6",
+    "expected_sha1": "466e5fabeb4001a83264941b4a01187c9920e1e6",
+    "ok": true
+  },
+  {
+    "path": "files/M1_out_bf.rel",
+    "sha1": "92020fe1a4f32513db2d3dac0a08006ee764abc7",
+    "expected_sha1": "92020fe1a4f32513db2d3dac0a08006ee764abc7",
+    "ok": true
+  },
+  {
+    "path": "files/M1_gym_1F_bf.rel",
+    "sha1": "6f069dc29b289c3dea471868840cead275a75aec",
+    "expected_sha1": "6f069dc29b289c3dea471868840cead275a75aec",
+    "ok": true
+  },
+  {
+    "path": "files/M1_houseA_1F_bf.rel",
+    "sha1": "40af492b17ef6f665921d6ec0a813132570f15ce",
+    "expected_sha1": "40af492b17ef6f665921d6ec0a813132570f15ce",
+    "ok": true
+  },
+  {
+    "path": "files/M1_water_colo.rel",
+    "sha1": "997fa17f513421af5abee482103913d312a0bf2d",
+    "expected_sha1": "997fa17f513421af5abee482103913d312a0bf2d",
+    "ok": true
+  }
+]

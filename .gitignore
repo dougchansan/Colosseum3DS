@@ -1,5 +1,6 @@
 /build/
 /build-3ds/
+/build-3ds-boot/
 /dist/
 /private/
 /data/
@@ -20,3 +21,17 @@ __pycache__/
 *.fsys
 *.cia
 *.c3m
+*.c3v
+*.c3t
+*.c3f
+*.c3g
+*.c3u
+*.gci
+*.raw
+/tools/sandbox/core/
+/tools/sandbox/include/
+/tools/sandbox/state/
+/tools/sandbox/runs/
+/tools/sandbox/harness
+/tools/sandbox/dependencies.json
+/tools/sandbox/probe-build/

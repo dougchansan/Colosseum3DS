@@ -1,0 +1,1612 @@
+{
+  "source_commit": "51bfe4314a218dfaf9592fc80723c50498d0ee55",
+  "parser_commit": "dc71de837978a6a2fe8c5082f2840cfafb135235",
+  "archives": {
+    "S1_out.fsys": {
+      "bytes": 1468000,
+      "sha256": "37900ccab1353ab835c7e4acc40cd5e1349237589a53b441c78ce91a891f8034"
+    },
+    "field_common.fsys": {
+      "bytes": 211424,
+      "sha256": "83bc8cf05026263cd0c1d3dfb7cc448445922b34213ef973ab3c94090c669fb5"
+    },
+    "common.fsys": {
+      "bytes": 743136,
+      "sha256": "f83b73c524498c1ec3ea1c04d06d391bcd6ca7e1ddd318fa33bcca0d6cf5b19a"
+    }
+  },
+  "source_members": [
+    {
+      "archive": "S1_out.fsys",
+      "resource_id": "00e20200",
+      "bytes": 1162519,
+      "sha256": "596fae5f223be49777d6639e4f517de34c7d4812b960cb2f09e7088afd1c016a"
+    },
+    {
+      "archive": "S1_out.fsys",
+      "resource_id": "00e30600",
+      "bytes": 40784,
+      "sha256": "727ebb36f4ca1c2c6a8ce13092b7dff0c996e3b5249f39e101ac00ec0660de91"
+    },
+    {
+      "archive": "S1_out.fsys",
+      "resource_id": "02571c00",
+      "bytes": 1640,
+      "sha256": "61fb453c6eac7b8359662a70ca9401e952641446b034569af85e9c75bdae33f5"
+    },
+    {
+      "archive": "S1_out.fsys",
+      "resource_id": "01430e00",
+      "bytes": 14816,
+      "sha256": "399743cde072bc62a5e488fa497620b873426df3d68046da0161930537360836"
+    },
+    {
+      "archive": "S1_out.fsys",
+      "resource_id": "0c6c0400",
+      "bytes": 361615,
+      "sha256": "179d05c87f08ce865d22ed4551d610e0e568989feb8583611456dbb053101d80"
+    },
+    {
+      "archive": "S1_out.fsys",
+      "resource_id": "105d0400",
+      "bytes": 767,
+      "sha256": "8fcc3772d810781a59b7346b183c6732867f8026c187f5f954b2d6685ed2839b"
+    },
+    {
+      "archive": "S1_out.fsys",
+      "resource_id": "105c1800",
+      "bytes": 1903,
+      "sha256": "0e6bd24518bc8ba834d9d241a5f2e7bbd469138c940b8c5d6a52cd6679037377"
+    },
+    {
+      "archive": "field_common.fsys",
+      "resource_id": "00f70400",
+      "bytes": 102107,
+      "sha256": "62f7377155d70cf7bc393233f0d547557bd01ceee9979547424e237761e52574"
+    },
+    {
+      "archive": "common.fsys",
+      "resource_id": "01c71c00",
+      "bytes": 1369520,
+      "sha256": "0c89e679305f5e84eff3c774b542120c727ff350a0841cfc516235b3556df69e"
+    }
+  ],
+  "field": {
+    "file": "outskirt.c3f",
+    "sha256": "45e9c8b4be3afc26c783d087d3348217ce555d852ba570168ca5459c2ad0b82e",
+    "bytes": 21656,
+    "spawns": [
+      [
+        5.0,
+        0.0,
+        7.0,
+        3.141592653589793,
+        0,
+        0
+      ],
+      [
+        -1.3,
+        1.0829999923706055,
+        -2.447999954223633,
+        0.0,
+        1,
+        0
+      ],
+      [
+        -14.19600067138672,
+        0.0,
+        6.616999816894531,
+        1.5707963267948966,
+        2,
+        0
+      ],
+      [
+        24.43600006103516,
+        0.0,
+        6.579000091552735,
+        4.71238898038469,
+        3,
+        0
+      ],
+      [
+        0.0,
+        0.0,
+        23.0,
+        3.141592653589793,
+        4,
+        0
+      ]
+    ],
+    "walk_triangles": 136,
+    "wall_triangles": 244,
+    "source_units_to_pack": 0.1,
+    "wes_motion_indices": [
+      1,
+      2,
+      3
+    ],
+    "wes_frame_counts": [
+      31,
+      31,
+      18
+    ],
+    "wes_walk_distance": 0.9,
+    "wes_run_distance": 1.3,
+    "wes_radius": 0.4,
+    "map_pack_count": 4,
+    "arrival_pack_count": 2
+  },
+  "packs": [
+    {
+      "file": "outskirt_map0.c3t",
+      "bytes": 12053184,
+      "sha256": "350097e53d1833d6dc70b1fb504c6ea6e89e14c69ab61292caf6fa1f5106cadf",
+      "vertices": 14070,
+      "batches": 64,
+      "textures": 6,
+      "texture_rgba_bytes": 9830656,
+      "format_version": 2,
+      "sampled_bones": 3,
+      "sample_fps": 60,
+      "source_meshes": [
+        {
+          "hsd_root_address": 8872,
+          "mesh_index": 0,
+          "owner_joint": 1,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 8872,
+          "mesh_index": 1,
+          "owner_joint": 2,
+          "source_render_mode": "60004002"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 0,
+          "owner_joint": 1,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 1,
+          "owner_joint": 2,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 2,
+          "owner_joint": 3,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 3,
+          "owner_joint": 4,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 4,
+          "owner_joint": 5,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 5,
+          "owner_joint": 6,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 6,
+          "owner_joint": 7,
+          "source_render_mode": "60004002"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 7,
+          "owner_joint": 9,
+          "source_render_mode": "60006002"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 8,
+          "owner_joint": 11,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 9,
+          "owner_joint": 12,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 10,
+          "owner_joint": 15,
+          "source_render_mode": "60004002"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 11,
+          "owner_joint": 16,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 12,
+          "owner_joint": 18,
+          "source_render_mode": "60004002"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 13,
+          "owner_joint": 19,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 14,
+          "owner_joint": 21,
+          "source_render_mode": "60004002"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 15,
+          "owner_joint": 22,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 16,
+          "owner_joint": 24,
+          "source_render_mode": "60004002"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 17,
+          "owner_joint": 25,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 18,
+          "owner_joint": 27,
+          "source_render_mode": "60004002"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 19,
+          "owner_joint": 28,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 20,
+          "owner_joint": 30,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 21,
+          "owner_joint": 31,
+          "source_render_mode": "60004002"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 22,
+          "owner_joint": 33,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 23,
+          "owner_joint": 34,
+          "source_render_mode": "60004002"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 24,
+          "owner_joint": 36,
+          "source_render_mode": "60004002"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 25,
+          "owner_joint": 37,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 26,
+          "owner_joint": 39,
+          "source_render_mode": "60004002"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 27,
+          "owner_joint": 40,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 28,
+          "owner_joint": 42,
+          "source_render_mode": "60004002"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 29,
+          "owner_joint": 43,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 30,
+          "owner_joint": 45,
+          "source_render_mode": "60004002"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 31,
+          "owner_joint": 46,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 32,
+          "owner_joint": 49,
+          "source_render_mode": "60004001"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 33,
+          "owner_joint": 51,
+          "source_render_mode": "60004002"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 34,
+          "owner_joint": 53,
+          "source_render_mode": "60004002"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 35,
+          "owner_joint": 56,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 36,
+          "owner_joint": 57,
+          "source_render_mode": "60004002"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 37,
+          "owner_joint": 59,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 38,
+          "owner_joint": 60,
+          "source_render_mode": "60004002"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 39,
+          "owner_joint": 62,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 40,
+          "owner_joint": 63,
+          "source_render_mode": "60004002"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 41,
+          "owner_joint": 65,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 42,
+          "owner_joint": 66,
+          "source_render_mode": "60004002"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 43,
+          "owner_joint": 68,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 44,
+          "owner_joint": 69,
+          "source_render_mode": "60004002"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 45,
+          "owner_joint": 71,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 46,
+          "owner_joint": 72,
+          "source_render_mode": "60004002"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 47,
+          "owner_joint": 74,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 48,
+          "owner_joint": 76,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 49,
+          "owner_joint": 77,
+          "source_render_mode": "00002016"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 50,
+          "owner_joint": 77,
+          "source_render_mode": "00002016"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 51,
+          "owner_joint": 79,
+          "source_render_mode": "60006032"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 52,
+          "owner_joint": 80,
+          "source_render_mode": "60006012"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 53,
+          "owner_joint": 82,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 54,
+          "owner_joint": 82,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 55,
+          "owner_joint": 83,
+          "source_render_mode": "60004002"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 56,
+          "owner_joint": 85,
+          "source_render_mode": "60004002"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 57,
+          "owner_joint": 86,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 58,
+          "owner_joint": 86,
+          "source_render_mode": "00002016"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 59,
+          "owner_joint": 89,
+          "source_render_mode": "60004002"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 60,
+          "owner_joint": 90,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 61,
+          "owner_joint": 92,
+          "source_render_mode": "60004002"
+        }
+      ],
+      "clips": [
+        {
+          "source_clip": 0,
+          "samples": 359,
+          "authored_end": 179.0,
+          "loop": true
+        }
+      ]
+    },
+    {
+      "file": "outskirt_map1.c3t",
+      "bytes": 7751912,
+      "sha256": "f337f2eacb25e6f11b230ef51f38a9e8b4a445031105fcdff90ebd89778a3944",
+      "vertices": 28212,
+      "batches": 47,
+      "textures": 3,
+      "texture_rgba_bytes": 5243136,
+      "format_version": 2,
+      "sampled_bones": 3,
+      "sample_fps": 60,
+      "source_meshes": [
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 62,
+          "owner_joint": 93,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 63,
+          "owner_joint": 95,
+          "source_render_mode": "60004002"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 64,
+          "owner_joint": 96,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 65,
+          "owner_joint": 98,
+          "source_render_mode": "60004002"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 66,
+          "owner_joint": 99,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 67,
+          "owner_joint": 101,
+          "source_render_mode": "60004002"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 68,
+          "owner_joint": 102,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 69,
+          "owner_joint": 104,
+          "source_render_mode": "60004002"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 70,
+          "owner_joint": 105,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 71,
+          "owner_joint": 107,
+          "source_render_mode": "60004002"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 72,
+          "owner_joint": 108,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 73,
+          "owner_joint": 110,
+          "source_render_mode": "60004002"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 74,
+          "owner_joint": 111,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 75,
+          "owner_joint": 113,
+          "source_render_mode": "60004002"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 76,
+          "owner_joint": 114,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 77,
+          "owner_joint": 116,
+          "source_render_mode": "60004002"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 78,
+          "owner_joint": 117,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 79,
+          "owner_joint": 119,
+          "source_render_mode": "60004002"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 80,
+          "owner_joint": 120,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 81,
+          "owner_joint": 122,
+          "source_render_mode": "60004002"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 82,
+          "owner_joint": 123,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 83,
+          "owner_joint": 125,
+          "source_render_mode": "60004002"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 84,
+          "owner_joint": 126,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 85,
+          "owner_joint": 128,
+          "source_render_mode": "60004002"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 86,
+          "owner_joint": 129,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 87,
+          "owner_joint": 131,
+          "source_render_mode": "60004002"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 88,
+          "owner_joint": 132,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 89,
+          "owner_joint": 134,
+          "source_render_mode": "60006012"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 90,
+          "owner_joint": 134,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 91,
+          "owner_joint": 135,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 92,
+          "owner_joint": 135,
+          "source_render_mode": "60006012"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 93,
+          "owner_joint": 136,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 94,
+          "owner_joint": 137,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 95,
+          "owner_joint": 137,
+          "source_render_mode": "60006012"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 96,
+          "owner_joint": 138,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 97,
+          "owner_joint": 139,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 98,
+          "owner_joint": 140,
+          "source_render_mode": "60006012"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 99,
+          "owner_joint": 141,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 100,
+          "owner_joint": 141,
+          "source_render_mode": "60006002"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 101,
+          "owner_joint": 142,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 102,
+          "owner_joint": 142,
+          "source_render_mode": "60006002"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 103,
+          "owner_joint": 143,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 104,
+          "owner_joint": 143,
+          "source_render_mode": "60006002"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 105,
+          "owner_joint": 144,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 106,
+          "owner_joint": 145,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 242280,
+          "mesh_index": 107,
+          "owner_joint": 146,
+          "source_render_mode": "00006012"
+        },
+        {
+          "hsd_root_address": 308200,
+          "mesh_index": 0,
+          "owner_joint": 1,
+          "source_render_mode": "60006012"
+        }
+      ],
+      "clips": [
+        {
+          "source_clip": 0,
+          "samples": 359,
+          "authored_end": 179.0,
+          "loop": true
+        }
+      ]
+    },
+    {
+      "file": "outskirt_map2.c3t",
+      "bytes": 4765944,
+      "sha256": "497355ef80631b9b1e086372dfc4065f9f45ba900c0b4f8c3f0f518b899df735",
+      "vertices": 9738,
+      "batches": 3,
+      "textures": 1,
+      "texture_rgba_bytes": 4194304,
+      "format_version": 2,
+      "sampled_bones": 1,
+      "sample_fps": 60,
+      "source_meshes": [
+        {
+          "hsd_root_address": 308200,
+          "mesh_index": 1,
+          "owner_joint": 1,
+          "source_render_mode": "00004012"
+        },
+        {
+          "hsd_root_address": 308200,
+          "mesh_index": 2,
+          "owner_joint": 2,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 309192,
+          "mesh_index": 0,
+          "owner_joint": 1,
+          "source_render_mode": "00002012"
+        }
+      ],
+      "clips": [
+        {
+          "source_clip": 0,
+          "samples": 359,
+          "authored_end": 179.0,
+          "loop": true
+        }
+      ]
+    },
+    {
+      "file": "outskirt_map3.c3t",
+      "bytes": 3406456,
+      "sha256": "8e88bb441d49d0ce716650eca41ecdc15116d427419e86faa55feafe62328ad8",
+      "vertices": 7812,
+      "batches": 33,
+      "textures": 5,
+      "texture_rgba_bytes": 720896,
+      "format_version": 2,
+      "sampled_bones": 3,
+      "sample_fps": 1.0000333344444814,
+      "source_meshes": [
+        {
+          "hsd_root_address": 356136,
+          "mesh_index": 0,
+          "owner_joint": 1,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 356136,
+          "mesh_index": 1,
+          "owner_joint": 3,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 356136,
+          "mesh_index": 2,
+          "owner_joint": 3,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 356136,
+          "mesh_index": 3,
+          "owner_joint": 4,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 356136,
+          "mesh_index": 4,
+          "owner_joint": 4,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 356136,
+          "mesh_index": 5,
+          "owner_joint": 6,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 356136,
+          "mesh_index": 6,
+          "owner_joint": 7,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 356136,
+          "mesh_index": 7,
+          "owner_joint": 8,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 356136,
+          "mesh_index": 8,
+          "owner_joint": 9,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 356136,
+          "mesh_index": 9,
+          "owner_joint": 10,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 356136,
+          "mesh_index": 10,
+          "owner_joint": 11,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 356136,
+          "mesh_index": 11,
+          "owner_joint": 12,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 356136,
+          "mesh_index": 12,
+          "owner_joint": 13,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 356136,
+          "mesh_index": 13,
+          "owner_joint": 14,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 356136,
+          "mesh_index": 14,
+          "owner_joint": 15,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 356136,
+          "mesh_index": 15,
+          "owner_joint": 16,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 356136,
+          "mesh_index": 16,
+          "owner_joint": 17,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 356136,
+          "mesh_index": 17,
+          "owner_joint": 19,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 356136,
+          "mesh_index": 18,
+          "owner_joint": 20,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 356136,
+          "mesh_index": 19,
+          "owner_joint": 21,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 356136,
+          "mesh_index": 20,
+          "owner_joint": 22,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 356136,
+          "mesh_index": 21,
+          "owner_joint": 23,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 356136,
+          "mesh_index": 22,
+          "owner_joint": 24,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 356136,
+          "mesh_index": 23,
+          "owner_joint": 25,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 356136,
+          "mesh_index": 24,
+          "owner_joint": 26,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 356136,
+          "mesh_index": 25,
+          "owner_joint": 28,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 356136,
+          "mesh_index": 26,
+          "owner_joint": 29,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 356136,
+          "mesh_index": 27,
+          "owner_joint": 30,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 356136,
+          "mesh_index": 28,
+          "owner_joint": 31,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 356136,
+          "mesh_index": 29,
+          "owner_joint": 32,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 356136,
+          "mesh_index": 30,
+          "owner_joint": 33,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 356136,
+          "mesh_index": 31,
+          "owner_joint": 34,
+          "source_render_mode": "00002012"
+        },
+        {
+          "hsd_root_address": 356136,
+          "mesh_index": 32,
+          "owner_joint": 35,
+          "source_render_mode": "00002012"
+        }
+      ],
+      "clips": [
+        {
+          "source_clip": 0,
+          "samples": 1001,
+          "authored_end": 29999.0,
+          "loop": true
+        }
+      ]
+    },
+    {
+      "file": "outskirt_wes.c3t",
+      "bytes": 575568,
+      "sha256": "2e27fe700196f2d8adeb15f156ba7a5bbd98baa4f1fb0fe0d00ab55ecaf797c0",
+      "vertices": 2445,
+      "batches": 7,
+      "textures": 4,
+      "texture_rgba_bytes": 115200,
+      "format_version": 2,
+      "sampled_bones": 35,
+      "sample_fps": 60,
+      "source_meshes": [
+        {
+          "hsd_root_address": 27632,
+          "mesh_index": 0,
+          "owner_joint": 1,
+          "source_render_mode": "00002015"
+        },
+        {
+          "hsd_root_address": 27632,
+          "mesh_index": 1,
+          "owner_joint": 1,
+          "source_render_mode": "00002015"
+        },
+        {
+          "hsd_root_address": 27632,
+          "mesh_index": 2,
+          "owner_joint": 1,
+          "source_render_mode": "00002015"
+        },
+        {
+          "hsd_root_address": 27632,
+          "mesh_index": 3,
+          "owner_joint": 1,
+          "source_render_mode": "00002015"
+        },
+        {
+          "hsd_root_address": 27632,
+          "mesh_index": 4,
+          "owner_joint": 1,
+          "source_render_mode": "00002015"
+        },
+        {
+          "hsd_root_address": 27632,
+          "mesh_index": 5,
+          "owner_joint": 1,
+          "source_render_mode": "00002015"
+        },
+        {
+          "hsd_root_address": 27632,
+          "mesh_index": 6,
+          "owner_joint": 1,
+          "source_render_mode": "00002015"
+        }
+      ],
+      "clips": [
+        {
+          "source_clip": 1,
+          "samples": 61,
+          "authored_end": 30.0,
+          "loop": true
+        },
+        {
+          "source_clip": 2,
+          "samples": 61,
+          "authored_end": 30.0,
+          "loop": true
+        },
+        {
+          "source_clip": 3,
+          "samples": 35,
+          "authored_end": 17.0,
+          "loop": true
+        }
+      ]
+    },
+    {
+      "file": "outskirt_arrival0.c3t",
+      "bytes": 3519720,
+      "sha256": "28ff3752722e28f4b3c442a09630a8d0028910031af9ef17c4d068acaffad86f",
+      "vertices": 13698,
+      "batches": 39,
+      "textures": 21,
+      "texture_rgba_bytes": 819712,
+      "format_version": 3,
+      "sampled_bones": 62,
+      "sample_fps": 60,
+      "source_meshes": [
+        {
+          "hsd_root_address": 161432,
+          "mesh_index": 0,
+          "owner_joint": 8,
+          "source_render_mode": "0000201d"
+        },
+        {
+          "hsd_root_address": 161432,
+          "mesh_index": 1,
+          "owner_joint": 8,
+          "source_render_mode": "00002015"
+        },
+        {
+          "hsd_root_address": 161432,
+          "mesh_index": 2,
+          "owner_joint": 8,
+          "source_render_mode": "00002035"
+        },
+        {
+          "hsd_root_address": 161432,
+          "mesh_index": 3,
+          "owner_joint": 9,
+          "source_render_mode": "00002015"
+        },
+        {
+          "hsd_root_address": 161432,
+          "mesh_index": 4,
+          "owner_joint": 9,
+          "source_render_mode": "0000201d"
+        },
+        {
+          "hsd_root_address": 161432,
+          "mesh_index": 5,
+          "owner_joint": 10,
+          "source_render_mode": "00002035"
+        },
+        {
+          "hsd_root_address": 161432,
+          "mesh_index": 6,
+          "owner_joint": 10,
+          "source_render_mode": "00002015"
+        },
+        {
+          "hsd_root_address": 161432,
+          "mesh_index": 7,
+          "owner_joint": 10,
+          "source_render_mode": "00002035"
+        },
+        {
+          "hsd_root_address": 161432,
+          "mesh_index": 8,
+          "owner_joint": 46,
+          "source_render_mode": "00002015"
+        },
+        {
+          "hsd_root_address": 161432,
+          "mesh_index": 9,
+          "owner_joint": 47,
+          "source_render_mode": "00002015"
+        },
+        {
+          "hsd_root_address": 161432,
+          "mesh_index": 10,
+          "owner_joint": 47,
+          "source_render_mode": "0000201d"
+        },
+        {
+          "hsd_root_address": 161432,
+          "mesh_index": 11,
+          "owner_joint": 47,
+          "source_render_mode": "00002035"
+        },
+        {
+          "hsd_root_address": 161432,
+          "mesh_index": 12,
+          "owner_joint": 48,
+          "source_render_mode": "0000201d"
+        },
+        {
+          "hsd_root_address": 161432,
+          "mesh_index": 13,
+          "owner_joint": 48,
+          "source_render_mode": "00002015"
+        },
+        {
+          "hsd_root_address": 161432,
+          "mesh_index": 14,
+          "owner_joint": 52,
+          "source_render_mode": "60006012"
+        },
+        {
+          "hsd_root_address": 161432,
+          "mesh_index": 15,
+          "owner_joint": 53,
+          "source_render_mode": "60006012"
+        },
+        {
+          "hsd_root_address": 161432,
+          "mesh_index": 16,
+          "owner_joint": 61,
+          "source_render_mode": "00002015"
+        },
+        {
+          "hsd_root_address": 161432,
+          "mesh_index": 17,
+          "owner_joint": 61,
+          "source_render_mode": "00002015"
+        },
+        {
+          "hsd_root_address": 161432,
+          "mesh_index": 18,
+          "owner_joint": 61,
+          "source_render_mode": "00002015"
+        },
+        {
+          "hsd_root_address": 161432,
+          "mesh_index": 19,
+          "owner_joint": 61,
+          "source_render_mode": "40002015"
+        },
+        {
+          "hsd_root_address": 161432,
+          "mesh_index": 20,
+          "owner_joint": 61,
+          "source_render_mode": "00002015"
+        },
+        {
+          "hsd_root_address": 161432,
+          "mesh_index": 21,
+          "owner_joint": 61,
+          "source_render_mode": "0000201d"
+        },
+        {
+          "hsd_root_address": 161432,
+          "mesh_index": 22,
+          "owner_joint": 61,
+          "source_render_mode": "0000201d"
+        },
+        {
+          "hsd_root_address": 161432,
+          "mesh_index": 23,
+          "owner_joint": 92,
+          "source_render_mode": "00002015"
+        },
+        {
+          "hsd_root_address": 161432,
+          "mesh_index": 24,
+          "owner_joint": 92,
+          "source_render_mode": "00002015"
+        },
+        {
+          "hsd_root_address": 161432,
+          "mesh_index": 25,
+          "owner_joint": 92,
+          "source_render_mode": "00002015"
+        },
+        {
+          "hsd_root_address": 161432,
+          "mesh_index": 26,
+          "owner_joint": 92,
+          "source_render_mode": "00002015"
+        },
+        {
+          "hsd_root_address": 161432,
+          "mesh_index": 27,
+          "owner_joint": 92,
+          "source_render_mode": "00002015"
+        },
+        {
+          "hsd_root_address": 161432,
+          "mesh_index": 28,
+          "owner_joint": 92,
+          "source_render_mode": "00002015"
+        },
+        {
+          "hsd_root_address": 161432,
+          "mesh_index": 29,
+          "owner_joint": 92,
+          "source_render_mode": "00002015"
+        },
+        {
+          "hsd_root_address": 161432,
+          "mesh_index": 30,
+          "owner_joint": 92,
+          "source_render_mode": "0000201d"
+        },
+        {
+          "hsd_root_address": 161432,
+          "mesh_index": 31,
+          "owner_joint": 113,
+          "source_render_mode": "0000201d"
+        },
+        {
+          "hsd_root_address": 161432,
+          "mesh_index": 32,
+          "owner_joint": 113,
+          "source_render_mode": "00002015"
+        },
+        {
+          "hsd_root_address": 161432,
+          "mesh_index": 33,
+          "owner_joint": 114,
+          "source_render_mode": "00002015"
+        },
+        {
+          "hsd_root_address": 161432,
+          "mesh_index": 34,
+          "owner_joint": 117,
+          "source_render_mode": "00002015"
+        },
+        {
+          "hsd_root_address": 161432,
+          "mesh_index": 35,
+          "owner_joint": 117,
+          "source_render_mode": "4000201d"
+        },
+        {
+          "hsd_root_address": 161432,
+          "mesh_index": 36,
+          "owner_joint": 117,
+          "source_render_mode": "00002015"
+        },
+        {
+          "hsd_root_address": 161432,
+          "mesh_index": 37,
+          "owner_joint": 117,
+          "source_render_mode": "00002015"
+        },
+        {
+          "hsd_root_address": 161432,
+          "mesh_index": 38,
+          "owner_joint": 117,
+          "source_render_mode": "00002015"
+        }
+      ],
+      "clips": [
+        {
+          "source_clip": 1,
+          "samples": 301,
+          "authored_end": 150,
+          "loop": false
+        }
+      ],
+      "particle_callbacks_unrendered": [
+        {
+          "bone": 5,
+          "frame": 0.0,
+          "argument": 76
+        },
+        {
+          "bone": 29,
+          "frame": 0.0,
+          "argument": 204
+        },
+        {
+          "bone": 30,
+          "frame": 0.0,
+          "argument": 204
+        },
+        {
+          "bone": 31,
+          "frame": 0.0,
+          "argument": 204
+        },
+        {
+          "bone": 32,
+          "frame": 0.0,
+          "argument": 204
+        },
+        {
+          "bone": 33,
+          "frame": 0.0,
+          "argument": 204
+        },
+        {
+          "bone": 34,
+          "frame": 0.0,
+          "argument": 204
+        },
+        {
+          "bone": 35,
+          "frame": 0.0,
+          "argument": 204
+        },
+        {
+          "bone": 36,
+          "frame": 0.0,
+          "argument": 204
+        },
+        {
+          "bone": 50,
+          "frame": 0.0,
+          "argument": 332
+        }
+      ],
+      "parent_resource": "105d0400",
+      "camera_resource": "105c1800"
+    },
+    {
+      "file": "outskirt_arrival1.c3t",
+      "bytes": 1113808,
+      "sha256": "aa21929fd770f260709e11fba541873c7d0c298ca842467f66d78cfc1ee7afaa",
+      "vertices": 3552,
+      "batches": 5,
+      "textures": 2,
+      "texture_rgba_bytes": 393216,
+      "format_version": 3,
+      "sampled_bones": 27,
+      "sample_fps": 60,
+      "source_meshes": [
+        {
+          "hsd_root_address": 161432,
+          "mesh_index": 39,
+          "owner_joint": 117,
+          "source_render_mode": "00002015"
+        },
+        {
+          "hsd_root_address": 161432,
+          "mesh_index": 40,
+          "owner_joint": 117,
+          "source_render_mode": "00002015"
+        },
+        {
+          "hsd_root_address": 161432,
+          "mesh_index": 41,
+          "owner_joint": 117,
+          "source_render_mode": "00002015"
+        },
+        {
+          "hsd_root_address": 161432,
+          "mesh_index": 42,
+          "owner_joint": 117,
+          "source_render_mode": "00002015"
+        },
+        {
+          "hsd_root_address": 161432,
+          "mesh_index": 43,
+          "owner_joint": 117,
+          "source_render_mode": "00002015"
+        }
+      ],
+      "clips": [
+        {
+          "source_clip": 1,
+          "samples": 301,
+          "authored_end": 150,
+          "loop": false
+        }
+      ],
+      "particle_callbacks_unrendered": [
+        {
+          "bone": 5,
+          "frame": 0.0,
+          "argument": 76
+        },
+        {
+          "bone": 29,
+          "frame": 0.0,
+          "argument": 204
+        },
+        {
+          "bone": 30,
+          "frame": 0.0,
+          "argument": 204
+        },
+        {
+          "bone": 31,
+          "frame": 0.0,
+          "argument": 204
+        },
+        {
+          "bone": 32,
+          "frame": 0.0,
+          "argument": 204
+        },
+        {
+          "bone": 33,
+          "frame": 0.0,
+          "argument": 204
+        },
+        {
+          "bone": 34,
+          "frame": 0.0,
+          "argument": 204
+        },
+        {
+          "bone": 35,
+          "frame": 0.0,
+          "argument": 204
+        },
+        {
+          "bone": 36,
+          "frame": 0.0,
+          "argument": 204
+        },
+        {
+          "bone": 50,
+          "frame": 0.0,
+          "argument": 332
+        }
+      ],
+      "parent_resource": "105d0400",
+      "camera_resource": "105c1800"
+    }
+  ],
+  "limitations": [
+    "The field pack carries original geometry, animation and collision; story progression requires the separately implemented GSVM entry sequence.",
+    "Only the map, Wes and the original bike arrival actors are included; the general NPC, dialogue, battle and field-event systems are not included in this pack.",
+    "Source particle generators and recorded type40 particle callbacks are not synthesized by this geometry pack.",
+    "Wes exports source idle, walk and run poses; runtime transitions are separate from the original general animation-blend system.",
+    "Geometry and camera curves are sampled at 60 Hz; the slow sky uses 1001 samples across its original 29999/30-second period.",
+    "The source separate BGM and event SFX are not embedded in geometry packs.",
+    "GX filtering, lighting and blending use the native PICA material implementation; the separate specular pass has a clamp-order approximation at fractionally filtered alpha edges of the bike's otherwise binary-alpha texture."
+  ]
+}

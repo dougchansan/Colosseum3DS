@@ -1,0 +1,10 @@
+/core/
+/include/
+/state/
+/runs/
+/harness
+/sd_probe.elf
+/sd_probe.3dsx
+/dependencies.json
+/__pycache__/
+/probe-build/

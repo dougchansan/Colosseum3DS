@@ -1,0 +1,67 @@
+{
+  "started_utc": "2026-10-22T02:40:30.281706+00:00",
+  "content": "/workspace/scratch/d8bf34fb7169/Colosseum3DS-boot/tools/sandbox/probe-build/stage-material.3dsx",
+  "content_sha256": "d8c9cb88c72e5bebada82a5a0af92f715d8bf87cfa32034a5c50977ad0bc93da",
+  "core_sha256": "a447e9ecb7b4ef0a530d31eeb83a39edf4697f17bb3e44251f27a1d25fde7662",
+  "harness_sha256": "b234e75dfe0c2486d6d28feb0ed083d38aa289ac1eff358fa3db55327dc148e9",
+  "harness_source_sha256": "4ec434373464cdc6e6a2337415899c97e6cae53f9c338d6713c839edb8c7461b",
+  "renderer": "Azahar software PICA",
+  "system_model": "New 3DS",
+  "state": "/workspace/scratch/d8bf34fb7169/emulator-sandbox/state-stage-probe",
+  "sdmc": "/workspace/scratch/d8bf34fb7169/emulator-sandbox/state-stage-probe/save/Azahar/sdmc",
+  "frame_limit": 90,
+  "wall_limit_seconds": 30,
+  "capture_every": 30,
+  "sd_files_before": [],
+  "scope": "Emulator integration evidence; not hardware performance or save-format verification",
+  "command": [
+    "/workspace/scratch/d8bf34fb7169/emulator-sandbox/harness",
+    "/workspace/scratch/d8bf34fb7169/Colosseum3DS-boot/tools/sandbox/probe-build/stage-material.3dsx",
+    "--core",
+    "/workspace/scratch/d8bf34fb7169/emulator-sandbox/core/azahar_libretro.so",
+    "--state",
+    "/workspace/scratch/d8bf34fb7169/emulator-sandbox/state-stage-probe",
+    "--out",
+    "/workspace/scratch/d8bf34fb7169/emulator-sandbox/runs/stage-material-c3t3",
+    "--frames",
+    "90",
+    "--seconds",
+    "30",
+    "--capture-every",
+    "30"
+  ],
+  "process_exit_code": 0,
+  "completed_frames": 90,
+  "interrupted": false,
+  "shutdown": false,
+  "video_callbacks": 90,
+  "audio_frames": 0,
+  "run_loop_seconds": 2.431,
+  "elapsed_seconds": 2.9182456269991235,
+  "sd_files_after": [],
+  "captures": [
+    {
+      "file": "frame-000000.ppm",
+      "sha256": "94fe1bd591ad11cbaa5ed0c86891f9368d5196180693c587a8d0d6ed55f996cc",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-000030.ppm",
+      "sha256": "b431dc29e833c761a8028e885b5eb8fdfe595a86c570929360bf5fa1821a94f7",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-000060.ppm",
+      "sha256": "b431dc29e833c761a8028e885b5eb8fdfe595a86c570929360bf5fa1821a94f7",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-000089.ppm",
+      "sha256": "b431dc29e833c761a8028e885b5eb8fdfe595a86c570929360bf5fa1821a94f7",
+      "bytes": 576015
+    }
+  ],
+  "exit_code": 0,
+  "completed": true,
+  "png_conversion": true
+}

@@ -1,0 +1,26 @@
+# Isolated emulator integration. Libretro button bitmask, not GC PAD bits.
+# Long face-button pulses; short directions avoid menu autorepeat.
+800,40,0x0100,0,0,0,0
+1100,40,0x0008,0,0,0,0
+1260,40,0x0100,0,0,0,0
+1370,40,0x0100,0,0,0,0
+1490,15,0x0020,0,0,0,0
+1580,40,0x0100,0,0,0,0
+1700,40,0x0100,0,0,0,0
+# Original opening and arrival finish before these field actions.
+# Run right into the original wall, then walk left.
+6700,240,0x0000,30000,0,0,0
+7100,120,0x0000,-12000,0,0,0
+# Open native pause menu and inspect the starter party.
+7280,40,0x0200,0,0,0,0
+7400,15,0x0020,0,0,0,0
+7500,40,0x0100,0,0,0,0
+7620,40,0x0001,0,0,0,0
+# Save is explicit; the confirmation defaults to NO.
+7740,15,0x0020,0,0,0,0
+7860,40,0x0100,0,0,0,0
+7980,15,0x0010,0,0,0,0
+8100,40,0x0100,0,0,0,0
+8280,40,0x0001,0,0,0,0
+8400,40,0x0001,0,0,0,0
+8560,60,0x000c,0,0,0,0
