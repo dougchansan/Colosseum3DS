@@ -1,14 +1,18 @@
 ; Native title vertex transform. Colors contain the sampled GX raster channel;
 ; the fragment combiner applies each source texture/material stage afterward.
 .fvec mvp[4]
+.fvec colorPass
 .constf constants(0.0, 1.0, 0.0, 0.0)
 .alias one constants.yyyy
 .out outPosition position
 .out outColor color
 .out outTexCoord texcoord0
+.out outTexCoord2 texcoord1
 .alias vertex v0
 .alias vertexUV v1
 .alias vertexColor v2
+.alias vertexUV2 v3
+.alias vertexSpecular v4
 
 .proc main
     mov r0.xyz, vertex
@@ -17,7 +21,11 @@
     dp4 outPosition.y, mvp[1], r0
     dp4 outPosition.z, mvp[2], r0
     dp4 outPosition.w, mvp[3], r0
-    mov outColor, vertexColor
+    mov r2, colorPass
+    mul r1.xyz, vertexColor, r2.x
+    mad outColor.xyz, vertexSpecular, r2.y, r1
+    mov outColor.w, vertexColor.w
     mov outTexCoord.xy, vertexUV
+    mov outTexCoord2.xy, vertexUV2
     end
 .end

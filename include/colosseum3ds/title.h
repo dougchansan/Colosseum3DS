@@ -23,18 +23,24 @@ enum {
     C3_TITLE_VERTEX_ALPHA = 64u,
     C3_TITLE_SPECULAR = 128u,
     C3_TITLE_TEV_LERP = 256u,    /* texture RGB becomes lerp(tev0, konst, texture RGB) */
-    C3_TITLE_NO_DEPTH_WRITE = 512u
+    C3_TITLE_NO_DEPTH_WRITE = 512u,
+    C3_TITLE_DUAL_MODULATE = 1024u, /* C3T2: a second affine UV/texture stage */
+    C3_TITLE_SUBTRACT = 2048u,     /* C3T2: GX subtract, destination - source */
+    C3_TITLE_ADDITIVE_ONE = 4096u, /* C3T2: ONE, ONE framebuffer addition */
+    C3_TITLE_REFLECTION_BLEND = 8192u /* C3T3: lerp final RGB with normal-generated texture2 */
 };
 
 typedef struct {
     float pos[3], normal[3], uv[2];
     uint8_t rgba[4];
     uint32_t bone;
+    float uv2[2];
 } C3TitleVertex;
 
 typedef struct {
     float pos[3], normal[3], uv[2];
     uint8_t rgba[4];
+    float uv2[2];
 } C3TitleDrawVertex;
 
 typedef struct {
@@ -46,6 +52,8 @@ typedef struct {
     uint32_t color_mode, alpha_mode, render_mode, texture_flags;
     float diffuse[3], ambient[3], specular[3], shininess, alpha, texture_blend;
     uint32_t alpha_ref0, alpha_ref1, alpha_compare0, alpha_compare1, alpha_op, depth_compare;
+    uint32_t texture2; /* C3T2 dual mode; zero for C3T1/single-stage batches */
+    float texture2_blend; /* C3T3 reflection EXT blend; zero otherwise */
 } C3TitleBatch;
 
 typedef struct {
@@ -68,6 +76,9 @@ typedef struct {
     float uv_scale[2], uv_offset[2];
     float alpha, visible;
     float tev0[3], konst[3];
+    float uv2_scale[2], uv2_offset[2];
+    float uv_cross[2], uv2_cross[2]; /* C3T3 affine off-diagonal M01, M10 */
+    float specular_origin[3]; /* C3T3: original owning joint world position */
 } C3TitleMaterialState;
 
 typedef struct {
@@ -92,6 +103,7 @@ typedef struct {
     C3TitlePose pose;
     uint32_t bone_count, vertex_count, batch_count, texture_count;
     uint32_t clip_count, frame_count, light_count, frame_offset, frame_bytes;
+    uint32_t format_version, material_frame_bytes;
     float fps;
     uint32_t active_clip;
     float active_frame;
@@ -107,8 +119,8 @@ int c3_title_load(C3Title *title, const char *path, char *error, size_t capacity
 int c3_title_parse(C3Title *title, const void *data, size_t bytes, char *error, size_t capacity);
 void c3_title_close(C3Title *title);
 
-/* Select and sample one authored clip. Clips 0/1 clamp at their last sample;
- * clip 2 loops. Finite negative seconds clamp to zero; NaN/Inf or invalid
+/* Select and sample one authored clip. Each clip's loop flag determines
+ * wrapping; nonlooping clips clamp. Finite negative seconds clamp to zero; NaN/Inf or invalid
  * clip fails without changing the pose. Matrix/UV/alpha/camera samples lerp;
  * visibility and quantized TEV colors hold the earlier sample. Returns 1 on
  * success, 0 on failure. It transforms

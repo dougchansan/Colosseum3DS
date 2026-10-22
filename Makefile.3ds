@@ -34,7 +34,7 @@ LIBS := -lcitro3d -lctru -lm
 LIBDIRS := $(CTRULIB)
 
 export APP_TITLE := Colosseum3DS
-export APP_DESCRIPTION := Native port bring-up; not playable
+export APP_DESCRIPTION := Native boot and first-area checkpoint
 export APP_AUTHOR := Colosseum3DS contributors
 
 ifneq ($(BUILD),$(notdir $(CURDIR)))

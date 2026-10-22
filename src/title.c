@@ -6,7 +6,6 @@
 #include <string.h>
 
 #define HEADER_BYTES 128u
-#define VERTEX_BYTES 40u
 #define BATCH_BYTES 112u
 #define TEXTURE_BYTES 24u
 #define CLIP_BYTES 16u
@@ -86,10 +85,17 @@ static int validate_frames(const C3Title *title)
             for (i = 0; i < 12; ++i) if (!bounded(matrix[i], 1000000.0f)) return 0;
             if (!normal_matrix(matrix, normal)) return 0;
         }
-        for (batch = 0; batch < title->batch_count; ++batch, p += 48u) {
+        for (batch = 0; batch < title->batch_count; ++batch, p += title->material_frame_bytes) {
             for (i = 0; i < 4; ++i) if (!bounded(f32(p+i*4u), 1000000.0f)) return 0;
             for (i = 4; i < 12; ++i) if (!unit(f32(p+i*4u))) return 0;
             if (f32(p+20u) != 0.0f && f32(p+20u) != 1.0f) return 0;
+            if (title->format_version >= 2u) {
+                for (i=12; i<16; ++i) if (!bounded(f32(p+i*4u),1000000.0f)) return 0;
+            }
+            if (title->format_version == 3u) {
+                for (i=16; i<23; ++i) if (!bounded(f32(p+i*4u),1000000.0f)) return 0;
+                if (u32(p+92u)) return 0;
+            }
         }
         for (i = 0; i < 11; ++i) if (!bounded(f32(p+i*4u), 1000000.0f)) return 0;
         if (f32(p+28u) <= 1.0f || f32(p+28u) >= 179.0f ||
@@ -102,11 +108,18 @@ static int validate_frames(const C3Title *title)
 static int decode_owned(C3Title *title, char *error, size_t capacity)
 {
     const uint8_t *data = title->file_data;
-    uint32_t offsets[7], i, j, next_vertex = 0, next_frame = 0, next_pixel;
+    uint32_t offsets[7], i, j, next_vertex = 0, next_frame = 0, next_pixel, vertex_bytes;
     uint64_t expected;
     if (title->file_bytes < HEADER_BYTES || title->file_bytes > C3_TITLE_MAX_FILE_BYTES ||
-        memcmp(data, "C3T1", 4) || u32(data+4) != 1u || u32(data+8) != title->file_bytes)
-        return fail(error, capacity, "Invalid C3T1 header or file length");
+        u32(data+8) != title->file_bytes)
+        return fail(error, capacity, "Invalid C3T header or file length");
+    title->format_version=u32(data+4);
+    if ((title->format_version != 1u || memcmp(data,"C3T1",4)) &&
+        (title->format_version != 2u || memcmp(data,"C3T2",4)) &&
+        (title->format_version != 3u || memcmp(data,"C3T3",4)))
+        return fail(error, capacity, "Unsupported C3T magic or version");
+    vertex_bytes=title->format_version>=2u ? 48u:40u;
+    title->material_frame_bytes=title->format_version==3u ? 96u:(title->format_version==2u ? 64u:48u);
     title->bone_count = u32(data+12);
     title->vertex_count = u32(data+16);
     title->batch_count = u32(data+20);
@@ -128,11 +141,11 @@ static int decode_owned(C3Title *title, char *error, size_t capacity)
     for (i = 0; i < 7u; ++i) offsets[i] = u32(data+44u+i*4u);
     title->frame_offset = offsets[5];
     title->frame_bytes = u32(data+72u);
-    if (title->frame_bytes != (title->bone_count+title->batch_count+1u)*48u)
+    if (title->frame_bytes != (title->bone_count+1u)*48u+title->batch_count*title->material_frame_bytes)
         return fail(error, capacity, "Invalid title frame stride");
     expected = HEADER_BYTES;
     if (offsets[0] != expected) return fail(error, capacity, "Noncanonical title vertex offset");
-    expected += (uint64_t)title->vertex_count*VERTEX_BYTES;
+    expected += (uint64_t)title->vertex_count*vertex_bytes;
     if (offsets[1] != expected) return fail(error, capacity, "Noncanonical title batch offset");
     expected += (uint64_t)title->batch_count*BATCH_BYTES;
     if (offsets[2] != expected) return fail(error, capacity, "Noncanonical title texture offset");
@@ -155,16 +168,18 @@ static int decode_owned(C3Title *title, char *error, size_t capacity)
         title->vertex_count*(sizeof *title->vertices + sizeof *title->draw_vertices) +
         title->batch_count*sizeof *title->batches + title->texture_count*sizeof *title->textures;
     for (i = 0; i < title->vertex_count; ++i) {
-        const uint8_t *p = data+offsets[0]+i*VERTEX_BYTES;
+        const uint8_t *p = data+offsets[0]+i*vertex_bytes;
         C3TitleVertex *v = title->vertices+i;
         read_floats(v->pos,p,3);
         read_floats(v->normal,p+12u,3);
         read_floats(v->uv,p+24u,2);
         memcpy(v->rgba,p+32u,4);
         v->bone = u32(p+36u);
+        if (title->format_version>=2u) read_floats(v->uv2,p+40u,2);
         for (j=0; j<8; ++j) if (!bounded(f32(p+j*4u),1000000.0f)) return fail(error,capacity,"Nonfinite or excessive title vertex");
         for (j=0; j<3; ++j) if (!bounded(v->normal[j],1.001f)) return fail(error,capacity,"Invalid title vertex normal");
         if (v->bone >= title->bone_count) return fail(error,capacity,"Title vertex bone is out of range");
+        for (j=0; j<2; ++j) if (!bounded(v->uv2[j],1000000.0f)) return fail(error,capacity,"Invalid second texture coordinate");
     }
     for (i = 0; i < title->batch_count; ++i) {
         const uint8_t *p = data+offsets[1]+i*BATCH_BYTES;
@@ -177,14 +192,27 @@ static int decode_owned(C3Title *title, char *error, size_t capacity)
         b->alpha_ref0=u32(p+80); b->alpha_ref1=u32(p+84);
         b->alpha_compare0=u32(p+88); b->alpha_compare1=u32(p+92);
         b->alpha_op=u32(p+96); b->depth_compare=u32(p+100);
+        b->texture2=u32(p+104);
+        b->texture2_blend=title->format_version==3u ? f32(p+108):0.0f;
         if (b->first != next_vertex || !b->count || b->count%3u || b->count > title->vertex_count-next_vertex ||
-            b->texture >= title->texture_count || b->flags & ~1023u ||
+            b->texture >= title->texture_count || b->flags & ~(title->format_version==3u ? 16383u:(title->format_version==2u ? 8191u:1023u)) ||
             (b->flags & (C3_TITLE_CULL_BACK|C3_TITLE_CULL_FRONT)) == (C3_TITLE_CULL_BACK|C3_TITLE_CULL_FRONT) ||
             (b->color_mode!=0u && b->color_mode!=3u && b->color_mode!=4u) ||
             (b->alpha_mode!=0u && b->alpha_mode!=2u && b->alpha_mode!=3u) ||
             b->alpha_ref0>255u || b->alpha_ref1>255u || b->alpha_compare0>7u || b->alpha_compare1>7u ||
-            b->alpha_op>3u || b->depth_compare>7u || u32(p+104) || u32(p+108))
+            b->alpha_op>3u || b->depth_compare>7u ||
+            (title->format_version<3u && u32(p+108)) || !unit(b->texture2_blend) ||
+            ((b->flags&(C3_TITLE_DUAL_MODULATE|C3_TITLE_REFLECTION_BLEND)) ? (b->texture2>=title->texture_count ||
+              b->color_mode!=4u || b->alpha_mode!=0u) : b->texture2!=0u) ||
+            ((b->flags&C3_TITLE_DUAL_MODULATE) && (!(b->flags&C3_TITLE_TEV_LERP) ||
+              (b->flags&C3_TITLE_REFLECTION_BLEND))) ||
+            (!(b->flags&C3_TITLE_REFLECTION_BLEND) && b->texture2_blend!=0.0f))
             return fail(error,capacity,"Unsupported or noncanonical title batch");
+        {
+            uint32_t blend=b->flags&(C3_TITLE_ADDITIVE|C3_TITLE_SUBTRACT|C3_TITLE_ADDITIVE_ONE);
+            if ((blend && (blend&(blend-1u))) || (blend && !(b->flags&C3_TITLE_TRANSLUCENT)))
+                return fail(error,capacity,"Conflicting title blend modes");
+        }
         for (j=0; j<9; ++j) if (!unit(f32(p+32+j*4u))) return fail(error,capacity,"Invalid title material color");
         if (!bounded(b->shininess,10000.0f) || b->shininess<0 || !unit(b->alpha) || !unit(b->texture_blend))
             return fail(error,capacity,"Invalid title material scalar");
@@ -244,22 +272,23 @@ void c3_title_close(C3Title *title)
 
 int c3_title_parse(C3Title *title, const void *data, size_t bytes, char *error, size_t capacity)
 {
-    C3Title temporary;
+    C3Title *temporary;
     if (!title || !data || bytes<HEADER_BYTES || bytes>C3_TITLE_MAX_FILE_BYTES)
         return fail(error,capacity,"Invalid title buffer or size");
-    memset(&temporary,0,sizeof temporary);
-    temporary.file_data=(uint8_t *)malloc(bytes);
-    if (!temporary.file_data) return fail(error,capacity,"Not enough memory for title data");
+    temporary=(C3Title *)calloc(1,sizeof *temporary);
+    if (!temporary) return fail(error,capacity,"Not enough memory for title state");
+    temporary->file_data=(uint8_t *)malloc(bytes);
+    if (!temporary->file_data) { free(temporary); return fail(error,capacity,"Not enough memory for title data"); }
     /* Copy first: data is allowed to refer to the currently loaded title. */
-    memcpy(temporary.file_data,data,bytes); temporary.file_bytes=bytes;
-    if (!decode_owned(&temporary,error,capacity)) { c3_title_close(&temporary); return 0; }
-    c3_title_close(title); *title=temporary;
+    memcpy(temporary->file_data,data,bytes); temporary->file_bytes=bytes;
+    if (!decode_owned(temporary,error,capacity)) { c3_title_close(temporary); free(temporary); return 0; }
+    c3_title_close(title); *title=*temporary; free(temporary);
     return 1;
 }
 
 int c3_title_load(C3Title *title, const char *path, char *error, size_t capacity)
 {
-    C3Title temporary;
+    C3Title *temporary;
     FILE *file;
     long bytes;
     if (!title || !path) return fail(error,capacity,"Invalid title load arguments");
@@ -269,15 +298,16 @@ int c3_title_load(C3Title *title, const char *path, char *error, size_t capacity
         bytes>(long)C3_TITLE_MAX_FILE_BYTES || fseek(file,0,SEEK_SET)!=0) {
         fclose(file); return fail(error,capacity,"Invalid title file size");
     }
-    memset(&temporary,0,sizeof temporary);
-    temporary.file_data=(uint8_t *)malloc((size_t)bytes); temporary.file_bytes=(size_t)bytes;
-    if (!temporary.file_data) { fclose(file); return fail(error,capacity,"Not enough memory for title file"); }
-    if (fread(temporary.file_data,1,(size_t)bytes,file)!=(size_t)bytes || fgetc(file)!=EOF || ferror(file)) {
-        fclose(file); c3_title_close(&temporary); return fail(error,capacity,"Title read failed or file changed");
+    temporary=(C3Title *)calloc(1,sizeof *temporary);
+    if (!temporary) { fclose(file); return fail(error,capacity,"Not enough memory for title state"); }
+    temporary->file_data=(uint8_t *)malloc((size_t)bytes); temporary->file_bytes=(size_t)bytes;
+    if (!temporary->file_data) { fclose(file); free(temporary); return fail(error,capacity,"Not enough memory for title file"); }
+    if (fread(temporary->file_data,1,(size_t)bytes,file)!=(size_t)bytes || fgetc(file)!=EOF || ferror(file)) {
+        fclose(file); c3_title_close(temporary); free(temporary); return fail(error,capacity,"Title read failed or file changed");
     }
-    if (fclose(file)!=0) { c3_title_close(&temporary); return fail(error,capacity,"Title file close failed"); }
-    if (!decode_owned(&temporary,error,capacity)) { c3_title_close(&temporary); return 0; }
-    c3_title_close(title); *title=temporary;
+    if (fclose(file)!=0) { c3_title_close(temporary); free(temporary); return fail(error,capacity,"Title file close failed"); }
+    if (!decode_owned(temporary,error,capacity)) { c3_title_close(temporary); free(temporary); return 0; }
+    c3_title_close(title); *title=*temporary; free(temporary);
     return 1;
 }
 
@@ -311,12 +341,17 @@ int c3_title_animate(C3Title *title, uint32_t clip_index, float seconds)
         for (i=0;i<12;++i) pose.matrices[bone][i]=interpolate(first,last,i,fraction);
         if (!normal_matrix(pose.matrices[bone],normals[bone])) return 0;
     }
-    for (batch=0;batch<title->batch_count;++batch,first+=48u,last+=48u) {
+    for (batch=0;batch<title->batch_count;++batch,first+=title->material_frame_bytes,last+=title->material_frame_bytes) {
         C3TitleMaterialState *state=pose.materials+batch;
         for (i=0;i<2;++i) {
             state->uv_scale[i]=interpolate(first,last,i,fraction);
             state->uv_offset[i]=interpolate(first,last,i+2u,fraction);
+            state->uv2_scale[i]=title->format_version>=2u ? interpolate(first,last,i+12u,fraction):1.0f;
+            state->uv2_offset[i]=title->format_version>=2u ? interpolate(first,last,i+14u,fraction):0.0f;
+            state->uv_cross[i]=title->format_version==3u ? interpolate(first,last,i+16u,fraction):0.0f;
+            state->uv2_cross[i]=title->format_version==3u ? interpolate(first,last,i+18u,fraction):0.0f;
         }
+        for (i=0;i<3;++i) state->specular_origin[i]=title->format_version==3u ? interpolate(first,last,i+20u,fraction):0.0f;
         state->alpha=interpolate(first,last,4u,fraction); state->visible=f32(first+20u);
         for (i=0;i<3;++i) { state->tev0[i]=f32(first+24u+i*4u); state->konst[i]=f32(first+36u+i*4u); }
     }
@@ -340,8 +375,10 @@ int c3_title_animate(C3Title *title, uint32_t clip_index, float seconds)
             }
             length=sqrt((double)target->normal[0]*target->normal[0]+(double)target->normal[1]*target->normal[1]+(double)target->normal[2]*target->normal[2]);
             if (length>0.0) for (j=0;j<3;++j) target->normal[j]=(float)(target->normal[j]/length);
-            target->uv[0]=source->uv[0]*state->uv_scale[0]+state->uv_offset[0];
-            target->uv[1]=source->uv[1]*state->uv_scale[1]+state->uv_offset[1];
+            target->uv[0]=source->uv[0]*state->uv_scale[0]+source->uv[1]*state->uv_cross[0]+state->uv_offset[0];
+            target->uv[1]=source->uv[0]*state->uv_cross[1]+source->uv[1]*state->uv_scale[1]+state->uv_offset[1];
+            target->uv2[0]=source->uv2[0]*state->uv2_scale[0]+source->uv2[1]*state->uv2_cross[0]+state->uv2_offset[0];
+            target->uv2[1]=source->uv2[0]*state->uv2_cross[1]+source->uv2[1]*state->uv2_scale[1]+state->uv2_offset[1];
             memcpy(target->rgba,source->rgba,4);
         }
     }

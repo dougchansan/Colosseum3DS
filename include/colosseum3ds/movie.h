@@ -5,7 +5,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
-/* Streaming C3V1 adapter for the two original THP boot logos. The prepared
+/* Streaming C3V1 adapter for original THP movies. The prepared
  * assets contain RGB565LE frames and optional interleaved PCM16LE stereo.
  * There is no full movie allocation or runtime THP decoder. */
 #define C3_MOVIE_WIDTH 320u
@@ -36,5 +36,9 @@ int c3_movie_read_frame(C3Movie *movie, uint32_t frame, void *pixels,
  * Video and audio use independent file positions. */
 int c3_movie_read_audio(C3Movie *movie, int16_t *samples, size_t capacity_frames,
                        size_t *read_frames, char *error, size_t error_capacity);
+
+/* In-place mono mix of interleaved signed PCM16 stereo. Average each pair
+ * in 32-bit arithmetic and duplicate it to both channels; no sample clips. */
+void c3_movie_downmix_mono(int16_t *samples, size_t frames);
 
 #endif

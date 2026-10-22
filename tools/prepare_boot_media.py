@@ -60,11 +60,11 @@ def verify_disc(disc):
     return disc.resolve(strict=True)
 
 
-def admit_movie(path, profile):
+def admit_movie(path, profile, *, max_input_bytes=MAX_INPUT_BYTES):
     path = Path(path)
     if path.is_symlink() or path.stat().st_size != profile["bytes"]:
         raise ValueError("Movie input size or path differs from the reviewed source")
-    if path.stat().st_size > MAX_INPUT_BYTES or file_digest(path) != profile["sha256"]:
+    if path.stat().st_size > max_input_bytes or file_digest(path) != profile["sha256"]:
         raise ValueError("Movie differs from the reviewed GC6E01 revision 0 source")
     with path.open("rb") as stream:
         header = stream.read(80)
@@ -83,12 +83,13 @@ def admit_movie(path, profile):
     return frames, rate
 
 
-def encode_header(frame_count, fps, audio_bytes):
-    if not isinstance(frame_count, int) or not 1 <= frame_count <= MAX_FRAMES:
-        raise ValueError("Boot movie frame count exceeds the supported bound")
+def encode_header(frame_count, fps, audio_bytes, *, max_frames=MAX_FRAMES,
+                  max_audio_bytes=MAX_AUDIO_BYTES):
+    if not isinstance(frame_count, int) or not 1 <= frame_count <= max_frames:
+        raise ValueError("Movie frame count exceeds the supported bound")
     if fps != Fraction(30000, 1001):
         raise ValueError("Unsupported movie timing")
-    if not isinstance(audio_bytes, int) or not 0 <= audio_bytes <= MAX_AUDIO_BYTES or audio_bytes % 4:
+    if not isinstance(audio_bytes, int) or not 0 <= audio_bytes <= max_audio_bytes or audio_bytes % 4:
         raise ValueError("Invalid stereo PCM length")
     audio_offset = HEADER_SIZE + frame_count * FRAME_BYTES
     return struct.pack(
@@ -135,8 +136,12 @@ def decode_to(command, output, limit, expected=None):
             process.stdout.close()
 
 
-def convert_movie(source, output, profile, ffmpeg):
-    frame_count, fps = admit_movie(source, profile)
+def convert_movie(source, output, profile, ffmpeg, *, max_input_bytes=MAX_INPUT_BYTES,
+                  max_frames=MAX_FRAMES, max_audio_bytes=MAX_AUDIO_BYTES):
+    frame_count, fps = admit_movie(source, profile, max_input_bytes=max_input_bytes)
+    # Validate the declared extent before opening an output or starting FFmpeg.
+    encode_header(frame_count, fps, 0, max_frames=max_frames,
+                  max_audio_bytes=max_audio_bytes)
     base = [ffmpeg, "-nostdin", "-hide_banner", "-loglevel", "error",
             "-threads", "1", "-filter_threads", "1", "-i", str(source)]
     video = base + ["-map", "0:v:0", "-an", "-vf", "scale=320:240:flags=lanczos",
@@ -150,11 +155,12 @@ def convert_movie(source, output, profile, ffmpeg):
         if profile["audio"]:
             audio = base + ["-map", "0:a:0", "-vn", "-acodec", "pcm_s16le",
                             "-ar", "32000", "-ac", "2", "-f", "s16le", "pipe:1"]
-            audio_bytes = decode_to(audio, out, MAX_AUDIO_BYTES)
+            audio_bytes = decode_to(audio, out, max_audio_bytes)
             if not audio_bytes:
                 raise ValueError("The source movie's audio decoded to an empty stream")
         out.seek(0)
-        out.write(encode_header(frame_count, fps, audio_bytes))
+        out.write(encode_header(frame_count, fps, audio_bytes, max_frames=max_frames,
+                                max_audio_bytes=max_audio_bytes))
     return {
         "source": source.name, "source_sha256": profile["sha256"],
         "output": Path(output).name, "sha256": file_digest(output),

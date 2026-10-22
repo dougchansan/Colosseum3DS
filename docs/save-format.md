@@ -5,12 +5,15 @@ GC6E01 `pokemon_colosseum` memory-card file. It accepts the raw file or a standa
 64-byte GCI directory entry followed by that file. Its encoder reuses the pinned
 game's SHA-1 and feedback transform with explicit native-endian fixes.
 
-This is a format and storage boundary. The port does not yet run the game's
-complete state serializer, create a genuine new game, or resume gameplay from
-an imported save. The service takes an **opaque, already serialized big-endian
-game body** from its caller. A settings file or a synthetic test pattern is not
-game progress. No user GCI or real progress record was available for this phase;
-the tests below explicitly identify their generated data as a format fixture.
+This is a format and storage boundary. The service takes an **opaque, already
+serialized big-endian game body** from its caller. The separate
+[native game-state adapter](game-state.md) now initializes the original New
+Game state from private verified data and preserves real bodies through typed
+edits and saves. Its supported gameplay is bounded by the native scene layer.
+A settings file or a synthetic test pattern is not game progress. No
+user-supplied progress GCI was available; the codec-only tests below explicitly
+identify their generated data as a format fixture, while the game-state probe
+has separate source-derived initialization checks.
 
 ## Source and reproducibility
 
@@ -116,16 +119,17 @@ must still supply the real internal game save count, card serial, and all other
 updated state. Directly copying native little-endian structs into the body would
 not meet this requirement.
 
-The next integration dependency is the real game's state lifecycle. The pinned
+The game's state lifecycle is connected through `src/game_state.c`. The pinned
 [`hero.c`](https://github.com/Count-Sheep/pkmn-colosseum/blob/51bfe4314a218dfaf9592fc80723c50498d0ee55/src/game/hero.c)
 `savedataCreate` initializes multiple game subsystems, including trainer,
 Pokémon, party/box, inventory, flags, and world state. `memcard.c` then accesses
 that live state through `savedataGetStatus`, `gamedatasaveGetStatus`,
 `gamedatasaveSetStatus`, `heroGetStatus`, and `memcardSetSaveId`. Those structures
-and their pointer/endian boundaries need deliberate native adapters before the
-game can continue, start a real new game, or save progress. The boot/title build
-can report the presence and integrity of an imported card without claiming that
-this later integration exists.
+and their pointer/endian boundaries are handled by the source-derived adapter
+documented in [game-state.md](game-state.md). It creates the persistent New Game
+body, preserves unknown imported fields, and supplies the internal count to
+this codec. It does not execute all of the original gameplay modules, so the
+scene layer still determines which imported checkpoint can be resumed.
 
 ## SD persistence and recovery
 

@@ -48,6 +48,30 @@ class TitlePreparationTests(unittest.TestCase):
         self.assertEqual(TITLE.curve_value([],2,7),7)
         self.assertEqual(TITLE.curve_value([key(0,1),key(0,3),key(1,5)],0),3)
 
+    def test_c3t2_and_c3t3_extension_layouts(self):
+        for version,stride in ((2,160),(3,192)):
+            data=self.fixture()
+            data["format_version"]=version
+            data["vertices"]=[tuple(vertex)+(.2,.4) for vertex in data["vertices"]]
+            batch=list(data["batches"][0]);batch[5]=0
+            batch[3]=1024|256 if version==2 else 8192
+            batch[27]=0 if version==2 else .5
+            data["batches"]=[tuple(batch)]
+            frame=data["frames"][:144]
+            extra=(1.,1.,0.,0.)
+            if version==3:extra+=(.2,.3,.4,.5,7.,8.,9.,0.)
+            data["frames"]=(frame[:96]+struct.pack("<%df"%len(extra),*extra)+frame[96:])*2
+            packed=TITLE.encode_pack(**data)
+            self.assertEqual(packed[:4],b"C3T2" if version==2 else b"C3T3")
+            self.assertEqual(struct.unpack_from("<7I",packed,44),(128,272,384,408,424,488,488+stride*2))
+            self.assertEqual(struct.unpack_from("<I",packed,72)[0],stride)
+            self.assertAlmostEqual(struct.unpack_from("<f",packed,128+40)[0],.2)
+            if version==3:
+                self.assertEqual(struct.unpack_from("<f",packed,272+108)[0],.5)
+                self.assertEqual(struct.unpack_from("<3f",packed,488+48+80),(7,8,9))
+                bad=list(data["batches"][0]);bad[27]=1.01;data["batches"]=[tuple(bad)]
+                with self.assertRaises(ValueError):TITLE.encode_pack(**data)
+
     def test_hsd_asymmetric_slopes_belong_to_the_right_key(self):
         keys=[key(0,0,"BEZIER",999,999),key(2,10,"CONSTANT",3,-1)]
         # Hermite midpoint: 0.5*10 + 0.125*2*3 - 0.125*2*(-1).

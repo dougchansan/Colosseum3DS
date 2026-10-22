@@ -82,6 +82,80 @@ static void rejects(const unsigned char *p,size_t bytes)
     c3_title_close(&title);
 }
 
+static unsigned char *extended_fixture(unsigned version, size_t *bytes)
+{
+    unsigned char *base=fixture(), *p;
+    unsigned i;
+    const unsigned vertex=128,batch=272,texture=384,clip=408,light=424,frame=488;
+    unsigned material_bytes=version==3 ? 96u:64u;
+    unsigned stride=96u+material_bytes,pixels=frame+3u*stride;
+    const unsigned offsets[]={vertex,batch,texture,clip,light,frame,pixels};
+    *bytes=pixels+256u;
+    p=(unsigned char *)calloc(1,*bytes); assert(p);
+    memcpy(p,base,128); memcpy(p,version==3 ? "C3T3":"C3T2",4);
+    put32(p+4,version); put32(p+8,(uint32_t)*bytes); put32(p+72,stride);
+    for(i=0;i<7;++i) put32(p+44+i*4u,offsets[i]);
+    for(i=0;i<3;++i) {
+        memcpy(p+vertex+i*48u,base+VERTEX_OFFSET+i*40u,40);
+        putf(p+vertex+i*48u+40,.2f); putf(p+vertex+i*48u+44,.4f);
+    }
+    memcpy(p+batch,base+BATCH_OFFSET,112);
+    put32(p+batch+12,C3_TITLE_CULL_BACK | (version==3 ? C3_TITLE_REFLECTION_BLEND:
+                                        C3_TITLE_DUAL_MODULATE|C3_TITLE_TEV_LERP));
+    put32(p+batch+20,0);
+    if(version==3) putf(p+batch+108,.5f);
+    memcpy(p+texture,base+TEXTURE_OFFSET,24); put32(p+texture+8,pixels);
+    memcpy(p+clip,base+CLIP_OFFSET,16); memcpy(p+light,base+LIGHT_OFFSET,64);
+    for(i=0;i<3;++i) {
+        unsigned char *f=p+frame+i*stride;
+        memcpy(f,base+FRAME_OFFSET+i*FRAME_BYTES,96);
+        putf(f+96,2); putf(f+100,3); putf(f+104,.1f); putf(f+108,-.2f);
+        if(version==3) {
+            putf(f+112,.3f); putf(f+116,-.4f);
+            putf(f+120,-.5f); putf(f+124,.6f);
+            putf(f+128,7.0f+i); putf(f+132,8); putf(f+136,9);
+        }
+        memcpy(f+48u+material_bytes,base+FRAME_OFFSET+i*FRAME_BYTES+96u,48);
+    }
+    memset(p+pixels,255,256); free(base); return p;
+}
+
+static void extended_checks(void)
+{
+    unsigned version;
+    for(version=2;version<=3;++version) {
+        size_t bytes;
+        unsigned char *p=extended_fixture(version,&bytes);
+        C3Title title={0}; char error[100];
+        assert(c3_title_parse(&title,p,bytes,error,sizeof error));
+        assert(title.format_version==version);
+        assert(title.material_frame_bytes==(version==3 ? 96u:64u));
+        assert(c3_title_animate(&title,0,.25f));
+        near_value(title.draw_vertices[0].uv[0],version==3 ? 1.075f:.85f);
+        near_value(title.draw_vertices[0].uv[1],version==3 ? 3.2f:3.3f);
+        near_value(title.draw_vertices[0].uv2[0],version==3 ? .3f:.5f);
+        near_value(title.draw_vertices[0].uv2[1],version==3 ? 1.12f:1.0f);
+        near_value(title.pose.materials[0].specular_origin[0],version==3 ? 7.5f:0.0f);
+        near_value(title.batches[0].texture2_blend,version==3 ? .5f:0.0f);
+        c3_title_close(&title);
+        put32(p+272+104,1); rejects(p,bytes); put32(p+272+104,0);
+        putf(p+128+40,NAN); rejects(p,bytes); putf(p+128+40,.2f);
+        if(version==3) {
+            putf(p+272+108,NAN); rejects(p,bytes);
+            putf(p+272+108,1.1f); rejects(p,bytes); putf(p+272+108,.5f);
+            put32(p+272+12,C3_TITLE_CULL_BACK); rejects(p,bytes);
+            put32(p+272+12,C3_TITLE_DUAL_MODULATE|C3_TITLE_REFLECTION_BLEND|C3_TITLE_TEV_LERP);
+            rejects(p,bytes); put32(p+272+12,C3_TITLE_REFLECTION_BLEND);
+            put32(p+488+48+92,1); rejects(p,bytes); put32(p+488+48+92,0);
+            putf(p+488+48+80,INFINITY); rejects(p,bytes);
+        } else {
+            put32(p+272+12,C3_TITLE_REFLECTION_BLEND); rejects(p,bytes);
+            put32(p+272+12,C3_TITLE_DUAL_MODULATE); rejects(p,bytes);
+        }
+        free(p);
+    }
+}
+
 int main(void)
 {
     unsigned char *p=fixture();
@@ -187,6 +261,7 @@ int main(void)
     c3_title_close(&title);
     assert(!c3_title_load(&title,"missing-title.c3t",error,sizeof error));
     free(p);
+    extended_checks();
     puts("Native title bounds, ownership, animation and normal checks passed");
     return 0;
 }

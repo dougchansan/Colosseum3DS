@@ -152,6 +152,12 @@ python3 run.py probe-build/title-corner.3dsx --out runs/corners --frames 90 --se
 python3 verify_title_probe.py corners runs/corners/last.ppm
 python3 run.py probe-build/title-combiner.3dsx --out runs/combiner --frames 90 --seconds 30
 python3 verify_title_probe.py combiner runs/combiner/last.ppm
+python3 run.py probe-build/stage-material.3dsx --out runs/stage-material --frames 90 --seconds 30
+python3 verify_title_probe.py stage runs/stage-material/last.ppm
+python3 run.py probe-build/arrival-material.3dsx --out runs/arrival-material --frames 90 --seconds 30
+python3 verify_title_probe.py arrival runs/arrival-material/last.ppm
+python3 run.py probe-build/arrival-fade.3dsx --out runs/arrival-fade --frames 90 --seconds 30
+python3 verify_title_probe.py arrival-fade runs/arrival-fade/last.ppm
 ```
 
 The corner probe expects red/green across the top and blue/yellow across the
@@ -161,6 +167,35 @@ interior pixels against expected RGB values with a one-unit tolerance. Both
 checks passed using the supplied Azahar software renderer. They establish this
 native rendering path in the emulator, without asserting physical GPU accuracy
 or complete title visual parity.
+
+The stage probe adds two separate model packs, with the transparent pack listed
+first to exercise the shared renderer's opaque pass. A distinct second texture
+uses horizontally reversed UVs. The top half subtracts its two-texture result
+from an opaque gray background; the bottom half adds it with ONE/ONE factors.
+Eight interior pixel checks passed with the supplied software renderer, including
+both UV channels and both framebuffer equations. This probe also caught and
+verified the fix for a stale citro3d vertex-buffer binding between model packs.
+It contains no game geometry or private images.
+
+The arrival probe checks the GX rational specular curve, the owning joint's
+effect on the highlight, the original GREATER-zero alpha cutout, and reflection
+UVs generated from camera-space normals. A second reflection rectangle rotates
+the UVs using both off-diagonal affine terms. Five interior pixel checks passed
+with the supplied software renderer; the two specular values were exactly
+`(81,73,68)` and `(112,88,76)`. Its fade variant makes the first highlight
+saturate, then applies a half-brightness black overlay. All five checks passed,
+including `(127,95,63)` at that saturated surface. These runs each completed
+90 requested frames without interruption. The probe checks aggregate submitted
+draw/vertex counts and GPU storage as well as the pixels.
+
+The specular implementation uses a second additive draw. At filtered
+fractional-alpha edges, saturation can occur after alpha blending rather than
+before it, unlike GX. Binary-alpha interior pixels and opaque surfaces avoid
+that particular difference; the probe does not establish pixel-exact parity
+at fractional-alpha edges. See [the renderer notes](../../docs/native-scene-renderer.md)
+for the source equations, lifetime rules, supported material combinations,
+and exact arrival-camera end condition. These are emulator checks, not physical
+New3DS performance or image-equivalence measurements.
 
 ## Sources and clean repository contents
 

@@ -2,7 +2,9 @@
 
 `tools/prepare_boot_media.py` admits the reviewed GC6E01 revision 0 `main.dol`,
 `movie/tpc.thp`, and `movie/gs_logo.thp` by hashes before invoking FFmpeg. It
-converts only these two original boot movies. The animated title is a separate
+converts only these two original boot movies. `tools/prepare_intro_media.py`
+separately admits and converts `openingdemo.thp` (1,926 frames) using the same
+bounded streaming format. The animated title is a separate
 GS/HSD scene; this container does not replace it with rendered video.
 
 ```sh
@@ -25,7 +27,7 @@ The header is exactly 64 bytes (`<4s15I`). There are no alignment gaps.
 | 8 | Total file bytes | End of PCM data, or end of video when absent |
 | 12 | Width | 320 |
 | 16 | Height | 240 |
-| 20 | Frame count | 1–130; reviewed sources use 75 and 130 |
+| 20 | Frame count | Runtime bound 1–18,000; reviewed sources use 75, 130 and 1,926; total file bound is 512 MiB |
 | 24 | FPS numerator | 30000 |
 | 28 | FPS denominator | 1001 |
 | 32 | Video offset | 64 |
@@ -63,7 +65,9 @@ video frame and bounded PCM buffers needed at a time.
 Both source movie hashes are checked before starting either decoder. Output
 frame byte counts must exactly equal the source THP frame count. Extra frames,
 truncation, an odd PCM sample frame, decoder failure, and PCM exceeding five
-seconds are rejected. All conversion takes place in a temporary directory; the
+seconds for the two short logo sources are rejected. The separate opening
+converter permits PCM only within its declared movie duration and checks the
+exact source profile; its output is 304,066,812 bytes. All conversion takes place in a temporary directory; the
 destination directory appears only after both movies and the manifest succeed.
 Existing output directories are never overwritten.
 

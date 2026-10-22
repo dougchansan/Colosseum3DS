@@ -9,11 +9,19 @@
 #define AUDIO_BUFFERS 3u
 #define AUDIO_FRAMES 1024u
 
+static bool output_mono;
+
+void c3_movie_player_set_mono(int mono)
+{
+    output_mono = !!mono;
+}
+
 typedef struct MovieAudio {
     ndspWaveBuf wave[AUDIO_BUFFERS];
     int16_t *samples;
     bool started;
     bool available;
+    bool mono;
     Result result;
 } MovieAudio;
 
@@ -30,6 +38,7 @@ static void audio_close(MovieAudio *audio)
 static void audio_open(MovieAudio *audio, const C3Movie *movie)
 {
     float mix[12] = {1.0f, 1.0f};
+    audio->mono = output_mono;
     if (!movie->audio_sample_frames) return;
     audio->result = ndspInit();
     if (R_FAILED(audio->result)) return;
@@ -57,6 +66,7 @@ static int audio_queue(MovieAudio *audio, C3Movie *movie, char *error, size_t ca
         if (wave->status != NDSP_WBUF_FREE && wave->status != NDSP_WBUF_DONE) continue;
         if (c3_movie_read_audio(movie, wave->data_pcm16, AUDIO_FRAMES, &count, error, capacity)) return -1;
         if (!count) continue;
+        if (audio->mono) c3_movie_downmix_mono(wave->data_pcm16, count);
         wave->nsamples = (u32)count;
         wave->looping = false;
         DSP_FlushDataCache(wave->data_vaddr, (u32)(count * 4u));
@@ -104,10 +114,11 @@ int c3_movie_player_run(const char *path, const char *label, FILE *trace,
     gfxSetScreenFormat(GFX_TOP, GSP_RGB565_OES);
     gfxSetDoubleBuffering(GFX_TOP, true);
     if (trace) {
-        fprintf(trace, "movie_begin name=%s frames=%lu fps=%lu/%lu audio=%s result=%08lx\n",
+        fprintf(trace, "movie_begin name=%s frames=%lu fps=%lu/%lu audio=%s mix=%s result=%08lx\n",
                 label, (unsigned long)movie.frame_count, (unsigned long)movie.fps_num,
                 (unsigned long)movie.fps_den, audio.available ? "ndsp" :
-                movie.audio_sample_frames ? "unavailable" : "no_embedded_track", (unsigned long)audio.result);
+                movie.audio_sample_frames ? "unavailable" : "no_embedded_track",
+                audio.mono ? "mono" : "stereo", (unsigned long)audio.result);
         fflush(trace);
     }
     previous = c3_n3ds_active_time_us();
@@ -125,13 +136,13 @@ int c3_movie_player_run(const char *path, const char *label, FILE *trace,
         if (audio_queue(&audio, &movie, error, capacity)) { result = -1; goto done; }
         if (now >= next_status) {
             consoleClear();
-            printf("Colosseum3DS | native boot\n\n");
+            printf("Colosseum3DS | original movie\n\n");
             printf("Original THP: %s\n", label);
             printf("Frame %lu / %lu | RGB565 320x240\n", (unsigned long)frame, (unsigned long)movie.frame_count);
-            printf("Audio: %s\n\n", audio.available ? "PCM stereo / NDSP" :
+            printf("Audio: %s\n\n", audio.available ? (audio.mono ? "PCM mono / NDSP" : "PCM stereo / NDSP") :
                    movie.audio_sample_frames ? "NDSP unavailable" : "external BGM not connected");
             printf("PAD %04X | Stick %4d %4d\n", (unsigned)input.held, input.stick_x, input.stick_y);
-            printf("Original boot logos play to completion.\n");
+            printf("Original movie plays to completion.\n");
             printf("START + SELECT: exit\n");
             next_status = now + UINT64_C(250000);
         }

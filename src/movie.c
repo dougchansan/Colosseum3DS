@@ -36,7 +36,7 @@ int c3_movie_open(C3Movie *movie, const char *path, char *error, size_t capacity
     if (!movie || !path || movie->video_file || movie->audio_file)
         return fail(error, capacity, "Movie open requires a closed movie and a path.");
     opened.video_file = fopen(path, "rb");
-    if (!opened.video_file) return fail(error, capacity, "Prepared boot movie was not found.");
+    if (!opened.video_file) return fail(error, capacity, "Prepared movie was not found.");
     if (fread(header, 1, sizeof(header), opened.video_file) != sizeof(header) ||
         memcmp(header, "C3V1", 4) || le32(header + 4) != 1 ||
         le32(header + 12) != C3_MOVIE_WIDTH || le32(header + 16) != C3_MOVIE_HEIGHT ||
@@ -143,4 +143,14 @@ int c3_movie_read_audio(C3Movie *movie, int16_t *samples, size_t capacity_frames
     movie->audio_cursor += (uint32_t)count;
     *read_frames = count;
     return 0;
+}
+
+void c3_movie_downmix_mono(int16_t *samples, size_t frames)
+{
+    if (!samples) return;
+    for (size_t i = 0; i < frames; ++i) {
+        int32_t sum = (int32_t)samples[0] + (int32_t)samples[1];
+        samples[0] = samples[1] = (int16_t)(sum / 2);
+        samples += 2;
+    }
 }

@@ -57,10 +57,20 @@ int main(void)
     assert(pixels[0] == 0x21);
     assert(c3_movie_read_audio(&movie, samples, 2, &read_frames, error, sizeof(error)) == 0);
     assert(read_frames == 1 && samples[0] == -1 && samples[1] == 0x1234);
+    c3_movie_downmix_mono(samples, read_frames);
+    assert(samples[0] == 2329 && samples[1] == 2329);
     assert(c3_movie_read_audio(&movie, samples, 2, &read_frames, error, sizeof(error)) == 0 && read_frames == 0);
     assert(c3_movie_read_frame(&movie, 2, pixels, C3_MOVIE_FRAME_BYTES, error, sizeof(error)) != 0);
     assert(c3_movie_read_frame(&movie, 0, pixels, 2, error, sizeof(error)) != 0);
     c3_movie_close(&movie);
+    /* Same-sign extremes detect 16-bit accumulation overflow; opposite signs
+     * and asymmetric channels check actual mono mixing, not channel copying. */
+    int16_t stereo[] = {-32768,-32768,32767,32767,-32768,32767,-2000,1000,1234,1234,77,88};
+    const int16_t mono[] = {-32768,-32768,32767,32767,0,0,-500,-500,1234,1234,77,88};
+    c3_movie_downmix_mono(stereo, 5);
+    assert(!memcmp(stereo, mono, sizeof(stereo)));
+    c3_movie_downmix_mono(stereo, 0);
+    assert(!memcmp(stereo, mono, sizeof(stereo)));
     put32(header + 40, 64); /* Overlapping sections. */
     make_movie(path, header);
     assert(c3_movie_open(&movie, path, error, sizeof(error)) != 0 && !movie.video_file);
@@ -81,6 +91,6 @@ int main(void)
     assert(c3_movie_open(&movie, path, error, sizeof(error)) != 0);
     unlink(path);
     free(pixels);
-    puts("movie: frame timing, independent streams, PCM endian, bounds and truncation passed");
+    puts("movie: frame timing, independent streams, PCM endian/mono, bounds and truncation passed");
     return 0;
 }

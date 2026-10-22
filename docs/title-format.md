@@ -1,5 +1,10 @@
 # Native title preparation and C3T1
 
+The same portable loader also reads C3T2 and C3T3 field packs. Their extra UV,
+reflection and source-joint material fields are specified in
+[outskirt-assets.md](outskirt-assets.md). The title exporter continues to write
+the original C3T1 layout described here.
+
 `tools/prepare_title.py` converts the **original animated title scene** from a
 verified private GC6E01 revision 0 extraction into native geometry, textures,
 lights, camera samples, joint transforms and material samples. This is a 3D

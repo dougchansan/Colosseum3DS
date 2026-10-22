@@ -1,158 +1,140 @@
-# Native boot and title checkpoint
+# Native boot, New Game and Outskirt Stand
 
-This branch plays the two original boot logos and renders the original animated
-title scene in a native New 3DS executable. It is a boot/title integration
-checkpoint. The original main menu, playable New Game/Continue, game-state
-serialization, external scene music and attract demo are not connected.
+This branch connects the original boot logos and animated title to a native
+main menu, source-defined New Game state, the original opening movie, the bike
+arrival at Outskirt Stand, and a bounded field scene with Wes movement and
+explicit save/Continue. The original menu renderer, NPC event graph, battles,
+external MusyX music and later areas remain unported.
 
-It builds on the repaired PR #2 head
+It builds on repaired PR #2 head
 [`07d4df55cb25`](https://github.com/dougchansan/Colosseum3DS/commit/07d4df55cb25ae4ce4ade12904f2cf1348cd418f).
-The prior Eevee/Gekko route and its repairs remain present. The boot work is a
-separate branch and does not modify the physical console or its installed files.
+The Eevee/Gekko route remains present. This branch does not deploy to the
+physical console; hardware validation is a separate local-agent step.
 
-## What runs
+## Connected flow
 
-| Stage | Native behavior | Current boundary |
+| Stage | Native behavior | Boundary |
 | --- | --- | --- |
-| TPC logo | Reads the original prepared 75-frame movie at nominal 30000/1001 cadence, centered at 320×240; streams optional stereo PCM to NDSP | Sound requires the console's DSP firmware; sandbox audio has not been validated |
-| Genius Sonority logo | Plays the full 130-frame movie timeline and transitions to the title; late frames are skipped to preserve source timing | Original external BGM `0x04D1` is not connected; an empty THP audio track does not mean the original scene is silent |
-| Title entrance | Live source geometry, three original animation clips, original camera, material alpha, UV scrolling, visibility and supported TEV effects | Offline state sampling and texture resizing are explicit fidelity approximations |
-| PRESS START | A/START rising edge waits one second, then validates and decodes the configured card file | Prompt/diagnostics use the bottom console; the original menu/widget engine is not ported |
-| Original menu boundary | Reports floor `0x3A1` and leaves the animated title visible | No fabricated New Game/Continue screen or invented progress state |
-| Save backend | Original slot codec, checksums, corruption fallback, raw/GCI byte compatibility, verified SD writes and retained backups | Genuine game-state serialization/deserialization must be connected before playable saves can be claimed |
+| TPC and Genius Sonority logos | Original 75/130-frame movie timelines, streamed at nominal 30000/1001 fps | Embedded PCM needs DSP firmware; external BGM is not connected |
+| Title | Live original geometry, three animation clips, authored camera and supported materials | Sampled animation and texture resizing; original window engine absent |
+| Main menu | New Game, Continue, Options and title return; original menu text can be prepared privately | Bottom-screen native layout; battle choices report unavailable |
+| Name choice | NEW NAME, WES, SETH, THOMAS; seven-character custom ASCII keyboard and confirmation | Original graphical keyboard/font absent |
+| New Game | Original initial game-state body, trainer RNG, starters, items, storage, flags and other subsystems | See the exact initialization scope in [game-state.md](game-state.md) |
+| Opening | Original 1,926-frame hideout movie, then flag `0x08D0` and entry to floor 1 | External BGM `0x0495` and four source SFX cues absent |
+| Arrival | Original attached bike models and camera, source fade sequence, then flag `0x0AF8` | A native lowering of the reviewed entry sequence; no general GSVM |
+| Outskirt Stand | Original map, Wes idle/walk/run, source camera and collision, native pause/party menu | NPC dialogue, dynamic NPC collision, battles and exits unavailable |
+| Save/Continue | Explicit verified GCI save, recoverable backup and fresh-process reload | Native area-entrance checkpoint; original PC save interaction absent |
 
-The boot order and input rules come from the pinned
-[`movie.c`](https://github.com/Count-Sheep/pkmn-colosseum/blob/51bfe4314a218dfaf9592fc80723c50498d0ee55/src/game/movie.c)
-and
-[`gs_title_8001EF78.c`](https://github.com/Count-Sheep/pkmn-colosseum/blob/51bfe4314a218dfaf9592fc80723c50498d0ee55/src/game/gs_title_8001EF78.c).
-The two logos have no ordinary button-skip branch. A/B/START advances the title
-entrance through the original half-second fade sequence. The natural entrance
-runs clips 0, 1 and then looping clip 2. `openingdemo.thp` is a later New Game
-cutscene; `autodemo01.thp` is the attract movie, not an initial boot logo.
+The flow derives from pinned [movie.c](https://github.com/Count-Sheep/pkmn-colosseum/blob/51bfe4314a218dfaf9592fc80723c50498d0ee55/src/game/movie.c),
+[gs_title.c](https://github.com/Count-Sheep/pkmn-colosseum/blob/51bfe4314a218dfaf9592fc80723c50498d0ee55/src/game/gs_title.c),
+[menuNameEntry.c](https://github.com/Count-Sheep/pkmn-colosseum/blob/51bfe4314a218dfaf9592fc80723c50498d0ee55/src/game/menuNameEntry.c),
+and the privately admitted `S1_out` GSVM bank. The two logos and opening movie
+have no ordinary skip action. A/B/START skips the title entrance through its
+half-second fades. `autodemo01.thp` is an attract movie and is not connected.
 
 ## Prepare private assets
 
-Use an extracted GC6E01 disc 1 revision 0 with `sys/boot.bin`, `sys/main.dol` and
-the complete `files/` tree, including `files/movie` and `files/title.fsys`.
-The supplied set was checked against all 1,872 FST file sizes; its DOL and 25
-canonical REL hashes match the pinned build manifest. The converters separately
-verify the DOL, exact movie hashes, title archive hash and pinned parser files.
+Use an extracted GC6E01 disc 1 revision 0 with `sys/boot.bin`, `sys/main.dol`
+and the complete `files/` tree. The supplied disc was checked against all 1,872
+FST sizes and the DOL plus 25 canonical REL hashes. Each converter also admits
+its exact source archives/movies before decoding. The private build repository
+alone does not contain the complete asset filesystem.
 
-Clone this branch with its pinned submodules. Movie conversion needs host
-FFmpeg. Title conversion needs Python 3, NumPy and the pinned importer source;
-Blender is not needed for the title.
+Initialize the pinned submodules. Host preparation requires Python 3, NumPy,
+FFmpeg and the pinned HSD importer; Blender is not needed for this route.
+Each command below requires a new output path; existing outputs are preserved.
 
 ```sh
 git submodule update --init --recursive
 make verify-source
-python3 tools/prepare_boot_media.py --disc /path/to/GC6E01 --output private/boot
-python3 tools/prepare_title.py --disc /path/to/GC6E01 --output private/boot/title.c3t
+python3 tools/prepare_boot_media.py --disc /path/to/GC6E01 --output private/logos
+python3 tools/prepare_title.py --disc /path/to/GC6E01 --output private/title.c3t
+python3 tools/prepare_game_menu.py --disc /path/to/GC6E01 --output private/menu.c3u
+python3 tools/prepare_game_state.py --disc /path/to/GC6E01 --output private/newgame.c3g
+python3 tools/prepare_intro_media.py --disc /path/to/GC6E01 --output private/intro
+python3 tools/prepare_outskirt.py --disc /path/to/GC6E01 --output private/outskirt
 ```
 
-Both tools refuse to overwrite existing output. Keep the manifests beside the
-prepared assets. Copy the prepared directory's contents to the SD layout:
+Keep each preparation manifest privately beside its output. Install these files
+under `/3ds/Colosseum3DS/boot/` on the SD card:
 
-| Prepared output | SD destination |
+| Prepared files | SD filenames |
 | --- | --- |
-| `private/boot/tpc.c3v` | `/3ds/Colosseum3DS/boot/tpc.c3v` |
-| `private/boot/gs_logo.c3v` | `/3ds/Colosseum3DS/boot/gs_logo.c3v` |
-| `private/boot/title.c3t` | `/3ds/Colosseum3DS/boot/title.c3t` |
-| Optional real save exported as GCI | `/3ds/Colosseum3DS/saves/pokemon_colosseum.gci` |
+| `private/logos/tpc.c3v`, `private/logos/gs_logo.c3v` | `tpc.c3v`, `gs_logo.c3v` |
+| `private/title.c3t` | `title.c3t` |
+| `private/menu.c3u`, `private/newgame.c3g` | `menu.c3u`, `newgame.c3g` |
+| `private/intro/openingdemo.c3v` | `openingdemo.c3v` |
+| `private/outskirt/outskirt.c3f` | `outskirt.c3f` |
+| All `private/outskirt/outskirt_*.c3t` files | Preserve every filename |
 
-The three prepared assets occupy about 48 MiB. Movies are streamed through one
-153,600-byte video buffer and a small PCM queue. The title has 31 rigid joints,
-43 batches, 17,277 expanded vertices / 5,759 triangles and 20 texture descriptors.
-Its 18,353,048-byte pack contains 3,439 states sampled at 60 Hz. Current host
-resident title allocations total 19,678,020 bytes before GPU storage. That
-figure is not total application RAM; it excludes driver, framebuffer, command,
-stack and other allocations. See [C3V1](boot-media-format.md) and
-[C3T1](title-format.md) for exact formats and fidelity limits.
+The opening pack alone is 304,066,812 bytes. It is streamed through one
+153,600-byte video buffer and bounded PCM buffers. It is never read whole into
+3DS RAM. Logo/title packs add about 48 MiB. Geometry packs are bounded separately
+and a single shared GPU arena renders the multiple field models.
 
-## Build and run
+A user's existing save may be copied, with a backup kept, to
+`/3ds/Colosseum3DS/saves/pokemon_colosseum.gci`. Do not copy a synthetic codec
+fixture into that location as game progress. The semantic loader rejects an
+invalid game body, and Continue is enabled only for the currently supported
+floor and prepared assets. New Game requires confirmation before allowing a
+later explicit Save to replace an existing card file. Creating the in-memory
+game itself performs no save write.
+
+## Build and controls
 
 ```sh
 make test
 make -f Makefile.3ds -j2
 ```
 
-The normal output remains `build-3ds/Colosseum3DS.3dsx`. It includes the existing
-Gekko model-preview route and the new title route. A separate focused target,
-`make -f Makefile.3ds C3_BOOT_ONLY=1`, writes `build-3ds-boot/`; it omits the C3M
-preview dependency and always enters boot diagnostics. Both use the same movie,
-title, input and save implementations.
+The normal output is `build-3ds/Colosseum3DS.3dsx`. It retains the earlier
+Gekko model-preview route. A focused `C3_BOOT_ONLY=1` build uses the separate
+`build-3ds-boot/` directory and always enters the boot route. Both use the same
+movie, title, menu, game-state, field, input and save code.
 
-The normal build selects boot when `/3ds/Colosseum3DS/boot/` exists. Missing or
-malformed required packs then produce an explicit error. Without that directory,
-the original C3M preview/smoke-test selection still applies. The runtime writes
-an event trace to `/3ds/Colosseum3DS/boot-trace.log` with its embedded build ID,
-movie completion counts, title transitions and card-check result.
+The normal build selects this flow when the `boot/` SD directory exists.
+Without it, the previous C3M preview/smoke-test selection still applies.
+Missing or malformed packs produce an explicit error instead of silently
+advancing the story.
 
-START+SELECT exits. Circle Pad, C-stick, D-pad, face buttons, shoulder buttons
-and digital trigger values reach the GameCube-style native input structure;
-the diagnostic shows them. Title-specific actions use rising edges. A press
-must last long enough to be observed by an application frame: the current
-renderer has not been profiled on physical New 3DS hardware.
+- A/B/START advances the title entrance; A/START at PRESS START opens the menu.
+- D-pad/Circle Pad navigates menus, A confirms and B returns.
+- New Game asks for confirmation and a name. Choose WES and confirm it to play
+  the original opening and arrival.
+- Circle Pad/D-pad moves Wes. X/START opens Resume, Pokemon, Save and Main Menu.
+- Save requires confirmation and records the area entrance, party and progress.
+  Continue restores that checkpoint. It does not restore arbitrary coordinates.
+- Main Menu requires confirmation before discarding unsaved in-memory progress.
+- START+SELECT exits the application.
 
-The title renderer owns Citro3D while active. It uses a bounded vertex arena,
-static shader storage with a correct DVLB lifetime, validated texture sizes,
-and GPU completion before arena reuse or teardown. It follows the title's
-material subset directly in Citro3D because the previous Eevee adapter's
-8,192-vertex / 16-texture capacities do not fit this scene. The native executable
-does not contain a GameCube CPU emulator, original PPC DOL execution or REL
-execution.
+The runtime writes `/3ds/Colosseum3DS/boot-trace.log`: embedded build ID, movie
+results, menu pages, save load/write outcomes, field transitions, mapped input,
+Wes position and animation. Physical-console performance is not inferred from
+host or emulator timing. Actual APT suspension pauses application time; active
+SD/GPU stalls still count, while movement bounds a single stalled update.
 
-## Reproduce the sandbox checks
+## Verification and remaining work
 
-The optional [Azahar/libretro harness](../tools/sandbox/README.md) uses the supplied
-prebuilt core; it does not build all of RetroArch. It runs an isolated New 3DS SD
-directory, accepts bounded controller scripts, captures actual pixels and binds
-the executable, emulator, input and selected SD asset hashes into `run.json`.
-It returns failure when its deadline interrupts an incomplete requested run.
+`make test` covers the portable codecs, bounded parsers, native menu decisions,
+New Game state, transactional save behavior and collision/movement adapters.
+The optional [sandbox harness](../tools/sandbox/README.md) uses a supplied
+prebuilt Azahar core, isolated SD state and scripted controller input. Its run
+records bind executable/core/input/SD hashes and actual captures, and an
+interrupted deadline is reported as an incomplete run.
 
-Example after preparing the harness and staging the private assets:
+The [game-state verification](game-state.md) includes a native ARM New Game save
+and a fresh emulator process loading it. An independent Python implementation
+checks all 122,832 decoded body bytes against the pinned initializer, including
+the party and flags. Synthetic fixtures remain separate from this retail-data
+check. Full-flow verification and exact limitations belong in the checkpoint's
+validation record; hardware results must be recorded separately.
 
-```sh
-python3 tools/sandbox/run.py build-3ds/Colosseum3DS.3dsx \
-  --state /path/to/private-emulator-state --out /path/to/new-run \
-  --frames 1620 --seconds 60 --capture-every 80 --gl \
-  --events tools/sandbox/boot-natural-input.csv \
-  --sd-file 3ds/Colosseum3DS/boot/tpc.c3v \
-  --sd-file 3ds/Colosseum3DS/boot/gs_logo.c3v \
-  --sd-file 3ds/Colosseum3DS/boot/title.c3t
-```
+Next work is the Outskirt Stand NPC/script graph and first battle, original
+window rendering, external MusyX music/SFX and physical New 3DS profiling.
+The sandbox lacks the user's DSP firmware, so audible playback and A/V sync
+are not established here. See [boot-audio.md](boot-audio.md) for source music
+resource mappings and [outskirt-field.md](outskirt-field.md) for scene scope.
 
-Software PICA captures the CPU-rendered boot videos reliably. The optional
-surfaceless OpenGL/llvmpipe path is much faster for the live title; in this core
-it can show black CPU-only output before PICA starts. Evidence therefore uses
-software movie captures plus completed OpenGL title/input runs. Neither host
-elapsed time nor emulator frame rate establishes physical-console performance.
-
-The native save probe is deliberately separate from game progress. It generates
-a deterministic synthetic body, checks an independent ciphertext golden, writes
-and replaces a full GCI through libctru, and reopens it in a fresh process.
-The independent verifier authenticates every slot and body byte, including the
-retained backup. An integration test may stage that explicitly synthetic file
-at the normal card path to exercise START/card decoding; that does not turn it
-into a playable Colosseum save. See [save format and reproduction](save-format.md).
-
-## Work still required
-
-1. Connect the original memory-card task's decisions, main menu at floor
-   `0x3A1`, and genuine state serializer/deserializer. Validate a real existing
-   save and a newly created game by reload before claiming playable saves.
-2. Render the original menu/widget layer and complete its input routing. The
-   current bottom-screen prompt proves native input and state transitions only.
-3. Supply the user's own `/3ds/dspfirm.cdc` for NDSP validation, then integrate
-   the external GS-logo and title MusyX sequences. The current sandbox reports
-   the missing firmware explicitly. Exact music-bank/resource mappings are in
-   [boot-audio.md](boot-audio.md); decoding a sample bank alone is insufficient.
-4. Compare the sampled title against original output and profile the build on
-   the physical New 3DS, including SD stalls, HOME, lid sleep, GPU/CPU time and
-   memory. Actual APT events pause application time; slow active I/O does not.
-5. Add the attract movie and advance into an actual gameplay scene through the
-   native engine adapters. A complete decompilation supplies source; it does
-   not replace the missing platform and runtime integration.
-
-Only source, metadata and narrowly scoped validation evidence belong in this
-branch. Original disc files, converted packs, GCI files, emulator dependencies
-and emulator user state remain private and are excluded from build artifacts.
+Only source, metadata and scoped validation evidence belong in this branch.
+Original disc files, converted packs, GCI saves, emulator dependencies and
+emulator user state stay private and are excluded from source/build artifacts.
