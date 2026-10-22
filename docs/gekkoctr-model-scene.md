@@ -33,6 +33,9 @@ exact edited source against Git before generating build-local adaptations:
   Track partial Citro3D initialization independently from completed startup.
   Do not wait on VBlank callbacks during shutdown. Clean up a failed texture
   staging allocation.
+- Retain backend-owned shader bytes through shader program and DVLB destruction:
+  libctru 2.7.0 borrows code/table pointers from the parsed buffer. Release that
+  storage once during shutdown, including partial initialization failures.
 
 The existing application owns `gfxInitDefault` and shutdown. The model renderer
 alone owns RomFS, Citro3D, shader/program, top target and frame boundaries while

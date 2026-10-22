@@ -1,5 +1,86 @@
 # Eevee scene hardware validation — October 21, 2026 (Hawaii)
 
+## PR #2 review repair revalidation
+
+The corrected implementation was physically tested from source
+`8eefd95dd907271bc51615850b3a127880fcd7cf`. Its executable is **219580 bytes**,
+SHA-256 `d6a153fa005124808a1c3d57675054ef598eafda28e3134b358ffb9f4f13b295`.
+The implementation was committed before building, assembling the pinned P5
+shader with Picasso, linking and deploying. Later evidence-only commits have
+their own build identifiers; their CI artifacts are not this tested binary.
+
+The maintained donor adaptation now owns shader bytes until program and DVLB
+destruction, including partial initialization cleanup, after the GPU queue drain.
+Installer comparisons match case-insensitive SD names while retaining server
+spelling. Animation normalization keeps both palette indices in bounds for tiny
+negative times; this repairs the reusable API boundary, not an observed crash in
+the nonnegative-time console preview. Navigation rechecks current receiver
+errors, both timestamps and unique screen classification after saving evidence,
+and records the actual frames authorizing each input.
+
+Focused regressions reject the former premature shader free, uppercase/mixed-case
+model and directory aliases, tiny-negative animation overflow, and contradictory
+frames received during evidence saving. The shader lifecycle harness executes
+generated initialization/cleanup, covers partial failures and repeated shutdown,
+and its restored-premature-free control reports ASan heap-use-after-free. The
+new animation cases report ASan heap-buffer-overflow against the old source.
+Old installer/navigation implementations fail the new focused tests; corrected
+tests pass. Source verification, four native suites, a forced ASan/UBSan rebuild,
+all **95 Python tests with Pillow 11.3.0 and zero skips** (WSL), and the pinned
+ARM/Picasso build passed. The implementation-head local-runner
+[CI run](https://github.com/dougchansan/Colosseum3DS/actions/runs/39703945689)
+passed host, capture and New3DS jobs. A separate read-only review found no
+actionable issues in the repairs.
+
+The isolated deployment at `/3ds/Colosseum3DS/scene-8eefd95dd907/` passed staged
+and final readback verification. The original nested application hashes and
+model pack hash were checked again after exit; all match the prior record.
+The identical pack was reused without upload/rename. See
+[deployment and preservation](evidence/gekkoctr-eevee-review2-2026-10-21/deployment.json).
+
+![Corrected build, pose A](evidence/gekkoctr-eevee-review2-2026-10-21/pose-a.png)
+![Corrected build, pose B](evidence/gekkoctr-eevee-review2-2026-10-21/pose-b.png)
+
+Fresh captures at 01:08:15 and 01:08:31 UTC on October 22 (October 21 Hawaii)
+show Core PASS, textured Eevee and distinct ear/body poses under the stationary
+camera. Both latest screen ages were below 0.1 seconds. A produced the
+[PAUSED state](evidence/gekkoctr-eevee-review2-2026-10-21/paused.png);
+fresh top-screen images roughly nine seconds apart were pixel-identical.
+A second press [resumed PLAY](evidence/gekkoctr-eevee-review2-2026-10-21/resumed.png).
+START+SELECT [returned to HBL](evidence/gekkoctr-eevee-review2-2026-10-21/clean-exit.png),
+and [relaunch](evidence/gekkoctr-eevee-review2-2026-10-21/relaunch.png) succeeded.
+
+The corrected navigator completed model → ftpd in **12.938 seconds** and
+ftpd → model in **16.438 seconds**, including title startup. The new isolated
+directory requires one additional DOWN step. Initial recalibration stopped on
+an unmatched animated launcher crop; after restoring the established crop
+tolerance, both complete routes passed within the existing limits. Every
+dispatch has current authorization metadata in the
+[route record](evidence/gekkoctr-eevee-review2-2026-10-21/navigation-timings.json).
+The console was left running the corrected model scene.
+
+The repeated 60-warmup/600-sample benchmark spans **10.027137 seconds**, with
+NTR streaming active and no input during sampling. No installed NTR files or
+settings were changed; a streaming-disabled comparison remains unmeasured.
+
+| Measurement | Median ms | p95 ms | Previous median ms |
+| --- | ---: | ---: | ---: |
+| Application wall frame interval | 16.719 | 26.279 | 16.710 |
+| CPU interpolation/skinning | 1.101 | 1.172 | 1.109 |
+| CPU material/draw preparation | 1.000 | 1.068 | 1.000 |
+| Previous GPU drawing time | 1.445 | 1.883 | 1.449 |
+
+Load/setup was 67.922 ms (previously 67.817 ms). This single short run shows
+no material performance regression; it does not establish statistical equivalence.
+Geometry and tracked allocation counts are unchanged. Retained shader storage
+is excluded from the existing tracked-memory subset, so the unchanged 1198128-byte
+figure is not a claim of unchanged total RAM. See the new
+[raw CSV](evidence/gekkoctr-eevee-review2-2026-10-21/benchmark-streaming.csv) and
+[summary](evidence/gekkoctr-eevee-review2-2026-10-21/benchmark-summary.json).
+The device/firmware and material-fidelity limits recorded below still apply.
+
+## Earlier baseline (retained for comparison)
+
 ## Result and identity
 
 One real textured Colosseum Eevee renders through the native GekkoCTR/Citro3D
