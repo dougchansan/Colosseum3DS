@@ -54,8 +54,8 @@ Continue left it byte-identical. The save file itself remains private.
 - `*-startup.csv` / `*-live-input.csv`: boot input and the exact accepted live
   controller packets, including their actual frontend frame numbers.
 - `*-controller.json`: route-stage observations and controller completion.
-- `recordings.json`: identities and editing provenance for the two separately
-  delivered MP4s. They are direct emulator screen captures; only trailing
+- `recordings.json`: identities and editing provenance for the two generated
+  MP4s. They are direct emulator screen captures; only trailing
   post-exit idle frames were removed with stream copy. No overlays or generated
   gameplay frames were added. The MP4s have no audio track.
 - `tests.json` and the adjacent build/test logs: final host, 175 Python-test,
@@ -66,10 +66,22 @@ Continue left it byte-identical. The save file itself remains private.
   mapping restrictions; no leak-check result is claimed. Expected negative-test
   diagnostics in the logs are not test failures.
 
-The full raw runs had 21,000 and 10,000 frontend frames. The delivered video
+The full raw runs had 21,000 and 10,000 frontend frames. The trimmed video
 durations are about 4m33s and 1m23s after trimming idle tails. The frontend was
 configured for 60 Hz and sampled every two frontend frames for 30 fps video;
 these values are not measured physical New 3DS performance.
+
+## Download availability
+
+The source, hashes, accepted inputs, traces and screenshots were successfully
+published in PR #5. A subsequent sandbox refresh removed access to the local
+MP4s and the exact tested binary before their downloads could be attached.
+`recordings.json` is retained as provenance, not as a working video download.
+The source-only controller route can produce a new recording, and the local
+agent should capture the physical acceptance through the established NTR setup.
+GitHub Actions also provides an independently rebuilt native artifact for source
+commit `f1cc5f36bdb6bf635d4f27108e9a56774a0f1ae6`; record its own hash rather than
+assigning it the sandbox-tested executable's identity.
 
 ## Remaining acceptance
 
