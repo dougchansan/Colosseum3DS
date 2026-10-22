@@ -84,8 +84,8 @@
     "tested_3dsx_bytes": 311228
   },
   "diagnostic_was_tested": true,
-  "current_installed_runtime": "7a4a74613d01e3a4598da6e26c14f5bb701be83f",
-  "current_state": "Owner restarted; existing NTR and ftpd reachable; installed recovery runtime retained.",
+  "current_installed_runtime": "2a544f17c637966a464c62b299e892d9a1d6acbc with C3_RENDER_GPU_PROBE",
+  "current_state": "Clear submission completed; geometry submitted; overlay never submitted before recovery. NTR remains fresh.",
   "recovery_trace": {
     "bytes": 117978,
     "sha256": "533b8b23911cb4ac5141702eb5daada5ee7fbb2a66ad0c789647540dcff024f0",
@@ -96,5 +96,16 @@
       "exit_requested",
       "snapshot after exit request"
     ]
+  },
+  "home_control_verified": "Fresh NTR capture shows HOME suspends ftpd to HOME Menu; right/A selects HBL and confirmation opens launcher. Not tested in GPU wedge.",
+  "gpu_probe": {
+    "source_commit": "2a544f17c637966a464c62b299e892d9a1d6acbc",
+    "build_id": "2a544f1",
+    "bytes": 315544,
+    "sha256": "b0cfde6e30a7ca7f3ccbecf62df1f5d0fafa82b73ebb3731ffe4b94f18c4f720",
+    "clear_completed": true,
+    "geometry_submitted": true,
+    "overlay_submitted": false,
+    "recovery_visible": true
   }
 }

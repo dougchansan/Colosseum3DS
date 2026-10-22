@@ -100,3 +100,21 @@ and [deployment verification](evidence/native-first-area-hardware-2026-10-22/rec
 record the tested run. The wider
 [first-area acceptance record](native-first-area-hardware-2026-10-22.md)
 remains incomplete; no New Game/Save/Continue result is claimed.
+
+## HOME and controlled submission check
+
+After restart, a bounded HOME action visibly suspended ftpd to the HOME Menu,
+and fresh frames confirmed navigation into Homebrew Launcher.
+[HOME capture](evidence/native-first-area-hardware-2026-10-22/home-from-ftpd.png)
+and [input record](evidence/native-first-area-hardware-2026-10-22/home-input.json)
+verify normal app switching; this does not test HOME inside the GPU wedge.
+
+The optional `C3_RENDER_GPU_PROBE` build at `2a544f1` retains cooperative
+recovery while submitting clear, geometry and overlay separately. On hardware,
+clear completed and geometry was submitted; overlay was never submitted before
+the watchdog. The first geometry draw also emits deferred shader/context state,
+so this narrows the fault without attributing it to title assets alone.
+[Submission capture](evidence/native-first-area-hardware-2026-10-22/gpu-probe-geometry-submitted.png).
+The diagnostic executable is 315544 bytes, SHA-256
+`b0cfde6e30a7ca7f3ccbecf62df1f5d0fafa82b73ebb3731ffe4b94f18c4f720`.
+Normal builds omit the probe.
