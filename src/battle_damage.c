@@ -12,12 +12,15 @@ static const C3BattlePreviewTables *tables;
 static unsigned crit;
 static int accessor_error;
 static u8 c3p_src_lbl_80279ED0[34];
+static const C3BattlePreviewMon rejected_mon;
 
 static const C3BattlePreviewMon *mon(u32 handle)
 {
     if (!context || handle < 1 || handle > 4) {
         accessor_error = 1;
-        return &context->mons[0];
+        /* Keep failed-accessor reads defined even if no context is active.
+         * The outer transaction observes accessor_error and rejects output. */
+        return &rejected_mon;
     }
     return &context->mons[handle-1];
 }
@@ -76,7 +79,8 @@ static u32 c3p_src_fightFloorGetFightOutPokemonPtrToHeroPtr(u32 floor, u32 h)
 static u8 c3p_src_figthOutPokemonGetLevel(u32 h) { return mon(h)->level; }
 static u32 c3p_src_fightFloorGetValidFightOutPokemonCount(u32 floor, u32 mode, u32 h, u32 flags)
 {
-    (void)floor; (void)mode; (void)flags; (void)mon(h);
+    (void)floor; (void)mode; (void)flags;
+    if (!context || h < 1 || h > 4) { accessor_error = 1; return 0; }
     unsigned first = ((h-1)/2)*2;
     return !!context->mons[first].hp + !!context->mons[first+1].hp;
 }
