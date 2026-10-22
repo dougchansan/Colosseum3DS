@@ -1,5 +1,18 @@
 # Responsive render recovery
 
+The title GPU stall is fixed in `4cce6c1`: both texture-coordinate shader
+outputs now write every configured component. The normal build renders the
+live title, suspends/resumes through HOME, and exits cleanly to Homebrew
+Launcher. NTR remained active through corrected probe and normal-build launches.
+[Normal title](evidence/native-first-area-hardware-2026-10-22/shader-fixed-normal-title.png),
+[HOME suspend](evidence/native-first-area-hardware-2026-10-22/shader-fixed-title-home.png),
+[resume](evidence/native-first-area-hardware-2026-10-22/shader-fixed-title-resumed.png),
+and [clean exit](evidence/native-first-area-hardware-2026-10-22/shader-fixed-normal-exit.png).
+
+The busy-queue results below describe the diagnostic builds before this fix.
+Cooperative recovery remains for future stalls; hard system faults still have
+the limitations described below.
+
 Native title and Outskirt Stand rendering now return `C3_RENDER_BUSY` after one
 nonblocking frame-begin attempt. A busy draw does not overwrite the GPU vertex
 arena, change bindings, submit commands, or release resources. The main control
@@ -118,3 +131,20 @@ so this narrows the fault without attributing it to title assets alone.
 The diagnostic executable is 315544 bytes, SHA-256
 `b0cfde6e30a7ca7f3ccbecf62df1f5d0fafa82b73ebb3731ffe4b94f18c4f720`.
 Normal builds omit the probe.
+
+The follow-up `2c01670` probe also stalls after submitting a synthetic RGB
+triangle, before authored geometry. This removes title geometry and texture
+sampling from that failing draw. Independent binary inspection found texture
+outputs o2/o3 declared with mask `0xF`, while their MOV operand descriptors
+`0x36C` write only XY; the working Gekko shader uses full writes (`0x36F`).
+[Documented PICA output requirement](https://www.3dbrew.org/wiki/GPU/Pitfalls)
+requires configured components to be written. Full output writes corrected the fault in physical tests of both diagnostic
+and normal builds. Missing `.in` declarations
+were ruled out because the pinned libctru loader ignores that metadata.
+
+Normal tested executable: 315308 bytes, SHA-256
+`049a08a355e69828145465bdd3e6a990407917e3e72b74de9a41dd11f332fd72`.
+The corrected probe completed 451 submitted frames and drained safely in
+28698 microseconds before exit, confirmed by the downloaded trace. The compiled
+shader regression accepts the fix and rejects the original incomplete writes;
+ARM CI now runs it with required Picasso availability.

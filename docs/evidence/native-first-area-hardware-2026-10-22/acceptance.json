@@ -1,5 +1,5 @@
 {
-  "status": "CPU recovery controls physically verified; title rendering/first-area acceptance still blocked by a noncompleting GPU queue",
+  "status": "Title GPU stall fixed; normal title, HOME suspend/resume and clean exit physically verified with continuous NTR. Wider first-area acceptance pending.",
   "tested_commit": "7a4a74613d01e3a4598da6e26c14f5bb701be83f",
   "tested_3dsx_sha256": "d068396046553294eb597f7e38996e3fa393865a8f36e90928e5bbe65fc2b1a1",
   "tested_3dsx_bytes": 315324,
@@ -12,10 +12,15 @@
     "Original TPC and GS logo timeline completion",
     "TPC NDSP initialization success",
     "Confirmed null texture crash reproduced and repaired",
-    "NTR remains fresh on repaired app"
+    "NTR remains fresh on repaired app",
+    "Corrected probe all stages and clean exit",
+    "Normal live title animation",
+    "HOME suspend and resume from normal title",
+    "Normal START+SELECT exit to HBL",
+    "NTR continuous through corrected probe, ftpd, normal launch/suspend/resume/exit"
   ],
   "blocked": [
-    "Live title progress and native menu",
+    "Native menu interaction acceptance beyond live title",
     "NewGame/WES/opening/arrival",
     "Field movement and starter party",
     "Explicit Save and independent whole-body GCI verification",
@@ -76,7 +81,7 @@
     "X visible asPAD0400 afterexitpending",
     "NTRfreshthroughout, waittime advances"
   ],
-  "gpu_queue_result": "Remained busy beyond221seconds; no cleanexit claimed",
+  "gpu_queue_result": "Fixed shader completes rendering and safe teardown; earlier busy results retained as historical diagnostics.",
   "snapshot_contents_downloaded": true,
   "earlier_tested_repair": {
     "tested_commit": "203cf6da34957d058de2dcb462a8daefeca99a57",
@@ -84,8 +89,8 @@
     "tested_3dsx_bytes": 311228
   },
   "diagnostic_was_tested": true,
-  "current_installed_runtime": "2a544f17c637966a464c62b299e892d9a1d6acbc with C3_RENDER_GPU_PROBE",
-  "current_state": "Clear submission completed; geometry submitted; overlay never submitted before recovery. NTR remains fresh.",
+  "current_installed_runtime": "4cce6c157b065757e9c6512a9ceea51baa96ba1c normal build, no probe",
+  "current_state": "Normal app exited cleanly to HBL; NTR still fresh, no reboot since corrected probe and normal launches.",
   "recovery_trace": {
     "bytes": 117978,
     "sha256": "533b8b23911cb4ac5141702eb5daada5ee7fbb2a66ad0c789647540dcff024f0",
@@ -107,5 +112,14 @@
     "geometry_submitted": true,
     "overlay_submitted": false,
     "recovery_visible": true
+  },
+  "shader_fix": {
+    "source_commit": "4cce6c157b065757e9c6512a9ceea51baa96ba1c",
+    "normal_bytes": 315308,
+    "normal_sha256": "049a08a355e69828145465bdd3e6a990407917e3e72b74de9a41dd11f332fd72",
+    "root_cause": "Texture output registers configured XYZW but shader wrote XY only; full-vector writes resolve physical stalls.",
+    "normal_home_suspend_resume": true,
+    "normal_clean_exit": true,
+    "ntr_reload_between_successful_launches": false
   }
 }

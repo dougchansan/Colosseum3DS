@@ -1,6 +1,6 @@
 # Native first-area physical acceptance — October 22, 2026 UTC
 
-## Status: incomplete at the first live title frame
+## Status: title stall fixed; wider first-area acceptance pending
 
 The separate `feat/native-first-area-hardware` worktree follows
 [native-first-area-handoff.md](native-first-area-handoff.md), based on
@@ -9,11 +9,13 @@ unchanged. This is physical New3DS evidence, separate from the earlier emulator
 validation. **New Game through Outskirt Stand and Save/Continue have not passed
 physical acceptance.**
 
-The initial run exposed a real ARM11 data abort. After that specific fault was
-repaired, the app remained alive enough for fresh NTR capture but stalled at its
-first title draw. The next committed diagnostic build is ready; device recovery
-is required to install it. Do not interpret this report as a completed first-area
-gate or use the earlier Eevee benchmark as field performance.
+The initial ARM11 data abort and the subsequent title GPU stall are now repaired.
+Normal build `4cce6c1` physically renders the title, suspends/resumes through
+HOME, and exits cleanly with START+SELECT. Corrected diagnostic and normal
+launches completed in one boot with NTR continuously active.
+[Current recovery and shader evidence](render-recovery.md) records exact tested
+binaries and captures. The earlier stall results below are historical.
+New Game, field and Save/Continue acceptance remain outstanding.
 
 ## CPU control recovery physically verified
 
