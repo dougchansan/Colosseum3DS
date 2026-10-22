@@ -43,6 +43,7 @@ jobs:
           $script = @'
           set -euo pipefail
           git config --global --add safe.directory /work/vendor/colosseum
+          git config --global --add safe.directory /work/vendor/gekkoctr
           make verify-source
           make test
           '@
@@ -54,6 +55,7 @@ jobs:
           $mount = "type=bind,source=$env:GITHUB_WORKSPACE,target=/work"
           $script = @'
           set -euo pipefail
+          git config --global --add safe.directory /work/vendor/gekkoctr
           make clean
           make test CFLAGS='-std=c11 -O1 -g -Wall -Wextra -Wpedantic -Werror -fsanitize=address,undefined -fno-omit-frame-pointer' LDFLAGS='-fsanitize=address,undefined'
           '@
@@ -79,6 +81,7 @@ jobs:
           python -m pip install --no-cache-dir -r requirements-capture-test.txt
           python -c "import PIL; from PIL import Image; print('Pillow', PIL.__version__)"
           python -m unittest discover -s tests -p 'test_ntr_capture.py' -v
+          python -m unittest discover -s tests -p 'test_console_navigate.py' -v
           '@
           $script = $script.Replace("`r`n", "`n")
           docker run --rm --mount $mount --workdir /work python:3.12-slim sh -c $script
@@ -101,6 +104,7 @@ jobs:
           $script = @'
           set -euo pipefail
           git config --global --add safe.directory /work/vendor/colosseum
+          git config --global --add safe.directory /work/vendor/gekkoctr
           python3 tools/verify_source.py
           "$DEVKITARM/bin/arm-none-eabi-gcc" --version
           dkp-pacman -Q
@@ -110,6 +114,7 @@ jobs:
           cp README.md LICENSE THIRD_PARTY.md dist/
           cp vendor/colosseum/LICENSE dist/LICENSE-upstream
           cp vendor/colosseum/NOTICE dist/NOTICE-upstream
+          cp vendor/gekkoctr/LICENSE dist/LICENSE-GekkoCTR-GPLv3
           cd dist
           sha256sum Colosseum3DS.3dsx Colosseum3DS.smdh > SHA256SUMS
           '@

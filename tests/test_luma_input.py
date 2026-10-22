@@ -22,7 +22,9 @@ class LumaTests(unittest.TestCase):
             self.assertEqual(values[0], 0xfff & ~(1 << bit))
             self.assertEqual(values[1:], (0x02000000, 0x007ff7ff, 0x80800081, 0))
         self.assertEqual(struct.unpack("<5I", luma.packet(["ZL", "ZR"]))[3], 0x80800681)
-        for unsupported in ("HOME", "POWER", "TOUCH"):
+        self.assertEqual(struct.unpack("<5I", luma.packet(["HOME"])),
+                         (0xfff, 0x02000000, 0x007ff7ff, 0x80800081, 1))
+        for unsupported in ("POWER", "TOUCH"):
             with self.assertRaises(ValueError):
                 luma.packet([unsupported])
 

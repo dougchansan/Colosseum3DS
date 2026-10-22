@@ -1,0 +1,44 @@
+{
+  "status": "passed",
+  "source_commit": "630fadd1072620652712197ca1f540fdc9220356",
+  "scene_directory": "/3ds/Colosseum3DS/scene-630fadd10726",
+  "deployment_verified": true,
+  "files": [
+    {
+      "name": "Colosseum3DS.3dsx",
+      "bytes": 181088,
+      "sha256": "75d5c4b93781f68bf25f3cc8f58d49376d70e2564d793f3101eff3b4d0a167a8"
+    },
+    {
+      "name": "Colosseum3DS.smdh",
+      "bytes": 14016,
+      "sha256": "aa4ea04bc11d878a77367dd4ac801367070b140108c7b16cedee49f83834daf6"
+    }
+  ],
+  "deployment": [
+    {
+      "name": "Colosseum3DS.3dsx",
+      "path": "/3ds/Colosseum3DS/scene-630fadd10726/Colosseum3DS.3dsx",
+      "bytes": 219548,
+      "sha256": "99019aa23ae6ad007da4e05e40f78615746e22a0b6c3d062fb11c775549bee2d",
+      "reused": false,
+      "installed_verified": true
+    },
+    {
+      "name": "Colosseum3DS.smdh",
+      "path": "/3ds/Colosseum3DS/scene-630fadd10726/Colosseum3DS.smdh",
+      "bytes": 14016,
+      "sha256": "aa4ea04bc11d878a77367dd4ac801367070b140108c7b16cedee49f83834daf6",
+      "reused": false,
+      "installed_verified": true
+    },
+    {
+      "name": "eevee.c3m",
+      "path": "/3ds/Colosseum3DS/data/eevee.c3m",
+      "bytes": 299112,
+      "sha256": "20aeca58879947b2ee58a2537a5365e858bd6b3f04aaad898eae56972592f625",
+      "reused": true,
+      "installed_verified": true
+    }
+  ]
+}

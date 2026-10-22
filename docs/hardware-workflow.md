@@ -91,6 +91,12 @@ Do not start another client while someone is viewing: NTR streams to the latest
 requesting client. Closing a capture's sockets does not prove streaming is disabled
 on the console. No NTR installation or firmware change is performed.
 
+If an already-running stream still sends fresh UDP frames but the NTR control
+port will not accept a new connection, add `--listen-only`. This mode sends
+nothing and receives the existing stream without TCP control or reconfiguration.
+Keep the same source-address checks and image freshness requirements; an open
+UDP socket alone does not establish video.
+
 The new output directory contains `top.jpg`, `bottom.jpg`, `both.png`, `frames.json`
 and `capture.json`. Images publish through temporary-file replacement. Success
 requires at least two decoded frames from each screen, with both latest frames
@@ -128,7 +134,8 @@ Actions last at most half a second and attempt three neutral releases in a
 `finally` block, including after a hold-send error. UDP cannot guarantee delivery:
 verify the response and neutral diagnostics in fresh captures. Stop on a release
 error or lost visibility. Single buttons and START+SELECT are supported; other
-combinations, HOME, POWER and touch are excluded. Analog coordinates are finite
+combinations, POWER and touch are excluded. HOME is an explicit single-button
+action for observed menu navigation; it also receives neutral cleanup. Analog coordinates are finite
 values in [-1, 1], with right/up positive. The evidence destination is reserved
 before any send and records sends separately from receipt verification.
 
@@ -151,6 +158,47 @@ Primary references: [ftpd](https://github.com/mtheall/ftpd),
 [Rosalina](https://github.com/LumaTeam/Luma3DS/wiki/Rosalina),
 [original NTR streaming](https://github.com/44670/BootNTR/wiki/Video-Streaming),
 [NTRViewer-HR](https://github.com/xzn/ntrviewer-hr).
+
+## Faster calibrated app transitions
+
+`console_navigate.py` keeps one receive-only NTR listener open, decodes frames
+in memory, caches reference images and saves evidence only at verified states.
+It waits for fresh matching screens rather than sleeping two seconds per press.
+Pillow and an already-running stream are required. It does not open TCP8000 or
+reconfigure NTR.
+
+```sh
+python tools/console_navigate.py --config private/hardware/navigation/config.json --target ftpd --output private/hardware/nav-to-ftpd-01
+python tools/console_navigate.py --config private/hardware/navigation/config.json --target model --output private/hardware/nav-to-model-01
+```
+
+The local configuration records the observed model ↔ Homebrew Launcher ↔ HOME ↔
+ftpd routes. It remains private because endpoints, installed scene IDs and menu
+layout are machine-specific. `config/console-navigation.example.json` documents
+the schema; its empty routes intentionally cannot drive a console. New layouts
+need their own verified calibration, not copied button counts.
+
+Each state uses a stable bottom-screen crop/reference with a measured matching
+threshold. Avoid clocks, animated blue backgrounds and changing counters. A
+match must remain unique while both screen frame counters advance for at least
+`settle_seconds` (default 0.2; the tested HOME map uses 0.3). This prevents a
+caption arriving before the menu is ready from racing the next button. An ftpd
+state additionally requires its TCP5000 greeting, so an initial black splash
+does not establish readiness.
+
+Only HOME, directions, A and START+SELECT are available to the graph. Every
+action uses neutral-release cleanup. The tool stops on stale video, ambiguity,
+an unexpected state, failed release, 12 actions, a 90-second navigation budget or a
+12-second transition timeout. Each verified state gets top/bottom screenshots,
+received-frame metadata, input logs and a final timing manifest. If it stops,
+inspect those images before changing the map or resuming; it never retries a
+blind sequence. An already-started bounded operation/neutral cleanup can finish
+beyond the time budget; cleanup is never abandoned to meet a stopwatch limit.
+Configuring another build or adding folders may change a route.
+
+The measured current map took 12.922 seconds model → ftpd and 15.140 seconds
+ftpd → model, including the console's own title-startup time. These are observed
+run durations, not a guaranteed latency or an application frame-rate claim.
 
 Run synthetic transfer failure tests with:
 

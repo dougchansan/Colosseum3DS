@@ -7,7 +7,7 @@ private GC6E01 build inputs.
 **Current milestone: native bring-up. The game is not playable.**
 This version builds a homebrew application, executes selected real decompiled
 routines on ARM, exercises the PICA GPU and controls, and probes the original
-archive format. It does not boot the title screen, render game models, run a
+archive format. It does not boot the title screen, run a
 battle, or load/save a game. Supplying disc files does not unlock gameplay yet.
 
 The first `.3dsx` has been cross-compiled successfully with devkitARM GCC
@@ -20,13 +20,20 @@ See the [hardware checkpoint](docs/hardware-validation-2026-10-21.md) and the
 
 ## What is implemented
 
+This development branch adds a [native textured Eevee scene](docs/gekkoctr-model-scene.md)
+through pinned GekkoCTR components. Its private preparation tool uses actual
+skeletal animation; the game itself remains unplayable. A prepared local pack
+selects the scene, while missing scene data retains the original smoke test.
+The [model hardware record](docs/gekkoctr-hardware-2026-10-21.md) includes distinct
+physical poses, a 600-frame benchmark and tracked memory use.
+
 | Component | Current behavior |
 | --- | --- |
 | Native source integration | Three explicitly selected translation units from a pinned, unmodified decomp submodule; exact source/header hashes checked |
 | Pokémon stats | Actual `pokemonSetLevelBasisStatus` with a native record adapter: IVs, EVs, nature rounding, HP changes, fainting and Shedinja handling |
 | Other game/library routines | Actual HSD random-number generator and GS collision side-plane helper |
 | 3DS platform | New-model detection, speedup request, GameCube-style button mapping, Circle Pad/C-stick, monotonic time, SD reads and clean exit |
-| Graphics | Citro3D/PICA shader and original rotating geometry for GPU validation; no GX/HSD backend yet |
+| Graphics | Original GPU smoke geometry and one prepared textured skeletal Eevee through native GekkoCTR/Citro3D; no full HSD game renderer |
 | Data | Streaming, bounded FSYS reader and LZSS decoder with explicit big-endian fields and caller-owned output buffers |
 | Input provenance | Pinned private build reference, canonical hash verifier and local extracted-disc preparation tool |
 | Validation | Host regression tests, malformed-data tests, sanitizer job, and a devkitARM cross-build workflow |

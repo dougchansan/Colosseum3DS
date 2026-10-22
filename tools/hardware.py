@@ -68,8 +68,9 @@ def inspect(ftp, output, evidence, discover_nested=True):
         try:
             payloads = {name: read_remote(ftp, directory + "/" + name) for name in FILES}
             break
-        except ftplib.error_perm as exc:
-            if not str(exc).startswith("550") or directory == directories[-1]:
+        except (ftplib.error_perm, ftplib.error_temp) as exc:
+            missing = str(exc).startswith("550") or str(exc) == "450 No such file or directory"
+            if not missing or directory == directories[-1]:
                 raise
     output = Path(output)
     output.mkdir(parents=True, exist_ok=False)

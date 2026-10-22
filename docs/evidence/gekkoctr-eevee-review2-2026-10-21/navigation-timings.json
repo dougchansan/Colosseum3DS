@@ -1,0 +1,543 @@
+[
+  {
+    "status": "passed",
+    "target": "ftpd",
+    "steps": [
+      {
+        "state": "model",
+        "elapsed_seconds": 0.26600000000325963,
+        "frames": {
+          "top": {
+            "counter": 5,
+            "frame_id": 216,
+            "received_monotonic": 172546.453
+          },
+          "bottom": {
+            "counter": 4,
+            "frame_id": 215,
+            "received_monotonic": 172546.437
+          }
+        },
+        "authorization": {
+          "state": "model",
+          "frames": {
+            "top": {
+              "counter": 5,
+              "frame_id": 216,
+              "received_monotonic": 172546.453
+            },
+            "bottom": {
+              "counter": 5,
+              "frame_id": 216,
+              "received_monotonic": 172546.484
+            }
+          }
+        },
+        "action": "STARTSELECT",
+        "duration_seconds": 0.15
+      },
+      {
+        "state": "root_first",
+        "elapsed_seconds": 3.8280000000086147,
+        "frames": {
+          "top": {
+            "counter": 69,
+            "frame_id": 24,
+            "received_monotonic": 172550.031
+          },
+          "bottom": {
+            "counter": 68,
+            "frame_id": 23,
+            "received_monotonic": 172550.0
+          }
+        },
+        "authorization": {
+          "state": "root_first",
+          "frames": {
+            "top": {
+              "counter": 69,
+              "frame_id": 24,
+              "received_monotonic": 172550.031
+            },
+            "bottom": {
+              "counter": 69,
+              "frame_id": 24,
+              "received_monotonic": 172550.062
+            }
+          }
+        },
+        "action": "HOME",
+        "duration_seconds": 0.15
+      },
+      {
+        "state": "home_hbl",
+        "elapsed_seconds": 5.76600000000326,
+        "frames": {
+          "top": {
+            "counter": 105,
+            "frame_id": 60,
+            "received_monotonic": 172551.937
+          },
+          "bottom": {
+            "counter": 105,
+            "frame_id": 60,
+            "received_monotonic": 172551.968
+          }
+        },
+        "authorization": {
+          "state": "home_hbl",
+          "frames": {
+            "top": {
+              "counter": 105,
+              "frame_id": 60,
+              "received_monotonic": 172551.937
+            },
+            "bottom": {
+              "counter": 105,
+              "frame_id": 60,
+              "received_monotonic": 172551.968
+            }
+          }
+        },
+        "action": "LEFT",
+        "duration_seconds": 0.15
+      },
+      {
+        "state": "home_ftpd",
+        "elapsed_seconds": 6.360000000015134,
+        "frames": {
+          "top": {
+            "counter": 116,
+            "frame_id": 71,
+            "received_monotonic": 172552.546
+          },
+          "bottom": {
+            "counter": 116,
+            "frame_id": 71,
+            "received_monotonic": 172552.562
+          }
+        },
+        "authorization": {
+          "state": "home_ftpd",
+          "frames": {
+            "top": {
+              "counter": 116,
+              "frame_id": 71,
+              "received_monotonic": 172552.546
+            },
+            "bottom": {
+              "counter": 116,
+              "frame_id": 71,
+              "received_monotonic": 172552.562
+            }
+          }
+        },
+        "action": "A",
+        "duration_seconds": 0.15
+      },
+      {
+        "state": "confirm_ftpd",
+        "elapsed_seconds": 7.172000000020489,
+        "frames": {
+          "top": {
+            "counter": 131,
+            "frame_id": 86,
+            "received_monotonic": 172553.343
+          },
+          "bottom": {
+            "counter": 131,
+            "frame_id": 86,
+            "received_monotonic": 172553.375
+          }
+        },
+        "authorization": {
+          "state": "confirm_ftpd",
+          "frames": {
+            "top": {
+              "counter": 131,
+              "frame_id": 86,
+              "received_monotonic": 172553.343
+            },
+            "bottom": {
+              "counter": 131,
+              "frame_id": 86,
+              "received_monotonic": 172553.375
+            }
+          }
+        },
+        "action": "A",
+        "duration_seconds": 0.15
+      },
+      {
+        "state": "ftpd",
+        "elapsed_seconds": 12.922000000020489,
+        "frames": {
+          "top": {
+            "counter": 253,
+            "frame_id": 208,
+            "received_monotonic": 172559.109
+          },
+          "bottom": {
+            "counter": 252,
+            "frame_id": 207,
+            "received_monotonic": 172559.078
+          }
+        }
+      }
+    ],
+    "duration_seconds": 12.937999999994645
+  },
+  {
+    "status": "passed",
+    "target": "model",
+    "steps": [
+      {
+        "state": "ftpd",
+        "elapsed_seconds": 0.3129999999946449,
+        "frames": {
+          "bottom": {
+            "counter": 5,
+            "frame_id": 22,
+            "received_monotonic": 172578.453
+          },
+          "top": {
+            "counter": 4,
+            "frame_id": 22,
+            "received_monotonic": 172578.437
+          }
+        },
+        "authorization": {
+          "state": "ftpd",
+          "frames": {
+            "bottom": {
+              "counter": 5,
+              "frame_id": 22,
+              "received_monotonic": 172578.453
+            },
+            "top": {
+              "counter": 5,
+              "frame_id": 23,
+              "received_monotonic": 172578.5
+            }
+          }
+        },
+        "action": "HOME",
+        "duration_seconds": 0.15
+      },
+      {
+        "state": "home_ftpd",
+        "elapsed_seconds": 2.2189999999827705,
+        "frames": {
+          "bottom": {
+            "counter": 39,
+            "frame_id": 56,
+            "received_monotonic": 172580.343
+          },
+          "top": {
+            "counter": 39,
+            "frame_id": 57,
+            "received_monotonic": 172580.375
+          }
+        },
+        "authorization": {
+          "state": "home_ftpd",
+          "frames": {
+            "bottom": {
+              "counter": 40,
+              "frame_id": 57,
+              "received_monotonic": 172580.39
+            },
+            "top": {
+              "counter": 39,
+              "frame_id": 57,
+              "received_monotonic": 172580.375
+            }
+          }
+        },
+        "action": "RIGHT",
+        "duration_seconds": 0.15
+      },
+      {
+        "state": "home_hbl",
+        "elapsed_seconds": 2.7969999999913853,
+        "frames": {
+          "bottom": {
+            "counter": 50,
+            "frame_id": 67,
+            "received_monotonic": 172580.953
+          },
+          "top": {
+            "counter": 49,
+            "frame_id": 67,
+            "received_monotonic": 172580.937
+          }
+        },
+        "authorization": {
+          "state": "home_hbl",
+          "frames": {
+            "bottom": {
+              "counter": 50,
+              "frame_id": 67,
+              "received_monotonic": 172580.953
+            },
+            "top": {
+              "counter": 49,
+              "frame_id": 67,
+              "received_monotonic": 172580.937
+            }
+          }
+        },
+        "action": "A",
+        "duration_seconds": 0.15
+      },
+      {
+        "state": "confirm_hbl",
+        "elapsed_seconds": 3.6089999999967404,
+        "frames": {
+          "bottom": {
+            "counter": 64,
+            "frame_id": 81,
+            "received_monotonic": 172581.75
+          },
+          "top": {
+            "counter": 64,
+            "frame_id": 82,
+            "received_monotonic": 172581.781
+          }
+        },
+        "authorization": {
+          "state": "confirm_hbl",
+          "frames": {
+            "bottom": {
+              "counter": 65,
+              "frame_id": 82,
+              "received_monotonic": 172581.796
+            },
+            "top": {
+              "counter": 64,
+              "frame_id": 82,
+              "received_monotonic": 172581.781
+            }
+          }
+        },
+        "action": "A",
+        "duration_seconds": 0.15
+      },
+      {
+        "state": "root_first",
+        "elapsed_seconds": 10.280999999988126,
+        "frames": {
+          "bottom": {
+            "counter": 198,
+            "frame_id": 216,
+            "received_monotonic": 172588.437
+          },
+          "top": {
+            "counter": 195,
+            "frame_id": 216,
+            "received_monotonic": 172588.406
+          }
+        },
+        "authorization": {
+          "state": "root_first",
+          "frames": {
+            "bottom": {
+              "counter": 198,
+              "frame_id": 216,
+              "received_monotonic": 172588.437
+            },
+            "top": {
+              "counter": 196,
+              "frame_id": 217,
+              "received_monotonic": 172588.468
+            }
+          }
+        },
+        "action": "DOWN",
+        "duration_seconds": 0.4
+      },
+      {
+        "state": "root_selected",
+        "elapsed_seconds": 11.030999999988126,
+        "frames": {
+          "bottom": {
+            "counter": 211,
+            "frame_id": 229,
+            "received_monotonic": 172589.203
+          },
+          "top": {
+            "counter": 208,
+            "frame_id": 229,
+            "received_monotonic": 172589.171
+          }
+        },
+        "authorization": {
+          "state": "root_selected",
+          "frames": {
+            "bottom": {
+              "counter": 211,
+              "frame_id": 229,
+              "received_monotonic": 172589.203
+            },
+            "top": {
+              "counter": 209,
+              "frame_id": 230,
+              "received_monotonic": 172589.234
+            }
+          }
+        },
+        "action": "A",
+        "duration_seconds": 0.15
+      },
+      {
+        "state": "project_first",
+        "elapsed_seconds": 11.530999999988126,
+        "frames": {
+          "bottom": {
+            "counter": 219,
+            "frame_id": 237,
+            "received_monotonic": 172589.671
+          },
+          "top": {
+            "counter": 217,
+            "frame_id": 238,
+            "received_monotonic": 172589.703
+          }
+        },
+        "authorization": {
+          "state": "project_first",
+          "frames": {
+            "bottom": {
+              "counter": 220,
+              "frame_id": 238,
+              "received_monotonic": 172589.734
+            },
+            "top": {
+              "counter": 217,
+              "frame_id": 238,
+              "received_monotonic": 172589.703
+            }
+          }
+        },
+        "action": "DOWN",
+        "duration_seconds": 0.4
+      },
+      {
+        "state": "project_mid",
+        "elapsed_seconds": 12.280999999988126,
+        "frames": {
+          "bottom": {
+            "counter": 232,
+            "frame_id": 250,
+            "received_monotonic": 172590.421
+          },
+          "top": {
+            "counter": 229,
+            "frame_id": 250,
+            "received_monotonic": 172590.406
+          }
+        },
+        "authorization": {
+          "state": "project_mid",
+          "frames": {
+            "bottom": {
+              "counter": 232,
+              "frame_id": 250,
+              "received_monotonic": 172590.421
+            },
+            "top": {
+              "counter": 230,
+              "frame_id": 251,
+              "received_monotonic": 172590.453
+            }
+          }
+        },
+        "action": "DOWN",
+        "duration_seconds": 0.15
+      },
+      {
+        "state": "project_selected",
+        "elapsed_seconds": 12.85899999999674,
+        "frames": {
+          "bottom": {
+            "counter": 242,
+            "frame_id": 4,
+            "received_monotonic": 172591.015
+          },
+          "top": {
+            "counter": 240,
+            "frame_id": 5,
+            "received_monotonic": 172591.046
+          }
+        },
+        "authorization": {
+          "state": "project_selected",
+          "frames": {
+            "bottom": {
+              "counter": 242,
+              "frame_id": 4,
+              "received_monotonic": 172591.015
+            },
+            "top": {
+              "counter": 240,
+              "frame_id": 5,
+              "received_monotonic": 172591.046
+            }
+          }
+        },
+        "action": "A",
+        "duration_seconds": 0.15
+      },
+      {
+        "state": "scene_entry",
+        "elapsed_seconds": 14.0,
+        "frames": {
+          "bottom": {
+            "counter": 263,
+            "frame_id": 25,
+            "received_monotonic": 172592.187
+          },
+          "top": {
+            "counter": 260,
+            "frame_id": 25,
+            "received_monotonic": 172592.156
+          }
+        },
+        "authorization": {
+          "state": "scene_entry",
+          "frames": {
+            "bottom": {
+              "counter": 263,
+              "frame_id": 25,
+              "received_monotonic": 172592.187
+            },
+            "top": {
+              "counter": 260,
+              "frame_id": 25,
+              "received_monotonic": 172592.156
+            }
+          }
+        },
+        "action": "A",
+        "duration_seconds": 0.15
+      },
+      {
+        "state": "model",
+        "elapsed_seconds": 16.421999999991385,
+        "frames": {
+          "bottom": {
+            "counter": 306,
+            "frame_id": 68,
+            "received_monotonic": 172594.578
+          },
+          "top": {
+            "counter": 304,
+            "frame_id": 69,
+            "received_monotonic": 172594.593
+          }
+        }
+      }
+    ],
+    "duration_seconds": 16.437999999994645
+  }
+]

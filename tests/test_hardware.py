@@ -120,6 +120,27 @@ class HardwareTests(unittest.TestCase):
         self.assertTrue(self.evidence["nested_installation"])
         self.assertEqual(self.ftp.writes, [])
 
+    def test_ftpd_missing_file_450_allows_nested_read_only_discovery(self):
+        self.ftp.files = {path.replace(hardware.APP_DIR, hardware.APP_DIR + "/3ds/Colosseum3DS", 1): data
+                          for path, data in self.original.items()}
+        read = self.ftp.retrbinary
+        def ftpd_read(command, callback):
+            if command[5:] not in self.ftp.files:
+                raise ftplib.error_temp("450 No such file or directory")
+            return read(command, callback)
+        self.ftp.retrbinary = ftpd_read
+        hardware.inspect(self.ftp, self.root / "installed", self.evidence)
+        self.assertTrue(self.evidence["nested_installation"])
+        self.assertEqual(self.ftp.writes, [])
+
+    def test_other_450_errors_do_not_trigger_nested_fallback(self):
+        def unavailable(command, callback):
+            raise ftplib.error_temp("450 Resource busy")
+        self.ftp.retrbinary = unavailable
+        with self.assertRaises(ftplib.error_temp):
+            hardware.inspect(self.ftp, self.root / "installed", self.evidence)
+        self.assertEqual(self.ftp.writes, [])
+
     def test_nested_installation_is_not_a_deployment_target(self):
         self.ftp.files = {path.replace(hardware.APP_DIR, hardware.APP_DIR + "/3ds/Colosseum3DS", 1): data
                           for path, data in self.original.items()}

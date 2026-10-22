@@ -10,12 +10,16 @@ include $(DEVKITARM)/3ds_rules
 
 TARGET := Colosseum3DS
 BUILD := build-3ds
-SOURCES := platform/3ds src
-INCLUDES := include compat/include vendor/colosseum/include platform/3ds
+SOURCES := platform/3ds src build-3ds/gekko vendor/gekkoctr/runtime
+INCLUDES := build-3ds/gekko/include include compat/include vendor/colosseum/include platform/3ds \
+            vendor/gekkoctr/include vendor/gekkoctr/platform/ctr/include
+GEKKO_CFILES := gx.c gx_texture.c gx_material.c gx_scene.c
+PYTHON ?= python3
 ARCH := -march=armv6k -mtune=mpcore -mfloat-abi=hard -mtp=soft
 CFLAGS := -g -O2 -Wall -Wextra -std=gnu11 -mword-relocations \
           -ffunction-sections -fdata-sections $(ARCH)
 CFLAGS += $(INCLUDE) -D__3DS__ $(C3_EXTRA_CFLAGS)
+CFLAGS += -DC3_BUILD_ID=\"$(shell git rev-parse --short=12 HEAD)\"
 ASFLAGS := -g $(ARCH)
 LDFLAGS = -specs=3dsx.specs -g $(ARCH) -Wl,--gc-sections,-Map,$(notdir $*.map)
 LIBS := -lcitro3d -lctru -lm
@@ -33,7 +37,7 @@ export VPATH := $(foreach dir,$(SOURCES),$(CURDIR)/$(dir))
 export DEPSDIR := $(CURDIR)/$(BUILD)
 export LD := $(CC)
 
-CFILES := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.c)))
+CFILES := $(notdir $(wildcard platform/3ds/*.c src/*.c)) ctr_gx_citro3d.c $(GEKKO_CFILES)
 PICAFILES := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.v.pica)))
 export OFILES_SOURCES := $(CFILES:.c=.o)
 export OFILES := $(PICAFILES:.v.pica=.shbin.o) $(OFILES_SOURCES)
@@ -42,11 +46,18 @@ export INCLUDE := $(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir)) \
                   $(foreach dir,$(LIBDIRS),-I$(dir)/include) -I$(CURDIR)/$(BUILD)
 export LIBPATHS := $(foreach dir,$(LIBDIRS),-L$(dir)/lib)
 export _3DSXDEPS := $(OUTPUT).smdh
-export _3DSXFLAGS := --smdh=$(OUTPUT).smdh
+export _3DSXFLAGS := --smdh=$(OUTPUT).smdh --romfs=$(CURDIR)/$(BUILD)/romfs
 
-.PHONY: all clean
-all: $(BUILD)
+.PHONY: all clean prepare-gekko
+all: prepare-gekko $(BUILD)/romfs/p5_material.shbin
 	$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile.3ds
+
+prepare-gekko: | $(BUILD)
+	$(PYTHON) tools/prepare_gekko_backend.py --output $(BUILD)/gekko
+
+$(BUILD)/romfs/p5_material.shbin: vendor/gekkoctr/platform/ctr/shaders/p5_material.v.pica | $(BUILD)
+	mkdir -p $(BUILD)/romfs
+	picasso -o $@ $<
 
 $(BUILD):
 	mkdir -p $@
@@ -57,9 +68,13 @@ clean:
 else
 
 all: $(OUTPUT).3dsx
-$(OUTPUT).3dsx: $(OUTPUT).elf $(_3DSXDEPS)
+$(OUTPUT).3dsx: $(OUTPUT).elf $(_3DSXDEPS) $(TOPDIR)/$(BUILD)/romfs/p5_material.shbin
 $(OUTPUT).elf: $(OFILES)
 $(OFILES_SOURCES): $(HFILES)
+# Embed the actual built commit even when only documentation changed.
+.PHONY: force-build-id
+force-build-id:
+model_scene.o: force-build-id
 
 %.shbin.o %_shbin.h: %.shbin
 	$(bin2o)
