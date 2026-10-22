@@ -1,5 +1,5 @@
 {
-  "status": "INCOMPLETE: first title frame stall after confirmed CPU crash repair",
+  "status": "INCOMPLETE physical acceptance; cooperative control recovery implemented and host-verified, deployment pending",
   "tested_commit": "203cf6da34957d058de2dcb462a8daefeca99a57",
   "tested_3dsx_sha256": "6f28bec622eabdac9b3df614e78728b2a049795c15b3dfb7237370a53fdf2388",
   "tested_3dsx_bytes": 311228,
@@ -29,7 +29,7 @@
   "save_writes": 0,
   "diagnostic_3dsx_bytes": 311956,
   "diagnostic_result": "First draw returns, nextFrameBeginSYNCDRAW stalls with freshNTR",
-  "next_probe": {
+  "superseded_probe": {
     "commit": "65469d1235ba585b429a5ce52860667539b0efb9",
     "bytes": 312996,
     "sha256": "f04be43b89a1e37e7f86731bfdfab9c64d9399a7823825999ed5ef34f7676781",
@@ -42,5 +42,29 @@
     ],
     "begin": "NONBLOCK-only,3s deadline; parkretainGPUstorage ontimeout",
     "verification": "5 strict+ASan/UBSan host tests; pinned ARMcompile/link passed"
-  }
+  },
+  "ready_runtime_recovery": {
+    "source_commit": "7a4a74613d01e3a4598da6e26c14f5bb701be83f",
+    "configuration": "normal full Gekko-enabled native flow; cooperative render recovery; no temporary GPU probes",
+    "image": "devkitpro/devkitarm@sha256:116afba8df8453961de2936ffab20dd441edf4d682856c1ec8b0e53d7ed0bbf5",
+    "physically_tested": false,
+    "outputs": [
+      {
+        "name": "Colosseum3DS.3dsx",
+        "bytes": 315324,
+        "sha256": "d068396046553294eb597f7e38996e3fa393865a8f36e90928e5bbe65fc2b1a1"
+      },
+      {
+        "name": "Colosseum3DS.smdh",
+        "bytes": 14016,
+        "sha256": "f3fad3feb7b42caab0a647bb392050bf72e4507593cded5a16819cc1c68e5a55"
+      }
+    ]
+  },
+  "recovery_controls": [
+    "A: resume when GPU is idle",
+    "X: flush diagnostics to existing trace",
+    "START+SELECT: latch exit until safe GPU teardown"
+  ],
+  "recovery_limits": "APT/HID must keep returning. Citro3D suspend hook can block on a hard GPU wedge; process/kernel crashes still need physical recovery."
 }

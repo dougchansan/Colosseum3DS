@@ -15,7 +15,25 @@ first title draw. The next committed diagnostic build is ready; device recovery
 is required to install it. Do not interpret this report as a completed first-area
 gate or use the earlier Eevee benchmark as field performance.
 
-## Subsequent title-stall isolation
+## Cooperative control recovery implementation (not yet deployed)
+
+The subsequent user-requested control change supersedes the unrun controlled
+probe. The implementation now returns BUSY immediately, keeps CPU input/trace
+handling active, displays a watchdog recovery view, and defers resource release
+until GPU quiescence. Temporary probe stages and console markers are removed.
+[Recovery controls, ownership and limits](render-recovery.md) describe the exact
+behavior, including the Citro3D HOME suspend-hook limitation.
+
+Ready source `7a4a74613d01e3a4598da6e26c14f5bb701be83f` builds a 315324-byte executable,
+SHA-256 `d068396046553294eb597f7e38996e3fa393865a8f36e90928e5bbe65fc2b1a1`.
+Host verification covers 734 recovery checks, eleven native suites/ASan/UBSan,
+and 134 Python tests with NumPy/Pillow and zero skips. The pinned ARM build passes.
+This binary remains uninstalled because the older 536 diagnostic is still frozen.
+Hardware acceptance and the original title-stall root cause remain unverified.
+The next action is recovery/deployment of this runtime, not the historical 654
+probe described below.
+
+## Subsequent title-stall isolation (historical probe)
 
 The first diagnostic (`536dbd3864ce`) was deployed with readback verification.
 Fresh NTR captures show `title_gpu 0 after_end` followed by
