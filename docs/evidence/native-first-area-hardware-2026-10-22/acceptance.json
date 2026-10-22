@@ -1,0 +1,31 @@
+{
+  "status": "INCOMPLETE: first title frame stall after confirmed CPU crash repair",
+  "tested_commit": "203cf6da34957d058de2dcb462a8daefeca99a57",
+  "tested_3dsx_sha256": "6f28bec622eabdac9b3df614e78728b2a049795c15b3dfb7237370a53fdf2388",
+  "tested_3dsx_bytes": 311228,
+  "diagnostic_commit": "536dbd3864ce21f196439860f2a1889a4c9b3072",
+  "diagnostic_sha256": "4254c47bd712d5fcce72e1c46ebbb4f9b7b9d92a82af4238c0f3f26eb29e834f",
+  "diagnostic_installed": false,
+  "pass": [
+    "14 prepared asset hashes and staged/final transfer verification",
+    "Core selftest PASS",
+    "Original TPC and GS logo timeline completion",
+    "TPC NDSP initialization success",
+    "Confirmed null texture crash reproduced and repaired",
+    "NTR remains fresh on repaired app"
+  ],
+  "blocked": [
+    "Live title progress and native menu",
+    "NewGame/WES/opening/arrival",
+    "Field movement and starter party",
+    "Explicit Save and independent whole-body GCI verification",
+    "Fresh Continue and no implicit GCI writes",
+    "Sleep/resume",
+    "Audible PCM and AVsync",
+    "Field loading time and responsiveness"
+  ],
+  "recovery": "START+SELECT and HOME sent with neutral cleanup; fresh screens show no response. User asked to reset/reload existing NTR/open ftpd; next diagnostic build ready.",
+  "engine_changes": "No CFW/NTR replacement or update performed",
+  "save_writes": 0,
+  "diagnostic_3dsx_bytes": 311956
+}
