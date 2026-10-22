@@ -20,6 +20,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from verify_inputs import ROOT, file_hash, load_manifest
 
 PARSER_COMMIT = "dc71de837978a6a2fe8c5082f2840cfafb135235"
+EEVEE_ARCHIVE_SHA256 = "fe69d7d79f7871610c07ff8875925cdbe4459b4e547f34e253452c3dcad0afef"
+MAX_ARCHIVE_BYTES = 1024 * 1024
 MAX_BYTES = 16 * 1024 * 1024
 LIMITS = (128, 8192, 32, 16, 240)
 
@@ -179,7 +181,18 @@ def encode_pack(bones, vertices, batches, textures, frames, fps, bounds, archive
     return bytes(header + vertex_bytes + batch_bytes + descriptors + matrix_bytes + pixels)
 
 
-def load_scene(parser_root, archive):
+def read_archive(archive):
+    """Admit only the reviewed Eevee archive before any container decompression."""
+    with Path(archive).open("rb") as stream:
+        data = stream.read(MAX_ARCHIVE_BYTES + 1)
+    if len(data) > MAX_ARCHIVE_BYTES:
+        raise ValueError("Eevee archive exceeds the 1 MiB input limit")
+    if hashlib.sha256(data).hexdigest() != EEVEE_ARCHIVE_SHA256:
+        raise ValueError("Eevee archive differs from the reviewed GC6E01 revision 0 source")
+    return data
+
+
+def load_scene(parser_root, archive, archive_bytes):
     # The package entry point imports bpy and registration UI. The phases are
     # intentionally independently usable; point their package paths at the pin.
     import types
@@ -192,9 +205,11 @@ def load_scene(parser_root, archive):
     from importer.phases.route.route import route_sections
     from importer.phases.parse.parse import parse_sections
     from importer.phases.describe.describe import describe_scene
-    options = {"filepath": archive.name, "game": "COLO_XD", "max_frame": 240,
+    # Preserve source channels; bake() refuses actions beyond the pack limit
+    # rather than silently trimming them to the demonstration's frame budget.
+    options = {"filepath": archive.name, "game": "COLO_XD", "max_frame": 1_000_000_000,
                "section_names": [], "ik_hack": True}
-    entries = extract_dat(archive.read_bytes(), archive.name, options=options)
+    entries = extract_dat(archive_bytes, archive.name, options=options)
     if len(entries) != 1:
         raise ValueError("Expected exactly one Eevee DAT member")
     dat, metadata = entries[0]
@@ -394,8 +409,9 @@ def worker(args):
     if dirty.strip():
         raise ValueError("HSD importer has tracked modifications")
     archive = disc / "files/pkx_eievui.fsys"
-    archive_sha = hashlib.sha256(archive.read_bytes()).digest()
-    scene, options, dat_sha, member = load_scene(parser_root, archive)
+    archive_bytes = read_archive(archive)
+    archive_sha = hashlib.sha256(archive_bytes).digest()
+    scene, options, dat_sha, member = load_scene(parser_root, archive, archive_bytes)
     model = scene.models[0]
     vertices, batches, textures, texture_info = geometry(model)
     frames, animation, delta, blender_version, fidelity = bake(scene, options, args.animation, vertices)

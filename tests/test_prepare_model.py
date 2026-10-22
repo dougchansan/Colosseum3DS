@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace as Obj
+from unittest.mock import patch
 
 SPEC = importlib.util.spec_from_file_location(
     "prepare_model", Path(__file__).resolve().parents[1] / "tools/prepare_model.py")
@@ -14,6 +15,18 @@ SPEC.loader.exec_module(MODEL)
 
 
 class PrepareModelTests(unittest.TestCase):
+    def test_archive_is_bounded_and_verified_before_parser_admission(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "synthetic.fsys"
+            path.write_bytes(b"synthetic unreviewed archive")
+            with self.assertRaisesRegex(ValueError, "differs from the reviewed"):
+                MODEL.read_archive(path)
+            path.write_bytes(bytes(MODEL.MAX_ARCHIVE_BYTES + 1))
+            # Oversized input must be rejected before hashing or decompression.
+            with patch.object(MODEL.hashlib, "sha256", side_effect=AssertionError("must not hash oversized input")):
+                with self.assertRaisesRegex(ValueError, "1 MiB input limit"):
+                    MODEL.read_archive(path)
+
     def sample(self):
         vertex = ((1.0, 2.0, 3.0), (0.25, 0.75), 0, (255, 255, 255, 255))
         matrix = [1., 0., 0., 0., 0., 1., 0., 0., 0., 0., 1., 0.]

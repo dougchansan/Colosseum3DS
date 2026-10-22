@@ -1,0 +1,130 @@
+{
+  "_instructions": "EXAMPLE ONLY. Copy to ignored private storage, supply private endpoints and calibrate every template/crop and route against observed screens. Templates are bottom-screen 320x240 images or exact crops. Never infer a route from this example. ftpd needs a stable foreground header template plus port5000 greeting; black startup frames are not a ready state. No TCP8000 stream startup is performed.",
+  "host": "192.0.2.1",
+  "bind": "192.0.2.2",
+  "states": {
+    "ftpd": {
+      "reference": "templates/ftpd-bottom.png",
+      "box": [
+        0,
+        0,
+        320,
+        240
+      ],
+      "threshold": 5,
+      "ftp_ready": true,
+      "settle_seconds": 0.3
+    },
+    "home_hbl": {
+      "reference": "templates/home-hbl-bottom.png",
+      "box": [
+        0,
+        0,
+        320,
+        240
+      ],
+      "threshold": 5,
+      "settle_seconds": 0.3
+    },
+    "home_ftpd": {
+      "reference": "templates/home-ftpd-bottom.png",
+      "box": [
+        0,
+        0,
+        320,
+        240
+      ],
+      "threshold": 5,
+      "settle_seconds": 0.3
+    },
+    "confirm_close": {
+      "reference": "templates/confirm-close-bottom.png",
+      "box": [
+        0,
+        0,
+        320,
+        240
+      ],
+      "threshold": 5,
+      "settle_seconds": 0.3
+    },
+    "hbl_root_first": {
+      "reference": "templates/hbl-root-first-bottom.png",
+      "box": [
+        0,
+        0,
+        320,
+        240
+      ],
+      "threshold": 5,
+      "settle_seconds": 0.3
+    },
+    "hbl_root_colosseum": {
+      "reference": "templates/hbl-root-colosseum-bottom.png",
+      "box": [
+        0,
+        0,
+        320,
+        240
+      ],
+      "threshold": 5,
+      "settle_seconds": 0.3
+    },
+    "project_first": {
+      "reference": "templates/project-first-bottom.png",
+      "box": [
+        0,
+        0,
+        320,
+        240
+      ],
+      "threshold": 5,
+      "settle_seconds": 0.3
+    },
+    "project_scene630": {
+      "reference": "templates/project-scene630-bottom.png",
+      "box": [
+        0,
+        0,
+        320,
+        240
+      ],
+      "threshold": 5,
+      "settle_seconds": 0.3
+    },
+    "scene_entry": {
+      "reference": "templates/scene-entry-bottom.png",
+      "box": [
+        0,
+        0,
+        320,
+        240
+      ],
+      "threshold": 5,
+      "settle_seconds": 0.3
+    },
+    "model": {
+      "reference": "templates/model-bottom.png",
+      "box": [
+        0,
+        0,
+        320,
+        240
+      ],
+      "threshold": 5,
+      "settle_seconds": 0.3
+    }
+  },
+  "routes": {
+    "model": {},
+    "ftpd": {}
+  },
+  "_edge_example": {
+    "action": "DOWN",
+    "duration": 0.15,
+    "expected": [
+      "project_scene630"
+    ]
+  },
+  "_route_notes": "Fill routes[target][observed_state] with validated edges only. Allowed HOME LEFT RIGHT UP DOWN A STARTSELECT. Durations .1/.15; .4 only for calibrated DOWN navigation. Model scene630 directory ordering is 3ds,data,scene630,scened3; do not assume timing across different folders. Empty routes safely refuse input."
+}

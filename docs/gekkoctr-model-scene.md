@@ -72,6 +72,10 @@ tolerance. The writer refuses a failed check or a motionless selected action.
 
 The selected input is `pkx_eievui.fsys`, member `eievui.pkx`, containing one DAT:
 
+The preparation tool admits only the reviewed archive hash below and reads at
+most 1 MiB before parsing/decompression. A modified, oversized or unreviewed
+archive is rejected before invoking the donor parser.
+
 | Property | Value |
 | --- | --- |
 | Archive SHA-256 | `fe69d7d79f7871610c07ff8875925cdbe4459b4e547f34e253452c3dcad0afef` |
@@ -164,6 +168,9 @@ Hardware results, tested commit/binary hash, two distinct poses and benchmark
 conditions belong in the accompanying hardware record. Closing the PC capture
 does not prove NTR streaming has stopped; a streaming-disabled comparison must
 be separately established or marked unmeasured.
+
+The [physical validation record](gekkoctr-hardware-2026-10-21.md) contains that
+measured checkpoint and the preserved originals/deployment evidence.
 
 The next game-driven connection is an HSD joint/material traversal feeding the
 same native renderer, with multi-weight envelopes, lighting and representative

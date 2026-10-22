@@ -1,0 +1,34 @@
+{
+  "source": "https://github.com/xzn/ntrviewer-hr/tree/556c6d06b21cef38c29efd0cdad59a5771956268",
+  "duration_seconds": 2.0,
+  "view_only": true,
+  "input_packets_sent": 0,
+  "udp_packets": 614,
+  "decode_errors": 0,
+  "status": "passed",
+  "listen_only": true,
+  "frames": {
+    "top": {
+      "frame_id": 84,
+      "counter": 36,
+      "received_utc": "2026-10-22T00:04:25.631277+00:00"
+    },
+    "bottom": {
+      "frame_id": 84,
+      "counter": 36,
+      "received_utc": "2026-10-22T00:04:25.653035+00:00"
+    }
+  },
+  "counters": {
+    "top": 36,
+    "bottom": 36
+  },
+  "screen_age_seconds": {
+    "top": 0.046999999991385266,
+    "bottom": 0.031000000017229468
+  },
+  "freshness_requirement": "Both screens >=2 decoded frames and latest age <=3 seconds",
+  "rejected_packets": 0,
+  "elapsed_seconds": 2.0,
+  "image_sha256": "af304e76d0aba196a2449f611c2e3f6ae82e7905df27fced344e4c5aea3b175f"
+}
