@@ -5,7 +5,7 @@
   "tested_3dsx_bytes": 311228,
   "diagnostic_commit": "536dbd3864ce21f196439860f2a1889a4c9b3072",
   "diagnostic_sha256": "4254c47bd712d5fcce72e1c46ebbb4f9b7b9d92a82af4238c0f3f26eb29e834f",
-  "diagnostic_installed": false,
+  "diagnostic_installed": true,
   "pass": [
     "14 prepared asset hashes and staged/final transfer verification",
     "Core selftest PASS",
@@ -27,5 +27,20 @@
   "recovery": "START+SELECT and HOME sent with neutral cleanup; fresh screens show no response. User asked to reset/reload existing NTR/open ftpd; next diagnostic build ready.",
   "engine_changes": "No CFW/NTR replacement or update performed",
   "save_writes": 0,
-  "diagnostic_3dsx_bytes": 311956
+  "diagnostic_3dsx_bytes": 311956,
+  "diagnostic_result": "First draw returns, nextFrameBeginSYNCDRAW stalls with freshNTR",
+  "next_probe": {
+    "commit": "65469d1235ba585b429a5ce52860667539b0efb9",
+    "bytes": 312996,
+    "sha256": "f04be43b89a1e37e7f86731bfdfab9c64d9399a7823825999ed5ef34f7676781",
+    "installed": false,
+    "stages": [
+      "clear",
+      "geometry",
+      "geometry+originaloverlay",
+      "normal"
+    ],
+    "begin": "NONBLOCK-only,3s deadline; parkretainGPUstorage ontimeout",
+    "verification": "5 strict+ASan/UBSan host tests; pinned ARMcompile/link passed"
+  }
 }

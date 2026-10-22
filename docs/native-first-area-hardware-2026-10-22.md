@@ -15,13 +15,40 @@ first title draw. The next committed diagnostic build is ready; device recovery
 is required to install it. Do not interpret this report as a completed first-area
 gate or use the earlier Eevee benchmark as field performance.
 
+## Subsequent title-stall isolation
+
+The first diagnostic (`536dbd3864ce`) was deployed with readback verification.
+Fresh NTR captures show `title_gpu 0 after_end` followed by
+`title_gpu 1 before_begin`. Thus the initial draw call returns, and the next
+`FrameBegin(SYNCDRAW)` blocks. This does not yet distinguish VBlank event
+synchronization from an unfinished GPU queue. The displayed pre-end command
+usage of zero was the SDK's cached initial value, not proof of no commands.
+
+![Submission boundary](evidence/native-first-area-hardware-2026-10-22/submission-stall.png)
+
+The preserved [repaired run trace](evidence/native-first-area-hardware-2026-10-22/repaired-stall-trace.log)
+still ends at `title_begin`. No save directory existed in the subsequent
+successful listing. The asset set and saves have not been changed.
+
+A controlled probe is now committed as `65469d1235ba585b429a5ce52860667539b0efb9`:
+312996-byte executable, SHA-256
+`f04be43b89a1e37e7f86731bfdfab9c64d9399a7823825999ed5ef34f7676781`.
+It submits clear-only, geometry-only, geometry plus the original overlay, then
+normal rendering. It polls `NONBLOCK` without `SYNCDRAW`, records both frame
+counters, and reports a three-second queue deadline. A timed-out probe parks
+without freeing GPU-owned storage. Five executed host tests cover the sequence
+and simulated timeout; strict/ASan/UBSan and the pinned ARM build pass.
+This is temporary isolation code, **not a claimed stall fix**. It has not been
+deployed because the console still needs reset/FTP recovery. Remove the probe
+and temporary console markers once the failure has been isolated.
+
 ## Exact source and binaries
 
 | Build | Commit | 3DSX bytes | SHA-256 |
 | --- | --- | ---: | --- |
 | Initial, crashed | `8b3e7052ad951b606abc3be028429889353469e8` | 311216 | `5303d913b44bd68857c585cae4aae0476efb355ba954a97dba8a6327e5766640` |
 | Null-binding repair, physically tested | `203cf6da34957d058de2dcb462a8daefeca99a57` | 311228 | `6f28bec622eabdac9b3df614e78728b2a049795c15b3dfb7237370a53fdf2388` |
-| Bounded frame diagnostic, built but not deployed | `536dbd3864ce21f196439860f2a1889a4c9b3072` | 311956 | `4254c47bd712d5fcce72e1c46ebbb4f9b7b9d92a82af4238c0f3f26eb29e834f` |
+| Bounded frame diagnostic, subsequently tested (see above) | `536dbd3864ce21f196439860f2a1889a4c9b3072` | 311956 | `4254c47bd712d5fcce72e1c46ebbb4f9b7b9d92a82af4238c0f3f26eb29e834f` |
 
 Both normal builds retain the Gekko route and choose native boot from `boot/`.
 SMDH is 14016 bytes, SHA-256
