@@ -6,6 +6,7 @@
 
 static bool graphics_started;
 static uint16_t previous_buttons;
+static uint16_t deferred_buttons;
 static aptHookCookie clock_hook;
 static unsigned clock_pause_mask;
 static uint64_t clock_pause_start, clock_paused_us;
@@ -67,6 +68,7 @@ int c3_n3ds_init(char *error, size_t capacity)
     gfxSetDoubleBuffering(GFX_BOTTOM, false);
     consoleInit(GFX_BOTTOM, NULL);
     previous_buttons = 0;
+    deferred_buttons = 0;
     LightLock_Init(&clock_lock);
     clock_pause_mask = 0;
     clock_pause_start = clock_paused_us = 0;
@@ -97,7 +99,8 @@ bool c3_n3ds_poll(C3N3dsInput *input)
     irrstCstickRead(&cstick);
     memset(input, 0, sizeof(*input));
     input->held = map_buttons(keys);
-    input->pressed = (uint16_t)(input->held & ~previous_buttons);
+    input->pressed = (uint16_t)((input->held & ~previous_buttons) | deferred_buttons);
+    deferred_buttons = 0;
     previous_buttons = input->held;
     input->stick_x = normalize_axis(circle.dx);
     input->stick_y = normalize_axis(circle.dy);
@@ -115,6 +118,11 @@ uint64_t c3_n3ds_time_us(void)
     /* svcGetSystemTick uses the base clock even with New 3DS speedup enabled. */
     return (ticks / SYSCLOCK_ARM11) * UINT64_C(1000000)
          + (ticks % SYSCLOCK_ARM11) * UINT64_C(1000000) / SYSCLOCK_ARM11;
+}
+
+void c3_n3ds_defer_buttons(uint16_t pressed)
+{
+    deferred_buttons |= pressed;
 }
 
 uint64_t c3_n3ds_active_time_us(void)

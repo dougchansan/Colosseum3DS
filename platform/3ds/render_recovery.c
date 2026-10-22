@@ -1,0 +1,124 @@
+#include "render_recovery.h"
+#include "n3ds_platform.h"
+#include "stage_renderer.h"
+
+#ifdef C3_RECOVERY_HOST_TEST
+void consoleClear(void);
+void gfxFlushBuffers(void);
+void svcSleepThread(int64_t duration);
+uint32_t C3D_FrameCounter(int screen);
+#else
+#include <3ds.h>
+#include <citro3d.h>
+#endif
+
+#ifndef C3_BUILD_ID
+#define C3_BUILD_ID "host"
+#endif
+
+#define WATCHDOG_US UINT64_C(3000000)
+#define HEARTBEAT_US UINT64_C(1000000)
+
+static void record(FILE *trace, const char *scene, const char *event,
+                   unsigned frames, uint64_t elapsed, bool ready, bool exiting,
+                   uint16_t pressed)
+{
+    if (!trace) return;
+    fprintf(trace, "render_recovery scene=%s event=%s frames=%u elapsed_us=%llu "
+            "ready=%u exit=%u input=%04x counters=%lu,%lu build=%.12s\n",
+            scene, event, frames, (unsigned long long)elapsed, (unsigned)ready,
+            (unsigned)exiting, (unsigned)pressed,
+            (unsigned long)C3D_FrameCounter(0), (unsigned long)C3D_FrameCounter(1),
+            C3_BUILD_ID);
+    fflush(trace);
+}
+
+static void display(const char *scene, uint64_t elapsed, bool ready,
+                    bool draining, bool exiting, bool retry, uint16_t pressed)
+{
+    consoleClear();
+    printf("Colosseum3DS | render recovery\nBuild %.12s | %s\n\n", C3_BUILD_ID, scene);
+    printf("Rendering paused: GPU %s\nWait %.1f seconds | PAD %04X\n\n",
+           ready ? "ready" : "busy", (double)elapsed / 1000000.0, (unsigned)pressed);
+    if (exiting || draining) {
+        printf("%s\nWaiting for GPU before releasing\nscene memory.\n\n",
+               exiting ? "Exit requested." : "Changing scene.");
+        printf("X: write diagnostics to trace\nSTART + SELECT: request exit\n\n");
+    }
+    else {
+        printf("A: resume when GPU is ready\nX: write diagnostics to trace\nSTART + SELECT: request exit\n\n");
+        if (retry) printf("Resume request queued.\n\n");
+    }
+    printf("A hard GPU/system fault may still\nrequire a physical reset. HOME may\nalso wait for GPU completion.\n");
+    gfxFlushBuffers();
+}
+
+C3RenderRecoveryResult c3_render_recover(FILE *trace, const char *scene,
+                                        unsigned submitted_frames, C3RenderRecoveryMode mode)
+{
+    const uint64_t started = c3_n3ds_time_us();
+    uint64_t next_heartbeat = started + HEARTBEAT_US, next_display = 0;
+    const bool draining = mode != C3_RECOVER_WAIT;
+    bool paused = false, retry = false, pending_exit = mode == C3_RECOVER_EXIT;
+    uint16_t deferred = 0, last_pressed = 0;
+    if (!scene) scene = "scene";
+    for (;;) {
+        /* Both helpers make one NONBLOCK attempt. Shutdown may release GPU
+         * resources only after an empty-frame barrier proves quiescence. */
+        bool ready = draining || pending_exit ? c3_stage_renderer_try_shutdown() :
+                                    c3_stage_renderer_is_idle();
+        uint64_t now = c3_n3ds_time_us();
+        uint64_t elapsed = now >= started ? now - started : 0;
+        if (ready && (draining || pending_exit)) {
+            record(trace, scene, "drained", submitted_frames, elapsed, true, pending_exit, 0);
+            return pending_exit ? C3_RECOVERY_EXIT : C3_RECOVERY_DRAINED;
+        }
+        if (!paused && elapsed >= WATCHDOG_US) {
+            paused = true;
+            deferred = 0;
+            record(trace, scene, "timeout", submitted_frames, elapsed, ready, pending_exit, 0);
+            next_display = 0;
+        }
+        if (ready && !draining && (!paused || retry)) {
+            if (paused) record(trace, scene, "resume", submitted_frames, elapsed, true, false, 0);
+            else if (deferred) c3_n3ds_defer_buttons(deferred);
+            return paused ? C3_RECOVERY_RESUME_PAUSED : C3_RECOVERY_RESUME;
+        }
+
+        C3N3dsInput input = {0};
+        bool running = c3_n3ds_poll(&input);
+        last_pressed = input.pressed;
+        if (!running || input.exit_requested) {
+            if (!pending_exit) {
+                record(trace, scene, "exit_requested", submitted_frames, elapsed, ready, true, input.pressed);
+                next_display = 0;
+            }
+            pending_exit = true;
+            deferred = 0;
+        } else if (!paused && !draining) {
+            /* Polling must not swallow an ordinary menu press while the GPU
+             * takes a few milliseconds. Recovery controls are consumed only
+             * after the watchdog has actually paused the scene. */
+            deferred |= input.pressed;
+        } else {
+            if (!draining && !pending_exit && (input.pressed & C3_PAD_A)) {
+                retry = true;
+                record(trace, scene, "retry", submitted_frames, elapsed, ready, pending_exit, input.pressed);
+                next_display = 0;
+            }
+            if (input.pressed & C3_PAD_X) {
+                record(trace, scene, "snapshot", submitted_frames, elapsed, ready, pending_exit, input.pressed);
+                next_display = 0;
+            }
+        }
+        if ((paused || draining || pending_exit) && now >= next_display) {
+            display(scene, elapsed, ready, draining, pending_exit, retry, last_pressed);
+            next_display = now + UINT64_C(250000);
+        }
+        if ((paused || draining || pending_exit) && now >= next_heartbeat) {
+            record(trace, scene, "heartbeat", submitted_frames, elapsed, ready, pending_exit, last_pressed);
+            next_heartbeat = now + HEARTBEAT_US;
+        }
+        svcSleepThread(16000000);
+    }
+}

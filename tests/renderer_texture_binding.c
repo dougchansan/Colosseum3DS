@@ -28,8 +28,13 @@ static size_t scene_count = 1, gpu_buffer_bytes;
 static TitleGPUVertex storage[3], *vertices = storage;
 static uint32_t vertex_count = 3;
 static C3D_Tex textures[C3_STAGE_MAX_TEXTURES];
-static int target, program, mvp_location, color_pass_location;
+static const C3TitleTexture *texture_sources[C3_STAGE_MAX_TEXTURES];
+static uint32_t texture_count = 2;
+static bool c3d_started = true, program_started = true, queued_busy, frame_open;
+static void *target = (void *)1, *shader = (void *)2;
+static int program, mvp_location, color_pass_location;
 static unsigned draws, overlays, binds;
+static unsigned gpu_writes, releases, frame_ends;
 static C3D_Tex *bound[2], *expected_second;
 
 enum {
@@ -42,9 +47,8 @@ enum {
     GPU_TRIANGLES, GPU_PRIMARY_COLOR, GPU_PREVIOUS, GPU_REPLACE,
     SYSCLOCK_ARM11 = 268123480
 };
-#define NOOP(...) ((void)0)
+#define NOOP(...) ((void)++gpu_writes)
 #define C3D_GetDrawingTime(...) 0.0f
-#define C3D_GetCmdBufUsage(...) 0.25f
 #define C3D_GetAttrInfo(...) NULL
 #define C3D_GetBufInfo(...) NULL
 #define C3D_GetTexEnv(...) NULL
@@ -70,8 +74,6 @@ enum {
 #define C3D_ImmSendAttrib NOOP
 #define C3D_ImmDrawEnd NOOP
 #define gfxFlushBuffers NOOP
-#define consoleClear NOOP
-#define C3D_FrameEnd NOOP
 #define prepare_specular NOOP
 #define raster_color NOOP
 #define raster_specular NOOP
@@ -82,25 +84,29 @@ static uint64_t simulated_ticks;
 static unsigned begin_attempts;
 static uint64_t svcGetSystemTick(void)
 { simulated_ticks += SYSCLOCK_ARM11 / 1000; return simulated_ticks; }
-static uint32_t C3D_FrameCounter(int screen)
-{ return 100 + (uint32_t)screen + (uint32_t)(simulated_ticks / (SYSCLOCK_ARM11 / 60)); }
 static bool C3D_FrameBegin(unsigned flags)
 {
     assert(flags == C3D_FRAME_NONBLOCK);
+    assert(c3d_started && !frame_open);
     ++begin_attempts;
-    return getenv("C3_TEST_GPU_BUSY") == NULL;
+    if (queued_busy) return false;
+    frame_open = true;
+    return true;
 }
-static bool aptMainLoop(void) { return true; }
-static void svcSleepThread(int64_t duration)
+static void C3D_FrameEnd(unsigned flags)
 {
-    if (duration == 100000000) {
-        assert(getenv("C3_TEST_GPU_BUSY") && begin_attempts > 1);
-        assert(simulated_ticks >= UINT64_C(3) * SYSCLOCK_ARM11);
-        assert(draws == 0 && binds == 0 && overlays == 0);
-        puts("HOST_PARK_SENTINEL");
-        exit(91);
-    }
+    assert(flags == 0 && frame_open);
+    frame_open = false;
+    ++frame_ends;
 }
+static void release_resource(const void *resource)
+{ assert(resource && !queued_busy && !frame_open); ++releases; }
+#define C3D_RenderTargetDelete release_resource
+#define C3D_TexDelete release_resource
+#define linearFree release_resource
+#define shaderProgramFree release_resource
+#define DVLB_Free release_resource
+#define C3D_Fini() release_resource(&c3d_started)
 
 static int fail(char *error, size_t capacity, const char *message)
 { snprintf(error, capacity, "%s", message); return -1; }
@@ -161,18 +167,43 @@ int main(int argc, char **argv)
     C3TitleRenderStats stats;
     char error[128] = {0};
     const C3Title *models[] = {&title};
-    for (unsigned frame = 0; frame < 5; ++frame) {
-        unsigned old_draws = draws, old_overlays = overlays;
+    if (getenv("C3_TEST_GPU_BUSY")) {
+        queued_busy = true;
+        memset(storage, 0xA5, sizeof(storage));
+        TitleGPUVertex original[3];
+        memcpy(original, storage, sizeof(original));
         assert(c3_stage_renderer_draw(models, 1, &title.pose.camera, fade,
-                                      &stats, error, sizeof(error)) == 0);
-        assert(draws - old_draws == (unsigned)(frame != 0));
-        assert(overlays - old_overlays == (unsigned)(frame == 2 || (frame >= 3 && fade < 1.0f)));
+                                      &stats, error, sizeof(error)) == C3_RENDER_BUSY);
+        assert(begin_attempts == 1 && frame_ends == 0 && gpu_writes == 0);
+        assert(memcmp(original, storage, sizeof(original)) == 0);
+        assert(draws == 0 && binds == 0 && overlays == 0);
+        assert(!c3_stage_renderer_is_idle());
+        assert(!c3_stage_renderer_try_shutdown());
+        assert(releases == 0 && scene_count == 1 && vertices == storage && target);
+        assert(texture_count == 2 && c3d_started && program_started && shader);
+        assert(gpu_writes == 0 && frame_ends == 0);
+        queued_busy = false;
+        assert(c3_stage_renderer_is_idle());
+        assert(frame_ends == 1 && gpu_writes == 0 && releases == 0);
+        assert(c3_stage_renderer_try_shutdown());
+        assert(frame_ends == 2 && releases == 7);
+        assert(!vertices && !target && !shader && !c3d_started && !program_started);
+        assert(!scene_count && !texture_count);
+        unsigned old_attempts = begin_attempts;
+        assert(c3_stage_renderer_is_idle());
+        assert(c3_stage_renderer_try_shutdown());
+        assert(begin_attempts == old_attempts && releases == 7);
+        puts("BUSY returned; ownership retained; idle teardown verified");
+        return 0;
     }
-    assert(draws == 4 && binds == 8);
-    assert(overlays == 1 + 2 * (unsigned)(fade < 1.0f));
+    for (unsigned frame = 0; frame < 3; ++frame) {
+        assert(c3_stage_renderer_draw(models, 1, &title.pose.camera, fade,
+                                      &stats, error, sizeof(error)) == C3_RENDER_OK);
+    }
+    assert(draws == 3 && binds == 6 && frame_ends == 3);
+    assert(overlays == 3 * (unsigned)(fade < 1.0f));
     assert(stats.draw_calls == 1 + (unsigned)(fade < 1.0f));
     assert(stats.vertices == 3 + 3 * (unsigned)(fade < 1.0f));
-    assert(diagnostic_frame == 4);
     assert(!error[0]);
     return 0;
 }

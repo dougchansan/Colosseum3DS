@@ -3,6 +3,7 @@
 #include "game_menu.h"
 #include "movie_player.h"
 #include "n3ds_platform.h"
+#include "render_recovery.h"
 #include "title_renderer.h"
 #include "colosseum3ds/game_state.h"
 #include "colosseum3ds/movie.h"
@@ -262,14 +263,16 @@ static int run_title(FILE *trace, int core_status, C3GameState *state,
             printf("START + SELECT: exit\n");
             next_status = now + UINT64_C(250000);
         }
-        if (frames < 2 && trace) {
-            fprintf(trace, "title_draw_begin frame=%u wall_us=%llu\n", frames,
-                    (unsigned long long)c3_n3ds_time_us()); fflush(trace);
-        }
         int draw_result = c3_title_renderer_draw(title, fade, &stats, error, capacity);
-        if (frames < 2 && trace) {
-            fprintf(trace, "title_draw_end frame=%u result=%d wall_us=%llu\n", frames, draw_result,
-                    (unsigned long long)c3_n3ds_time_us()); fflush(trace);
+        if (draw_result == C3_RENDER_BUSY) {
+            C3RenderRecoveryResult recovery = c3_render_recover(trace, "title", frames, C3_RECOVER_WAIT);
+            if (recovery == C3_RECOVERY_EXIT) { result = 1; break; }
+            if (recovery == C3_RECOVERY_RESUME_PAUSED) {
+                previous = c3_n3ds_active_time_us();
+                next_status = 0;
+                menu.dirty = 1;
+            }
+            continue;
         }
         if (draw_result) { result = -1; break; }
         ++frames;
@@ -279,8 +282,10 @@ static int run_title(FILE *trace, int core_status, C3GameState *state,
         fflush(trace);
     }
 done:
+    if (c3_render_recover(trace, "title", frames,
+                          result == 1 ? C3_RECOVER_EXIT : C3_RECOVER_DRAIN) == C3_RECOVERY_EXIT)
+        result = 1;
     if (menu_open) c3_game_menu_close(&menu);
-    c3_title_renderer_shutdown();
     c3_title_close(title);
     free(title);
     return result;

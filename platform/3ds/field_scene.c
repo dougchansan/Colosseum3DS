@@ -1,5 +1,6 @@
 #include "field_scene.h"
 #include "n3ds_platform.h"
+#include "render_recovery.h"
 #include "stage_renderer.h"
 #include "colosseum3ds/field.h"
 #include "colosseum3ds/title.h"
@@ -142,7 +143,7 @@ int c3_field_scene_run(C3GameState *state,int new_game,const char *save_path,
     C3Title *storage=NULL;const C3Title *models[C3_STAGE_MAX_MODELS]={0};
     C3TitleCamera camera;C3TitleRenderStats stats={0};C3N3dsInput input={0};
     uint32_t opened=0,count=0,arrival_done=0,opening_done=0;
-    unsigned wes_index=0,arrival_index=0,selection=0;
+    unsigned wes_index=0,arrival_index=0,selection=0,frames=0;
     int result=-1,yes=0,dirty=1,arrival_end_sampled=0;
     FieldPhase phase=FIELD_CONTROL;PausePage page=PAUSE_CLOSED;
     float elapsed=0,phase_seconds=0,arrival_seconds=0;
@@ -290,7 +291,17 @@ int c3_field_scene_run(C3GameState *state,int new_game,const char *save_path,
         if(dirty || (page==PAUSE_CLOSED && now>=next_console)) {
             draw_console(&summary,phase,page,selection,yes,message);dirty=0;next_console=now+UINT64_C(1000000);
         }
-        if(c3_stage_renderer_draw(models,count,&camera,fade,&stats,error,capacity)){result=-1;break;}
+        int draw_result=c3_stage_renderer_draw(models,count,&camera,fade,&stats,error,capacity);
+        if(draw_result==C3_RENDER_BUSY) {
+            C3RenderRecoveryResult recovery=c3_render_recover(trace,"field",frames,C3_RECOVER_WAIT);
+            if(recovery==C3_RECOVERY_EXIT){result=1;break;}
+            if(recovery==C3_RECOVERY_RESUME_PAUSED) {
+                previous=c3_n3ds_active_time_us();dirty=1;next_console=0;
+            }
+            continue;
+        }
+        if(draw_result){result=-1;break;}
+        ++frames;
         if(trace && (now>=next_trace || input.pressed)) {
             fprintf(trace,"field_tick phase=%u menu=%u input=%04x stick=%d,%d xyz=%.4f,%.4f,%.4f yaw=%.4f motion=%lu sample=%.2f hits=%lu time=%lu\n",
                     (unsigned)phase,(unsigned)page,input.pressed,input.stick_x,input.stick_y,
@@ -300,7 +311,9 @@ int c3_field_scene_run(C3GameState *state,int new_game,const char *save_path,
         }
     }
 done:
-    c3_stage_renderer_shutdown();
+    if(c3_render_recover(trace,"field",frames,
+                         result==1?C3_RECOVER_EXIT:C3_RECOVER_DRAIN)==C3_RECOVERY_EXIT)
+        result=1;
     for(uint32_t i=0;i<opened;++i)c3_title_close(storage+i);
     free(storage);c3_field_close(&map);
     if(trace){fprintf(trace,"field_end result=%d error=%s\n",result,result<0?error:"");fflush(trace);}

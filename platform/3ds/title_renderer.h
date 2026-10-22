@@ -2,6 +2,9 @@
 #define COLOSSEUM3DS_TITLE_RENDERER_H
 
 #include "colosseum3ds/title.h"
+#include <stdbool.h>
+
+enum { C3_RENDER_ERROR = -1, C3_RENDER_OK = 0, C3_RENDER_BUSY = 1 };
 
 typedef struct {
     uint32_t draw_calls, vertices; /* Submitted totals, including specular/fade passes. */
@@ -17,7 +20,9 @@ int c3_title_renderer_init(const C3Title *title, char *error, size_t capacity);
 
 /* Call c3_title_animate first. Owns FrameBegin/FrameEnd and the top render target;
  * do not wrap in a second frame or call another citro3d renderer concurrently.
- * fade=0 is black, fade=1 is the authored scene. Bottom console is flushed. */
+ * fade=0 is black, fade=1 is the authored scene. Bottom console is flushed.
+ * Returns C3_RENDER_BUSY without GPU writes when the previous frame is active;
+ * the caller retains ownership and must keep polling application input. */
 int c3_title_renderer_draw(const C3Title *title, float fade,
                           C3TitleRenderStats *stats, char *error, size_t capacity);
 void c3_title_renderer_shutdown(void);

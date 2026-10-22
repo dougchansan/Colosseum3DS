@@ -30,58 +30,6 @@ static C3D_Tex textures[C3_STAGE_MAX_TEXTURES];
 static const C3TitleTexture *texture_sources[C3_STAGE_MAX_TEXTURES];
 static uint32_t texture_count, vertex_count;
 static size_t gpu_buffer_bytes;
-static unsigned diagnostic_frame;
-
-/* TEMPORARY hardware isolation. Remove this probe sequence, wait/park path,
- * and console markers together after identifying the stalled submission. */
-static const char *renderer_diagnostic_mode(void)
-{
-    return diagnostic_frame == 0 ? "clear" : diagnostic_frame == 1 ? "geometry" :
-           diagnostic_frame == 2 ? "geometry_overlay" : "normal";
-}
-
-static void renderer_diagnostic(const char *step)
-{
-    if (diagnostic_frame >= 4) return;
-    printf("title_gpu %u %s %s\n", diagnostic_frame, renderer_diagnostic_mode(), step);
-    gfxFlushBuffers();
-}
-
-static void renderer_wait_for_frame(void)
-{
-    uint32_t initial_top = C3D_FrameCounter(0), initial_bottom = C3D_FrameCounter(1);
-    uint64_t started = svcGetSystemTick();
-    if (diagnostic_frame < 4) {
-        printf("title_gpu counters_before %lu %lu\n", (unsigned long)initial_top,
-               (unsigned long)initial_bottom);
-        gfxFlushBuffers();
-    }
-    /* NONBLOCK alone skips SYNCDRAW's separate indefinite VBlank wait.
-     * Failed attempts do not open a frame or reuse the previous GPU arena. */
-    while (!C3D_FrameBegin(C3D_FRAME_NONBLOCK)) {
-        if (svcGetSystemTick() - started >= UINT64_C(3) * SYSCLOCK_ARM11) {
-            consoleClear();
-            printf("GPU WAIT TIMEOUT frame %u\nMode: %s\n", diagnostic_frame,
-                   renderer_diagnostic_mode());
-            printf("Counters %lu %lu -> %lu %lu\n", (unsigned long)initial_top,
-                   (unsigned long)initial_bottom, (unsigned long)C3D_FrameCounter(0),
-                   (unsigned long)C3D_FrameCounter(1));
-            printf("GPU storage retained.\nManual reset required.\n");
-            gfxFlushBuffers();
-            /* Do not unwind into target deletion or release memory still
-             * owned by the stalled queue. Keep system event handling alive. */
-            for (;;) { aptMainLoop(); svcSleepThread(100000000); }
-        }
-        aptMainLoop();
-        svcSleepThread(1000000);
-    }
-    if (diagnostic_frame < 4) {
-        printf("title_gpu counters_after %lu %lu\n", (unsigned long)C3D_FrameCounter(0),
-               (unsigned long)C3D_FrameCounter(1));
-        gfxFlushBuffers();
-    }
-}
-
 static int fail(char *error, size_t capacity, const char *message)
 {
     if (error && capacity) snprintf(error, capacity, "%s", message);
@@ -242,7 +190,6 @@ int c3_stage_renderer_init(const C3Title *const *models, size_t count,
             return fail(error, capacity, "Combined stage vertex arena exceeds its bound.");
         total_vertices += models[i]->vertex_count;
     }
-    diagnostic_frame = 0;
     if (!C3D_Init(C3D_DEFAULT_CMDBUF_SIZE)) return fail(error, capacity, "Scene citro3d initialization failed.");
     c3d_started = true;
     target = C3D_RenderTargetCreate(240, 400, GPU_RB_RGBA8, GPU_RB_DEPTH24_STENCIL8);
@@ -597,9 +544,7 @@ int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
                         return fail(error, capacity, "Dual-texture material requires zero TEV0 endpoints.");
         }
     }
-    renderer_diagnostic("before_begin");
-    renderer_wait_for_frame();
-    renderer_diagnostic("after_begin");
+    if (!C3D_FrameBegin(C3D_FRAME_NONBLOCK)) return C3_RENDER_BUSY;
     /* FrameBegin drains the previous GPU queue before this single bounded
      * arena is overwritten. No CPU buffer is reused within an open frame. */
     uint64_t start = svcGetSystemTick();
@@ -634,7 +579,6 @@ int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
         }
     }
     GSPGPU_FlushDataCache(vertices, (size_t)vertex_count * sizeof(*vertices));
-    renderer_diagnostic("after_cpu_flush");
     C3D_RenderTargetClear(target, C3D_CLEAR_ALL, 0x000000FF, 0);
     C3D_FrameDrawOn(target);
     /* Preserve the authored camera aspect rather than stretching its image.
@@ -662,7 +606,7 @@ int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
      * submits all opaque geometry before transparent overlays, so an actor
      * cannot disappear behind a late opaque pack. Within each class, source
      * model/batch order is retained; dynamic depth sorting is not invented. */
-    unsigned passes = diagnostic_frame == 0 ? 0u : count > 1 ? 2u : 1u;
+    unsigned passes = count > 1 ? 2u : 1u;
     for (unsigned pass = 0; pass < passes; ++pass) {
         for (size_t model = 0; model < count; ++model) {
             const C3Title *title = models[model];
@@ -732,10 +676,7 @@ int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
             }
         }
     }
-    renderer_diagnostic("after_arrays");
-    /* Submission 0: clear only; 1: authored geometry; 2: geometry plus the
-     * original immediate overlay at a fixed visible fade; then normal. */
-    fade = diagnostic_frame < 2 ? 1.0f : diagnostic_frame == 2 ? 0.5f : clamp01(fade);
+    fade = clamp01(fade);
     if (fade < 1.0f) {
         C3D_Mtx identity;
         Mtx_Identity(&identity);
@@ -762,7 +703,6 @@ int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
             C3D_ImmSendAttrib(0, 0, 0, 1);
         }
         C3D_ImmDrawEnd();
-        renderer_diagnostic("after_immediate");
         if (stats) { stats->draw_calls++; stats->vertices += 3; }
     }
     if (stats) {
@@ -770,14 +710,7 @@ int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
         stats->gpu_buffer_bytes = gpu_buffer_bytes;
     }
     gfxFlushBuffers();
-    renderer_diagnostic("before_end");
     C3D_FrameEnd(0);
-    if (diagnostic_frame < 4) {
-        printf("title_gpu %u cmd_usage %.3f\n", diagnostic_frame, (double)C3D_GetCmdBufUsage());
-        gfxFlushBuffers();
-    }
-    renderer_diagnostic("after_end");
-    if (diagnostic_frame < 4) ++diagnostic_frame;
     if (error && capacity) error[0] = '\0';
     return 0;
 }
@@ -810,4 +743,22 @@ void c3_title_renderer_shutdown(void)
 void c3_stage_renderer_shutdown(void)
 {
     c3_title_renderer_shutdown();
+}
+
+bool c3_stage_renderer_is_idle(void)
+{
+    if (!c3d_started) return true;
+    if (!C3D_FrameBegin(C3D_FRAME_NONBLOCK)) return false;
+    /* Close the acquired frame without adding GPU commands. Existing scene
+     * memory remains owned until the caller chooses to resume or shut down.
+     * Keep this frame empty; GPU-producing frame-end hooks are not allowed. */
+    C3D_FrameEnd(0);
+    return true;
+}
+
+bool c3_stage_renderer_try_shutdown(void)
+{
+    if (!c3_stage_renderer_is_idle()) return false;
+    c3_title_renderer_shutdown();
+    return true;
 }
