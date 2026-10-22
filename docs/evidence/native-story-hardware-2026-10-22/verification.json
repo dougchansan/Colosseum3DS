@@ -1,0 +1,46 @@
+{
+  "tested_source": "322eb4d3a9eb09d057cdccab83da31885b66b3cb",
+  "build_id": "322eb4d3a9eb",
+  "executable_bytes": 381732,
+  "executable_sha256": "84493e3382e737e672e9ce51e9680827518eb2e5b42f7c5931061d6f32ba6304",
+  "assets": {
+    "files": 35,
+    "bytes": 428164858,
+    "reference_hash_matches": 31,
+    "reference_hash_differences": [
+      "title.c3t",
+      "outskirt_map3.c3t",
+      "outskirt_npc0.c3t",
+      "outskirt_npc1.c3t"
+    ],
+    "full_console_readback": true
+  },
+  "pass": [
+    "New Game WES with empty save directory",
+    "Opening movie and arrival",
+    "Circle Pad movement",
+    "Original Folly/Trudly departure event and messages0515D/05146",
+    "Shop door and renderer/memory transition",
+    "Original shop TV message0426E",
+    "Original Willie talk messages0514A/0514C",
+    "Shop exit and exterior challenge",
+    "Encounter10 current party snapshot and honest backend-pending endpoint",
+    "Clean exit and NTR continuity"
+  ],
+  "not_retested": [
+    "Explicit shop Save and fresh-process Continue",
+    "Lid sleep/resume",
+    "Audible audio/AV sync"
+  ],
+  "save_directory_before_after": "absent; no completed card installed or GCI written",
+  "user_steering": "Owner requested next phase after reaching PR5 endpoint; no additional save/continue hardware acceptance claim",
+  "heap_bytes": 96043008,
+  "linear_heap_bytes": 33554432,
+  "shop_linear_free_bytes": 14508928,
+  "trace_bytes": 138917,
+  "trace_sha256": "508c543473975d5f4c89c66df9c89e854b6546cd2f9a28fc11e6940bb7d28285",
+  "battle_result_written": false,
+  "victory_flag_written": false,
+  "exit_error": "",
+  "console_left": "ftpd with PR5 binary/assets installed; NTR active"
+}
