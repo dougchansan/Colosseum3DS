@@ -76,7 +76,11 @@ static int valid_body(const uint8_t *b)
 {
     unsigned i, party=0;
     float seconds;
-    if (memcmp(b,"\x0b\x03\x02\x02",4) ||
+    /* The generation byte is provenance, not a save-layout version. Retail
+     * gamedataAttestCheckValid (80135530) accepts any nonzero generation;
+     * imported US cards can legitimately retain 02 instead of our freshly
+     * created 03. Keep the admitted Colosseum/US language and region here. */
+    if (b[0]!=0x0b || !b[1] || b[2]!=2 || b[3]!=2 ||
         !terminated_name(b+HERO,11,1) || b[HERO+0xa80]>1 ||
         be32(b+HERO+0xa84)>9999999u || b[0x29]>1 || b[0x2a]>1 ||
         !be32(b+0x1c) || be32(b+0x1c)>65535u || be32(b+0x24)>65535u)

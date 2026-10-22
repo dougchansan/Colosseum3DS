@@ -116,7 +116,7 @@ def solve_ik_lower(upper, target, upper_length, scale):
 
 
 class Model:
-    def __init__(self, model, raw):
+    def __init__(self, model, raw, allow_image_swaps=False):
         self.model, self.raw = model, raw
         self.joints = title.tree_nodes(raw.root_joint)
         self.meshes = raw_meshes(raw)
@@ -137,6 +137,7 @@ class Model:
                 bone = model.bones[bone.parent_index]
             self.invbind.append(np.asarray(bone.inverse_bind_matrix) if bone.inverse_bind_matrix else np.eye(4))
         self.tracks, self.materials, self.ends, self.particle_events = [], [], [], []
+        self.image_swaps = []
         for root in raw.animated_joints or []:
             nodes = title.tree_nodes(root)
             if len(nodes) != len(model.bones):
@@ -153,7 +154,7 @@ class Model:
             nodes = title.tree_nodes(root)
             if len(nodes) != len(model.bones):
                 raise ValueError("Incomplete HSD material animation tree")
-            mapping = {}
+            mapping, swaps = {}, {}
             for joint, node in zip(self.joints, nodes):
                 dobj, anim = joint.property, node.animation
                 while anim:
@@ -161,13 +162,34 @@ class Model:
                         raise ValueError("Unsupported animated field material topology")
                     tex_tracks, ta = {}, anim.texture_animation
                     while ta:
-                        if ta.id in tex_tracks or ta.image_table_count or ta.palette_table_count:
+                        if ta.id in tex_tracks or ta.palette_table_count:
                             raise ValueError("Texture image/palette swaps exceed field subset")
-                        tex_tracks[ta.id] = title.channels(ta.animation, set(range(2,10)) | {12,13,14,16,17,18})
+                        if ta.image_table_count:
+                            if (not allow_image_swaps or ta.id != 0 or
+                                not 1 <= ta.image_table_count <= 32 or
+                                len(ta.image_table or []) != ta.image_table_count or
+                                any(image is None for image in ta.image_table)):
+                                raise ValueError("Unreviewed field texture image table")
+                            swaps[(dobj.address,ta.id)] = ta.image_table
+                        channels = title.channels(ta.animation, set(range(2,10)) | set(range(12,24)) |
+                                                  ({1} if ta.image_table_count else set()))
+                        if ta.image_table_count and (1 not in channels or
+                            any(key.value < 0 or key.value >= ta.image_table_count for key in channels[1])):
+                            raise ValueError("Image animation references an invalid source image")
+                        # Interior map exports include zero-valued curves for
+                        # the unused TEV alpha/TEV1 registers. build_mesh still
+                        # admits only the reviewed RGB expression (alpha A-D
+                        # all ZERO, active 0x40000077). Do not silently admit
+                        # a new animated combiner through these unused fields.
+                        for channel in (15,19,20,21,22,23):
+                            if channel in channels and any(key.value != 0 for key in channels[channel]):
+                                raise ValueError("Nonzero unused TEV register animation")
+                        tex_tracks[ta.id] = channels
                         ta = ta.next
                     mapping[dobj.address] = (title.channels(anim.animation, {10}), tex_tracks)
                     dobj, anim = dobj.next, anim.next
             self.materials.append(mapping)
+            self.image_swaps.append(swaps)
         self.upper, self.lower, self.effector = {}, {}, {}
         for constraint in model.ik_constraints:
             if constraint.chain_length != 3 or constraint.pole_target_bone or not constraint.target_bone:
@@ -305,6 +327,30 @@ def validate_envelope_indices(model, mesh, pobj):
         raise ValueError("Pinned IR skin weights differ from original matrix indices")
 
 
+def pixel_engine_flags(pe, flags):
+    """Admit the original title/first-area PE states without losing Z writes.
+
+    HSD state.c:fn_801B29E4 overrides the render mode with PEDesc. Bit0
+    enables color writes, 0x10 depth comparisons, and 0x20 depth writes;
+    bit8 only selects early versus late comparison. The supported native
+    framebuffer does not carry GX destination alpha.
+    """
+    state = (pe.flags, pe.type, pe.source_factor, pe.destination_factor, pe.z_comp)
+    modes = {(25,1,4,1,3):title.ADDITIVE | title.TRANSLUCENT,
+             (25,1,1,1,3):ADDITIVE_ONE | title.TRANSLUCENT,
+             (25,3,4,5,3):SUBTRACT | title.TRANSLUCENT,
+             (25,1,4,5,3):title.TRANSLUCENT,
+             (49,1,4,5,3):title.TRANSLUCENT,
+             (57,0,4,5,3):0}
+    if state not in modes:
+        raise ValueError("Unreviewed field pixel-engine state: " + str(state))
+    flags &= ~(title.ADDITIVE | ADDITIVE_ONE | SUBTRACT | title.TRANSLUCENT | title.NO_DEPTH_WRITE)
+    flags |= modes[state]
+    if not pe.flags & 0x20:
+        flags |= title.NO_DEPTH_WRITE
+    return flags
+
+
 def build_mesh(model, mesh_index):
     from shared.IR.enums import SkinType
     ir = model.model
@@ -366,12 +412,7 @@ def build_mesh(model, mesh_index):
     if dobj.mobject.render_mode & 8:
         batch[3] |= title.SPECULAR
     if pe:
-        state = (pe.flags,pe.type,pe.source_factor,pe.destination_factor,pe.z_comp)
-        flags = {(25,1,4,1,3):title.ADDITIVE, (25,1,1,1,3):ADDITIVE_ONE,
-                 (25,3,4,5,3):SUBTRACT}.get(state)
-        if flags is None:
-            raise ValueError("Unreviewed field pixel-engine state: " + str(state))
-        batch[3] |= flags | title.NO_DEPTH_WRITE | title.TRANSLUCENT
+        batch[3] = pixel_engine_flags(pe, batch[3])
         batch[20:26] = [pe.reference_0,pe.reference_1,pe.alpha_component_0,
                        pe.alpha_component_1,pe.alpha_op,pe.z_comp]
     if dual or reflection:
@@ -422,6 +463,37 @@ def texture_affine(scale, translation, repeat, rotation):
     return (matrix[0,0],matrix[1,1],*offset),(matrix[0,1],matrix[1,0])
 
 
+def expand_image_swaps(meshes):
+    """Represent an admitted texture-image track with visible mesh variants.
+
+    The original GSmodel links the TIMG track to its skeletal clock. Source
+    image/palette bytes are decoded by the pinned parser; only the selected
+    variant is visible. This needs no mutable GPU texture or new C3T material.
+    """
+    from importer.phases.describe.helpers.materials import _build_ir_image
+    result=[]
+    for mesh in meshes:
+        model,dobj=mesh["model"],mesh["dobj"]
+        entries=[s.get((dobj.address,0)) for s in model.image_swaps]
+        nonempty=[e for e in entries if e is not None]
+        if not nonempty:
+            result.append(mesh)
+            continue
+        table=nonempty[0]
+        if len(mesh["raw_textures"])!=1 or any(e!=table for e in nonempty):
+            raise ValueError("Multiple image tables or layers are unreviewed")
+        for index,image in enumerate(table):
+            variant=dict(mesh)
+            texture=copy.copy(mesh["raw_textures"][0]);texture.image=image
+            ir_image=_build_ir_image(texture)
+            if ir_image is None:
+                raise ValueError("Source image animation has no decoded pixels")
+            variant["textures"]=[_texture(texture,ir_image)]
+            variant["image_variant"]=index
+            result.append(variant)
+    return result
+
+
 def material_state(mesh, clip, frame, visible):
     model, dobj = mesh["model"], mesh["dobj"]
     mapping = model.materials[clip] if clip < len(model.materials) else {}
@@ -452,7 +524,13 @@ def material_state(mesh, clip, frame, visible):
         transforms.append((1.,1.,0.,0.))
         crosses.append((0.,0.))
     alpha = title.material_alpha(title.curve_value(mat_track[10],frame)) if 10 in mat_track else dobj.mobject.material.alpha
-    return (*transforms[0],alpha,float(visible[mesh["bone"]]),*tev0,*konst,*transforms[1],*crosses[0],*crosses[1])
+    draw_visible=visible[mesh["bone"]]
+    if "image_variant" in mesh:
+        image_track=tex_tracks.get(0,{}).get(1)
+        if not image_track:
+            raise ValueError("Image variant has no source TIMG track")
+        draw_visible=draw_visible and int(title.curve_value(image_track,frame))==mesh["image_variant"]
+    return (*transforms[0],alpha,float(draw_visible),*tev0,*konst,*transforms[1],*crosses[0],*crosses[1])
 
 
 def _sample_descriptor(model, descriptor, states, attachment=None):
@@ -470,12 +548,16 @@ def _sample_descriptor(model, descriptor, states, attachment=None):
 
 
 def prepare_pack_set(meshes, schedules, fps, camera_frames, lights, archive_hash, output, prefix,
-                     attachment=None, expected_count=None, format_version=2):
+                     attachment=None, expected_count=None, format_version=2, retained_parts=()):
     """Sample once, compact equal affine tracks, then partition at native bounds.
 
     schedules is a list of (source_clip, authored_frame_sequence, loop). Every
     model in a map group uses the same clock; independent clocks get a new set.
+    retained_parts adds original non-mesh JObj world matrices after render
+    tracks, with an explicit source part to sampled bone map in the report.
     """
+    if retained_parts and expected_count!=1:
+        raise ValueError("Retained source parts require one explicit model pack")
     frames = [(clip,frame) for clip,sequence,_loop in schedules for frame in sequence]
     models = list(dict.fromkeys(mesh["model"] for mesh in meshes))
     states = {model:[model.world(clip if model.tracks else 0,frame) for clip,frame in frames] for model in models}
@@ -492,7 +574,7 @@ def prepare_pack_set(meshes, schedules, fps, camera_frames, lights, archive_hash
         material_tracks[id(mesh)] = []
         for i,(clip,frame) in enumerate(frames):
             material = material_state(mesh,clip,frame,states[model][i][1])
-            if format_version==3:
+            if format_version>=3:
                 source_joint = states[model][i][0][mesh["bone"]]
                 if attachment is not None:
                     source_joint = attachment[i] @ source_joint
@@ -541,12 +623,30 @@ def prepare_pack_set(meshes, schedules, fps, camera_frames, lights, archive_hash
                     bone_ids[signature]=len(bone_tracks)
                     bone_tracks.append(matrix_tracks[key])
                 vertices.append((*vertex[:12],bone_ids[signature],*vertex[13:]))
+        part_records=[]
+        seen_parts=set()
+        for model,part_index,joint_index in retained_parts:
+            if (model not in models or not isinstance(part_index,int) or not 0<=part_index<65536 or
+                not isinstance(joint_index,int) or not 0<=joint_index<len(model.joints) or
+                part_index in seen_parts):
+                raise ValueError("Invalid retained original part mapping")
+            seen_parts.add(part_index)
+            track=np.asarray([world[joint_index] for world,_ in states[model]])
+            if attachment is not None:
+                track=attachment @ track
+            if (not np.isfinite(track).all() or
+                np.min(np.abs(np.linalg.det(track[:,:3,:3])))<1e-9 or len(bone_tracks)>=64):
+                raise ValueError("Retained original part exceeds sampled transform limits")
+            part_records.append({"source_part":part_index,"source_joint":joint_index,
+                "source_joint_address":f"{model.joints[joint_index].address:08x}",
+                "sampled_bone":len(bone_tracks),"transform":"model-space-world"})
+            bone_tracks.append(track[:,:3,:].astype("<f4"))
         sampled=bytearray()
         for index in range(len(frames)):
             for track in bone_tracks:
                 sampled.extend(track[index].tobytes())
             for mesh in chunk:
-                sampled.extend(struct.pack("<24f" if format_version==3 else "<16f",*material_tracks[id(mesh)][index]))
+                sampled.extend(struct.pack("<24f" if format_version>=3 else "<16f",*material_tracks[id(mesh)][index]))
             sampled.extend(struct.pack("<12f",*camera_frames[index]))
         clips,first=[],0
         for _clip,sequence,loop in schedules:
@@ -561,10 +661,13 @@ def prepare_pack_set(meshes, schedules, fps, camera_frames, lights, archive_hash
                 "texture_rgba_bytes":sum(len(texture[2]) for texture in textures),
                 "format_version":format_version,
                 "sampled_bones":len(bone_tracks),"sample_fps":fps,
+                "retained_parts":part_records,
                 "source_meshes":[{"hsd_root_address":mesh["model"].raw.root_joint.address,
                                   "mesh_index":mesh["index"],"owner_joint":mesh["bone"],
+                                  "texture_index":batches[i][2],
+                                  "image_variant":mesh.get("image_variant"),
                                   "source_render_mode":"%08x"%mesh["dobj"].mobject.render_mode}
-                                 for mesh in chunk],
+                                 for i,mesh in enumerate(chunk)],
                 "clips":[{"source_clip":c,"samples":len(s),"authored_end":s[-1],"loop":l}
                          for c,s,l in schedules]}
         reports.append(report)
@@ -578,6 +681,30 @@ def sample_sequence(end, samples_per_frame=2):
     if count<1 or abs(count-end*samples_per_frame)>1e-5:
         raise ValueError("Animation end does not align with the sampled clock")
     return [sample/samples_per_frame for sample in range(count+1)]
+
+
+def wes_motion_schedules(model):
+    """Keep locomotion at pack 0/1/2; append the original event pose at 3.
+
+    Source motion zero is an authored ten-frame animation, not an idle alias.
+    The source general motion native chooses looping again at runtime.
+    """
+    if model.ends[:4] != [10,30,30,17]:
+        raise ValueError("Original Wes motion mapping changed")
+    return [(i,sample_sequence(model.ends[i]),True) for i in (1,2,3,0)]
+
+
+def prepare_wes(archive, output, prefix, camera, lights, format_version=2):
+    from prepare_outskirt import PROFILES
+    _,raw,scene=load_scene(archive,0x00F70400)
+    model=Model(scene.models[0],raw.models[0])
+    meshes=[build_mesh(model,i) for i in range(len(model.meshes))]
+    schedules=wes_motion_schedules(model)
+    samples=sum(len(sequence) for _,sequence,_ in schedules)
+    reports=prepare_pack_set(meshes,schedules,60,[camera]*samples,lights,
+        PROFILES["field_common.fsys"][1],output,prefix,expected_count=1,
+        format_version=format_version)
+    return reports,sum(len(mesh["vertices"]) for mesh in meshes)
 
 
 def fixed_lights(raw, data):
@@ -617,17 +744,11 @@ def prepare_geometry(archives, output):
     sky_reports=prepare_pack_set(sky,[(0,sky_frames,True)],30000/29999,[fixed]*1001,lights,
                                  source_hash,output,"outskirt_map3",expected_count=1)
     reports+=sky_reports
-    _,wes_raw,wes_scene=load_scene(archives["field_common.fsys"],0x00F70400)
-    wes=Model(wes_scene.models[0],wes_raw.models[0])
-    if wes.ends[1:4] != [30,30,17]:
-        raise ValueError("Original Wes animation ends changed")
-    wes_meshes=[build_mesh(wes,i) for i in range(len(wes.meshes))]
-    schedules=[(i,sample_sequence(wes.ends[i]),True) for i in (1,2,3)]
-    samples=sum(len(sequence) for _,sequence,_ in schedules)
-    reports+=prepare_pack_set(wes_meshes,schedules,60,[fixed]*samples,lights,
-                               PROFILES["field_common.fsys"][1],output,"outskirt_wes",expected_count=1)
+    wes_reports,actor_vertices=prepare_wes(archives["field_common.fsys"],output,
+                                         "outskirt_wes",fixed,lights)
+    reports+=wes_reports
     reports+=prepare_arrival(archives,output,lights,source_hash)
-    return reports,fixed[:11],sum(len(mesh["vertices"]) for mesh in wes_meshes)
+    return reports,fixed[:11],actor_vertices
 
 
 def prepare_arrival(archives,output,lights,source_hash):

@@ -1,0 +1,105 @@
+.........................................................................................{
+  "command": "diagnose",
+  "started_utc": "2026-10-22T08:10:06.296364+00:00",
+  "application_directory": "/3ds/Colosseum3DS",
+  "status": "failed",
+  "limits": "FTP bytes only; launch, exit, input, screens and gameplay require manual observation",
+  "build_metadata": {
+    "git_commit": null,
+    "build_configuration": null,
+    "toolchain": null
+  },
+  "endpoint": {
+    "host": "example.invalid",
+    "port": 5000
+  },
+  "error": "unreachable"
+}
+{
+  "command": "diagnose",
+  "started_utc": "2026-10-22T08:10:06.308159+00:00",
+  "application_directory": "/3ds/Colosseum3DS",
+  "status": "failed",
+  "limits": "FTP bytes only; launch, exit, input, screens and gameplay require manual observation",
+  "build_metadata": {
+    "git_commit": null,
+    "build_configuration": null,
+    "toolchain": null
+  },
+  "endpoint": {
+    "host": "192.0.2.10",
+    "port": 5000
+  },
+  "resolved_addresses": [
+    "192.0.2.10"
+  ],
+  "tcp_probes": {
+    "ftp": {
+      "port": 5000,
+      "reachable": false,
+      "protocol_verified": false,
+      "error": "FTP TCP unavailable"
+    },
+    "ntr": {
+      "port": 8000,
+      "reachable": false,
+      "protocol_verified": false,
+      "error": "NTR unavailable"
+    }
+  },
+  "error": "FTP unavailable"
+}
+{
+  "command": "diagnose",
+  "started_utc": "2026-10-22T08:10:06.317312+00:00",
+  "application_directory": "/3ds/Colosseum3DS",
+  "status": "failed",
+  "limits": "FTP bytes only; launch, exit, input, screens and gameplay require manual observation",
+  "error": "Only /3ds/Colosseum3DS is supported"
+}
+{
+  "command": "inspect",
+  "started_utc": "2026-10-22T08:10:06.323458+00:00",
+  "application_directory": "/3ds/Colosseum3DS",
+  "status": "failed",
+  "limits": "FTP bytes only; launch, exit, input, screens and gameplay require manual observation",
+  "build_metadata": {
+    "git_commit": null,
+    "build_configuration": null,
+    "toolchain": null
+  },
+  "endpoint": {
+    "host": "192.0.2.10",
+    "port": 5000
+  },
+  "resolved_addresses": [],
+  "error": "FTP control connection closed unexpectedly (EOFError)"
+}
+{
+  "command": "inspect",
+  "started_utc": "2026-10-22T08:10:06.336368+00:00",
+  "application_directory": "/3ds/Colosseum3DS",
+  "status": "failed",
+  "limits": "FTP bytes only; launch, exit, input, screens and gameplay require manual observation",
+  "build_metadata": {
+    "git_commit": null,
+    "build_configuration": null,
+    "toolchain": null
+  },
+  "endpoint": {
+    "host": "192.0.2.10",
+    "port": 5000
+  },
+  "resolved_addresses": [],
+  "ftp_local_source_address": "192.0.2.2",
+  "passive_ftp": true,
+  "server_system": "215 UNIX Type: L8",
+  "application_directory_accessible": true,
+  "error": "FTP control connection closed unexpectedly (EOFError)"
+}
+Prepared test.c3t: 3 vertices, 1 batches, 2 sampled bones, 9 bytes
+......................................................................................
+----------------------------------------------------------------------
+Ran 175 tests in 5.157s
+
+OK

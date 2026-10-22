@@ -1,0 +1,157 @@
+{
+  "started_utc": "2026-10-22T06:44:02.344308+00:00",
+  "content": "/workspace/scratch/d8bf34fb7169/Colosseum3DS-story/tools/sandbox/gpu-probe-build/gpu-probe.3dsx",
+  "content_sha256": "ee541316d6e98e1a43d3f2c62926ff0111db23110fa78a9ddd9ee3c7f90e4cd7",
+  "core_sha256": "a447e9ecb7b4ef0a530d31eeb83a39edf4697f17bb3e44251f27a1d25fde7662",
+  "harness_sha256": "b234e75dfe0c2486d6d28feb0ed083d38aa289ac1eff358fa3db55327dc148e9",
+  "harness_source_sha256": "4ec434373464cdc6e6a2337415899c97e6cae53f9c338d6713c839edb8c7461b",
+  "renderer": "OpenGL/llvmpipe",
+  "system_model": "New 3DS",
+  "state": "/workspace/scratch/d8bf34fb7169/gpu-audit/probe-state",
+  "sdmc": "/workspace/scratch/d8bf34fb7169/gpu-audit/probe-state/save/Azahar/sdmc",
+  "frame_limit": 1200,
+  "wall_limit_seconds": 30,
+  "capture_every": 90,
+  "sd_files_before": [
+    {
+      "path": "3ds/Colosseum3DS/boot/title.c3t",
+      "exists": true,
+      "bytes": 18353048,
+      "sha256": "f6fc95010631de9897a041b5cc6d46232bfd6b0bd3e784ad7065f5024cb9d166"
+    },
+    {
+      "path": "3ds/Colosseum3DS/gpu-probe.log",
+      "exists": false
+    }
+  ],
+  "scope": "Emulator integration evidence; not hardware performance or save-format verification",
+  "input_sha256": "fba986e16403426886d9152061dc86a10f0ad7088e171a658640fd6fd2cc5899",
+  "command": [
+    "/workspace/scratch/d8bf34fb7169/emulator-sandbox/harness",
+    "/workspace/scratch/d8bf34fb7169/Colosseum3DS-story/tools/sandbox/gpu-probe-build/gpu-probe.3dsx",
+    "--core",
+    "/workspace/scratch/d8bf34fb7169/emulator-sandbox/core/azahar_libretro.so",
+    "--state",
+    "/workspace/scratch/d8bf34fb7169/gpu-audit/probe-state",
+    "--out",
+    "/workspace/scratch/d8bf34fb7169/gpu-audit/probe-run-v2",
+    "--frames",
+    "1200",
+    "--seconds",
+    "30",
+    "--capture-every",
+    "90",
+    "--gl",
+    "--events",
+    "/workspace/scratch/d8bf34fb7169/gpu-audit/probe-run-v2/input.csv"
+  ],
+  "process_exit_code": 0,
+  "completed_frames": 1200,
+  "interrupted": false,
+  "shutdown": false,
+  "video_callbacks": 1200,
+  "audio_frames": 0,
+  "run_loop_seconds": 2.544,
+  "guest_faults": {
+    "count": 0,
+    "lines": [],
+    "truncated": false
+  },
+  "elapsed_seconds": 3.654869204001443,
+  "sd_files_after": [
+    {
+      "path": "3ds/Colosseum3DS/boot/title.c3t",
+      "exists": true,
+      "bytes": 18353048,
+      "sha256": "f6fc95010631de9897a041b5cc6d46232bfd6b0bd3e784ad7065f5024cb9d166",
+      "changed": false
+    },
+    {
+      "path": "3ds/Colosseum3DS/gpu-probe.log",
+      "exists": true,
+      "bytes": 3512,
+      "sha256": "26ec55f48a4279f9f9033b2eb8a8fbafc4ae451408e25a9f600792f3c754d5cb",
+      "changed": true
+    }
+  ],
+  "captures": [
+    {
+      "file": "frame-000000.ppm",
+      "sha256": "94fe1bd591ad11cbaa5ed0c86891f9368d5196180693c587a8d0d6ed55f996cc",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-000090.ppm",
+      "sha256": "94fe1bd591ad11cbaa5ed0c86891f9368d5196180693c587a8d0d6ed55f996cc",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-000180.ppm",
+      "sha256": "743bb3f62272b37d80973d179dc93c158c0619405f5589e06e7eb8f12788c9e7",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-000270.ppm",
+      "sha256": "2d802253d8fb95dc76f3bd3fba8b8c3660acb99795b2d721d1d826e969be9364",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-000360.ppm",
+      "sha256": "2d802253d8fb95dc76f3bd3fba8b8c3660acb99795b2d721d1d826e969be9364",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-000450.ppm",
+      "sha256": "2d802253d8fb95dc76f3bd3fba8b8c3660acb99795b2d721d1d826e969be9364",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-000540.ppm",
+      "sha256": "d5238b48cb21b95d1169bc8d6c9106010006039e5699f9d1c909a5bcbf63c1d2",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-000630.ppm",
+      "sha256": "7d9f8892bdf343fe2b13db309533a7ace27ae9faf0d475724b61ded3a8629e76",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-000720.ppm",
+      "sha256": "06addb3822c255c6b138f3a42dfdc9bf6e11555a8cbdc4d5a15cdf5ee5c99d97",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-000810.ppm",
+      "sha256": "941f847123d28d5e8d6eb2e321fe11597fa0bcd84773fae539e8dc937356a5e0",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-000900.ppm",
+      "sha256": "941f847123d28d5e8d6eb2e321fe11597fa0bcd84773fae539e8dc937356a5e0",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-000990.ppm",
+      "sha256": "941f847123d28d5e8d6eb2e321fe11597fa0bcd84773fae539e8dc937356a5e0",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-001080.ppm",
+      "sha256": "941f847123d28d5e8d6eb2e321fe11597fa0bcd84773fae539e8dc937356a5e0",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-001170.ppm",
+      "sha256": "94fe1bd591ad11cbaa5ed0c86891f9368d5196180693c587a8d0d6ed55f996cc",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-001199.ppm",
+      "sha256": "94fe1bd591ad11cbaa5ed0c86891f9368d5196180693c587a8d0d6ed55f996cc",
+      "bytes": 576015
+    }
+  ],
+  "exit_code": 0,
+  "completed": true,
+  "png_conversion": true
+}

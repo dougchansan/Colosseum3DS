@@ -26,6 +26,11 @@ __pycache__/
 *.c3f
 *.c3g
 *.c3u
+*.c3a
+*.c3s
+*.c3b
+*.c3c
+*.c3l
 *.gci
 *.raw
 /tools/sandbox/core/

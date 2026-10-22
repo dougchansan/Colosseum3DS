@@ -28,7 +28,7 @@ ARCHIVE_SHA256 = "8ae138e5f73cd024a60fe42da2a08220f42a8ce90424c3649cc67e7f27b479
 ARCHIVE_BYTES = 1374336
 MAX_BYTES = 24 * 1024 * 1024
 FPS = 60.0
-LIMITS = (64, 32768, 64, 32, 3, 4096, 8)
+LIMITS = (64, 32768, 64, 32, 32, 4096, 8)
 CULL_BACK, CULL_FRONT, TRANSLUCENT, ADDITIVE = 1, 2, 4, 8
 LIT, VERTEX_COLOR, VERTEX_ALPHA, SPECULAR = 16, 32, 64, 128
 TEV_LERP, NO_DEPTH_WRITE = 256, 512
@@ -416,14 +416,14 @@ def sample_frames(model, raw_meshes, joint_sets, material_sets, ends, cameras):
 
 def encode_pack(bones, vertices, batches, textures, clips, lights, frames, fps=FPS,
                 format_version=1, archive_sha256=ARCHIVE_SHA256):
-    if format_version not in (1,2,3):
+    if format_version not in (1,2,3,4):
         raise ValueError("Unsupported title pack version")
     counts = (bones,len(vertices),len(batches),len(textures),len(clips),sum(clip[1] for clip in clips),len(lights))
     if any(not isinstance(n,int) or not 0 < n <= limit for n,limit in zip(counts,LIMITS)):
         raise ValueError("Title exceeds section bounds")
     if not math.isfinite(fps) or not 1 <= fps <= 120 or len(vertices) % 3:
         raise ValueError("Invalid title timing or triangle count")
-    frame_bytes = (bones + 1) * 48 + len(batches) * {1:48,2:64,3:96}[format_version]
+    frame_bytes = (bones + 1) * 48 + len(batches) * {1:48,2:64,3:96,4:96}[format_version]
     if len(frames) != frame_bytes * counts[5]:
         raise ValueError("Title frame extent mismatch")
     if any(not math.isfinite(value) or abs(value)>1000000 for (value,) in struct.iter_unpack("<f",frames)):
@@ -437,7 +437,7 @@ def encode_pack(bones, vertices, batches, textures, clips, lights, frames, fps=F
             raise ValueError("Invalid title vertex color")
     next_vertex = 0
     for batch in batches:
-        if len(batch)!=28 or batch[0]!=next_vertex or batch[1]<=0 or batch[1]%3 or not 0<=batch[2]<len(textures) or batch[3]&~{1:1023,2:8191,3:16383}[format_version]:
+        if len(batch)!=28 or batch[0]!=next_vertex or batch[1]<=0 or batch[1]%3 or not 0<=batch[2]<len(textures) or batch[3]&~{1:1023,2:8191,3:16383,4:16383}[format_version]:
             raise ValueError("Invalid or noncanonical title batch")
         if any(not math.isfinite(v) for v in batch[8:20]) or (format_version<3 and batch[27]):
             raise ValueError("Invalid title batch material or reserved word")
@@ -448,7 +448,7 @@ def encode_pack(bones, vertices, batches, textures, clips, lights, frames, fps=F
                 raise ValueError("Conflicting dual texture expressions")
         elif batch[26]:
             raise ValueError("Single texture batch has an extra texture")
-        if format_version==3 and (not math.isfinite(batch[27]) or not 0<=batch[27]<=1 or (not batch[3]&8192 and batch[27])):
+        if format_version>=3 and (not math.isfinite(batch[27]) or not 0<=batch[27]<=1 or (not batch[3]&8192 and batch[27])):
             raise ValueError("Invalid reflection blend factor")
         next_vertex += batch[1]
     if next_vertex != len(vertices):
@@ -458,10 +458,26 @@ def encode_pack(bones, vertices, batches, textures, clips, lights, frames, fps=F
         if len(clip)!=4 or clip[0]!=next_frame or clip[1]<1 or clip[2] not in (0,1) or clip[3]:
             raise ValueError("Invalid or noncanonical title clip")
         next_frame += clip[1]
+    for light in lights:
+        if len(light)!=(20 if format_version==4 else 16):
+            raise ValueError("Invalid title light record width")
+        flags,attenuation=light[:2]
+        if (not isinstance(flags,int) or flags&~63 or attenuation!=0 or
+            (flags&3==3 and format_version<4) or
+            any(not math.isfinite(v) or not 0<=v<=1 for v in light[2:6]) or
+            any(not math.isfinite(v) or abs(v)>1000000 for v in light[6:12]) or
+            not math.isfinite(light[12]) or not 0<=light[12]<=1 or
+            not math.isfinite(light[13]) or not 0<light[13]<=1000000 or
+            not math.isfinite(light[14]) or light[14] not in (0,1,2,3) or light[15]!=0):
+            raise ValueError("Unsupported title light color, position or attenuation")
+        if format_version==4 and (not isinstance(light[16],int) or not 0<=light[16]<=6 or
+            not math.isfinite(light[17]) or abs(light[17])>360 or light[18] or light[19] or
+            (flags&3!=3 and (light[16] or light[17]))):
+            raise ValueError("Invalid title spotlight parameters")
     vdata = b"".join(struct.pack("<8f4BI2f" if format_version>=2 else "<8f4BI",*vertex) for vertex in vertices)
-    bdata = b"".join(struct.pack("<8I12f7If" if format_version==3 else "<8I12f8I",*batch) for batch in batches)
+    bdata = b"".join(struct.pack("<8I12f7If" if format_version>=3 else "<8I12f8I",*batch) for batch in batches)
     cdata = b"".join(struct.pack("<4I",*clip) for clip in clips)
-    ldata = b"".join(struct.pack("<2I14f",*light) for light in lights)
+    ldata = b"".join(struct.pack("<2I14fIf2I" if format_version==4 else "<2I14f",*light) for light in lights)
     offsets = [128]
     for size in (len(vdata),len(bdata),len(textures)*24,len(cdata),len(ldata),len(frames)):
         offsets.append(offsets[-1]+size)
@@ -475,7 +491,7 @@ def encode_pack(bones, vertices, batches, textures, clips, lights, frames, fps=F
     if total > MAX_BYTES:
         raise ValueError("Title pack exceeds 24 MiB")
     header = bytearray(128)
-    struct.pack_into("<4s9If9I",header,0, {1:b"C3T1",2:b"C3T2",3:b"C3T3"}[format_version],format_version,total,*counts,fps,*offsets,frame_bytes,len(pixels))
+    struct.pack_into("<4s9If9I",header,0, {1:b"C3T1",2:b"C3T2",3:b"C3T3",4:b"C3T4"}[format_version],format_version,total,*counts,fps,*offsets,frame_bytes,len(pixels))
     header[80:112] = bytes.fromhex(archive_sha256)
     return bytes(header+vdata+bdata+descriptors+cdata+ldata+frames+pixels)
 

@@ -15,6 +15,7 @@
 
 typedef int C3D_Mtx, C3D_AttrInfo, C3D_BufInfo, C3D_TexEnv, GPU_TESTFUNC;
 typedef struct { unsigned id; } C3D_Tex;
+typedef void C3D_RenderTarget;
 typedef int SpecularLight;
 typedef struct { float pos[3], uv[2], rgba[4], uv2[2], specular[3]; } TitleGPUVertex;
 typedef struct {
@@ -25,17 +26,26 @@ typedef struct {
 } SceneBinding;
 static SceneBinding scenes[C3_STAGE_MAX_MODELS];
 static size_t scene_count = 1, gpu_buffer_bytes;
-static TitleGPUVertex storage[3], *vertices = storage;
+static TitleGPUVertex storage[6], *vertices = storage;
 static uint32_t vertex_count = 3;
 static C3D_Tex textures[C3_STAGE_MAX_TEXTURES];
 static const C3TitleTexture *texture_sources[C3_STAGE_MAX_TEXTURES];
 static uint32_t texture_count = 2;
 static bool c3d_started = true, program_started = true, queued_busy, frame_open;
+static bool completion_hooks;
 static void *target = (void *)1, *shader = (void *)2;
 static int program, mvp_location, color_pass_location;
 static unsigned draws, overlays, binds;
 static unsigned gpu_writes, releases, frame_ends;
 static C3D_Tex *bound[2], *expected_second;
+static unsigned alpha_reference, expected_alpha_reference;
+static bool alpha_enabled;
+typedef struct { bool configured, enabled; size_t model, screen_model; uint32_t texture; } TVBinding;
+static TVBinding tv;
+static C3D_Tex tv_texture;
+static C3D_RenderTarget *tv_target, *active_target;
+static bool test_tv;
+static unsigned offscreen_draws, main_draws;
 
 enum {
     C3D_FRAME_NONBLOCK, C3D_CLEAR_ALL, C3D_RGB, C3D_Both,
@@ -45,6 +55,7 @@ enum {
     GPU_CULL_NONE, GPU_BLEND_REVERSE_SUBTRACT, GPU_BLEND_ADD,
     GPU_ONE, GPU_ZERO, GPU_SRC_ALPHA, GPU_ONE_MINUS_SRC_ALPHA,
     GPU_TRIANGLES, GPU_PRIMARY_COLOR, GPU_PREVIOUS, GPU_REPLACE,
+    GSPGPU_EVENT_PSC0, GSPGPU_EVENT_P3D, GSPGPU_EVENT_PPF,
     SYSCLOCK_ARM11 = 268123480
 };
 #define NOOP(...) ((void)++gpu_writes)
@@ -54,7 +65,6 @@ enum {
 #define C3D_GetTexEnv(...) NULL
 #define GSPGPU_FlushDataCache NOOP
 #define C3D_RenderTargetClear NOOP
-#define C3D_FrameDrawOn NOOP
 #define C3D_SetViewport NOOP
 #define C3D_BindProgram NOOP
 #define C3D_FVUnifSet NOOP
@@ -62,7 +72,6 @@ enum {
 #define AttrInfo_AddLoader NOOP
 #define BufInfo_Init NOOP
 #define BufInfo_Add NOOP
-#define C3D_AlphaTest NOOP
 #define C3D_CullFace NOOP
 #define C3D_DepthTest NOOP
 #define C3D_AlphaBlend NOOP
@@ -77,6 +86,8 @@ enum {
 #define raster_specular NOOP
 #define view_normal(view, source, output) memcpy(output, source, sizeof(float)*3)
 #define combiner NOOP
+#define record_submission(stats) ((void)(stats))
+#define gspSetEventCallback NOOP
 
 static uint64_t simulated_ticks;
 static unsigned begin_attempts;
@@ -111,11 +122,14 @@ static void release_resource(const void *resource)
 
 static int fail(char *error, size_t capacity, const char *message)
 { snprintf(error, capacity, "%s", message); return -1; }
-static bool camera_matrices(const C3TitleCamera *camera, C3D_Mtx *mvp, C3D_Mtx *view)
-{ (void)camera; *mvp = *view = 0; return true; }
-static bool valid_batch(const C3Title *title, const C3TitleBatch *batch)
-{ (void)title; (void)batch; return true; }
+static bool camera_matrices(const C3TitleCamera *camera, C3D_Mtx *mvp, C3D_Mtx *view, bool tilted)
+{ (void)camera; (void)tilted; *mvp = *view = 0; return true; }
 static float clamp01(float value) { return fmaxf(0, fminf(1, value)); }
+static void C3D_FrameDrawOn(C3D_RenderTarget *draw_target)
+{ active_target=draw_target; ++gpu_writes; }
+
+static void C3D_AlphaTest(bool enabled, int comparison, unsigned reference)
+{ assert(comparison == GPU_ALWAYS || comparison == GPU_GREATER); alpha_enabled = enabled; alpha_reference = reference; }
 
 static void C3D_TexBind(unsigned unit, C3D_Tex *texture)
 {
@@ -132,8 +146,20 @@ static void C3D_TexBind(unsigned unit, C3D_Tex *texture)
 static void C3D_DrawArrays(int primitive, unsigned first, unsigned count)
 {
     assert(primitive == GPU_TRIANGLES && first == 0 && count == 3);
-    assert(bound[0] == &textures[4]);
-    assert(bound[1] == expected_second);
+    if(test_tv) {
+        if(active_target==tv_target) {
+            assert(tv.enabled && bound[0]==&textures[5] && bound[1]==&textures[5]);
+            ++offscreen_draws;
+        } else {
+            assert(active_target==target && bound[0]==(tv.enabled?&tv_texture:&textures[4]));
+            assert(bound[1]==bound[0]); ++main_draws;
+        }
+    } else {
+        assert(bound[0] == &textures[4]);
+        assert(bound[1] == expected_second);
+    }
+    assert(alpha_enabled == (expected_alpha_reference != 0));
+    assert(alpha_reference == expected_alpha_reference);
     ++draws;
 }
 static void C3D_ImmDrawBegin(int primitive)
@@ -154,7 +180,16 @@ int main(int argc, char **argv)
     float fade = strtof(argv[2], NULL);
     C3Title title = {0};
     C3TitleDrawVertex points[3] = {0};
-    C3TitleBatch batch = {.count = 3, .texture = 0, .texture2 = 1, .flags = flags};
+    if (flags & C3_TITLE_DUAL_MODULATE) flags |= C3_TITLE_TEV_LERP;
+    if (flags & C3_TITLE_REFLECTION_BLEND) flags |= C3_TITLE_LIT;
+    C3TitleBatch batch = {.count = 3, .texture = 0, .texture2 = 1, .flags = flags,
+        .color_mode = 4, .alpha_mode = 0, .alpha_compare0 = 7, .alpha_compare1 = 7};
+    const char *alpha = getenv("C3_TEST_ALPHA_REF");
+    if (alpha) {
+        expected_alpha_reference = (unsigned)strtoul(alpha, NULL, 10);
+        batch.alpha_ref0 = batch.alpha_ref1 = expected_alpha_reference;
+        batch.alpha_compare0 = batch.alpha_compare1 = 4;
+    }
     title.draw_vertices = points;
     title.batches = &batch;
     title.vertex_count = 3;
@@ -168,10 +203,31 @@ int main(int argc, char **argv)
     C3TitleRenderStats stats;
     char error[128] = {0};
     const C3Title *models[] = {&title};
+    if(getenv("C3_TEST_TV")) {
+        test_tv=true;
+        C3Title television=title;
+        const C3Title *pair[]={&title,&television};
+        scene_count=2;vertex_count=6;
+        scenes[1]=scenes[0];scenes[1].asset=&television;scenes[1].first_vertex=3;
+        scenes[1].textures[0]=5;
+        tv=(TVBinding){true,true,1,0,0};tv_target=(void *)3;
+        for(unsigned frame=0;frame<3;++frame)
+            assert(c3_stage_renderer_draw(pair,2,&title.pose.camera,1,&stats,error,sizeof error)==C3_RENDER_OK);
+        assert(offscreen_draws==3 && main_draws==3 && draws==6 && stats.draw_calls==2);
+        assert(storage[0].uv[1]==1 && storage[3].uv[1]==0);
+        tv.enabled=false;
+        assert(c3_stage_renderer_draw(pair,2,&title.pose.camera,1,&stats,error,sizeof error)==C3_RENDER_OK);
+        assert(offscreen_draws==3 && main_draws==4 && draws==7 && stats.draw_calls==1);
+        assert(storage[0].uv[1]==0);
+        assert(c3_stage_renderer_try_shutdown());
+        assert(!tv.configured && !tv_target);
+        puts("TV renders before room without feedback; disabled TV stays hidden");
+        return 0;
+    }
     if (getenv("C3_TEST_GPU_BUSY")) {
         queued_busy = true;
         memset(storage, 0xA5, sizeof(storage));
-        TitleGPUVertex original[3];
+        TitleGPUVertex original[6];
         memcpy(original, storage, sizeof(original));
         assert(c3_stage_renderer_draw(models, 1, &title.pose.camera, fade,
                                       &stats, error, sizeof(error)) == C3_RENDER_BUSY);
@@ -187,9 +243,13 @@ int main(int argc, char **argv)
         assert(c3_stage_renderer_is_idle());
         assert(frame_ends == 1 && gpu_writes == 0 && releases == 0);
         assert(c3_stage_renderer_try_shutdown());
-        assert(frame_ends == 2 && releases == 7);
-        assert(!vertices && !target && !shader && !c3d_started && !program_started);
+        assert(frame_ends == 2 && releases == 4);
+        assert(!vertices && !target && shader && c3d_started && program_started);
         assert(!scene_count && !texture_count);
+        /* Scene teardown must retain the currently bound program/context.
+         * Only application finalization may invalidate that SDK pointer. */
+        c3_stage_renderer_fini();
+        assert(releases == 7 && !shader && !c3d_started && !program_started);
         unsigned old_attempts = begin_attempts;
         assert(c3_stage_renderer_is_idle());
         assert(c3_stage_renderer_try_shutdown());
@@ -197,6 +257,13 @@ int main(int argc, char **argv)
         puts("BUSY returned; ownership retained; idle teardown verified");
         return 0;
     }
+    assert(valid_batch(&title, &batch));
+    C3TitleBatch invalid = batch;
+    invalid.alpha_compare0 = invalid.alpha_compare1 = 4;
+    invalid.alpha_ref0 = 127; invalid.alpha_ref1 = 0;
+    assert(!valid_batch(&title, &invalid));
+    invalid.alpha_ref0 = invalid.alpha_ref1 = 256;
+    assert(!valid_batch(&title, &invalid));
     for (unsigned frame = 0; frame < 5; ++frame) {
         unsigned old_draws = draws, old_overlays = overlays;
         assert(c3_stage_renderer_draw(models, 1, &title.pose.camera, fade,
@@ -204,9 +271,8 @@ int main(int argc, char **argv)
         assert(draws - old_draws == 1);
         assert(overlays - old_overlays == (unsigned)(fade < 1.0f));
     }
-    assert(draws == 5 && binds == 10);
+    assert(draws == 5 && binds == 10 && frame_ends == 5);
     assert(overlays == 5 * (unsigned)(fade < 1.0f));
-    assert(frame_ends == 5);
     assert(stats.draw_calls == 1 + (unsigned)(fade < 1.0f));
     assert(stats.vertices == 3 + 3 * (unsigned)(fade < 1.0f));
     assert(!error[0]);

@@ -1,8 +1,10 @@
 # Native title preparation and C3T1
 
-The same portable loader also reads C3T2 and C3T3 field packs. Their extra UV,
+The same portable loader also reads C3T2, C3T3 and C3T4 field packs. Their extra UV,
 reflection and source-joint material fields are specified in
-[outskirt-assets.md](outskirt-assets.md). The title exporter continues to write
+[outskirt-assets.md](outskirt-assets.md); C3T4 spotlights and independent light/camera
+tracks are specified in [outskirt-interior-assets.md](outskirt-interior-assets.md).
+The title exporter continues to write
 the original C3T1 layout described here.
 
 `tools/prepare_title.py` converts the **original animated title scene** from a
@@ -250,7 +252,7 @@ be shut down before replacing an asset to which it holds a pointer.
 | Expanded vertices | 32,768 |
 | Batches | 64 |
 | Texture descriptors | 32 |
-| Clips | 3 |
+| Clips | 32 (the title itself uses 3) |
 | Samples across clips | 4,096 |
 | Lights | 8 |
 

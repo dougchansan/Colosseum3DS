@@ -48,8 +48,19 @@ class TitlePreparationTests(unittest.TestCase):
         self.assertEqual(TITLE.curve_value([],2,7),7)
         self.assertEqual(TITLE.curve_value([key(0,1),key(0,3),key(1,5)],0),3)
 
-    def test_c3t2_and_c3t3_extension_layouts(self):
-        for version,stride in ((2,160),(3,192)):
+    def test_original_actor_clip_ids_fit_bounded_table(self):
+        data=self.fixture()
+        frame=data["frames"][:144]
+        data["clips"]=[(i,1,i%2,0) for i in range(32)]
+        data["frames"]=frame*32
+        packed=TITLE.encode_pack(**data)
+        self.assertEqual(struct.unpack_from("<II",packed,28),(32,32))
+        self.assertEqual(struct.unpack_from("<4I",packed,384+31*16),(31,1,1,0))
+        data["clips"].append((32,1,0,0));data["frames"]+=frame
+        with self.assertRaises(ValueError):TITLE.encode_pack(**data)
+
+    def test_c3t2_c3t3_c3t4_extension_layouts(self):
+        for version,stride in ((2,160),(3,192),(4,192)):
             data=self.fixture()
             data["format_version"]=version
             data["vertices"]=[tuple(vertex)+(.2,.4) for vertex in data["vertices"]]
@@ -59,16 +70,20 @@ class TitlePreparationTests(unittest.TestCase):
             data["batches"]=[tuple(batch)]
             frame=data["frames"][:144]
             extra=(1.,1.,0.,0.)
-            if version==3:extra+=(.2,.3,.4,.5,7.,8.,9.,0.)
+            if version>=3:extra+=(.2,.3,.4,.5,7.,8.,9.,0.)
             data["frames"]=(frame[:96]+struct.pack("<%df"%len(extra),*extra)+frame[96:])*2
+            if version==4:
+                light=list(data["lights"][0]);light[0]=7;data["lights"]=[(*light,3,87.5,0,0)]
             packed=TITLE.encode_pack(**data)
-            self.assertEqual(packed[:4],b"C3T2" if version==2 else b"C3T3")
-            self.assertEqual(struct.unpack_from("<7I",packed,44),(128,272,384,408,424,488,488+stride*2))
+            frame_offset=504 if version==4 else 488
+            self.assertEqual(packed[:4],{2:b"C3T2",3:b"C3T3",4:b"C3T4"}[version])
+            self.assertEqual(struct.unpack_from("<7I",packed,44),(128,272,384,408,424,frame_offset,frame_offset+stride*2))
             self.assertEqual(struct.unpack_from("<I",packed,72)[0],stride)
             self.assertAlmostEqual(struct.unpack_from("<f",packed,128+40)[0],.2)
-            if version==3:
+            if version>=3:
                 self.assertEqual(struct.unpack_from("<f",packed,272+108)[0],.5)
-                self.assertEqual(struct.unpack_from("<3f",packed,488+48+80),(7,8,9))
+                self.assertEqual(struct.unpack_from("<3f",packed,frame_offset+48+80),(7,8,9))
+                if version==4:self.assertEqual(struct.unpack_from("<IfII",packed,424+64),(3,87.5,0,0))
                 bad=list(data["batches"][0]);bad[27]=1.01;data["batches"]=[tuple(bad)]
                 with self.assertRaises(ValueError):TITLE.encode_pack(**data)
 
@@ -78,6 +93,11 @@ class TitlePreparationTests(unittest.TestCase):
         self.assertAlmostEqual(TITLE.curve_value(keys,1),6)
         self.assertEqual(TITLE.curve_value(keys,0),0)
         self.assertEqual(TITLE.curve_value(keys,2),10)
+
+    def test_light_validation_rejects_unrepresented_spot_and_nonfinite_parameters(self):
+        for offset,value in ((0,7),(2,math.nan),(13,0),(14,1.5),(15,1)):
+            data=self.fixture();light=list(data['lights'][0]);light[offset]=value;data['lights']=[tuple(light)]
+            with self.subTest(offset=offset),self.assertRaises(ValueError):TITLE.encode_pack(**data)
 
     def test_native_material_alpha_and_tev_quantization(self):
         self.assertEqual(TITLE.material_alpha(0),1)

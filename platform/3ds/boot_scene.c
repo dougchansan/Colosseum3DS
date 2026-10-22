@@ -79,7 +79,7 @@ static void load_card(C3GameState *state, C3GameMenuSave *view,
     view->valid = 1;
     view->can_continue = c3_field_scene_supports(summary.floor) && prepared != NULL;
     snprintf(view->name, sizeof(view->name), "%s", summary.name);
-    snprintf(view->location, sizeof(view->location), "%s", summary.floor == 1 ? "OUTSKIRT STAND" : "Unported area");
+    snprintf(view->location, sizeof(view->location), "%s", summary.floor == 1 ? "OUTSKIRT STAND" : summary.floor == 2 ? "OUTSKIRT STAND - INSIDE" : "Unported area");
     view->money = summary.money;
     view->play_seconds = summary.play_seconds;
     if (!prepared)
@@ -300,6 +300,7 @@ int c3_boot_scene_run(int core_status)
     c3_movie_player_set_mono(0);
     FILE *trace = fopen("sdmc:/3ds/Colosseum3DS/boot-trace.log", "w");
     if (trace) { fprintf(trace, "boot_build %s core=%d\n", C3_BUILD_ID, core_status); fflush(trace); }
+    c3_n3ds_log_memory(trace, "boot_start");
     int result = c3_movie_player_run(BOOT_ROOT "tpc.c3v", "tpc", trace, error, sizeof(error));
     if (!result) result = c3_movie_player_run(BOOT_ROOT "gs_logo.c3v", "gs_logo", trace, error, sizeof(error));
     int from_game = 0;

@@ -8,7 +8,7 @@
 #define C3_TITLE_MAX_VERTICES 32768u
 #define C3_TITLE_MAX_BATCHES 64u
 #define C3_TITLE_MAX_TEXTURES 32u
-#define C3_TITLE_MAX_CLIPS 3u
+#define C3_TITLE_MAX_CLIPS 32u
 #define C3_TITLE_MAX_FRAMES 4096u
 #define C3_TITLE_MAX_LIGHTS 8u
 #define C3_TITLE_MAX_FILE_BYTES (24u * 1024u * 1024u)
@@ -65,11 +65,13 @@ typedef struct {
 typedef struct { uint32_t first_frame, frame_count, loop; } C3TitleClip;
 
 typedef struct {
-    /* Raw LOBJ flags: low two bits ambient=0/infinite=1/point=2;
+    /* Raw LOBJ flags: low two bits ambient=0/infinite=1/point=2/spot=3;
      * bit2 diffuse, bit3 specular, bit4 alpha, bit5 hidden. */
     uint32_t flags, attenuation_flags;
     float rgba[4], pos[3], interest[3];
     float reference_brightness, reference_distance, distance_function;
+    uint32_t spot_function; /* C3T4 GXSpotFn 0..6; zero for other light types */
+    float spot_cutoff;      /* C3T4 source cutoff degrees */
 } C3TitleLight;
 
 typedef struct {
