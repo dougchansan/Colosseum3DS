@@ -115,6 +115,10 @@ SD/GPU stalls still count, while movement bounds a single stalled update.
 
 ## Verification and remaining work
 
+The [connected validation record](native-first-area-validation.md) documents
+the exact published source/build, original movie and field captures, explicit
+Save, independent whole-body verification and fresh-process Continue.
+
 `make test` covers the portable codecs, bounded parsers, native menu decisions,
 New Game state, transactional save behavior and collision/movement adapters.
 The optional [sandbox harness](../tools/sandbox/README.md) uses a supplied
@@ -122,7 +126,7 @@ prebuilt Azahar core, isolated SD state and scripted controller input. Its run
 records bind executable/core/input/SD hashes and actual captures, and an
 interrupted deadline is reported as an incomplete run.
 
-The [game-state verification](game-state.md) includes a native ARM New Game save
+The [game-state verification](game-state.md) also includes a native ARM New Game save
 and a fresh emulator process loading it. An independent Python implementation
 checks all 122,832 decoded body bytes against the pinned initializer, including
 the party and flags. Synthetic fixtures remain separate from this retail-data

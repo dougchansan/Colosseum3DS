@@ -1,0 +1,18 @@
+{
+  "source_commit": "d2af94a8f1b3f0afaa54abe4870ba65052c9b91f",
+  "embedded_build_id": "d2af94a8f1b3",
+  "builds": [
+    {
+      "configuration": "build-3ds",
+      "file": "Colosseum3DS.3dsx",
+      "bytes": 311216,
+      "sha256": "d96525cc99e41af67a09e8234b3de48b63e0866238555ec35c8d874eb9b8779f"
+    },
+    {
+      "configuration": "build-3ds-boot",
+      "file": "Colosseum3DS.3dsx",
+      "bytes": 276332,
+      "sha256": "a7deda3e8550ea21d60f157a36b045a455abefd9e8d658bc282c9a921e974d2f"
+    }
+  ]
+}

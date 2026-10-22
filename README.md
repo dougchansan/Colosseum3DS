@@ -13,15 +13,17 @@ move around the original map with source collision data. The native pause menu
 shows the party and explicitly saves the game; Continue reloads the saved party,
 progress and area entrance. This is a limited first-area implementation, with
 NPC dialogue, battles and subsequent story progression still unported.
-See [native boot, reproduction and current limits](docs/native-boot.md).
+See [native boot, reproduction and current limits](docs/native-boot.md),
+the [connected emulator validation](docs/native-first-area-validation.md), and
+the [local-agent hardware handoff](docs/native-first-area-handoff.md).
 
-The first `.3dsx` has been cross-compiled successfully with devkitARM GCC
-16.1.0. Host and sanitizer checks pass. Partial physical-device validation
-proves rendering, native self-tests, the missing-data diagnostic, sampled input,
-and exit/relaunch. Guarded deployment/rollback, a real archive on console,
-exhaustive controls, HOME behavior and lid sleep/resume remain unverified.
-See the [hardware checkpoint](docs/hardware-validation-2026-10-21.md) and the
-[historical initial validation record](docs/VALIDATION.md).
+Both full and focused `.3dsx` builds compile with devkitARM GCC 16.1.0. Host,
+sanitizer and connected emulator checks pass. Earlier physical-device
+checkpoints establish the smoke-test and Eevee-preview behavior; this new
+boot/menu/first-area route still needs its own physical New 3DS acceptance,
+including audio, frame timing, Save/Continue and sleep/resume.
+See the [earlier hardware checkpoint](docs/hardware-validation-2026-10-21.md)
+and [historical initial validation record](docs/VALIDATION.md).
 
 ## What is implemented
 
