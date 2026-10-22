@@ -1,4 +1,5 @@
 #include "field_scene.h"
+#include "battle_preview_scene.h"
 #include "n3ds_platform.h"
 #include "render_recovery.h"
 #include "stage_renderer.h"
@@ -68,7 +69,9 @@ static void draw_console(const C3GameSummary *summary,FieldPhase phase,PausePage
         printf("Arriving at Outskirt Stand...\n");return;
     }
     if(page==PAUSE_CLOSED && story && story->blocked[0]){
-        printf("%s\n\nX / START: main menu\n",story->blocked);return;
+        printf("%s\n\n",story->blocked);
+        if(story->battle_id==10)printf("A: nonpersistent combat preview\n");
+        printf("X / START: main menu\n");return;
     }
     if(page==PAUSE_CLOSED && story && story->dialogue){
         printf("%s\n\n",story->message);
@@ -262,6 +265,13 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         if(phase==FIELD_CONTROL){
             if(page==PAUSE_CLOSED){
                 if(view->blocked[0]&&(input.pressed&(C3_PAD_START|C3_PAD_X))){result=0;break;}
+                if(view->blocked[0]&&view->battle_id==10&&(input.pressed&C3_PAD_A)){
+                    if(c3_render_recover(trace,"battle-preview",frames,C3_RECOVER_WAIT)==C3_RECOVERY_EXIT){result=1;break;}
+                    if(c3_battle_preview_from_game_state(state,trace)>0){result=1;break;}
+                    /* Modal preview time must not advance paused field scripts. */
+                    previous=c3_n3ds_active_time_us();dirty=1;next_console=0;
+                    continue;
+                }
                 if(view->control&&!story_consumed_input){
                     if(input.pressed&(C3_PAD_START|C3_PAD_X)){page=PAUSE_MAIN;selection=0;dirty=1;}
                     else if(input.pressed&C3_PAD_A){if(!c3_field_story_interact(&story,story_error))goto story_failed;dirty=1;}

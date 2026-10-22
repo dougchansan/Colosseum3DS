@@ -66,11 +66,11 @@ ifneq ($(C3_BOOT_ONLY),1)
 export _3DSXFLAGS += --romfs=$(CURDIR)/$(BUILD)/romfs
 endif
 
-.PHONY: all clean prepare-gekko prepare-save prepare-battle-action prepare-battle-rng
+.PHONY: all clean prepare-gekko prepare-save prepare-battle-action prepare-battle-rng prepare-battle-damage
 ifeq ($(C3_BOOT_ONLY),1)
-all: prepare-save prepare-battle-action prepare-battle-rng | $(BUILD)
+all: prepare-save prepare-battle-action prepare-battle-rng prepare-battle-damage | $(BUILD)
 else
-all: prepare-save prepare-battle-action prepare-battle-rng prepare-gekko $(BUILD)/romfs/p5_material.shbin
+all: prepare-save prepare-battle-action prepare-battle-rng prepare-battle-damage prepare-gekko $(BUILD)/romfs/p5_material.shbin
 endif
 	$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile.3ds
 
@@ -79,6 +79,9 @@ prepare-save:
 
 prepare-battle-action:
 	$(PYTHON) tools/prepare_battle_action.py
+
+prepare-battle-damage:
+	$(PYTHON) tools/prepare_battle_damage.py
 
 prepare-battle-rng:
 	$(PYTHON) tools/prepare_battle_rng.py
