@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "title_renderer.h"
+#include "stage_renderer.h"
 
 static C3Title title;
 static C3TitleDrawVertex points[6];
@@ -39,8 +40,13 @@ int main(void) {
 #endif
     while(aptMainLoop()) {
         hidScanInput();if(hidKeysDown()&KEY_START)break;
-        if(okay&&c3_title_renderer_draw(&title,1,NULL,error,sizeof(error))) {okay=0;printf("DRAW FAIL %s\n",error);}
+        if(okay) {
+            int result=c3_title_renderer_draw(&title,1,NULL,error,sizeof(error));
+            if(result==C3_RENDER_BUSY){svcSleepThread(1000000);continue;}
+            if(result==C3_RENDER_ERROR){okay=0;printf("DRAW FAIL %s\n",error);}
+        }
         if(!okay){gfxFlushBuffers();gfxSwapBuffers();gspWaitForVBlank();}
     }
-    c3_title_renderer_shutdown();gfxExit();return okay?0:1;
+    while(!c3_stage_renderer_try_shutdown()){aptMainLoop();svcSleepThread(1000000);}
+    gfxExit();return okay?0:1;
 }
