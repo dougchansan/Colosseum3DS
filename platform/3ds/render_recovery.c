@@ -24,12 +24,21 @@ static void record(FILE *trace, const char *scene, const char *event,
                    uint16_t pressed)
 {
     if (!trace) return;
+    C3TitleRenderSnapshot gpu;
+    c3_stage_renderer_snapshot(&gpu);
     fprintf(trace, "render_recovery scene=%s event=%s frames=%u elapsed_us=%llu "
             "ready=%u exit=%u input=%04x counters=%lu,%lu build=%.12s\n",
             scene, event, frames, (unsigned long long)elapsed, (unsigned)ready,
             (unsigned)exiting, (unsigned)pressed,
             (unsigned long)C3D_FrameCounter(0), (unsigned long)C3D_FrameCounter(1),
             C3_BUILD_ID);
+    fprintf(trace, "render_gpu submitted=%lu fill=%lu command=%lu transfer=%lu "
+            "words=%lu draws=%lu vertices=%lu models=%lu textures=%lu bytes=%lu\n",
+            (unsigned long)gpu.submissions, (unsigned long)gpu.memory_fills,
+            (unsigned long)gpu.command_lists, (unsigned long)gpu.display_transfers,
+            (unsigned long)gpu.last_command_words, (unsigned long)gpu.last_draw_calls,
+            (unsigned long)gpu.last_vertices, (unsigned long)gpu.scene_models,
+            (unsigned long)gpu.scene_textures, (unsigned long)gpu.gpu_buffer_bytes);
     fflush(trace);
 }
 
@@ -40,6 +49,11 @@ static void display(const char *scene, uint64_t elapsed, bool ready,
     printf("Colosseum3DS | render recovery\nBuild %.12s | %s\n\n", C3_BUILD_ID, scene);
     printf("Rendering paused: GPU %s\nWait %.1f seconds | PAD %04X\n\n",
            ready ? "ready" : "busy", (double)elapsed / 1000000.0, (unsigned)pressed);
+    C3TitleRenderSnapshot gpu;
+    c3_stage_renderer_snapshot(&gpu);
+    printf("Submit %lu | fill %lu draw %lu tx %lu\n",
+           (unsigned long)gpu.submissions, (unsigned long)gpu.memory_fills,
+           (unsigned long)gpu.command_lists, (unsigned long)gpu.display_transfers);
     if (exiting || draining) {
         printf("%s\nWaiting for GPU before releasing\nscene memory.\n\n",
                exiting ? "Exit requested." : "Changing scene.");

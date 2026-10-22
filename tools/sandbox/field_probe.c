@@ -85,7 +85,7 @@ int main(void)
         if(!c3_title_animate(storage+i,0,0)){snprintf(error,sizeof error,"Initial sample failed");goto done;}
     }
     C3Title *wes=storage+map.map_pack_count;
-    if(wes->vertex_count!=map.actor_vertex_count || wes->clip_count!=3u) {
+    if(wes->vertex_count!=map.actor_vertex_count || wes->clip_count!=4u) {
         snprintf(error,sizeof error,"Wes vertex/clip layout disagrees with C3F");goto done;
     }
     if(c3_stage_renderer_init(models,count,error,sizeof error))goto done;

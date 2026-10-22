@@ -31,6 +31,7 @@ typedef struct {
     uint32_t actor_first_vertex, actor_vertex_count, actor_bone;
     uint32_t idle_clip, walk_clip, run_clip;
     uint32_t map_pack_count, arrival_pack_count;
+    uint8_t disabled_objects[32]; /* Original CCD object enable bit, one per ordinal. */
 } C3FieldMap;
 
 typedef struct {
@@ -46,6 +47,12 @@ int c3_field_parse(C3FieldMap *map, const void *data, size_t bytes,
 int c3_field_load(C3FieldMap *map, const char *path, char *error, size_t capacity);
 void c3_field_close(C3FieldMap *map);
 int c3_field_spawn(const C3FieldMap *map, uint32_t source_index, C3FieldPlayer *player);
+int c3_field_set_object_enabled(C3FieldMap *map, uint32_t object, int enabled);
+int c3_field_object_enabled(const C3FieldMap *map, uint32_t object);
+/* Resolve a proposed foot position after an actor pushes the player. Walls
+ * retain priority; unavailable ground restores the previous foot position. */
+int c3_field_resolve_position(const C3FieldMap *map,C3FieldPlayer *player,
+                              const float before[3]);
 
 /* Source controller shaping and walk/run speed curves. Stick values use the
  * native input adapter's -127..127 range, positive Y up. Button bits retain

@@ -26,12 +26,21 @@ python3 tools/prepare_intro_media.py \
 python3 tools/prepare_outskirt.py \
   --disc /path/to/private-disc \
   --output /path/to/new-private-outskirt
+
+python3 tools/prepare_area.py \
+  --disc /path/to/private-disc \
+  --output /path/to/new-private-first-area
 ```
 
-Both destinations must be new directories. Preparation completes in a staging
+All destinations must be new directories. Preparation completes in a staging
 directory and publishes the directory only after every required output and
 manifest succeeds. The disc admission checks GC6E01 revision 0, the original
 DOL size, and DOL SHA1 `870e8b9693ca780782d80f22a6a4572d8ba9458f`.
+`prepare_outskirt.py` supplies seven original exterior/arrival/Wes model packs;
+`prepare_area.py` adds thirteen shop and initial NPC model packs, including
+Folly, Trudly and their vehicle, with the original attachment part retained.
+See [outskirt-interior-assets.md](outskirt-interior-assets.md) for the complete
+initial actor selection, native motion mapping and runtime metadata commands.
 
 Field archives are admitted by exact size and SHA256 before FSYS decompression
 or HSD parsing:
@@ -91,7 +100,7 @@ See [boot-media-format.md](boot-media-format.md) for the C3V1 layout.
 | `outskirt_map1.c3t` | 28,212 | 47 | 3 | C3T2 | 7,751,912 |
 | `outskirt_map2.c3t` | 9,738 | 3 | 1 | C3T2 | 4,765,944 |
 | `outskirt_map3.c3t` | 7,812 | 33 | 3 | C3T2 | 3,406,456 |
-| `outskirt_wes.c3t` | 2,445 | 7 | 35 | C3T2 | 575,568 |
+| `outskirt_wes.c3t` | 2,445 | 7 | 35 | C3T2 | 621,280 |
 | `outskirt_arrival0.c3t` | 13,698 | 39 | 62 | C3T3 | 3,519,720 |
 | `outskirt_arrival1.c3t` | 3,552 | 5 | 27 | C3T3 | 1,113,808 |
 
@@ -107,7 +116,7 @@ Map3 contains the independent slow sky rotation: 1,001 samples over its
 to reset with the short map animation. The last sky sample retains its authored
 endpoint; the loop resets at the period boundary.
 
-Wes native clips 0/1/2 select original clips 1/2/3 (idle, walk, run). They contain
+Wes pack clips 0/1/2 select original clips 1/2/3 (idle, walk, run). They contain
 61/61/35 samples at 60 Hz, with periods 1, 1 and 17/30 seconds. Those durations
 use the source's actual loop boundary, `anim_end_frame`. The separate movement
 query returns `end_frame + 1`: its 31/31/18 frame counts remain in C3F metadata,
@@ -115,6 +124,9 @@ together with original per-clip distances 0.9/1.3 and collision radius 0.4 in
 pack coordinates. The distinction follows
 [`gs_model_anim_exact_800EC4D0.c`](https://github.com/Count-Sheep/pkmn-colosseum/blob/51bfe4314a218dfaf9592fc80723c50498d0ee55/src/game/gs_model_anim_exact_800EC4D0.c)
 and [`gs_model_anim_suffix_800ED4D4.c`](https://github.com/Count-Sheep/pkmn-colosseum/blob/51bfe4314a218dfaf9592fc80723c50498d0ee55/src/game/gs_model_anim_suffix_800ED4D4.c).
+Pack clip3 retains original source clip0, an authored 10-frame motion sampled
+at 21 points for the first-approach scene. Both full preparation commands use
+the same four-clip Wes conversion helper; the C3F movement indices stay 0/1/2.
 
 Both arrival packs contain the same 301-sample, nonlooping 5-second timeline.
 The actor's original clip1 loops every 30 authored frames while its attached
@@ -215,7 +227,7 @@ This exporter does not implement the general game VM, NPC system, dialogue,
 battles or interactions. Only the map, Wes and the original arrival actors are
 included. Source particle generators and type40 callbacks remain listed in
 the manifest but are not drawn. Field music and separately triggered movie
-BGM/SFX require their own audio path. The three Wes motion clips do not by
+BGM/SFX require their own audio path. The four Wes motion clips do not by
 themselves reproduce the original general animation transition/blend system.
 
 The source curves are sampled and rendered through the native PICA material

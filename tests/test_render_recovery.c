@@ -1,5 +1,6 @@
 #include "render_recovery.h"
 #include "n3ds_platform.h"
+#include "title_renderer.h"
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -22,6 +23,8 @@ void svcSleepThread(int64_t ns)
 void consoleClear(void) { ++clears; }
 void gfxFlushBuffers(void) { ++flushes; }
 uint32_t C3D_FrameCounter(int id) { (void)id; return 17; }
+void c3_stage_renderer_snapshot(C3TitleRenderSnapshot *snapshot)
+{ memset(snapshot, 0, sizeof(*snapshot)); snapshot->submissions = 7; snapshot->memory_fills = 7; }
 void c3_n3ds_defer_buttons(uint16_t pressed) { deferred |= pressed; }
 bool c3_n3ds_poll(C3N3dsInput *input)
 {

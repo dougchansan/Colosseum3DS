@@ -1,0 +1,135 @@
+{
+  "mode": "continue",
+  "controller_completed": true,
+  "error": null,
+  "runner_exit_code": 0,
+  "stages": [
+    {
+      "name": "continued-fresh-wes-shop",
+      "frame": 2040,
+      "image": "/workspace/scratch/d8bf34fb7169/emulator-sandbox/runs/story-proof-continue-1/stages/continued-fresh-wes-shop.png",
+      "tick": {
+        "floor": 2,
+        "phase": 4,
+        "menu": 0,
+        "control": 1,
+        "message": 0,
+        "xyz": [
+          -5.358,
+          0.0,
+          2.478
+        ]
+      },
+      "sha256": "f7ba1005e3ae9f369677526dd085c941fdfae5ec5a86a1aef1ac5177cb92c4b9"
+    },
+    {
+      "name": "outside-challenge-05138",
+      "frame": 3000,
+      "image": "/workspace/scratch/d8bf34fb7169/emulator-sandbox/runs/story-proof-continue-1/stages/outside-challenge-05138.png",
+      "tick": {
+        "floor": 1,
+        "phase": 4,
+        "menu": 0,
+        "control": 0,
+        "message": 20792,
+        "xyz": [
+          -1.3,
+          1.083,
+          -2.448
+        ]
+      },
+      "sha256": "22575ddb0439e48637a3bfc6e617e405b61586b41fdf65a5a04fd0b9ab21d2ae"
+    },
+    {
+      "name": "outside-challenge-0513b",
+      "frame": 3300,
+      "image": "/workspace/scratch/d8bf34fb7169/emulator-sandbox/runs/story-proof-continue-1/stages/outside-challenge-0513b.png",
+      "tick": {
+        "floor": 1,
+        "phase": 4,
+        "menu": 0,
+        "control": 0,
+        "message": 20795,
+        "xyz": [
+          -1.3,
+          1.083,
+          -2.448
+        ]
+      },
+      "sha256": "664172e69139fd6101eb4e3700369268b719c2e7f6e5378dc9ae9b85c7ffe3a6"
+    },
+    {
+      "name": "outside-challenge-05147",
+      "frame": 3660,
+      "image": "/workspace/scratch/d8bf34fb7169/emulator-sandbox/runs/story-proof-continue-1/stages/outside-challenge-05147.png",
+      "tick": {
+        "floor": 1,
+        "phase": 4,
+        "menu": 0,
+        "control": 0,
+        "message": 20807,
+        "xyz": [
+          -1.3,
+          1.083,
+          -2.448
+        ]
+      },
+      "sha256": "824f9ab164adbac317526e36bda2cef3e61c56cab425b6d6a2cc365e8bce272e"
+    },
+    {
+      "name": "outside-challenge-0513f",
+      "frame": 3960,
+      "image": "/workspace/scratch/d8bf34fb7169/emulator-sandbox/runs/story-proof-continue-1/stages/outside-challenge-0513f.png",
+      "tick": {
+        "floor": 1,
+        "phase": 4,
+        "menu": 0,
+        "control": 0,
+        "message": 20799,
+        "xyz": [
+          -1.3,
+          1.083,
+          -2.448
+        ]
+      },
+      "sha256": "851e60ecc936ed9cdc890e26788173bd17462d122eb4ea5ce30a9cbf638a0603"
+    },
+    {
+      "name": "outside-challenge-05141",
+      "frame": 4500,
+      "image": "/workspace/scratch/d8bf34fb7169/emulator-sandbox/runs/story-proof-continue-1/stages/outside-challenge-05141.png",
+      "tick": {
+        "floor": 1,
+        "phase": 4,
+        "menu": 0,
+        "control": 0,
+        "message": 20801,
+        "xyz": [
+          1.8,
+          0.0,
+          3.5
+        ]
+      },
+      "sha256": "6a8fd732e29e966ce46c1d4a310f3a8d5f5d15bf7c5000787007d4cec7a74f34"
+    },
+    {
+      "name": "first-battle-pending",
+      "frame": 4800,
+      "image": "/workspace/scratch/d8bf34fb7169/emulator-sandbox/runs/story-proof-continue-1/stages/first-battle-pending.png",
+      "tick": {
+        "floor": 1,
+        "phase": 4,
+        "menu": 0,
+        "control": 0,
+        "message": 0,
+        "xyz": [
+          1.8,
+          0.0,
+          3.5
+        ]
+      },
+      "sha256": "4ba197d86f7188232815a5685955545b8240fbcbf751b1e4534806501edb4577"
+    }
+  ],
+  "scope": "Actual controller input; no guest-memory or game-flag writes. Emulator evidence only; combat stays pending."
+}

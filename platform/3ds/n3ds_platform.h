@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
 
 /* GameCube PAD bit positions; no libctru types cross this interface. */
 enum {
@@ -32,6 +33,9 @@ uint64_t c3_n3ds_time_us(void);
 /* Monotonic application time excluding actual APT suspension/sleep. SD/GPU
  * stalls still count; elapsed duration alone is never treated as suspension. */
 uint64_t c3_n3ds_active_time_us(void);
+/* Actual process heap grants and current linear free space. Call after trace
+ * creation and scene allocation; New 3DS detection does not imply a grant. */
+void c3_n3ds_log_memory(FILE *trace, const char *stage);
 const char *c3_n3ds_data_root(void);
 void c3_n3ds_wait_for_exit(void);
 void c3_n3ds_shutdown(void);

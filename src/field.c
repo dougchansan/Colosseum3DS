@@ -67,7 +67,7 @@ int c3_field_parse(C3FieldMap *map,const void *data,size_t bytes,char *error,siz
         return fail(error,capacity,"Field sections must be contiguous and exact.");
     next.map_pack_count=le32(p+180);
     next.arrival_pack_count=le32(p+184);
-    if(!next.map_pack_count||next.map_pack_count>6u||!next.arrival_pack_count||
+    if(!next.map_pack_count||next.map_pack_count>6u||
        next.arrival_pack_count>6u||next.map_pack_count+next.arrival_pack_count>7u)
         return fail(error,capacity,"Invalid field model count.");
     for(unsigned i=188;i<HEADER_BYTES;++i)if(p[i])return fail(error,capacity,"Unknown field header extension.");
@@ -117,6 +117,8 @@ int c3_field_parse(C3FieldMap *map,const void *data,size_t bytes,char *error,siz
         for(uint32_t j=0;j<i;++j)if(next.spawns[j].source_index==next.spawns[i].source_index)goto invalid;
     }
     if(!triangles(next.walk,p+walk_offset,next.walk_count)||!triangles(next.walls,p+wall_offset,next.wall_count))goto invalid;
+    for(uint32_t i=0;i<next.walk_count;++i)
+        if(next.walk[i].object>=next.object_count)next.object_count=(uint32_t)next.walk[i].object+1u;
     for(uint32_t i=0;i<next.wall_count;++i)
         if(next.walls[i].object>=next.object_count)next.object_count=(uint32_t)next.walls[i].object+1u;
     c3_field_close(map);*map=next;
@@ -171,12 +173,28 @@ static int in_triangle(const float point[3],const C3FieldTriangle *t)
     return a>=-1e-6 && b>=-1e-6 && a+b<=1.000001;
 }
 
+int c3_field_object_enabled(const C3FieldMap *map,uint32_t object)
+{
+    return map&&object<map->object_count&&object<256u&&
+        !(map->disabled_objects[object/8u]&(1u<<(object%8u)));
+}
+
+int c3_field_set_object_enabled(C3FieldMap *map,uint32_t object,int enabled)
+{
+    if(!map||object>=map->object_count||object>=256u)return 0;
+    uint8_t mask=(uint8_t)(1u<<(object%8u));
+    if(enabled)map->disabled_objects[object/8u]&=(uint8_t)~mask;
+    else map->disabled_objects[object/8u]|=mask;
+    return 1;
+}
+
 int c3_field_ground(const C3FieldMap *map,const float point[3],float *height)
 {
     if(!map||!point||!height||!map->walk)return 0;
     float heights[8];unsigned count=0;
     for(uint32_t i=0;i<map->walk_count&&count<8;++i) {
         const C3FieldTriangle *t=&map->walk[i];
+        if(!c3_field_object_enabled(map,t->object))continue;
         if(fabsf(t->normal[1])<1e-8f)continue;
         float p[3]={point[0],0,point[2]};
         p[1]=t->vertices[1]-(t->normal[0]*(p[0]-t->vertices[0])+t->normal[2]*(p[2]-t->vertices[2]))/t->normal[1];
@@ -197,7 +215,8 @@ int c3_field_ground(const C3FieldMap *map,const float point[3],float *height)
 
 /* Three original sphere-query passes: face, flagged edges, flagged corners.
  * The prepared static map is scanned linearly by original object order;
- * dynamic objects and the original spatial grid are not part of this adapter. */
+ * object enable bits follow scriptSetCol. Moving object geometry and the
+ * original spatial grid are not part of this adapter. */
 static int contact(const C3FieldTriangle *t,const float point[3],float radius,unsigned pass,float hit[3])
 {
     float offset[3];subtract(offset,point,t->vertices);
@@ -233,6 +252,7 @@ static int collide_point(const C3FieldMap *map,float point[3])
     for(unsigned iteration=0;iteration<10;++iteration) {
         int hits=0;
         for(unsigned object=0;object<map->object_count;++object) {
+            if(!c3_field_object_enabled(map,object))continue;
             float hit[3];const C3FieldTriangle *triangle=NULL;
             for(unsigned pass=0;pass<3&&!triangle;++pass)
                 for(uint32_t i=0;i<map->wall_count;++i)
@@ -266,6 +286,22 @@ static int collide_segment(const C3FieldMap *map,const float from[3],float to[3]
     return 0;
 }
 
+int c3_field_resolve_position(const C3FieldMap *map,C3FieldPlayer *player,const float before[3])
+{
+    if(!map||!player||!before||!map->walk)return 0;
+    for(unsigned i=0;i<3;++i)
+        if(!finite_bound(before[i],100000.0f)||!finite_bound(player->position[i],100000.0f))return 0;
+    float from[3]={before[0],before[1]+8.5f*map->scale,before[2]};
+    float to[3]={player->position[0],player->position[1]+8.5f*map->scale,player->position[2]};
+    if(collide_segment(map,from,to))++player->collision_count;
+    float height;
+    if(!c3_field_ground(map,to,&height)){
+        memcpy(player->position,before,3*sizeof(float));++player->collision_count;return 1;
+    }
+    player->position[0]=to[0];player->position[1]=height;player->position[2]=to[2];
+    return 1;
+}
+
 int c3_field_move(const C3FieldMap *map,C3FieldPlayer *player,int stick_x,int stick_y,
                    uint16_t buttons,float camera_yaw,float seconds)
 {
@@ -286,7 +322,9 @@ int c3_field_move(const C3FieldMap *map,C3FieldPlayer *player,int stick_x,int st
     uint32_t motion=speed<0.4f?0u:speed<1.5f?1u:2u;
     if(motion!=player->motion)player->animation_seconds=0.0f;
     player->motion=motion;player->speed=speed;
-    float dt=fminf(seconds,0.25f);player->animation_seconds+=dt;
+    /* Bound collision travel after a stalled frame, but keep the sampled
+     * motion on the same elapsed clock as scripted actors and cameras. */
+    float dt=fminf(seconds,0.25f);player->animation_seconds+=seconds;
     if(!x&&!y)return 1;
     float fx=fabsf((float)x)/28.0f,fy=fabsf((float)y)/28.0f;
     float angle_part=fy<0.001f?1.5707964f:1.5707964f*sinf(fminf(fx/fy,5.0f)/3.1830988f);
@@ -298,16 +336,9 @@ int c3_field_move(const C3FieldMap *map,C3FieldPlayer *player,int stick_x,int st
     else if(speed<=1.0f)step=(speed-0.4f)/0.6f*(walk-walk/2.0f)+walk/2.0f;
     else step=(speed-1.0f)*(run-walk)+walk;
     step*=dt*60.0f;
-    float from[3]={player->position[0],player->position[1]+8.5f*map->scale,player->position[2]};
-    float to[3]={from[0]+sinf(player->yaw)*step,from[1],from[2]+cosf(player->yaw)*step};
-    if(collide_segment(map,from,to))++player->collision_count;
-    float height;
-    if(!c3_field_ground(map,to,&height)) {
-        /* Unported scene exits must not move the hero into unloaded space. */
-        ++player->collision_count;return 1;
-    }
-    player->position[0]=to[0];player->position[1]=height;player->position[2]=to[2];
-    return 1;
+    float before[3];memcpy(before,player->position,sizeof before);
+    player->position[0]+=sinf(player->yaw)*step;player->position[2]+=cosf(player->yaw)*step;
+    return c3_field_resolve_position(map,player,before);
 }
 
 void c3_field_camera(const C3FieldMap *map,const C3FieldPlayer *player,C3TitleCamera *camera)

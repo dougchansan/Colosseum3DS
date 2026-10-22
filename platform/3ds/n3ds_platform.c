@@ -1,4 +1,5 @@
 #include "n3ds_platform.h"
+#include "stage_renderer.h"
 
 #include <3ds.h>
 #include <stdio.h>
@@ -136,6 +137,16 @@ uint64_t c3_n3ds_active_time_us(void)
     return now - paused;
 }
 
+void c3_n3ds_log_memory(FILE *trace, const char *stage)
+{
+    if (!trace) return;
+    fprintf(trace, "platform_memory stage=%s heap_bytes=%lu linear_heap_bytes=%lu linear_free_bytes=%lu\n",
+            stage ? stage : "unspecified",
+            (unsigned long)envGetHeapSize(), (unsigned long)envGetLinearHeapSize(),
+            (unsigned long)linearSpaceFree());
+    fflush(trace);
+}
+
 const char *c3_n3ds_data_root(void)
 {
     return "sdmc:/3ds/Colosseum3DS/data";
@@ -155,6 +166,7 @@ void c3_n3ds_wait_for_exit(void)
 void c3_n3ds_shutdown(void)
 {
     if (graphics_started) {
+        c3_stage_renderer_fini();
         aptUnhook(&clock_hook);
         osSetSpeedupEnable(false);
         gfxExit();
