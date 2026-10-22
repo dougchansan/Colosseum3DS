@@ -15,7 +15,10 @@ import hardware
 
 def names(ftp, directory):
     """A successful directory listing establishes absence; errors never do."""
-    return {item.rstrip("/").rsplit("/", 1)[-1] for item in ftp.nlst(directory)} - {".", ".."}
+    # SD filenames are case insensitive; retain the server spelling for reads
+    # and evidence instead of turning normalized comparison keys into paths.
+    return {name.casefold(): name for item in ftp.nlst(directory)
+            if (name := item.rstrip("/").rsplit("/", 1)[-1]) not in (".", "..")}
 
 
 def install(ftp, source, modelpack, evidence_dir, evidence, app_exited, expected, checkpoint):
@@ -45,10 +48,14 @@ def install(ftp, source, modelpack, evidence_dir, evidence, app_exited, expected
         if item["sha256"] != expected[item["name"]].lower():
             raise ValueError("Installed baseline hash differs: " + item["name"])
     listing = names(ftp, root)
-    if scene.rsplit("/", 1)[-1] in listing:
+    if scene.rsplit("/", 1)[-1].casefold() in listing:
         raise ValueError("Dedicated scene directory already exists")
     data_exists = "data" in listing
-    asset_exists = data_exists and "eevee.c3m" in names(ftp, data_dir)
+    if data_exists:
+        data_dir = root + "/" + listing["data"]
+    data_listing = names(ftp, data_dir) if data_exists else {}
+    asset_exists = "eevee.c3m" in data_listing
+    asset = data_dir + "/" + data_listing.get("eevee.c3m", "eevee.c3m")
     if asset_exists and hardware.read_remote(ftp, asset) != model:
         raise ValueError("Existing model pack differs; refusing overwrite")
     token = uuid.uuid4().hex
@@ -82,7 +89,7 @@ def install(ftp, source, modelpack, evidence_dir, evidence, app_exited, expected
             continue
         content = model if entry["name"] == "eevee.c3m" else payloads[entry["name"]]
         directory = data_dir if entry["name"] == "eevee.c3m" else scene
-        if entry["staging"].rsplit("/", 1)[-1] in names(ftp, directory):
+        if entry["staging"].rsplit("/", 1)[-1].casefold() in names(ftp, directory):
             raise ValueError("Unique staging name unexpectedly exists")
         record("stage_attempt", path=entry["staging"])
         ftp.storbinary("STOR " + entry["staging"], io.BytesIO(content))
@@ -94,7 +101,7 @@ def install(ftp, source, modelpack, evidence_dir, evidence, app_exited, expected
         if entry["reused"]:
             continue
         directory = data_dir if entry["name"] == "eevee.c3m" else scene
-        if entry["name"] in names(ftp, directory):
+        if entry["name"].casefold() in names(ftp, directory):
             raise ValueError("Destination appeared; refusing overwrite: " + entry["name"])
         record("rename_attempt", source=entry["staging"], destination=entry["path"])
         ftp.rename(entry["staging"], entry["path"])

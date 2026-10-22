@@ -1,5 +1,7 @@
 import importlib.util
+import os
 from pathlib import Path
+import shlex
 import shutil
 import subprocess
 import tempfile
@@ -12,6 +14,48 @@ spec.loader.exec_module(backend)
 
 
 class GekkoBackendTests(unittest.TestCase):
+    def test_generated_shader_lifecycle(self):
+        compiler = shutil.which("cc") or shutil.which("gcc")
+        if not compiler:
+            self.skipTest("host C compiler required for generated lifecycle test")
+        with tempfile.TemporaryDirectory() as folder:
+            backend.prepare(ROOT / "vendor/gekkoctr", folder)
+            source = (Path(folder) / "ctr_gx_citro3d.c").read_text()
+            # Execute the real generated ownership paths, up through both arena
+            # allocations. Only subsequent fixed GPU state setup is omitted.
+            initialization = source.split("static bool ctr_gx_init_common(", 1)[1]
+            initialization = "static bool ctr_gx_init_common(" + initialization.split(
+                "    /*\n     * Fixed fragment setup:", 1)[0]
+            initialization += "    g_state.ready = true;\n    return true;\n}\n"
+            shutdown = "void gctr_ctr_gx_shutdown(void) {" + source.split(
+                "void gctr_ctr_gx_shutdown(void) {", 1)[1].split(
+                    "\nconst char *gctr_ctr_gx_error", 1)[0]
+            state = source.split("typedef struct ctr_gx_state {", 1)[1].split(
+                "} ctr_gx_state_t;", 1)[0]
+            storage = "\n".join(line for line in state.splitlines() if "void *shader_blob;" in line)
+            harness = (ROOT / "tests/gekko_shader_lifecycle.c.in").read_text()
+            harness = harness.replace("@SHADER_STORAGE@", storage).replace(
+                "@INITIALIZATION@", initialization).replace("@SHUTDOWN@", shutdown)
+            path = Path(folder) / "shader_lifecycle.c"
+            executable = Path(folder) / "shader_lifecycle"
+            path.write_text(harness)
+            # make's sanitizer CFLAGS propagate into this generated C regression.
+            flags = shlex.split(os.environ.get("CFLAGS", "-std=c11 -Wall -Wextra -Werror"))
+            subprocess.run([compiler, *flags, str(path), "-o", str(executable)], check=True)
+            subprocess.run([str(executable)], check=True)
+            # Restore the donor's premature free to prove the harness detects
+            # the reviewed behavior, rather than merely accepting new strings.
+            premature = harness.replace("    shaderProgramInit(&g_state.program);",
+                                        "    free(g_state.shader_blob);\n"
+                                        "    shaderProgramInit(&g_state.program);", 1)
+            self.assertNotEqual(premature, harness)
+            path.write_text(premature)
+            subprocess.run([compiler, *flags, str(path), "-o", str(executable)], check=True)
+            rejected = subprocess.run([str(executable)], capture_output=True, text=True)
+            self.assertNotEqual(rejected.returncode, 0, "premature shader free must fail")
+            if any("-fsanitize=" in flag and "address" in flag for flag in flags):
+                self.assertIn("heap-use-after-free", rejected.stderr)
+
     def test_pinned_adaptations_and_cleanup_order(self):
         with tempfile.TemporaryDirectory() as folder:
             backend.prepare(ROOT / "vendor/gekkoctr", folder)

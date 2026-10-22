@@ -29,6 +29,21 @@ def prepare(donor, output):
     source = replace_once(source, "#define CTR_MAX_VERTICES 256u", "#define CTR_MAX_VERTICES 8192u")
     source = replace_once(source, "#define CTR_MAX_TEXTURES 8u", "#define CTR_MAX_TEXTURES 16u")
     source = replace_once(source, "    bool ready;", "    bool c3d_initialized;\n    bool ready;")
+    source = replace_once(source, "    DVLB_s *dvlb;", """    DVLB_s *dvlb;
+    /* libctru DVLB/DVLE code and tables borrow this storage until DVLB_Free. */
+    void *shader_blob;""")
+    source = replace_once(source, "    void *shader_blob;\n    size_t shader_size = 0;", "    size_t shader_size = 0;")
+    source = replace_once(source, "    shader_blob = read_whole_file(shader_path, &shader_size);", "    g_state.shader_blob = read_whole_file(shader_path, &shader_size);")
+    source = replace_once(source, "    if (shader_blob == NULL) {", "    if (g_state.shader_blob == NULL) {")
+    source = replace_once(source, "    g_state.dvlb = DVLB_ParseFile((u32 *)shader_blob, (u32)shader_size);", "    g_state.dvlb = DVLB_ParseFile((u32 *)g_state.shader_blob, (u32)shader_size);")
+    source = replace_once(source, "        free(shader_blob);\n        g_state.error = \"shader blob did not parse\";", "        g_state.error = \"shader blob did not parse\";")
+    source = replace_once(source, "    /* DVLB_ParseFile keeps its own copy of what it needs. */\n    free(shader_blob);\n", "")
+    source = replace_once(source, "    if (g_state.ready) {\n        C3D_Fini();", """    /* Shader/program teardown must finish before releasing borrowed bytes.
+     * Also handles parse failure, where there is no DVLB to destroy. */
+    free(g_state.shader_blob);
+    g_state.shader_blob = NULL;
+    if (g_state.ready) {
+        C3D_Fini();""")
     source = replace_once(source, "    g_state.target = C3D_RenderTargetCreate", "    g_state.c3d_initialized = true;\n    g_state.target = C3D_RenderTargetCreate")
     source = replace_once(source, "void gctr_ctr_gx_shutdown(void) {", """void gctr_ctr_gx_shutdown(void) {
     /* Target deletion drains the GPU queue without waiting on VBlank. */

@@ -58,6 +58,22 @@ int main(void)
     assert(m.draw_vertices[65].y==2 && m.draw_vertices[65].z==-3 && m.draw_vertices[65].u==0.25f);
     c3_model_animate(&m,1.5f); assert(fabsf(m.draw_vertices[65].x-3.25f)<0.0001f);
     c3_model_animate(&m,-0.5f); assert(fabsf(m.draw_vertices[65].x-3.25f)<0.0001f);
+    {
+        const float times[]={-1e-30f,-FLT_MIN,-0.0f,0.0f,1.0f,-1.0f,2.0f,
+                             nextafterf(1.0f,0.0f),nextafterf(1.0f,2.0f),NAN,INFINITY,-INFINITY};
+        for (size_t i=0;i<sizeof(times)/sizeof(times[0]);i++) {
+            c3_model_animate(&m,times[i]);
+            assert(isfinite(m.draw_vertices[65].x));
+            assert(m.draw_vertices[65].x>=1.25f && m.draw_vertices[65].x<=5.25f);
+        }
+        /* A one-frame model has no interpolation neighbour, even for finite extremes. */
+        m.frame_count=1;
+        m.matrices=realloc(m.matrices,12*sizeof(*m.matrices)); assert(m.matrices);
+        for (size_t i=0;i<sizeof(times)/sizeof(times[0]);i++) {
+            c3_model_animate(&m,times[i]);
+            assert(m.draw_vertices[65].x==1.25f);
+        }
+    }
     c3_model_close(&m); assert(!m.file_data && !m.vertex_count && !m.resident_bytes);
     for (size_t cut=0;cut<bytes;cut++) reject(p,cut);
     reject(p,16u*1024u*1024u+1);

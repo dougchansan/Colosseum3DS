@@ -140,8 +140,11 @@ void c3_model_animate(C3Model *m, float seconds)
     uint32_t frame=0,next=0; double phase=0; float blend=0;
     if (!m || !m->matrices || !m->vertices || !m->draw_vertices) return;
     if (m->frame_count>1 && isfinite(seconds)) {
-        phase=fmod((double)seconds*m->fps,(double)m->frame_count-1);
-        if (phase<0) phase+=m->frame_count-1;
+        double period=(double)m->frame_count-1;
+        phase=fmod((double)seconds*m->fps,period);
+        if (phase<0) phase+=period;
+        /* Adding a tiny negative remainder can round up to the period. */
+        if (!(phase<period)) phase=0;
         frame=(uint32_t)phase; next=frame+1; blend=(float)(phase-frame);
     }
     for (uint32_t i=0;i<m->vertex_count;i++) {

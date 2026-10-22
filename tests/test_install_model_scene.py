@@ -2,6 +2,7 @@
 import ftplib
 import importlib.util
 from pathlib import Path
+from unittest.mock import patch
 import sys
 import tempfile
 import unittest
@@ -22,37 +23,46 @@ class FakeFTP:
                       for name in hardware.FILES}
         self.writes, self.corrupt = [], False
 
+    @staticmethod
+    def resolve(paths, path):
+        return next((existing for existing in paths if existing.casefold() == path.casefold()), None)
+
     def nlst(self, directory):
-        if directory not in self.directories:
+        directory = self.resolve(self.directories, directory)
+        if directory is None:
             raise ftplib.error_temp("450 unavailable")
         prefix = directory + "/"
         return [path for path in self.directories | self.files.keys()
-                if path.startswith(prefix) and "/" not in path[len(prefix):]]
+                if path.casefold().startswith(prefix.casefold()) and "/" not in path[len(prefix):]]
 
     def retrbinary(self, command, callback):
-        path = command[5:]
-        if path not in self.files:
+        path = self.resolve(self.files, command[5:])
+        if path is None:
             raise ftplib.error_perm("550 absent")
         callback(self.files[path])
 
     def mkd(self, path):
         self.writes.append(("mkdir", path))
-        if path in self.directories or path in self.files:
+        if self.resolve(self.directories | self.files.keys(), path) is not None:
             raise ftplib.error_perm("550 exists")
         self.directories.add(path)
 
     def storbinary(self, command, stream):
         path = command[5:]
         self.writes.append(("store", path))
-        if path in self.files:
-            raise AssertionError("Attempt to replace a file")
+        existing = self.resolve(self.files, path)
+        if existing is not None:
+            del self.files[existing]
         self.files[path] = stream.read() + (b"corrupt" if self.corrupt else b"")
 
     def rename(self, source, destination):
         self.writes.append(("rename", source, destination))
-        if destination in self.files:
-            raise AssertionError("Attempt to overwrite a destination")
-        self.files[destination] = self.files.pop(source)
+        source = self.resolve(self.files, source)
+        content = self.files.pop(source)
+        existing = self.resolve(self.files, destination)
+        if existing is not None:
+            del self.files[existing]
+        self.files[destination] = content
 
 
 class SceneInstallTests(unittest.TestCase):
@@ -110,6 +120,84 @@ class SceneInstallTests(unittest.TestCase):
         self.assertEqual(self.ftp.writes, [])
         self.assert_original_intact()
 
+    def test_case_alias_different_model_refuses_before_any_write(self):
+        for directory, filename in (("data", "EEVEE.C3M"), ("DaTa", "EeVeE.c3M")):
+            with self.subTest(directory=directory, filename=filename):
+                self.ftp = FakeFTP()
+                path = hardware.APP_DIR + "/" + directory + "/" + filename
+                self.ftp.directories.add(hardware.APP_DIR + "/" + directory)
+                self.ftp.files[path] = b"previous model must survive"
+                before = dict(self.ftp.files)
+                with tempfile.TemporaryDirectory() as evidence_dir:
+                    with self.assertRaisesRegex(ValueError, "differs"):
+                        installer.install(self.ftp, self.source, self.model, evidence_dir, self.evidence,
+                                          True, self.expected, lambda: None)
+                self.assertEqual(self.ftp.files, before)
+                self.assertEqual(self.ftp.writes, [])
+
+    def test_case_alias_equal_model_reused_with_actual_path(self):
+        self.ftp.directories.add(hardware.APP_DIR + "/DaTa")
+        path = hardware.APP_DIR + "/DaTa/EEVEE.C3M"
+        self.ftp.files[path] = self.model.read_bytes()
+        self.install()
+        asset = self.evidence["deployment"][-1]
+        self.assertEqual(asset["path"], path)
+        self.assertTrue(asset["reused"])
+        self.assertTrue(asset["installed_verified"])
+        self.assertFalse(any("eevee" in str(action).casefold() for action in self.ftp.writes))
+        self.assertEqual(sum(action[0] == "rename" for action in self.ftp.writes), 2)
+
+    def test_case_alias_scene_refuses_before_any_write(self):
+        self.ftp.directories.add(hardware.APP_DIR + "/ScEnE-" + "A" * 12)
+        with self.assertRaisesRegex(ValueError, "already exists"):
+            self.install()
+        self.assertEqual(self.ftp.writes, [])
+
+    def test_case_alias_staging_name_is_not_overwritten(self):
+        token = "b" * 32
+        mkd = self.ftp.mkd
+        def create_staging_alias(path):
+            mkd(path)
+            if "/scene-" in path:
+                self.ftp.files[path + "/" + hardware.FILES[0].upper() + ".TMP-" + token.upper()] = b"keep"
+        self.ftp.mkd = create_staging_alias
+        with patch.object(installer.uuid, "uuid4") as identifier:
+            identifier.return_value.hex = token
+            with self.assertRaisesRegex(ValueError, "staging name"):
+                self.install()
+        self.assertFalse(any(action[0] in ("store", "rename") for action in self.ftp.writes))
+
+    def test_case_alias_destination_appearing_after_stage_is_preserved(self):
+        for filename in ("EEVEE.C3M", hardware.FILES[0].upper()):
+            with self.subTest(filename=filename):
+                # Each transaction needs its own local backup directories.
+                with tempfile.TemporaryDirectory() as evidence_dir:
+                    self.ftp = FakeFTP()
+                    store = self.ftp.storbinary
+                    raced_path = []
+                    def stage_and_race(command, stream):
+                        store(command, stream)
+                        if "eevee.c3m.tmp-" in command:
+                            directory = (hardware.APP_DIR + "/data" if filename == "EEVEE.C3M"
+                                         else hardware.APP_DIR + "/scene-" + "a" * 12)
+                            raced_path.append(directory + "/" + filename)
+                            self.ftp.files[raced_path[-1]] = b"arrived during upload"
+                    self.ftp.storbinary = stage_and_race
+                    with self.assertRaisesRegex(ValueError, "Destination appeared"):
+                        installer.install(self.ftp, self.source, self.model, evidence_dir, self.evidence,
+                                          True, self.expected, lambda: None)
+                    self.assertEqual(self.ftp.files[raced_path[-1]], b"arrived during upload")
+                    self.assertFalse(any(action[0] == "rename" and
+                                         action[2].casefold() == raced_path[-1].casefold()
+                                         for action in self.ftp.writes))
+
+    def test_fake_rename_replaces_case_alias_like_sd_filesystem(self):
+        self.ftp.files["/source"] = b"new"
+        self.ftp.files["/DESTINATION"] = b"old"
+        self.ftp.rename("/SOURCE", "/destination")
+        self.assertEqual(self.ftp.files["/destination"], b"new")
+        self.assertNotIn("/DESTINATION", self.ftp.files)
+
     def test_nested_baseline_mismatch_refuses_before_writes(self):
         self.expected[hardware.FILES[0]] = "0" * 64
         with self.assertRaisesRegex(ValueError, "baseline hash"):
@@ -133,6 +221,18 @@ class SceneInstallTests(unittest.TestCase):
 
     def test_listing_failure_never_means_absent(self):
         self.ftp.nlst = lambda directory: (_ for _ in ()).throw(ftplib.error_temp("450 unavailable"))
+        with self.assertRaises(ftplib.error_temp):
+            self.install()
+        self.assertEqual(self.ftp.writes, [])
+
+    def test_case_alias_data_listing_failure_refuses_before_writes(self):
+        self.ftp.directories.add(hardware.APP_DIR + "/DaTa")
+        nlst = self.ftp.nlst
+        def fail_data(directory):
+            if directory.casefold().endswith("/data"):
+                raise ftplib.error_temp("450 unavailable")
+            return nlst(directory)
+        self.ftp.nlst = fail_data
         with self.assertRaises(ftplib.error_temp):
             self.install()
         self.assertEqual(self.ftp.writes, [])

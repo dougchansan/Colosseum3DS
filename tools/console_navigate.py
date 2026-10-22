@@ -172,13 +172,36 @@ def navigate(config, root, target, frames, output, dispatch, readiness):
             expected = edge['expected']
             if not expected or any(name not in config['states'] for name in expected):
                 raise ValueError('Unknown expected state')
-            # Recheck freshness immediately before input; never act on stale evidence.
-            if any(time.monotonic() - value[1] > 1 for value in latest.values()):
+            # Saving PNGs can allow contradictory frames to arrive. Authorize
+            # input from the receiver's current snapshot after that I/O.
+            authorization_counters, authorization_latest = frames.snapshot()
+            if frames.error:
+                raise RuntimeError(frames.error)
+            now = time.monotonic()
+            if any(screen not in authorization_latest or
+                   now - authorization_latest[screen][1] > 1
+                   for screen in ('top', 'bottom')):
                 raise RuntimeError('State became stale before input')
+            authorization_state = classify(authorization_latest['bottom'][0],
+                                           config['states'], root)
+            if authorization_state != state:
+                raise RuntimeError('Current state no longer matches route authorization')
+            if time.monotonic() + 0.7 >= deadline:
+                raise RuntimeError('Navigation action/time limit reached')
+            record['authorization'] = {
+                'state': authorization_state,
+                'frames': {screen: {'counter': authorization_counters[screen],
+                                    'frame_id': value[2],
+                                    'received_monotonic': value[1]}
+                           for screen, value in authorization_latest.items()}}
             record['action'] = edge['action']
             record['duration_seconds'] = duration
             result = dispatch(ACTIONS[edge['action']], duration,
                               output / f'{index:02d}-input.json')
+            # Persist the exact authorizing images after dispatch so evidence
+            # writes cannot separate the current-state check from the action.
+            for screen, value in authorization_latest.items():
+                value[0].save(output / f'{index:02d}-{state}-authorization-{screen}.png')
             if result['status'] != 'sent':
                 raise RuntimeError('Input/release failed: ' + result['status'])
             # Only frames received after bounded action/release may prove transition.

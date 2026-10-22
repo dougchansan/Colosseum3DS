@@ -76,7 +76,7 @@ class NavigationTests(unittest.TestCase):
         report = nav.navigate(self.config, self.root, 'model', frames, self.output, action, Mock())
         self.assertEqual(report['status'], 'passed')
         self.assertEqual([step['state'] for step in report['steps']], ['ftpd', 'model'])
-        self.assertEqual(len(list(self.output.glob('*.png'))), 4)
+        self.assertEqual(len(list(self.output.glob('*.png'))), 6)
         self.assertEqual(json.loads((self.output / 'manifest.json').read_text())['status'], 'passed')
 
     def test_stale_and_unknown_frames_never_authorize_input(self):
@@ -91,6 +91,63 @@ class NavigationTests(unittest.TestCase):
             self.assertEqual(report['status'], 'failed')
             dispatch.assert_not_called()
 
+    def test_received_changes_during_evidence_save_never_authorize_old_route(self):
+        original_save = Image.Image.save
+        for change in ('model', 'unknown', 'ambiguous', 'stale', 'top_stale',
+                       'bottom_missing', 'receiver_error'):
+            with self.subTest(change=change):
+                frames = FakeFrames()
+                dispatch = Mock(return_value={'status': 'sent'})
+                snapshot = frames.snapshot
+                changed = [False]
+                def current_snapshot():
+                    counters, latest = snapshot()
+                    if changed[0] and change == 'top_stale':
+                        image, stamp, frame = latest['top']
+                        latest['top'] = (image, stamp - 10, frame)
+                    elif changed[0] and change == 'bottom_missing':
+                        del latest['bottom']
+                    return counters, latest
+                frames.snapshot = current_snapshot
+                def save_and_change(image, *args, **kwargs):
+                    original_save(image, *args, **kwargs)
+                    changed[0] = True
+                    if change == 'model':
+                        frames.color = 'blue'
+                    elif change == 'unknown':
+                        frames.color = 'green'
+                    elif change == 'ambiguous':
+                        self.states['duplicate'] = dict(self.states['ftpd'])
+                    elif change == 'stale':
+                        frames.stale = True
+                    elif change == 'receiver_error':
+                        frames.error = 'receiver failed during evidence save'
+                try:
+                    with patch.object(Image.Image, 'save', new=save_and_change):
+                        report = nav.navigate(self.config, self.root, 'model', frames,
+                                              self.output, dispatch, Mock())
+                    self.assertEqual(report['status'], 'failed')
+                    dispatch.assert_not_called()
+                finally:
+                    self.states.pop('duplicate', None)
+
+    def test_dispatch_records_current_authorizing_snapshot(self):
+        frames = FakeFrames()
+        def action(buttons, duration, evidence):
+            authorization_counter = frames.count
+            frames.color = 'blue'
+            action.counter = authorization_counter
+            return {'status': 'sent'}
+        report = nav.navigate(self.config, self.root, 'model', frames,
+                              self.output, action, Mock())
+        step = report['steps'][0]
+        self.assertEqual(report['status'], 'passed')
+        self.assertEqual(step['authorization']['state'], 'ftpd')
+        self.assertEqual(step['authorization']['frames']['bottom']['counter'], action.counter)
+        self.assertGreater(action.counter, step['frames']['bottom']['counter'])
+        with Image.open(self.output / '00-ftpd-authorization-bottom.png') as image:
+            self.assertEqual(image.getpixel((0, 0)), (255, 0, 0))
+
     def test_missing_route_and_forbidden_action_do_not_send(self):
         dispatch = Mock()
         for edge in ({'action': 'POWER', 'expected': ['model']}, None):
@@ -103,9 +160,12 @@ class NavigationTests(unittest.TestCase):
         self.states['ftpd']['ftp_ready'] = True
         self.states['ftpd']['settle_seconds'] = 0
         readiness = Mock(return_value=False)
-        with self.assertRaises(RuntimeError):
-            nav.wait_state(FakeFrames(), self.config, self.root, {'top': 0, 'bottom': 0},
-                           ['ftpd'], time.monotonic() + 0.025, readiness)
+        clock = [0.0]
+        with patch.object(nav.time, 'monotonic', side_effect=lambda: clock[0]), \
+             patch.object(nav.time, 'sleep', side_effect=lambda seconds: clock.__setitem__(0, clock[0] + seconds)):
+            with self.assertRaises(RuntimeError):
+                nav.wait_state(FakeFrames(), self.config, self.root, {'top': 0, 'bottom': 0},
+                               ['ftpd'], 0.025, readiness)
         readiness.assert_called_once()
 
     def test_candidate_change_restarts_settle_and_requires_new_frames(self):
