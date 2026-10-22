@@ -45,7 +45,8 @@ def generate(source_root):
     native_bounded = re.sub(r"\bu32\b", "uint32_t", native_bounded)
     reference_bounded = bounded.replace("fn_801ADCD8()", "c3_reference_rand()")
     return ("/* Generated from pinned " + COMMIT + "; do not edit.\n"
-            " * HSD body: source parity only. Modulo body: CANDIDATE, not PPC-oracle qualified.\n"
+            " * Modulo source remains CANDIDATE. docs/rng-qualification.md records 72 original\n"
+            " * PowerPC instruction cases for this slice; full battle RNG call graphs remain unqualified.\n"
             " * Generate with tools/prepare_battle_rng.py. No arithmetic changes. */\n"
             "#ifdef C3_BATTLE_RNG_REFERENCE\n"
             "static u32 c3_reference_bounded(u32 mod)\n{" + reference_bounded + "}\n"
