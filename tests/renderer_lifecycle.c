@@ -25,6 +25,7 @@ static shaderProgram_s program;
 static shaderProgram_s *sdk_program;
 static int mvp_location, color_pass_location;
 static TitleGPUVertex *vertices;
+static TitleGPUVertex *hud_vertices;
 static C3D_Tex textures[C3_STAGE_MAX_TEXTURES];
 static const C3TitleTexture *texture_sources[C3_STAGE_MAX_TEXTURES];
 static uint32_t texture_count, vertex_count;
@@ -172,7 +173,14 @@ int main(int argc, char **argv)
         if (sdk_program) assert(sdk_program == &program && sdk_program->vertexShader);
         sdk_program = &program;
         assert(c3_stage_renderer_init(models, 1, error, sizeof(error)) == -1);
+        /* Model the optional HUD arena in alternate scene bundles. Production
+         * shutdown must release it after the same idle barrier as geometry. */
+        if (transition & 1u) {
+            hud_vertices = linearAlloc(2358u * sizeof *hud_vertices);
+            assert(hud_vertices && buffers == 2);
+        }
         assert(c3_stage_renderer_try_shutdown());
+        assert(!hud_vertices);
         assert(!targets && !buffers && !images && !scene_count);
         assert(driver_live && program.vertexShader && shader);
         assert(init_calls == 1 && shader_inits == 1 && !fini_calls && !shader_frees);
