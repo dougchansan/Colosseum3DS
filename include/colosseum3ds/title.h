@@ -109,6 +109,7 @@ typedef struct {
     float fps;
     uint32_t active_clip;
     float active_frame;
+    uint8_t borrowed_storage;
 } C3Title;
 
 /* Zero-initialize before first use. Owns its file and decoded geometry after
@@ -120,6 +121,10 @@ typedef struct {
 int c3_title_load(C3Title *title, const char *path, char *error, size_t capacity);
 int c3_title_parse(C3Title *title, const void *data, size_t bytes, char *error, size_t capacity);
 void c3_title_close(C3Title *title);
+/* Shares immutable source/geometry with owner; owns pose and sampled vertices.
+ * Owner must outlive all instances, including GPU teardown. Zero initialize
+ * instance; nested borrowing and self replacement are rejected. */
+int c3_title_instance(C3Title *instance, const C3Title *owner, char *error, size_t capacity);
 
 /* Select and sample one authored clip. Each clip's loop flag determines
  * wrapping; nonlooping clips clamp. Finite negative seconds clamp to zero; NaN/Inf or invalid

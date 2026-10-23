@@ -272,10 +272,32 @@ static int decode_owned(C3Title *title, char *error, size_t capacity)
 
 void c3_title_close(C3Title *title)
 {
+    if (title && title->borrowed_storage) {
+        free(title->draw_vertices);
+        memset(title, 0, sizeof *title);
+        return;
+    }
     if (!title) return;
     free(title->vertices); free(title->draw_vertices); free(title->batches); free(title->textures);
     free(title->file_data);
     memset(title,0,sizeof *title);
+}
+
+int c3_title_instance(C3Title *instance, const C3Title *owner, char *error, size_t capacity)
+{
+    if (!instance || !owner || instance == owner || owner->borrowed_storage ||
+        !owner->file_data || !owner->draw_vertices || !owner->vertex_count)
+        return fail(error, capacity, "Invalid scene instance owner");
+    C3TitleDrawVertex *sampled = malloc(owner->vertex_count * sizeof *sampled);
+    if (!sampled) return fail(error, capacity, "Scene instance allocation failed");
+    memcpy(sampled, owner->draw_vertices, owner->vertex_count * sizeof *sampled);
+    c3_title_close(instance);
+    *instance = *owner;
+    instance->draw_vertices = sampled;
+    instance->borrowed_storage = 1;
+    instance->resident_bytes = sizeof *instance + owner->vertex_count * sizeof *sampled;
+    if (error && capacity) error[0] = '\0';
+    return 1;
 }
 
 int c3_title_parse(C3Title *title, const void *data, size_t bytes, char *error, size_t capacity)

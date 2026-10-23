@@ -52,6 +52,33 @@ static void hide(C3Title *model)
     for(uint32_t i=0;i<model->batch_count;++i)model->pose.materials[i].visible=0;
 }
 
+/* Story actors retain the C3Title addresses, never their owned payloads.
+ * Only call while the VM is paused and the stage renderer is shut down. */
+static void release_field_models(C3Title *storage,uint32_t count)
+{
+    for(uint32_t i=0;i<count;++i)c3_title_close(storage+i);
+}
+
+static int restore_field_models(C3Title *storage,uint32_t count,
+                                char paths[][160],C3FieldStory *story,
+                                float elapsed,
+                                char *error,size_t capacity)
+{
+    for(uint32_t i=0;i<count;++i){
+        if(!c3_title_load(storage+i,paths[i],error,capacity))return 0;
+        if(!c3_title_animate(storage+i,0,elapsed)){
+            snprintf(error,capacity,"Restored field animation failed.");return 0;
+        }
+    }
+    /* Resample the preserved NPC/hero clocks, loops, visibility, attachments,
+     * and transforms. Do not tick/prepare/enter or reload the story VM. */
+    char story_error[C3_STORY_ERROR]={0};
+    if(!c3_field_story_sample(story,story_error)){
+        snprintf(error,capacity,"%s",story_error);return 0;
+    }
+    return 1;
+}
+
 static const char *pokemon_name(uint16_t species)
 {
     switch(species) {case 197:return "UMBREON";case 196:return "ESPEON";default:return "POKEMON";}
@@ -139,6 +166,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     C3FieldStory story={0};C3AreaLights lights={0};C3AreaCamera room_camera={0};
     C3Title *storage=NULL;const C3Title *models[C3_STAGE_MAX_MODELS]={0};
     C3Title *actor_models[C3_AREA_MAX_ACTORS]={0};
+    char model_paths[C3_STAGE_MAX_MODELS][160]={{0}};
     C3TitleCamera camera;C3TitleRenderStats stats={0};C3N3dsInput input={0};
     uint32_t opened=0,count=0,arrival_done=0,opening_done=0,arrival_count=0;
     unsigned wes_index=0,arrival_index=0,tv_index=UINT32_MAX,selection=0,frames=0;
@@ -178,6 +206,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         else if(i==wes_index)snprintf(path,sizeof path,BOOT_ROOT "%s_wes.c3t",prefix);
         else snprintf(path,sizeof path,BOOT_ROOT "outskirt_arrival%lu.c3t",(unsigned long)(i-arrival_index));
         if(!c3_title_load(storage+i,path,error,capacity))goto done;
+        snprintf(model_paths[i],sizeof model_paths[i],"%s",path);
         ++opened;models[i]=storage+i;
         if(!c3_title_animate(storage+i,0,0)){snprintf(error,capacity,"Initial field animation failed.");goto done;}
     }
@@ -185,6 +214,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         snprintf(path,sizeof path,BOOT_ROOT "%s",area.actors[i].file);
         C3Title *model=storage+opened;
         if(!c3_title_load(model,path,error,capacity))goto done;
+        snprintf(model_paths[opened],sizeof model_paths[opened],"%s",path);
         models[opened++]=model;actor_models[i]=model;
         if(!c3_title_animate(model,area.actors[i].motions[0],0)){snprintf(error,capacity,"Original NPC idle motion is missing.");goto done;}
     }
@@ -205,6 +235,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     }
     if(map.floor==2){
         if(!c3_title_load(storage+tv_index,BOOT_ROOT "shop_tv.c3t",error,capacity))goto done;
+        snprintf(model_paths[tv_index],sizeof model_paths[tv_index],BOOT_ROOT "shop_tv.c3t");
         models[opened++]=storage+tv_index;
         if(!c3_title_animate(storage+tv_index,0,0)||
            !c3_area_camera_load(&room_camera,BOOT_ROOT "shop_camera.c3c",error,capacity)||
@@ -266,8 +297,24 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
             if(page==PAUSE_CLOSED){
                 if(view->blocked[0]&&(input.pressed&(C3_PAD_START|C3_PAD_X))){result=0;break;}
                 if(view->blocked[0]&&view->battle_id==10&&(input.pressed&C3_PAD_A)){
-                    if(c3_render_recover(trace,"battle-preview",frames,C3_RECOVER_WAIT)==C3_RECOVERY_EXIT){result=1;break;}
-                    if(c3_battle_preview_from_game_state(state,trace)>0){result=1;break;}
+                    c3_n3ds_log_memory(trace,"field_battle_before_drain");
+                    if(c3_render_recover(trace,"field-to-battle",frames,C3_RECOVER_DRAIN)==C3_RECOVERY_EXIT){result=1;break;}
+                    release_field_models(storage,count);
+                    c3_n3ds_log_memory(trace,"field_battle_payloads_released");
+                    int preview_result=c3_battle_preview_from_game_state(state,trace);
+                    /* Defensively drain even a failed/partial battle initialization.
+                     * Never reload CPU packs while battle GPU storage is live. */
+                    if(c3_render_recover(trace,"battle-to-field",0,
+                        preview_result>0?C3_RECOVER_EXIT:C3_RECOVER_DRAIN)==C3_RECOVERY_EXIT){result=1;break;}
+                    c3_n3ds_log_memory(trace,"field_battle_before_restore");
+                    if(!restore_field_models(storage,count,model_paths,&story,
+                        elapsed,error,capacity)){result=-1;break;}
+                    if(c3_stage_renderer_init(models,count,error,capacity)){result=-1;break;}
+                    if(tv_index!=UINT32_MAX&&!c3_stage_renderer_set_tv(tv_index,1,1,
+                        view->tv_enabled,error,capacity)){result=-1;break;}
+                    c3_n3ds_log_memory(trace,"field_battle_restored");
+                    if(trace){fprintf(trace,"field_battle_return preview=%d pending=%lu vm_preserved=1 models=%lu\n",
+                        preview_result,(unsigned long)view->battle_id,(unsigned long)count);fflush(trace);}
                     /* Modal preview time must not advance paused field scripts. */
                     previous=c3_n3ds_active_time_us();dirty=1;next_console=0;
                     continue;

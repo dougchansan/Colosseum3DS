@@ -214,6 +214,21 @@ int main(void)
     assert(c3_title_parse(&title,p,FILE_BYTES,error,sizeof error));
     assert(!error[0] && title.bone_count==1 && title.vertex_count==3 && title.frame_count==3);
     assert(title.textures[0].pixels>=title.file_data && title.resident_bytes>FILE_BYTES);
+    {
+        C3Title instance={0}, nested={0};
+        assert(c3_title_instance(&instance,&title,error,sizeof error));
+        assert(instance.vertices==title.vertices && instance.textures==title.textures);
+        assert(instance.file_data==title.file_data && instance.draw_vertices!=title.draw_vertices);
+        assert(c3_title_animate(&instance,0,.25f));
+        near_value(instance.draw_vertices[0].pos[0],4);
+        near_value(title.draw_vertices[0].pos[0],2);
+        assert(instance.active_frame!=title.active_frame);
+        assert(!c3_title_instance(&nested,&instance,error,sizeof error));
+        assert(!c3_title_instance(&title,&title,error,sizeof error));
+        c3_title_close(&instance);
+        assert(c3_title_animate(&title,0,0));
+        c3_title_close(&instance);
+    }
     near_value(title.draw_vertices[0].pos[0],2);
     near_value(title.draw_vertices[0].normal[0],1.0f/sqrtf(5.0f));
     near_value(title.draw_vertices[0].normal[1],2.0f/sqrtf(5.0f));
