@@ -5,6 +5,7 @@
 #include <citro3d.h>
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "title_shader_shbin.h"
@@ -30,6 +31,8 @@ static C3D_Tex textures[C3_STAGE_MAX_TEXTURES];
 static const C3TitleTexture *texture_sources[C3_STAGE_MAX_TEXTURES];
 static uint32_t texture_count, vertex_count;
 static size_t gpu_buffer_bytes;
+static C3StageBattleHud battle_hud;
+static uint32_t hud_texture = UINT32_MAX;
 /* One original field-camera texture entry. Its model is a member of the
  * bounded scene arena, but is never submitted to the main room camera. */
 typedef struct { bool configured, enabled; size_t model, screen_model; uint32_t texture; } TVBinding;
@@ -226,6 +229,8 @@ int c3_stage_renderer_init(const C3Title *const *models, size_t count,
                           char *error, size_t capacity)
 {
     if (target || scene_count) return fail(error, capacity, "The shared scene renderer is already initialized.");
+    memset(&battle_hud, 0, sizeof battle_hud);
+    hud_texture = UINT32_MAX;
     if (!models || !count || count > C3_STAGE_MAX_MODELS)
         return fail(error, capacity, "Invalid bounded stage model count.");
     uint32_t total_vertices = 0;
@@ -660,6 +665,80 @@ static bool camera_matrices(const C3TitleCamera *camera, C3D_Mtx *mvp, C3D_Mtx *
     return true;
 }
 
+int c3_stage_renderer_set_battle_hud(const C3StageBattleHud *hud, char *error, size_t capacity)
+{
+    if (!hud || !scene_count) return fail(error, capacity, "HUD requires an owned stage.");
+    for (unsigned i=0;i<8;++i)
+        if (!memchr(hud->lines[i],0,sizeof hud->lines[i])) return fail(error,capacity,"HUD text exceeds bound.");
+    if (hud->enabled && hud_texture==UINT32_MAX) {
+        if (texture_count>=C3_STAGE_MAX_TEXTURES || !c3_stage_renderer_is_idle())
+            return fail(error,capacity,"HUD initialization requires an idle texture slot.");
+        const ConsoleFont *font=&consoleGetDefault()->font;
+        if (!font->gfx || font->asciiOffset || font->numChars<128)
+            return fail(error,capacity,"Unsupported development font.");
+        uint8_t *pixels=calloc(128u*64u,4);
+        if (!pixels) return fail(error,capacity,"HUD atlas allocation failed.");
+        for (unsigned c=0;c<128;++c)for(unsigned y=0;y<8;++y)for(unsigned x=0;x<8;++x){
+            size_t p=(((c/16)*8+y)*128+(c%16)*8+x)*4;
+            pixels[p]=pixels[p+1]=pixels[p+2]=255;
+            pixels[p+3]=(font->gfx[c*8+y]&(0x80u>>x))?255:0;
+        }
+        C3TitleTexture source={128,64,0,0,pixels,128u*64u*4u};
+        bool ok=upload_texture(&textures[texture_count],&source);
+        free(pixels);
+        if (!ok) return fail(error,capacity,"HUD atlas upload failed.");
+        hud_texture=texture_count++;
+        gpu_buffer_bytes+=textures[hud_texture].size;
+    }
+    battle_hud=*hud;
+    return 0;
+}
+
+static void hud_quad(float x,float y,float w,float h,float u,float v,float uw,float vh,
+                     float r,float g,float b,float a,C3TitleRenderStats *stats)
+{
+    static const unsigned corners[6][2]={{0,0},{1,0},{0,1},{0,1},{1,0},{1,1}};
+    C3D_ImmDrawBegin(GPU_TRIANGLES);
+    for(unsigned i=0;i<6;++i){
+        float cx=(float)corners[i][0],cy=(float)corners[i][1];
+        C3D_ImmSendAttrib(x+w*cx,y+h*cy,0,1);
+        C3D_ImmSendAttrib(u+uw*cx,v+vh*cy,0,1);
+        C3D_ImmSendAttrib(r,g,b,a);
+        C3D_ImmSendAttrib(0,0,0,1);C3D_ImmSendAttrib(0,0,0,1);
+    }
+    C3D_ImmDrawEnd();stats->draw_calls++;stats->vertices+=6;
+}
+
+static void draw_battle_hud(C3TitleRenderStats *stats)
+{
+    if(!battle_hud.enabled || hud_texture==UINT32_MAX)return;
+    C3D_Mtx ortho;Mtx_OrthoTilt(&ortho,0,400,240,0,-1,1,false);
+    C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER,mvp_location,&ortho);
+    C3D_FVUnifSet(GPU_VERTEX_SHADER,color_pass_location,0,0,0,0);
+    C3D_CullFace(GPU_CULL_NONE);C3D_DepthTest(false,GPU_ALWAYS,GPU_WRITE_COLOR);
+    C3D_AlphaTest(false,GPU_ALWAYS,0);
+    C3D_AlphaBlend(GPU_BLEND_ADD,GPU_BLEND_ADD,GPU_SRC_ALPHA,GPU_ONE_MINUS_SRC_ALPHA,GPU_ZERO,GPU_ONE);
+    for(int i=0;i<6;++i)C3D_TexEnvInit(C3D_GetTexEnv(i));
+    C3D_TexEnv *env=C3D_GetTexEnv(0);
+    C3D_TexEnvSrc(env,C3D_Both,GPU_PRIMARY_COLOR,GPU_PRIMARY_COLOR,GPU_PRIMARY_COLOR);
+    C3D_TexEnvFunc(env,C3D_Both,GPU_REPLACE);
+    hud_quad(0,166,400,74,0,0,0,0,.02f,.04f,.08f,.9f,stats);
+    for(unsigned i=0;i<4;++i){
+        float x=(i&1u)?292:8,y=i<2?146:8;
+        hud_quad(x,y,100,5,0,0,0,0,.1f,.1f,.1f,.9f,stats);
+        float f=battle_hud.maximum_hp[i]?(float)battle_hud.hp[i]/battle_hud.maximum_hp[i]:0;
+        hud_quad(x,y,100*clamp01(f),5,0,0,0,0,.1f,.85f,.3f,1,stats);
+    }
+    C3D_TexBind(0,&textures[hud_texture]);
+    C3D_TexEnvSrc(env,C3D_Both,GPU_TEXTURE0,GPU_PRIMARY_COLOR,GPU_PRIMARY_COLOR);
+    C3D_TexEnvFunc(env,C3D_Both,GPU_MODULATE);
+    for(unsigned row=0;row<8;++row)for(unsigned col=0;col<48&&battle_hud.lines[row][col];++col){
+        unsigned c=(unsigned char)battle_hud.lines[row][col];if(c<32||c>=128)c='?';
+        if(c==' ')continue;
+        hud_quad(8+col*8,170+row*8,8,8,(c%16)/16.f,1-(c/16)/8.f,1/16.f,-1/8.f,1,1,1,1,stats);
+    }
+}
+
 int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
                           const C3TitleCamera *camera, float fade,
                           C3TitleRenderStats *stats, char *error, size_t capacity)
@@ -842,6 +921,7 @@ int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
             }
         }
     } /* The texture-backed pass precedes the main camera in one GPU queue. */
+    draw_battle_hud(stats);
     fade = clamp01(fade);
     if (fade < 1.0f) {
         C3D_Mtx identity;

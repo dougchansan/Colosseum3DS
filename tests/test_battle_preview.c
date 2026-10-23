@@ -1,5 +1,6 @@
 #include "colosseum3ds/battle_preview.h"
 #include "colosseum3ds/battle_preview_menu.h"
+#include "colosseum3ds/battle_presentation.h"
 #include "colosseum3ds/game_state.h"
 #include "save_codec.h"
 #include <stdio.h>
@@ -104,6 +105,34 @@ static void reject_and_replay(void)
     fixture(&r,&i,&t);put16(r.player_party[0]+0x8a,0);put16(r.player_party[1]+0x8a,0);
     CHECK(!c3_battle_preview_begin(&b,&r,&i,&t,2,e));CHECK(!memcmp(&b,&copy,sizeof b));
 }
+typedef struct { uint32_t sequence, starts, finishes; int active; } PresentationAudit;
+static void audit_presentation(const C3BattlePreviewEvent *event,int finished,void *user)
+{
+    PresentationAudit *audit=user;
+    if(!finished){
+        CHECK(!audit->active);CHECK(event->sequence==audit->sequence+1);
+        audit->active=1;++audit->starts;
+    }else{
+        CHECK(audit->active);CHECK(event->sequence==audit->sequence+1);
+        audit->active=0;audit->sequence=event->sequence;++audit->finishes;
+    }
+}
+static void present_batch(C3BattlePresentation *p,const C3BattlePreview *b,uint32_t step,PresentationAudit *audit)
+{
+    uint32_t starts=audit->starts,finishes=audit->finishes;
+    CHECK(c3_battle_presentation_submit(p,b->events,b->event_count));
+    /* 64 bounded events at <=900 ms each; this also prevents test hangs. */
+    uint32_t budget=60000u/step+1;
+    while(p->cursor<p->count&&budget--)CHECK(c3_battle_presentation_step(p,step,audit_presentation,audit));
+    CHECK(p->cursor==p->count&&!p->failed&&!audit->active);
+    CHECK(audit->starts-starts==b->event_count&&audit->finishes-finishes==b->event_count);
+    CHECK(audit->sequence==b->event_sequence);
+    for(unsigned actor=0;actor<4;++actor){
+        CHECK(p->hp[actor]==b->mons[actor].hp);
+        CHECK(p->visible[actor]==(b->mons[actor].hp!=0));
+    }
+    CHECK(p->outcome==b->outcome);
+}
 static void effects_and_completion(void)
 {
     C3BattlePreview b;C3BattlePreviewTables t;C3BattleInitTables init;C3BattleRequest r;char e[192];fixture(&r,&init,&t);
@@ -117,12 +146,28 @@ static void effects_and_completion(void)
     CHECK(!c3_battle_preview_legal_moves(&b,&t,0));c[0].slot=c[1].slot=4;
     CHECK(c3_battle_preview_turn(&b,&t,c,e));CHECK(contains(&b,"STRUGGLE"));CHECK(contains(&b,"recoil"));
     unsigned wins=0,losses=0;
+    static const uint32_t steps[]={1,17,60000};
+    C3BattlePreview rendered[3];C3BattlePresentation presentation[3];PresentationAudit audit[3];
     for(unsigned seed=0;seed<100;++seed){begin(&b,&t,&init,&r,seed);
         if(seed&1){b.mons[0].hp=b.mons[1].hp=1;b.mons[2].stats[C3_STAT_SPEED]=999;b.mons[3].stats[C3_STAT_SPEED]=998;}
+        memset(audit,0,sizeof audit);
+        for(unsigned speed=0;speed<3;++speed){
+            uint16_t initial_hp[4];for(unsigned actor=0;actor<4;++actor)initial_hp[actor]=b.mons[actor].hp;
+            rendered[speed]=b;c3_battle_presentation_init(&presentation[speed],initial_hp);
+            present_batch(&presentation[speed],&rendered[speed],steps[speed],&audit[speed]);
+            CHECK(!memcmp(&rendered[speed],&b,sizeof b));
+        }
         for(unsigned turn=0;turn<100&&b.outcome==C3_PREVIEW_RUNNING;++turn){
             c[0]=command(&b,&t,0,seed%2);c[1]=command(&b,&t,1,seed%2);
             CHECK(c3_battle_preview_turn(&b,&t,c,e));CHECK(b.event_count>0&&b.event_count<=64);
             CHECK(!memcmp(&b.original_request,&r,sizeof r));
+            for(unsigned speed=0;speed<3;++speed){
+                CHECK(c3_battle_preview_turn(&rendered[speed],&t,c,e));
+                CHECK(!memcmp(&rendered[speed],&b,sizeof b));
+                present_batch(&presentation[speed],&rendered[speed],steps[speed],&audit[speed]);
+                /* Includes all private state, committed events and both RNG seed/draw count. */
+                CHECK(!memcmp(&rendered[speed],&b,sizeof b));
+            }
             for(unsigned a=0;a<4;++a){CHECK(b.mons[a].hp<=b.mons[a].maximum_hp);for(unsigned j=0;j<7;++j)CHECK(b.mons[a].stages[j]>=-6&&b.mons[a].stages[j]<=6);}
         }
         CHECK(b.outcome!=C3_PREVIEW_RUNNING);wins+=b.outcome==C3_PREVIEW_PLAYER_WON;losses+=b.outcome==C3_PREVIEW_PLAYER_LOST;

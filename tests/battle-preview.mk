@@ -1,5 +1,5 @@
 # The playable preview is nonpersistent and leaves PR6's foundation unchanged.
-BATTLE_PREVIEW_SOURCES = src/battle_preview.c src/battle_damage.c src/battle_preview_menu.c src/game_state.c src/save.c $(BATTLE_INIT_SOURCES)
+BATTLE_PREVIEW_SOURCES = src/battle_preview.c src/battle_presentation.c src/battle_damage.c src/battle_preview_menu.c src/game_state.c src/save.c $(BATTLE_INIT_SOURCES)
 build/battle_damage_original.inc: tools/prepare_battle_damage.py vendor/colosseum/src/game/fight_range_80211A00.c | build
 	python3 tools/prepare_battle_damage.py
 

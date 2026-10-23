@@ -171,6 +171,9 @@ static void C3D_ImmDrawBegin(int primitive)
 }
 
 /* Generated from the current production file by test_renderer_texture_binding.py. */
+/* This fixture verifies the authored material/TV path with the optional battle
+ * overlay disabled. The HUD has a separate real ARM integration gate. */
+static void draw_battle_hud(C3TitleRenderStats *stats) { (void)stats; }
 #include "title_renderer_draw.inc"
 
 int main(int argc, char **argv)

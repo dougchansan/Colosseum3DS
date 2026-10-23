@@ -7,6 +7,16 @@
 #define C3_STAGE_MAX_VERTICES 131072u
 #define C3_STAGE_MAX_TEXTURES 128u
 
+/* Development HUD uses the libctru font, not the original game's font/UI.
+ * Copied commands are drawn inside the sole stage frame, never CPU framebuffer
+ * writes. Set while idle before the first frame; later updates only copy data. */
+typedef struct {
+    char lines[8][49];
+    uint16_t hp[4], maximum_hp[4];
+    uint8_t enabled;
+} C3StageBattleHud;
+int c3_stage_renderer_set_battle_hud(const C3StageBattleHud *hud, char *error, size_t capacity);
+
 /* Implemented by the shared renderer in title_renderer.c. Packs retain their
  * independent animation clocks and bounded C3Title storage. All packs must
  * outlive this renderer, and init/draw must use the same ordered identities.

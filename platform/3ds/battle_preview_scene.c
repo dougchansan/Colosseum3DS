@@ -1,5 +1,7 @@
 #include "battle_preview_scene.h"
 #include "n3ds_platform.h"
+#include "battle_stage.h"
+#include "render_recovery.h"
 #include "colosseum3ds/battle_preview_menu.h"
 #include "colosseum3ds/game_state.h"
 #include <3ds.h>
@@ -12,36 +14,12 @@
 #define C3_BUILD_ID "unknown"
 #endif
 
-static void health(unsigned current,unsigned maximum)
-{
-    unsigned filled=maximum?current*20u/maximum:0;
-    printf("[");for(unsigned i=0;i<20;++i)putchar(i<filled?'#':'-');printf("] %u/%u\n",current,maximum);
-}
-static void draw_top(PrintConsole *top,const C3BattlePreview *b,const C3BattlePreviewMenu *m)
-{
-    consoleSelect(top);consoleClear();
-    printf("COLOSSEUM3DS | WILLIE COMBAT PREVIEW\n");
-    printf("Turn %lu  Build %.12s\n\n",(unsigned long)b->turn,C3_BUILD_ID);
-    const C3BattlePreviewEvent *event=m->page==C3_PREVIEW_MENU_EVENTS&&m->event<b->event_count?&b->events[m->event]:NULL;
-    static const unsigned order[]={2,3,0,1};
-    for(unsigned k=0;k<4;++k){unsigned i=order[k];const C3BattlePreviewMon *p=b->mons+i;
-        unsigned hp=event?event->hp[i]:p->hp;
-        printf("%s Lv.%u%s\n",c3_battle_preview_name(i),p->level,hp?"":"  FAINTED");health(hp,p->maximum_hp);
-        if(!event)printf("Atk %+d Def %+d Acc %+d%s%s\n",p->stages[0],p->stages[1],p->stages[5],p->taunt?" TAUNT":"",p->confusion?" CONFUSED":"");
-        else printf("\n");
-        printf("\n");
-    }
-    printf("NONPERSISTENT DEVELOPMENT UI\n");
-    printf("Preview enemy policy, not original AI.\n");
-    printf("No experience, rewards, or story writeback.\n");
-    printf("START + SELECT: exit application\n");
-}
 static void draw_bottom(PrintConsole *bottom,const C3BattlePreview *b,const C3BattlePreviewTables *t,
     const C3BattlePreviewMenu *m,const char *error)
 {
     consoleSelect(bottom);consoleClear();
     if(error[0]){printf("PREVIEW STOPPED\n\n%s\n\nBattle and saved game unchanged.\n\nB / X: return\n",error);return;}
-    printf("WILLIE | 2 vs 2\n\n");
+    printf("WILLIE | 2 vs 2\nItems / Switch / Call unavailable\n\n");
     switch(m->page){
     case C3_PREVIEW_MENU_EVENTS:
         if(m->event<b->event_count)printf("%s\n\n",b->events[m->event].text);
@@ -73,6 +51,40 @@ static void draw_bottom(PrintConsole *bottom,const C3BattlePreview *b,const C3Ba
     default:break;
     }
 }
+static int draw_hud(C3BattleStage *s,const C3BattlePreview *b,const C3BattlePreviewMenu *m,char *error,size_t cap)
+{
+    C3StageBattleHud hud={0};hud.enabled=1;
+    snprintf(hud.lines[0],sizeof hud.lines[0],"DEV: ball/move FX, cameras, audio missing");
+    for(unsigned i=0;i<4;++i){hud.hp[i]=s->presentation.hp[i];hud.maximum_hp[i]=b->mons[i].maximum_hp;}
+    const C3BattlePresentation *p=&s->presentation;
+    if(p->cursor<p->count&&p->events[p->cursor].kind==C3_PREVIEW_EVENT_HP&&p->duration_ms){
+        const C3BattlePreviewEvent *e=&p->events[p->cursor];
+        for(unsigned i=0;i<4;++i){int32_t before=e->hp_before[i],after=e->hp[i];
+            hud.hp[i]=(uint16_t)(before+(after-before)*(int32_t)p->elapsed_ms/(int32_t)p->duration_ms);}
+    }
+    snprintf(hud.lines[1],sizeof hud.lines[1],"Umbreon %u/%u    Espeon %u/%u",hud.hp[0],hud.maximum_hp[0],hud.hp[1],hud.maximum_hp[1]);
+    snprintf(hud.lines[2],sizeof hud.lines[2],"Zigzagoon %u/%u  Zigzagoon %u/%u",hud.hp[2],hud.maximum_hp[2],hud.hp[3],hud.maximum_hp[3]);
+    if(m->page==C3_PREVIEW_MENU_EVENTS){
+        const char *text=m->event<b->event_count?b->events[m->event].text:"";
+        snprintf(hud.lines[3],sizeof hud.lines[3],"%.48s",text);
+        if(strlen(text)>48)snprintf(hud.lines[4],sizeof hud.lines[4],"%.48s",text+48);
+        snprintf(hud.lines[6],sizeof hud.lines[6],"%s",p->cursor<p->count?"Presenting committed event...":"A/B: continue   X: leave");
+    }else if(m->page==C3_PREVIEW_MENU_MOVE){
+        snprintf(hud.lines[3],sizeof hud.lines[3],"%s: choose move",c3_battle_preview_name(m->actor));
+        if(m->selection==4)snprintf(hud.lines[4],sizeof hud.lines[4],"> STRUGGLE");
+        else for(unsigned i=0;i<4;++i){const C3BattleInitialMove *move=&b->mons[m->actor].moves[i];
+            snprintf(hud.lines[4+i],sizeof hud.lines[4+i],"%c %s %u/%u PP",i==m->selection?'>':' ',c3_battle_preview_move_name(move->id),move->pp,move->maximum_pp);}
+    }else if(m->page==C3_PREVIEW_MENU_TARGET){
+        snprintf(hud.lines[3],sizeof hud.lines[3],"Target: %s %u",c3_battle_preview_name(m->target),m->target-1);
+        snprintf(hud.lines[5],sizeof hud.lines[5],"D-pad: target  A: confirm  B: back");
+    }else if(m->page==C3_PREVIEW_MENU_CONFIRM){
+        snprintf(hud.lines[3],sizeof hud.lines[3],"Execute commands? A: yes B: revise");
+    }else if(m->page==C3_PREVIEW_MENU_RESULT){
+        snprintf(hud.lines[3],sizeof hud.lines[3],"Preview %s",p->outcome==C3_PREVIEW_PLAYER_WON?"WIN":p->outcome==C3_PREVIEW_PLAYER_LOST?"LOSS":"DRAW");
+        snprintf(hud.lines[5],sizeof hud.lines[5],"A/B: return to pending encounter");
+    }else if(m->page==C3_PREVIEW_MENU_LEAVE)snprintf(hud.lines[3],sizeof hud.lines[3],"Leave preview? A: leave B: continue");
+    return c3_stage_renderer_set_battle_hud(&hud,error,cap)==C3_RENDER_OK;
+}
 static void trace_turn(FILE *f,const C3BattlePreview *b)
 {
     if(!f)return;
@@ -86,10 +98,9 @@ int c3_battle_preview_scene_run(const C3BattleRequest *request,FILE *trace)
 {
     C3BattlePreview *battle=calloc(1,sizeof *battle);C3BattleInitTables init;C3BattlePreviewTables tables;
     C3BattlePreviewMenu menu;C3N3dsInput input={0};char error[192]={0};int result=0,dirty=1;
-    /* Capture the old console pointer before initializing the independent top
-     * console. No output occurs while its zeroed context is uninitialized. */
-    PrintConsole top={0};PrintConsole *bottom=consoleSelect(&top);
-    consoleInit(GFX_TOP,&top);consoleSelect(bottom);
+    C3BattleStage *stage=calloc(1,sizeof *stage);
+    PrintConsole scratch={0};PrintConsole *bottom=consoleSelect(&scratch);consoleSelect(bottom);
+    int released=0;uint64_t previous_time=c3_n3ds_active_time_us();
     c3_battle_preview_menu_init(&menu);
     if(!battle)snprintf(error,sizeof error,"Preview allocation failed.");
     else if(c3_battle_init_load(&init,BOOT_ROOT "willie.c3i",error)&&
@@ -98,30 +109,77 @@ int c3_battle_preview_scene_run(const C3BattleRequest *request,FILE *trace)
         if(trace){fprintf(trace,"preview_begin build=%s seed=12345678 enemy_policy=uniform_legal experimental=1\n",C3_BUILD_ID);fflush(trace);}
         trace_turn(trace,battle);
     }
+    if(!stage&&!error[0])snprintf(error,sizeof error,"Battle stage allocation failed.");
+    if(!error[0]){
+        uint16_t hp[4];for(unsigned i=0;i<4;++i)hp[i]=battle->events[0].hp_before[i];
+        if(c3_battle_stage_load(stage,BOOT_ROOT "battle",hp,trace,error,sizeof error)&&
+           !c3_battle_stage_submit(stage,battle->events,battle->event_count))
+            snprintf(error,sizeof error,"Invalid introduction event batch.");
+        c3_n3ds_log_memory(trace,"battle_stage_loaded");
+    }
+    unsigned frames=0;uint64_t metric_time=previous_time;
     unsigned last_turn=0;C3BattlePreviewMenuPage previous=menu.page;unsigned previous_event=0;
     while(c3_n3ds_poll(&input)){
-        if(error[0]){if(input.pressed&(C3_PAD_B|C3_PAD_X)){break;}}
-        else if(input.pressed){
-            if(!c3_battle_preview_menu_step(&menu,battle,&tables,input.pressed,error))dirty=1;
-            if(menu.page==C3_PREVIEW_MENU_EXIT)break;
-            if(battle->turn!=last_turn){last_turn=battle->turn;trace_turn(trace,battle);}
-            if(trace&&(menu.page!=previous||menu.event!=previous_event)){
-                fprintf(trace,"preview_ui page=%u actor=%u slot=%u target=%u event=%u input=%04x\n",(unsigned)menu.page,menu.actor,menu.selection,menu.target,menu.event,input.pressed);fflush(trace);}
-            previous=menu.page;previous_event=menu.event;dirty=1;
+        uint64_t now=c3_n3ds_active_time_us();uint64_t delta=(now-previous_time)/1000u;previous_time=now;
+        uint32_t ms=delta>UINT32_MAX?UINT32_MAX:(uint32_t)delta;
+        if(!input.held)released=1;
+        if(error[0]){if(released&&(input.pressed&(C3_PAD_B|C3_PAD_X)))break;}
+        else{
+            if(!c3_battle_stage_step(stage,ms,error,sizeof error))dirty=1;
+            C3BattlePresentation *p=&stage->presentation;
+            int complete=p->cursor>=p->count;
+            if(menu.page==C3_PREVIEW_MENU_EVENTS){
+                unsigned shown=p->cursor<p->count?p->cursor:p->count?p->count-1:0;
+                if(menu.event!=shown){menu.event=shown;dirty=1;}
+            }
+            uint16_t pressed=released?input.pressed:0;
+            if(menu.page==C3_PREVIEW_MENU_EVENTS&&!complete)pressed&=C3_PAD_X;
+            if(pressed){
+                if(!c3_battle_preview_menu_step(&menu,battle,&tables,pressed,error))dirty=1;
+                if(menu.page==C3_PREVIEW_MENU_EXIT)break;
+                if(battle->turn!=last_turn){
+                    last_turn=battle->turn;trace_turn(trace,battle);
+                    if(!c3_battle_stage_submit(stage,battle->events,battle->event_count))snprintf(error,sizeof error,"Invalid committed battle event batch.");
+                }
+                if(trace&&(menu.page!=previous||menu.event!=previous_event)){
+                    fprintf(trace,"preview_ui page=%u actor=%u slot=%u target=%u event=%u input=%04x\n",(unsigned)menu.page,menu.actor,menu.selection,menu.target,menu.event,pressed);fflush(trace);}
+                previous=menu.page;previous_event=menu.event;dirty=1;
+            }
         }
-        if(dirty){
-            if(!error[0])draw_top(&top,battle,&menu);
-            else{consoleSelect(&top);consoleClear();printf("COLOSSEUM3DS\n\nCombat preview unavailable.\nNo saved state was changed.\n");}
-            draw_bottom(bottom,battle,&tables,&menu,error);gfxFlushBuffers();dirty=0;
-        }
-        gspWaitForVBlank();
+        if(dirty){draw_bottom(bottom,battle,&tables,&menu,error);dirty=0;}
+        if(stage&&stage->initialized&&!error[0]){
+            C3TitleRenderStats stats;
+            if(!draw_hud(stage,battle,&menu,error,sizeof error)){dirty=1;continue;}
+            uint64_t render_start=c3_n3ds_time_us();
+            int drawn=c3_battle_stage_draw(stage,&stats,error,sizeof error);
+            if(drawn==C3_RENDER_ERROR)dirty=1;
+            else if(drawn==C3_RENDER_BUSY){
+                C3RenderRecoveryResult recovered=c3_render_recover(trace,"battle",frames,C3_RECOVER_WAIT);
+                if(recovered==C3_RECOVERY_EXIT){result=1;break;}
+                previous_time=c3_n3ds_active_time_us();
+            }else{
+                ++frames;
+                if(trace&&now-metric_time>=1000000u){
+                    fprintf(trace,"battle_render frames=%u draw_cpu_us=%llu gpu_previous_ms=%.3f draws=%lu vertices=%lu gpu_buffer_bytes=%lu\n",frames,
+                        (unsigned long long)(c3_n3ds_time_us()-render_start),(double)stats.gpu_previous_ms,
+                        (unsigned long)stats.draw_calls,(unsigned long)stats.vertices,(unsigned long)stats.gpu_buffer_bytes);
+                    c3_n3ds_log_memory(trace,"battle_render");fflush(trace);metric_time=now;
+                }
+            }
+        }else{gfxFlushBuffers();gspWaitForVBlank();}
+    }
+    if(stage){
+        if(stage->initialized&&c3_render_recover(trace,"battle",frames,result?C3_RECOVER_EXIT:C3_RECOVER_DRAIN)==C3_RECOVERY_EXIT)result=1;
+        c3_battle_stage_close(stage);
+        c3_n3ds_log_memory(trace,"battle_released");
+        free(stage);
     }
     if(input.exit_requested)result=1;
     /* aptMainLoop cancellation may not fill input.exit_requested. Check it
      * without issuing additional controller actions before returning. */
     if(!aptMainLoop())result=1;
     consoleSelect(bottom);
-    gfxSetScreenFormat(GFX_TOP,GSP_BGR8_OES);gfxSetDoubleBuffering(GFX_TOP,true);gfxSwapBuffersGpu();
+
     if(trace){fprintf(trace,"preview_exit app_exit=%d error=%s save_writes=0 gsvm_resumed=0\n",result,error);fflush(trace);}
     if(error[0]&&!result)result=-1;
     free(battle);return result;

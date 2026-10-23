@@ -29,6 +29,8 @@ static C3D_Tex textures[C3_STAGE_MAX_TEXTURES];
 static const C3TitleTexture *texture_sources[C3_STAGE_MAX_TEXTURES];
 static uint32_t texture_count, vertex_count;
 static size_t gpu_buffer_bytes;
+static C3StageBattleHud battle_hud;
+static uint32_t hud_texture;
 typedef struct { bool configured, enabled; size_t model, screen_model; uint32_t texture; } TVBinding;
 static TVBinding tv;
 static C3D_Tex tv_texture;
