@@ -274,8 +274,11 @@ class Model:
         if descriptor[0] == "rigid":
             return world[descriptor[1]]
         _, owner, weights = descriptor
-        if not self.model.bones[owner].flags & 2:
-            raise ValueError("Only reviewed skeleton-root envelopes are admitted")
+        # The parser already bakes the owner's rest coordinate matrix into
+        # each vertex. For non-root owners that constant right-side matrix
+        # cancels in _sample_descriptor's D(t) @ inverse(D(rest)). The same
+        # cancellation removes the constant inverse bind for a single weight.
+        # Retain the blended inverse binds for multi-weight envelopes.
         if weights[0][1] == 1:
             if len(weights) != 1:
                 raise ValueError("Malformed single-weight envelope")
@@ -480,15 +483,25 @@ def expand_image_swaps(meshes):
             result.append(mesh)
             continue
         table=nonempty[0]
-        if len(mesh["raw_textures"])!=1 or any(e!=table for e in nonempty):
+        if len(mesh["raw_textures"])!=1:
             raise ValueError("Multiple image tables or layers are unreviewed")
-        for index,image in enumerate(table):
+        def decoded(images):
+            textures=[]
+            for image in images:
+                texture=copy.copy(mesh["raw_textures"][0]);texture.image=image
+                ir_image=_build_ir_image(texture)
+                if ir_image is None:
+                    raise ValueError("Source image animation has no decoded pixels")
+                textures.append(_texture(texture,ir_image))
+            return textures
+        textures=decoded(table)
+        # Trainer clips duplicate equivalent image tables at different DAT
+        # addresses. Compare decoded dimensions/pixels/wrap, not addresses.
+        if any(decoded(images)!=textures for images in nonempty[1:]):
+            raise ValueError("Multiple distinct image tables are unreviewed")
+        for index,texture in enumerate(textures):
             variant=dict(mesh)
-            texture=copy.copy(mesh["raw_textures"][0]);texture.image=image
-            ir_image=_build_ir_image(texture)
-            if ir_image is None:
-                raise ValueError("Source image animation has no decoded pixels")
-            variant["textures"]=[_texture(texture,ir_image)]
+            variant["textures"]=[texture]
             variant["image_variant"]=index
             result.append(variant)
     return result
@@ -540,7 +553,17 @@ def _sample_descriptor(model, descriptor, states, attachment=None):
         result = attachment @ result
     if not np.isfinite(result).all():
         raise ValueError("Nonfinite sampled field transform")
-    if np.min(np.abs(np.linalg.det(result[:,:3,:3])))<1e-9:
+    # A rigid part authored at exactly zero scale contributes no surface.
+    # prepare_pack_set hides its batch at these samples; provide an invertible
+    # unused normal matrix instead of serializing a singular GPU transform.
+    collapsed = np.all(result[:, :3, :3] == 0, axis=(1, 2))
+    if descriptor[0] == "rigid":
+        result[collapsed, :3, :3] = np.eye(3)
+    # A uniformly tiny authored mesh (Espeon's auxiliary rigid part) can
+    # have a tiny determinant without being ill-conditioned. Compare its
+    # singular values, preserving scale while rejecting collapsed axes.
+    singular = np.linalg.svd(result[:,:3,:3], compute_uv=False)
+    if np.any(singular[:, 0] == 0) or np.any(singular[:, -1] <= singular[:, 0] * 1e-9):
         raise ValueError("Singular sampled field transform")
     if np.max(np.abs(result-np.eye(4)))<1e-7:
         result[:] = np.eye(4)
@@ -573,7 +596,12 @@ def prepare_pack_set(meshes, schedules, fps, camera_frames, lights, archive_hash
                 signatures[key] = signature
         material_tracks[id(mesh)] = []
         for i,(clip,frame) in enumerate(frames):
-            material = material_state(mesh,clip,frame,states[model][i][1])
+            world, visible = states[model][i]
+            if (all(descriptor[0] == "rigid" for descriptor in mesh["descriptors"]) and
+                np.all(np.asarray(world[mesh["bone"]])[:3, :3] == 0)):
+                visible = list(visible)
+                visible[mesh["bone"]] = False
+            material = material_state(mesh,clip,frame,visible)
             if format_version>=3:
                 source_joint = states[model][i][0][mesh["bone"]]
                 if attachment is not None:
