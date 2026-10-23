@@ -8,7 +8,7 @@ This is the first implementation slice after PR5's encounter-10 request boundary
 
 The HSD draw advances the 32-bit LCG and returns its high 16 bits. The bounded helper consumes two draws, placing the first in the low half and the second in the high half before unsigned modulo. A generic one-draw remainder is not equivalent. Zero modulus, invalid output/context overlap and draw-counter overflow are rejected without advancing state. Snapshot/replay and interleaved battle contexts do not alter the existing global core RNG.
 
-The bounded GS function is marked CANDIDATE upstream. Source parity tests do not qualify it against original PowerPC execution. Original initializer/AI/damage streams and any presentation RNG calls must be audited before gameplay integration.
+The bounded GS function remains marked CANDIDATE upstream. The separate [original-instruction qualification](rng-qualification.md) now compares both native RNG helpers against 72 executions of the admitted DOL instructions in Dolphin, including returned values, final seeds and draw ordering. This qualifies the recorded corpus, not every possible state or the initializer/AI/damage/presentation call graphs. Those streams still require their own audits before gameplay integration.
 
 ## Fixed-size action queue
 
@@ -20,7 +20,7 @@ Callback bindings are explicit. A known callback reference of zero retains the s
 
 ## Validation and authority
 
-The queue test compares the adapter against a separately compiled extraction of the pinned source control flow. RNG tests compare extracted context bodies with the original HSD implementation and bounded candidate using fixed seeds, rollover, draw ordering and interleaved streams. These checks establish parity with the reviewed source slice, not with original DOL execution or complete fight semantics. The queue passed 41,568 differential checks in strict and ASan/UBSan runs; RNG passed 304,569 checks in each run. Both compiled as strict ARM11 objects. The combined host target also passed all 19 C suites; its optional Python skips are covered separately where their required tools are present. Full application ARM and CI checks are recorded with the follow-up PR.
+The queue test compares the adapter against a separately compiled extraction of the pinned source control flow. RNG tests compare extracted context bodies with the original HSD implementation and bounded candidate using fixed seeds, rollover, draw ordering and interleaved streams. The queue checks establish parity with the reviewed source slice, not original queue execution. The RNG additionally has the bounded original-instruction corpus described above. Neither qualifies complete fight semantics. The queue passed 41,568 differential checks in strict and ASan/UBSan runs; RNG passed 304,569 checks in each run. Both compiled as strict ARM11 objects. The combined host target also passed all 19 C suites; its optional Python skips are covered separately where their required tools are present. Full application ARM and CI checks are recorded with the follow-up PR.
 
 Original BattleMain and FIFO sources include medium-confidence or candidate functions and a substantial ABI/dependency closure. The current battle record pack supplies encounter/team constraints, not species/move/item/ability/effect/AI execution tables. Do not use the queue tests to certify those unported functions.
 
@@ -34,3 +34,5 @@ Original BattleMain and FIFO sources include medium-confidence or candidate func
 The existing semantic-oracle pilot admits only three relocation-free integer leaves. It is not presently an initializer/action-call-graph oracle; extend and qualify it or use original-game instrumentation before claiming original-execution parity.
 
 PR5's separate physical route and remaining hardware limits are recorded in [the physical evidence](evidence/native-story-hardware-2026-10-22/README.md).
+
+The separate [physical shop Save/Continue evidence](evidence/shop-save-continue-hardware-2026-10-22/README.md) closes the earlier persistence gap: the fresh WES primary save and all decoded party/checkpoint/flag fields remained unchanged after a load-only fresh-process Continue. This does not supply a combat result or qualify battle integration.

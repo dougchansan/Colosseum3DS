@@ -24,7 +24,9 @@ int c3_battle_rng_restore(C3BattleRng *rng, const C3BattleRngSnapshot *snapshot)
  * one pinned HSD draw. bounded32 uses two draws (first low, second high),
  * followed by unsigned modulo, from the pinned GS CANDIDATE helper. The source
  * has undefined behavior for modulus zero; this wrapper explicitly rejects it.
- * This is source parity, not original-PowerPC oracle qualification. */
+ * The source remains CANDIDATE. docs/rng-qualification.md records 72 original
+ * PowerPC instruction cases for this arithmetic slice; the full battle call
+ * graph and its RNG consumption remain unqualified. */
 int c3_battle_rng_next16(C3BattleRng *rng, uint16_t *value);
 int c3_battle_rng_bounded32(C3BattleRng *rng, uint32_t modulus, uint32_t *value);
 
