@@ -1,5 +1,6 @@
 """Synthetic battle asset bounds and affine-envelope regressions."""
 import importlib.util
+import hashlib
 from pathlib import Path
 import struct
 import sys
@@ -11,6 +12,11 @@ import prepare_battle_scene as battle
 
 
 class BattleSceneTests(unittest.TestCase):
+    def test_published_manifest_matches_its_byte_digest(self):
+        path = Path(__file__).resolve().parents[1] / "docs/battle-scene-manifest.json"
+        expected = path.with_suffix(".json.sha256").read_text().split()[0]
+        self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(), expected)
+
     def scene_records(self):
         return [{"file": "pokemon.c3t", "actor_slot": i, "idle_clip": 0,
                  "roles": [0] + [battle.UNSUPPORTED] * 8,
