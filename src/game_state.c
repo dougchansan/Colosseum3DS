@@ -2,6 +2,7 @@
 #include "colosseum3ds/pokemon.h"
 #include "colosseum3ds/save.h"
 #include "save_codec.h"
+#include "game_state_internal.h"
 
 #include <limits.h>
 #include <math.h>
@@ -26,13 +27,7 @@
 #define MEMO 0x82a8u
 #define SLOT_BASE 0x6000u
 
-typedef struct GameStateImpl {
-    uint8_t *body, *card, *pack;
-    size_t card_length;
-    uint32_t random;
-    double play_time;
-    unsigned used_backup;
-} GameStateImpl;
+
 
 static uint16_t be16(const uint8_t *p)
 { return (uint16_t)((uint16_t)p[0] << 8 | p[1]); }

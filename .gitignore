@@ -46,3 +46,6 @@ __pycache__/
 
 # Private source-derived WZX descriptor
 *.c3w
+
+# Privately prepared original field item tables
+*.c3it
