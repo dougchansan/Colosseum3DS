@@ -4,6 +4,7 @@
 #include "render_recovery.h"
 #include "colosseum3ds/battle_preview_menu.h"
 #include "colosseum3ds/game_state.h"
+#include "save_codec.h"
 #include <3ds.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -190,8 +191,29 @@ int c3_battle_preview_from_game_state(const C3GameState *state,FILE *trace)
     size_t bytes=0;const uint8_t *body=c3_game_state_body(state,&bytes);
     const uint32_t args[]={10,1,0};
     if(c3_battle_load(&data,BOOT_ROOT "willie.c3b",error)&&
-       c3_battle_request(&request,&data,args,body,bytes,error))
-        return c3_battle_preview_scene_run(&request,trace);
+       c3_battle_request(&request,&data,args,body,bytes,error)) {
+        uint8_t *before=malloc(bytes);
+        if(before) {
+            memcpy(before,body,bytes);
+            int result=c3_battle_preview_scene_run(&request,trace);
+            size_t after_bytes=0;const uint8_t *after=c3_game_state_body(state,&after_bytes);
+            int unchanged=after&&after_bytes==bytes&&!memcmp(before,after,bytes);
+            if(trace){
+                uint8_t old_hash[20],new_hash[20];
+                c3_save_codec_sha1(old_hash,before,(uint32_t)bytes);
+                if(after&&after_bytes==bytes)c3_save_codec_sha1(new_hash,after,(uint32_t)bytes);
+                else memset(new_hash,0,sizeof new_hash);
+                fprintf(trace,"preview_state_guard bytes=%lu unchanged=%d before_sha1=",(unsigned long)bytes,unchanged);
+                for(unsigned i=0;i<20;++i)fprintf(trace,"%02x",old_hash[i]);
+                fprintf(trace," after_sha1=");
+                for(unsigned i=0;i<20;++i)fprintf(trace,"%02x",new_hash[i]);
+                fprintf(trace," play_time_advanced=0\n");fflush(trace);
+            }
+            free(before);
+            return unchanged?result:-1;
+        }
+        snprintf(error,sizeof error,"Unable to allocate the live-state preservation guard.");
+    }
     consoleClear();printf("PREVIEW UNAVAILABLE\n\n%s\n\nB: return\n",error);
     if(trace){fprintf(trace,"preview_admission_failed error=%s\n",error);fflush(trace);}
     C3N3dsInput input={0};

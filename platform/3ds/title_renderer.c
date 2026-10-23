@@ -33,6 +33,8 @@ static uint32_t texture_count, vertex_count;
 static size_t gpu_buffer_bytes;
 static C3StageBattleHud battle_hud;
 static uint32_t hud_texture = UINT32_MAX;
+#define C3_HUD_MAX_VERTICES ((9u + 8u * 48u) * 6u)
+static TitleGPUVertex *hud_vertices;
 /* One original field-camera texture entry. Its model is a member of the
  * bounded scene arena, but is never submitted to the main room camera. */
 typedef struct { bool configured, enabled; size_t model, screen_model; uint32_t texture; } TVBinding;
@@ -673,6 +675,11 @@ int c3_stage_renderer_set_battle_hud(const C3StageBattleHud *hud, char *error, s
     if (hud->enabled && hud_texture==UINT32_MAX) {
         if (texture_count>=C3_STAGE_MAX_TEXTURES || !c3_stage_renderer_is_idle())
             return fail(error,capacity,"HUD initialization requires an idle texture slot.");
+        if(!hud_vertices){
+            hud_vertices=linearAlloc(C3_HUD_MAX_VERTICES*sizeof *hud_vertices);
+            if(!hud_vertices)return fail(error,capacity,"HUD vertex allocation failed.");
+            gpu_buffer_bytes+=C3_HUD_MAX_VERTICES*sizeof *hud_vertices;
+        }
         const ConsoleFont *font=&consoleGetDefault()->font;
         if (!font->gfx || font->asciiOffset || font->numChars<128)
             return fail(error,capacity,"Unsupported development font.");
@@ -687,6 +694,7 @@ int c3_stage_renderer_set_battle_hud(const C3StageBattleHud *hud, char *error, s
         bool ok=upload_texture(&textures[texture_count],&source);
         free(pixels);
         if (!ok) return fail(error,capacity,"HUD atlas upload failed.");
+        C3D_TexSetFilter(&textures[texture_count],GPU_NEAREST,GPU_NEAREST);
         hud_texture=texture_count++;
         gpu_buffer_bytes+=textures[hud_texture].size;
     }
@@ -694,24 +702,24 @@ int c3_stage_renderer_set_battle_hud(const C3StageBattleHud *hud, char *error, s
     return 0;
 }
 
-static void hud_quad(float x,float y,float w,float h,float u,float v,float uw,float vh,
-                     float r,float g,float b,float a,C3TitleRenderStats *stats)
+static void hud_quad(uint32_t *count,float x,float y,float w,float h,float u,float v,float uw,float vh,
+                     float r,float g,float b,float a)
 {
     static const unsigned corners[6][2]={{0,0},{1,0},{0,1},{0,1},{1,0},{1,1}};
-    C3D_ImmDrawBegin(GPU_TRIANGLES);
+    if(*count>C3_HUD_MAX_VERTICES-6u)return;
     for(unsigned i=0;i<6;++i){
         float cx=(float)corners[i][0],cy=(float)corners[i][1];
-        C3D_ImmSendAttrib(x+w*cx,y+h*cy,0,1);
-        C3D_ImmSendAttrib(u+uw*cx,v+vh*cy,0,1);
-        C3D_ImmSendAttrib(r,g,b,a);
-        C3D_ImmSendAttrib(0,0,0,1);C3D_ImmSendAttrib(0,0,0,1);
+        TitleGPUVertex *out=&hud_vertices[(*count)++];memset(out,0,sizeof *out);
+        out->pos[0]=x+w*cx;out->pos[1]=y+h*cy;
+        out->uv[0]=u+uw*cx;out->uv[1]=v+vh*cy;
+        out->rgba[0]=r;out->rgba[1]=g;out->rgba[2]=b;out->rgba[3]=a;
     }
-    C3D_ImmDrawEnd();stats->draw_calls++;stats->vertices+=6;
 }
 
 static void draw_battle_hud(C3TitleRenderStats *stats)
 {
-    if(!battle_hud.enabled || hud_texture==UINT32_MAX)return;
+    if(!battle_hud.enabled || hud_texture==UINT32_MAX || !hud_vertices)return;
+    uint32_t count=0;
     C3D_Mtx ortho;Mtx_OrthoTilt(&ortho,0,400,240,0,-1,1,false);
     C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER,mvp_location,&ortho);
     C3D_FVUnifSet(GPU_VERTEX_SHADER,color_pass_location,1,0,0,0);
@@ -722,20 +730,38 @@ static void draw_battle_hud(C3TitleRenderStats *stats)
     C3D_TexEnv *env=C3D_GetTexEnv(0);
     C3D_TexEnvSrc(env,C3D_Both,GPU_PRIMARY_COLOR,GPU_PRIMARY_COLOR,GPU_PRIMARY_COLOR);
     C3D_TexEnvFunc(env,C3D_Both,GPU_REPLACE);
-    hud_quad(0,166,400,74,0,0,0,0,.02f,.04f,.08f,.9f,stats);
+    hud_quad(&count,0,166,400,74,0,0,0,0,.02f,.04f,.08f,.9f);
     for(unsigned i=0;i<4;++i){
         float x=(i&1u)?292:8,y=i<2?146:8;
-        hud_quad(x,y,100,5,0,0,0,0,.1f,.1f,.1f,.9f,stats);
+        hud_quad(&count,x,y,100,5,0,0,0,0,.1f,.1f,.1f,.9f);
         float f=battle_hud.maximum_hp[i]?(float)battle_hud.hp[i]/battle_hud.maximum_hp[i]:0;
-        hud_quad(x,y,100*clamp01(f),5,0,0,0,0,.1f,.85f,.3f,1,stats);
+        hud_quad(&count,x,y,100*clamp01(f),5,0,0,0,0,.1f,.85f,.3f,1);
     }
+    uint32_t background_count=count;
     C3D_TexBind(0,&textures[hud_texture]);
-    C3D_TexEnvSrc(env,C3D_Both,GPU_TEXTURE0,GPU_PRIMARY_COLOR,GPU_PRIMARY_COLOR);
-    C3D_TexEnvFunc(env,C3D_Both,GPU_MODULATE);
     for(unsigned row=0;row<8;++row)for(unsigned col=0;col<48&&battle_hud.lines[row][col];++col){
         unsigned c=(unsigned char)battle_hud.lines[row][col];if(c<32||c>=128)c='?';
         if(c==' ')continue;
-        hud_quad(8+col*8,170+row*8,8,8,(c%16)/16.f,1-(c/16)/8.f,1/16.f,-1/8.f,1,1,1,1,stats);
+        hud_quad(&count,8+col*8,170+row*8,8,8,(c%16)/16.f,(c/16)/8.f,1/16.f,1/8.f,1,1,1,1);
+    }
+    /* Own one stable linear arena until the scene's GPU drain. Bind it through
+     * the same proven attribute layout as authored geometry, with two bounded
+     * draws rather than hundreds of immediate-mode attribute submissions. */
+    GSPGPU_FlushDataCache(hud_vertices,count*sizeof *hud_vertices);
+    C3D_BufInfo *buffers=C3D_GetBufInfo();BufInfo_Init(buffers);
+    BufInfo_Add(buffers,hud_vertices,sizeof *hud_vertices,5,0x43210);
+    C3D_SetViewport(0,0,240,400);
+    C3D_DrawArrays(GPU_TRIANGLES,0,background_count);
+    stats->draw_calls++;stats->vertices+=background_count;
+    if(count>background_count){
+        /* Getter dirties this stage again after DrawArrays consumed its state.
+         * Mutating the cached pointer alone would leave primary-color REPLACE
+         * active, turning every non-space glyph into an opaque white cell. */
+        env=C3D_GetTexEnv(0);
+        C3D_TexEnvSrc(env,C3D_Both,GPU_TEXTURE0,GPU_PRIMARY_COLOR,GPU_PRIMARY_COLOR);
+        C3D_TexEnvFunc(env,C3D_Both,GPU_MODULATE);
+        C3D_DrawArrays(GPU_TRIANGLES,background_count,count-background_count);
+        stats->draw_calls++;stats->vertices+=count-background_count;
     }
 }
 
@@ -985,6 +1011,7 @@ void c3_title_renderer_shutdown(void)
     memset(texture_sources, 0, sizeof(texture_sources));
     vertex_count = 0;
     if (vertices) { linearFree(vertices); vertices = NULL; }
+    if (hud_vertices) { linearFree(hud_vertices); hud_vertices = NULL; }
     gpu_buffer_bytes = 0;
 }
 

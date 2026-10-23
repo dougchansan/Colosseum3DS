@@ -26,7 +26,7 @@ typedef struct {
 } SceneBinding;
 static SceneBinding scenes[C3_STAGE_MAX_MODELS];
 static size_t scene_count = 1, gpu_buffer_bytes;
-static TitleGPUVertex storage[6], *vertices = storage;
+static TitleGPUVertex storage[6], *vertices = storage, *hud_vertices;
 static uint32_t vertex_count = 3;
 static C3D_Tex textures[C3_STAGE_MAX_TEXTURES];
 static const C3TitleTexture *texture_sources[C3_STAGE_MAX_TEXTURES];

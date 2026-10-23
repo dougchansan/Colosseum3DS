@@ -23,9 +23,14 @@ its last two words are WZX type and variation callbacks.
 `lbl_8036E150`, stride 28, three group/member pairs at row `+4`.
 Archive names below come from `GSfsys.toc`, never inferred from move names.
 These are the default attack/damage/special roots. The companion encounter
-source trace checked the eligible species/variant overrides for internal species
+source trace checked the variant-zero species overrides for internal species
 197, 196 and 288 against these twelve moves and found no matching override.
-That qualifies these default roots for the admitted encounter actors; it does
+`lbl_80373750` (DOL file `0x370750`) has 16-byte rows: variant at +0,
+PKX ID at +2, WZX move ID at +4, resource group/member at +8/+12. The
+eligible scans are `[1,0x11C)` for kind 1, `[0x11E,0x12A)` for kind 2,
+and `[0x12C,0x15E)` for kind 3. Nonzero-variant callbacks and overrides in
+`lbl_80373210` remain unqualified. This qualifies variant-zero default roots
+for the admitted encounter actors; it does
 not qualify the scripts' embedded dependency closure or other species/moves.
 Zero means no default root for that kind, not absence of all visual behavior.
 
