@@ -1,0 +1,35 @@
+name: Field items source snapshot
+on:
+  push:
+    branches: [work/field-items-source-snapshot]
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: [self-hosted, Windows, X64, colosseum3ds-local]
+    timeout-minutes: 5
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: f1213dfbbcea29b3bcfffbd129b75a73d1b289cf
+          persist-credentials: false
+      - name: Archive only tracked source at the admitted head
+        run: |
+          $expected = 'f1213dfbbcea29b3bcfffbd129b75a73d1b289cf'
+          if ((git rev-parse HEAD).Trim() -ne $expected) { throw 'Unexpected source head' }
+          New-Item -ItemType Directory -Force snapshot | Out-Null
+          git archive --format=zip --output=snapshot/root.zip HEAD ':!docs/evidence'
+          if ($LASTEXITCODE -ne 0) { throw 'git archive failed' }
+          git rev-parse HEAD | Set-Content snapshot/commit.txt
+          git rev-parse HEAD^{tree} | Set-Content snapshot/tree.txt
+          git ls-tree -r HEAD | Set-Content snapshot/files.txt
+          (Get-FileHash snapshot/root.zip -Algorithm SHA256).Hash.ToLower() | Set-Content snapshot/archive-hash.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Field-items-source
+          path: snapshot/
+          if-no-files-found: error
+          retention-days: 3
