@@ -106,9 +106,9 @@ Controller-to-first-HUD observation was between 4.85 and 5.37 seconds, including
 Validation includes 22 native suites, strict and ASan/UBSan, and 1,355,632 preview
 checks comparing presentation-disabled combat with 1/17/60000 ms timelines.
 The 100 synthetic encounters retain 54 wins / 46 losses and identical entire
-combat/RNG state. Host Python discovery has 213 cases with optional environment
+combat/RNG state. Host Python discovery has 214 cases with optional environment
 skips; separate capture/shader/preparation runs cover the required tools. The
-Windows preparation run executed 87 of 88 cases; its symlink-creation skip is
+Windows preparation run executed 88 of 89 cases; its symlink-creation skip is
 executed by Linux CI. Check the PR's exact-head full-checkout CI for final status.
 
 The next presentation dependency is the original WZX interpreter and its PDT,
