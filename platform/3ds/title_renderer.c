@@ -714,7 +714,7 @@ static void draw_battle_hud(C3TitleRenderStats *stats)
     if(!battle_hud.enabled || hud_texture==UINT32_MAX)return;
     C3D_Mtx ortho;Mtx_OrthoTilt(&ortho,0,400,240,0,-1,1,false);
     C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER,mvp_location,&ortho);
-    C3D_FVUnifSet(GPU_VERTEX_SHADER,color_pass_location,0,0,0,0);
+    C3D_FVUnifSet(GPU_VERTEX_SHADER,color_pass_location,1,0,0,0);
     C3D_CullFace(GPU_CULL_NONE);C3D_DepthTest(false,GPU_ALWAYS,GPU_WRITE_COLOR);
     C3D_AlphaTest(false,GPU_ALWAYS,0);
     C3D_AlphaBlend(GPU_BLEND_ADD,GPU_BLEND_ADD,GPU_SRC_ALPHA,GPU_ONE_MINUS_SRC_ALPHA,GPU_ZERO,GPU_ONE);
