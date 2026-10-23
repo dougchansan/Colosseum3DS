@@ -4,14 +4,15 @@ This is an **interactive development preview**, not the complete original
 Colosseum battle engine. It lets a player select the two starters' moves and
 opponent targets, execute turns, and reach a computed win or loss. It does not
 claim retail AI, original battle timing/RNG parity, full FightPokemon state,
-battle models/animations/audio, inventory, switching, Call, experience, rewards,
+complete original effects/cameras/audio, inventory, switching, Call, experience, rewards,
 or story completion.
 
 The field's original native98 remains suspended. Closing or completing the
 preview returns to the same pending request. No saved HP/PP, money, experience,
 reward, or victory flag is written. Native98 is never resumed with the preview's
-outcome. This boundary is intentional while PR6 independently qualifies the
-original RNG and while full battle execution/result handling remain unported.
+outcome. This boundary remains intentional: PR6 records original-instruction RNG helper
+qualification and physical shop Save/fresh-process Continue acceptance. Preserve
+that evidence; it does not qualify complete battle execution or result handling.
 
 ## What executes
 
@@ -52,28 +53,65 @@ RNG unchanged. The original request and all six player records remain identical.
 Menu selection, target changes, and cancellation consume no RNG. Only explicit
 turn confirmation executes commands.
 
-## Native controls and rendering
+## Native controls and actor-motion milestone
 
 At Willie's pending encounter-10 screen press **A** to open the optional preview.
-The regular field/title path does not require the two new packs to be installed.
-Missing or unsupported packs produce a visible error and a safe return.
+The top screen renders the original arena, battle variants of Wes and Willie,
+Umbreon, Espeon and two independently animated Zigzagoon. A development HUD shows
+HP bars, move/target selection, PP, messages and the preview result. The bottom
+console supplements controls and diagnostics. A visible development indicator
+states that original ball/move effects, camera sequences and audio are missing.
 
-The preview currently uses the native text consoles, with HP bars on the top
-screen and commands/messages on the bottom. It is not the original graphical
-battle interface. Use D-pad to select, A to confirm, B to revise or advance a
-message, and X to request leaving. The confirmation page lets both commands be
-reviewed before executing. START+SELECT exits the application.
+Use D-pad to select, **A** to confirm, **B** to revise, and **X** to request
+leaving. Review both commands before confirming a turn. During committed event
+presentation, message advancement waits for the visual event; X can request
+leaving. At the result page, A/B returns to the pending field encounter.
+START+SELECT requests safe application exit. Held dialogue input must be released
+before battle commands are accepted. Items, switching and Call are visibly
+unavailable.
 
-The field caller acquires its existing GPU-idle barrier before the modal
-CPU-console takes over the top framebuffer. Existing scene GPU storage is kept
-alive. On return, the bottom console selection and top BGR8/double-buffer mode
-are restored, and paused field time is not advanced by the preview duration.
-Physical hardware acceptance of this modal transition is still required.
+Typed committed events drive source-selected attack/support poses, hit reactions,
+HP movement, faint poses and trainer outcome poses. Presentation owns its HP and
+visibility separately from the already-resolved combat turn; it does not parse
+English messages or advance combat RNG. The duplicate Zigzagoon instances share
+geometry/textures and retain independent animation state. These are original
+actor motions, not complete original move effects.
+
+The field caller drains pending GPU work, releases field render/model payloads,
+loads the battle through the shared stage renderer, drains battle work on exit,
+and restores field models against the live story state. The Citro3D owner and
+frame-submission path remain shared. The existing story VM, NPC/script state and
+pending encounter survive; restoration does not rerun entry scripts, reload a
+checkpoint or create a new game. Paused battle time does not advance field
+scripts. Allocation/missing-asset errors remain visible and return safely.
+The original complete shader-output writes and responsive render recovery remain
+required; CPU console initialization must not take the GPU-owned top framebuffer.
+
+Current substitutions are explicit: the arena's authored static camera replaces
+the original battle camera sequences; the HUD uses a native development font and
+layout rather than original UI/font assets; original WZX/particle/support/ball
+effects and audio playback are absent; projected original actor shadows are not
+implemented. Do not describe actor motion, a static arena camera or the native
+HUD as the complete original presentation. See [asset preparation](battle-assets.md),
+[source resource manifest](battle-scene-manifest.json), and
+[presentation coverage](battle-presentation-coverage.md).
+
+The corrected normal executable from c9a43ddc13be passed the fresh WES route,
+two controller-selected turns, fainting, a preview win, pending field return,
+re-entry, cancellation and clean exit on physical hardware. Both complete live
+state bodies were byte-identical around their preview calls; FTP readback also
+confirmed the fresh GCI unchanged. The readable-HUD diagnostic probe separately
+ran in Azahar, with its bounded outcome-UI timeout recorded explicitly.
+
+[Exact binaries, actual screenshots/MP4s, measurements and remaining gates](evidence/battle-rendering-2026-10-22/README.md)
+separate corrected hardware acceptance from older glyph-defect footage and
+emulator-only observations. This does not establish complete original
+presentation, original combat parity or story writeback.
 
 ## Private asset preparation
 
 Existing `willie.c3b` and `newgame.c3g` remain unchanged. Prepare these two small
-additional files from the user's admitted GC6E01 revision-0 extraction:
+additional table files from the user's admitted GC6E01 revision-0 extraction:
 
 ```sh
 python3 tools/prepare_battle_init.py \
@@ -92,6 +130,26 @@ routine's held-item/type table. It binds to the admitted source/DOL/REL and the
 exact encounter payload. Checksums detect damage, not malicious provenance;
 retain the local original-input verification record.
 
+Prepare the private original scene with the same pinned importer and geometry
+pipeline already used for field/title assets:
+
+```sh
+python3 tools/prepare_battle_scene.py --disc /private/disc \
+  --common-rel /private/disc-overlay/files/common_rel.rel \
+  --parser vendor/hsd-importer --output /private/prepared/battle
+```
+
+Copy `scene.c3v` and the eight emitted `.c3t` packs to
+`sdmc:/3ds/Colosseum3DS/boot/battle/`, preserving the other working boot assets.
+The small C3BV descriptor binds three arena models and all six actor instances;
+its shared Zigzagoon record retains independent pose ownership. Keep `scene.json`
+and original/prepared assets private, verify staged/readback hashes, and retain
+the local input verification record. The repository manifest contains identifiers,
+counts and hashes, not game asset bytes. The current qualified private bundle is
+`private/battle-render-v9`; its source/pack/descriptor bindings are recorded in
+[battle-scene-manifest.json](battle-scene-manifest.json). Missing scene assets
+produce an explicit error; the normal field/title path remains usable.
+
 ## Testing
 
 ```sh
@@ -99,6 +157,9 @@ make build/test_battle_preview
 ./build/test_battle_preview
 ./build/test_battle_preview /private/boot
 python3 -m unittest discover -s tests -p 'test_prepare_battle_preview.py' -v
+python3 -m unittest discover -s tests -p 'test_prepare_battle_scene.py' -v
+make build/test_battle_presentation
+./build/test_battle_presentation
 ```
 
 The default test uses synthetic parameters, not original asset fixtures. It
@@ -113,7 +174,7 @@ user's completed save.
 For an isolated ARM input/rendering check, CI also builds
 `Colosseum3DS-battle-preview-probe.3dsx` with `C3_BATTLE_PREVIEW_PROBE`. This explicit
 compile-time entry creates an in-memory WES party from `newgame.c3g`, loads
-`willie.c3b/.c3i/.c3p`, and opens the **same modal UI/core** used by the field.
+`willie.c3b/.c3i/.c3p`, and opens the **same actor-motion preview/core** used by the field.
 It does not exercise the route from New Game through the shop, original GSVM
 battle entry, or the field renderer transition. It writes only
 `preview-probe.log`, not a GCI. The normal application has no probe auto-entry.
@@ -127,8 +188,8 @@ completed original Willie story battle.
 
 Qualify full trainer/FightPokemon initialization and the original RNG boundary;
 implement original legal commands/targets, AI and action/effect scheduling;
-compare fixed-seed complete turns against original execution; integrate actual
-battle presentation and validated party/reward writeback. Only that qualified
+compare fixed-seed complete turns against original execution; complete original
+WZX effects, camera/UI/audio/shadow presentation and validated party/reward writeback. Only that qualified
 backend may return a result to native98 and allow the original story script to
 own progression flags. The preview must never become a shortcut around these
 requirements.

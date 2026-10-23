@@ -1,19 +1,34 @@
 # Encounter-10 party-parameter initialization
 
-This change follows PR6's RNG/action queue and precedes a runnable combat loop.
+This document describes the bounded initializer milestone following PR6's
+RNG/action queue. The current branch also integrates an experimental interactive
+actor-motion preview; that later milestone does not expand initializer qualification.
 `c3_battle_init_prepare` takes the pending encounter-10 request and produces
 source-derived opponent **party parameters**, while retaining all six original
 player records byte-for-byte. It does not produce complete PokemonBios capture
-metadata or FightPokemon/FightOutPokemon objects. It is not yet called by the
-field scene; native 98 stays pending and no result/writeback API is added.
+metadata or FightPokemon/FightOutPokemon objects. The field
+preview now calls it on a private encounter request with an explicitly diagnostic
+RNG/ID boundary. Native 98 stays pending and no story result/writeback API is added.
 
-## Parallel ownership
+## Stacked ownership and later presentation integration
 
-PR6's local-agent lane owns original-binary RNG qualification and remaining
-physical fresh-save/Continue acceptance. This branch consumes its existing API
-without modifying RNG, queue, field, save, or outcome code. The only root
-Makefile change includes `tests/battle-init.mk`. Keep corrections on the owning
-branch and preserve the stacked dependency rather than force-pushing history.
+PR6 records original-instruction RNG helper qualification and physical shop
+Save/fresh-process Continue acceptance. Preserve those independent results;
+they do not qualify full opponent construction or combat. This branch consumes
+the shared interfaces and retains the stacked dependency without rewriting the
+base branch's evidence. The initializer tests below are historical milestone
+results, not current-head full-checkout CI or hardware acceptance.
+
+The current preview renders source-derived arena/trainer/Pokémon geometry and
+selected authored motions, with typed events and a development HUD. Its field
+handoff drains/releases the shared renderer, preserves the live story VM and
+pending request, then restores field rendering without rerunning entry scripts.
+Original effects, battle camera sequences, audio, original fonts/UI and actor
+shadows remain separate presentation gates. See
+[native preview and controls](native-battle-preview.md),
+[private scene preparation](battle-assets.md),
+[source resource manifest](battle-scene-manifest.json), and
+[presentation coverage](battle-presentation-coverage.md).
 
 ## Exact starting boundary
 
@@ -42,7 +57,7 @@ The admitted profile is non-Shadow, item-free, with four explicit move overrides
 and zero PP Ups. A request needing learned-move fallback, PP-Up handling,
 Shadow caches, or held-item initialization is rejected instead of silently
 substituting values. These are initialization admission limits, not claims
-that the unimplemented turn engine supports those moves or abilities.
+that the original complete turn engine has been qualified for those moves or abilities.
 
 All changes are staged in a private output and RNG copy. Invalid data, overlap,
 draw-counter overflow (including during the second opponent), or personality
@@ -130,12 +145,28 @@ For diagnostic roster-boundary seed 0x12345678 and supplied opponent trainer ID
 Roster 238 used 25 personality attempts and roster 239 used 146. These are test
 inputs/results, not a claimed RNG state observed in the physical game's battle.
 
-## Next integration
+## Remaining authoritative integration
+
+The field preview now exercises command selection and computed turns against a
+private initialized request, with controller-driven actor motions. This uses the
+bounded preview coordinator, uniform legal opponent policy and diagnostic RNG;
+it does not qualify original AI, complete-turn parity or the shared game RNG at
+encounter entry. Rendering does not strengthen the initializer's original-binary
+qualification.
 
 Qualify original opponent hero/trainer creation and its RNG boundary, construct
 full FightPokemon/FightOutPokemon records and legal active-slot mappings, then
-connect command selection and one verified turn. Continue to reject unsupported
-imported-party behavior. Damage/AI/action effects, fainting/replacement,
-presentation, experience/rewards, persistence, and native-98 result resumption
-remain separate gates. No new console gameplay or physical combat acceptance
-is claimed by this headless change.
+compare complete turns and scheduling against original execution. Continue to
+reject unsupported imported-party behavior. Complete original effect/camera/audio
+presentation and validated party/experience/reward persistence remain gates.
+Only a qualified backend may resume native98 and let the original story script
+own progression, including victory flag0x03DE. This preview never writes that
+flag or returns its outcome to the waiting native call.
+
+Current platform observations and their limits are maintained in
+[native-battle-preview.md](native-battle-preview.md) and the
+[actor-motion evidence](evidence/battle-rendering-2026-10-22/README.md).
+The corrected normal c9a43ddc13be executable passed the physical pending-encounter
+route, computed preview WIN, field restoration/re-entry and clean exit. Live
+body guards and GCI hashes verify preservation. This does not qualify original
+AI/full turns, missing original presentation effects or result writeback.
