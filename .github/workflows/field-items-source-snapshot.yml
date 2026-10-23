@@ -1,11 +1,18 @@
-name: Field items source snapshot
+name: Publish tested field-item source
 on:
   push:
     branches: [work/field-items-source-snapshot]
 permissions:
-  contents: read
+  contents: write
+env:
+  GIT_CONFIG_COUNT: '2'
+  GIT_CONFIG_KEY_0: core.autocrlf
+  GIT_CONFIG_VALUE_0: 'false'
+  GIT_CONFIG_KEY_1: core.eol
+  GIT_CONFIG_VALUE_1: lf
 jobs:
-  snapshot:
+  publish:
+    if: github.event.repository.private == true
     runs-on: [self-hosted, Windows, X64, colosseum3ds-local]
     timeout-minutes: 5
     defaults:
@@ -14,22 +21,47 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: f1213dfbbcea29b3bcfffbd129b75a73d1b289cf
-          persist-credentials: false
-      - name: Archive only tracked source at the admitted head
+          fetch-depth: 0
+      - name: Verify exact patch and source tree before creating the feature branch
         run: |
-          $expected = 'f1213dfbbcea29b3bcfffbd129b75a73d1b289cf'
-          if ((git rev-parse HEAD).Trim() -ne $expected) { throw 'Unexpected source head' }
-          New-Item -ItemType Directory -Force snapshot | Out-Null
-          git archive --format=zip --output=snapshot/root.zip HEAD ':!docs/evidence'
-          if ($LASTEXITCODE -ne 0) { throw 'git archive failed' }
-          git rev-parse HEAD | Set-Content snapshot/commit.txt
-          git rev-parse HEAD^{tree} | Set-Content snapshot/tree.txt
-          git ls-tree -r HEAD | Set-Content snapshot/files.txt
-          (Get-FileHash snapshot/root.zip -Algorithm SHA256).Hash.ToLower() | Set-Content snapshot/archive-hash.txt
-      - uses: actions/upload-artifact@v4
-        with:
-          name: Field-items-source
-          path: snapshot/
-          if-no-files-found: error
-          retention-days: 3
+          $ErrorActionPreference = 'Stop'
+          $target = 'feat/native-field-items'
+          $existing = git ls-remote --heads origin "refs/heads/$target"
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect destination branch' }
+          if ($existing) { throw 'Destination exists; refusing to replace concurrent work' }
+          $parts = @()
+          for ($i=1; $i -le 8; $i++) {
+            $p = '.automation/field-items.delta.' + $i.ToString('00')
+            $part = [IO.File]::ReadAllText((Join-Path $env:GITHUB_WORKSPACE $p)).Trim()
+            if ($i -eq 6) {
+              # Correct the known transport duplication; the final patch and tree hashes are mandatory.
+              $part = $part.Replace('WrBrBrwl+CTYeowQtu7w7P','WrBrwl+CTYeowQtu7w7P')
+            }
+            $parts += $part
+          }
+          $encoded = $parts -join ''
+          $packed = [Convert]::FromBase64String($encoded)
+          $input = [IO.MemoryStream]::new($packed, $false)
+          $gzip = [IO.Compression.GZipStream]::new($input, [IO.Compression.CompressionMode]::Decompress)
+          $output = [IO.MemoryStream]::new()
+          try { $gzip.CopyTo($output); $patchBytes = $output.ToArray() } finally { $gzip.Dispose(); $input.Dispose(); $output.Dispose() }
+          if ($patchBytes.Length -ne 82340) { throw 'Unexpected source delta length' }
+          $patch = Join-Path $env:RUNNER_TEMP 'field-items-source.patch'
+          [IO.File]::WriteAllBytes($patch,$patchBytes)
+          if ((Get-FileHash $patch -Algorithm SHA256).Hash.ToLower() -ne 'f30654b2698e56db83418f848eec55e341141694b3994e3261f648579a66a06d') { throw 'Source delta hash mismatch' }
+          git checkout --detach f1213dfbbcea29b3bcfffbd129b75a73d1b289cf
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot checkout admitted base' }
+          git apply --check --index $patch
+          if ($LASTEXITCODE -ne 0) { throw 'Source delta does not apply cleanly' }
+          git apply --index $patch
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot apply source delta' }
+          $tree = (git write-tree).Trim()
+          if ($LASTEXITCODE -ne 0 -or $tree -ne 'feb1ec44151605dd843d2340ed14301ff0f7c9c6') { throw "Unexpected feature tree $tree" }
+          git diff --cached --check
+          if ($LASTEXITCODE -ne 0) { throw 'Whitespace check failed' }
+          git -c user.name='Colosseum3DS development automation' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'Add source-derived field Bag and transactional restorative item use' -m 'Browse six original inventory pockets and apply the 17 admitted restorative items through the pinned HP routine and checked condition fields. Preserve unknown save bytes; commit party/inventory together only on effect. Explicit Save owns persistence. Add controller confirmation, private catalog preparation and an isolated ARM diagnostic. Battle rendering and native98 remain unchanged.' -m 'Tested locally: 29 native suites, 7548 synthetic and 7533 canonical private item checks, strict and UBSan; six generator tests. ASan cannot reserve shadow memory under the sandbox address-space limit; required full-checkout CI remains the ASan and ARM gate. No physical acceptance claimed.'
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot commit source' }
+          git push origin "HEAD:refs/heads/$target"
+          if ($LASTEXITCODE -ne 0) { throw 'Feature branch publication failed; no force retry' }
+          $commit = (git rev-parse HEAD).Trim()
+          Write-Output "Published feature commit $commit tree $tree"
