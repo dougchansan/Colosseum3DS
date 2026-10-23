@@ -115,8 +115,16 @@ def solve_ik_lower(upper, target, upper_length, scale):
     return result
 
 
+def constant_material_byte(keys):
+    if not keys or any(not math.isfinite(k.value) or k.value != keys[0].value or
+                       (getattr(k, "slope_in", 0) or 0) != 0 or
+                       (getattr(k, "slope_out", 0) or 0) != 0 for k in keys):
+        raise ValueError("Only constant effect material RGB tracks are admitted")
+    return int(255 * min(1.0, max(0.0, keys[0].value)))
+
+
 class Model:
-    def __init__(self, model, raw, allow_image_swaps=False):
+    def __init__(self, model, raw, allow_image_swaps=False, constant_material_colors=False):
         self.model, self.raw = model, raw
         self.joints = title.tree_nodes(raw.root_joint)
         self.meshes = raw_meshes(raw)
@@ -138,6 +146,7 @@ class Model:
             self.invbind.append(np.asarray(bone.inverse_bind_matrix) if bone.inverse_bind_matrix else np.eye(4))
         self.tracks, self.materials, self.ends, self.particle_events = [], [], [], []
         self.image_swaps = []
+        self.constant_material_colors = {}
         for root in raw.animated_joints or []:
             nodes = title.tree_nodes(root)
             if len(nodes) != len(model.bones):
@@ -186,7 +195,20 @@ class Model:
                                 raise ValueError("Nonzero unused TEV register animation")
                         tex_tracks[ta.id] = channels
                         ta = ta.next
-                    mapping[dobj.address] = (title.channels(anim.animation, {10}), tex_tracks)
+                    material_tracks = title.channels(anim.animation, set(range(1, 11)) if constant_material_colors else {10})
+                    for channel, keys in material_tracks.items():
+                        if channel == 10:
+                            continue
+                        # HSD MObjUpdateFunc clamps, multiplies by 255, then
+                        # truncates to u8. Only constant, equal-across-clips RGB
+                        # tracks may be folded into immutable batch colors.
+                        value = constant_material_byte(keys)
+                        identity = (dobj.address, channel)
+                        previous = self.constant_material_colors.get(identity, value)
+                        if previous != value:
+                            raise ValueError("Material RGB differs between effect clips")
+                        self.constant_material_colors[identity] = value
+                    mapping[dobj.address] = ({k:v for k,v in material_tracks.items() if k == 10}, tex_tracks)
                     dobj, anim = dobj.next, anim.next
             self.materials.append(mapping)
             self.image_swaps.append(swaps)
@@ -411,6 +433,13 @@ def build_mesh(model, mesh_index):
     dobj_copy.mobject.render_mode &= ~8
     vertices, batches, textures, _ = title.geometry(ir_copy, [(bone,dobj_copy,pobj)])
     batch = list(batches[0])
+    for channel in range(1, 10):
+        value = model.constant_material_colors.get((dobj.address, channel))
+        if value is not None:
+            # HSD channels 1..3 ambient, 4..6 diffuse, 7..9 specular.
+            index = (11 + channel - 1 if channel <= 3 else
+                     8 + channel - 4 if channel <= 6 else 14 + channel - 7)
+            batch[index] = value / 255.0
     batch[6] = dobj.mobject.render_mode
     if dobj.mobject.render_mode & 8:
         batch[3] |= title.SPECULAR

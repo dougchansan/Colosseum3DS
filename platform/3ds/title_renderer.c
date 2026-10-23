@@ -1,5 +1,6 @@
 #include "title_renderer.h"
 #include "stage_renderer.h"
+#include "stage_cache.h"
 
 #include <3ds.h>
 #include <citro3d.h>
@@ -21,6 +22,9 @@ typedef struct {
 
 static SceneBinding scenes[C3_STAGE_MAX_MODELS];
 static size_t scene_count;
+static C3StageVertexCache vertex_cache[C3_STAGE_MAX_MODELS];
+static uint8_t model_modulation[C3_STAGE_MAX_MODELS][4];
+
 static bool c3d_started, program_started;
 static C3D_RenderTarget *target;
 static DVLB_s *shader;
@@ -232,6 +236,8 @@ int c3_stage_renderer_init(const C3Title *const *models, size_t count,
 {
     if (target || scene_count) return fail(error, capacity, "The shared scene renderer is already initialized.");
     memset(&battle_hud, 0, sizeof battle_hud);
+    memset(vertex_cache, 0, sizeof vertex_cache);
+    memset(model_modulation, 0, sizeof model_modulation);
     hud_texture = UINT32_MAX;
     if (!models || !count || count > C3_STAGE_MAX_MODELS)
         return fail(error, capacity, "Invalid bounded stage model count.");
@@ -331,6 +337,7 @@ int c3_stage_renderer_set_tv(size_t model, size_t screen_model, uint32_t texture
         if (tv.model != model || tv.screen_model != screen_model || tv.texture != texture) {
             fail(error, capacity, "Television binding cannot change during an owned scene."); return 0;
         }
+        if(tv.enabled!=enabled)for(size_t i=0;i<scene_count;++i)vertex_cache[i].valid=false;
         tv.enabled = enabled;
         if (error && capacity) error[0] = '\0';
         return 1;
@@ -365,6 +372,28 @@ int c3_stage_renderer_set_tv(size_t model, size_t screen_model, uint32_t texture
     tv = (TVBinding){true, enabled, model, screen_model, texture};
     gpu_buffer_bytes += 256u*256u*8u;
     if (error && capacity) error[0] = '\0';
+    return 1;
+}
+
+/* Opt-in only: caller owns immutable sampled vertices, materials and lights.
+ * Frame/camera-dependent effects must not opt in. Disabling invalidates cached
+ * bytes before any caller mutation. The flag is reset for every scene. */
+int c3_stage_renderer_set_static(size_t model, bool enabled)
+{
+    if(model>=scene_count)return 0;
+    const C3Title *t=scenes[model].asset;
+    if(enabled&&(t->clip_count!=1||t->clips[0].frame_count!=1))return 0;
+    C3StageVertexCache *c=&vertex_cache[model];
+    c->enabled=enabled;c->valid=false;c->view_dependent=false;
+    for(uint32_t i=0;i<t->batch_count;++i)
+        if(t->batches[i].flags&(C3_TITLE_SPECULAR|C3_TITLE_REFLECTION_BLEND))c->view_dependent=true;
+    return 1;
+}
+int c3_stage_renderer_set_modulation(size_t model, const uint8_t rgb[3])
+{
+    if(model>=scene_count)return 0;
+    model_modulation[model][3]=(uint8_t)(rgb!=NULL);
+    if(rgb)memcpy(model_modulation[model],rgb,3);
     return 1;
 }
 
@@ -626,6 +655,20 @@ static void combiner(const C3TitleBatch *batch, const C3TitleMaterialState *mate
     C3D_TexEnvFunc(fade_stage, C3D_RGB, GPU_MODULATE);
 }
 
+static void apply_model_modulation(size_t model)
+{
+    if(!model_modulation[model][3])return;
+    const uint8_t *c=model_modulation[model];
+    /* _matGSmatObjMakeTExp: (0 + color * previous) * GX_CS_SCALE_2.
+     * Floor-color entries do not change alpha. Reapply after the specular
+     * combiner reset as well as the diffuse path. */
+    C3D_TexEnv *env=C3D_GetTexEnv(5);
+    C3D_TexEnvColor(env,(uint32_t)c[0]|(uint32_t)c[1]<<8|(uint32_t)c[2]<<16|0xff000000u);
+    C3D_TexEnvSrc(env,C3D_RGB,GPU_PREVIOUS,GPU_CONSTANT,GPU_PRIMARY_COLOR);
+    C3D_TexEnvFunc(env,C3D_RGB,GPU_MODULATE);
+    C3D_TexEnvScale(env,C3D_RGB,GPU_TEVSCALE_2);
+}
+
 static bool camera_matrices(const C3TitleCamera *camera, C3D_Mtx *mvp, C3D_Mtx *view, bool tilted)
 {
     float fields[sizeof(*camera) / sizeof(float)];
@@ -807,6 +850,11 @@ int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
         const C3Title *title = models[model];
         const C3D_Mtx *model_view = tv.configured && model == tv.model ? &tv_view : &view;
         TitleGPUVertex *destination = vertices + scenes[model].first_vertex;
+        _Static_assert(sizeof(C3D_Mtx)==64,"Prepared-view cache matrix extent");
+        if(c3_stage_cache_hit(&vertex_cache[model],model_view)){
+            if(stats)++stats->cached_models;
+            continue;
+        }
         for (uint32_t i = 0; i < title->batch_count; ++i) {
             const C3TitleBatch *batch = &title->batches[i];
             const C3TitleMaterialState *material = &title->pose.materials[i];
@@ -814,6 +862,7 @@ int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
             SpecularLight specular[C3_TITLE_MAX_LIGHTS];
             if (batch->flags & C3_TITLE_SPECULAR)
                 prepare_specular(title, material, model_view, scenes[model].specular_lights, specular);
+            if(stats)stats->vertices_prepared+=batch->count;
             for (uint32_t j = batch->first; j < batch->first + batch->count; ++j) {
                 const C3TitleDrawVertex *source = &title->draw_vertices[j];
                 memcpy(destination[j].pos, source->pos, sizeof(destination[j].pos));
@@ -838,8 +887,11 @@ int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
                 }
             }
         }
+        GSPGPU_FlushDataCache(destination,(size_t)title->vertex_count*sizeof(*vertices));
+        c3_stage_cache_record(&vertex_cache[model],model_view);
     }
-    GSPGPU_FlushDataCache(vertices, (size_t)vertex_count * sizeof(*vertices));
+    /* Only rewritten ranges need cache maintenance. Immutable arena ranges
+     * retain their GPU bytes across completed frames. */
     unsigned target_passes = tv.configured && tv.enabled ? 2u : 1u;
     for (unsigned target_pass = 0; target_pass < target_passes; ++target_pass) {
         bool offscreen = target_passes == 2u && target_pass == 0;
@@ -912,6 +964,7 @@ int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
                      * it in each material would fade before the specular addition
                      * saturates, making bright opaque surfaces too bright. */
                     combiner(batch, material, 1.0f);
+                    apply_model_modulation(model);
                     C3D_Tex *base_texture = tv.configured && tv.enabled && !offscreen &&
                         model == tv.screen_model && batch->texture == tv.texture ?
                         &tv_texture : &textures[binding->textures[batch->texture]];
@@ -936,6 +989,7 @@ int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
                                 GPU_PRIMARY_COLOR, GPU_PRIMARY_COLOR);
                             C3D_TexEnvFunc(env, C3D_RGB, GPU_REPLACE);
                         }
+                        apply_model_modulation(model);
                         C3D_DepthTest(true, GPU_EQUAL, GPU_WRITE_COLOR);
                         C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, transparent ? GPU_SRC_ALPHA : GPU_ONE,
                             GPU_ONE, GPU_ZERO, GPU_ONE);
@@ -999,6 +1053,8 @@ void c3_title_renderer_shutdown(void)
 {
     scene_count = 0;
     memset(scenes, 0, sizeof(scenes));
+    memset(vertex_cache, 0, sizeof vertex_cache);
+    memset(model_modulation, 0, sizeof model_modulation);
     /* Target deletion drains the linked GPU queue. Do not use FrameSync here:
      * HOME cancellation can shut down while VBlank callbacks are suspended. */
     if (target) { C3D_RenderTargetDelete(target); target = NULL; }

@@ -55,7 +55,7 @@ static void draw_bottom(PrintConsole *bottom,const C3BattlePreview *b,const C3Ba
 static int draw_hud(C3BattleStage *s,const C3BattlePreview *b,const C3BattlePreviewMenu *m,char *error,size_t cap)
 {
     C3StageBattleHud hud={0};hud.enabled=1;
-    snprintf(hud.lines[0],sizeof hud.lines[0],"DEV: ball/move FX, cameras, audio missing");
+    snprintf(hud.lines[0],sizeof hud.lines[0],"%s",s->bite_available?"DEV: Bite partial; particles/cam/audio absent":"DEV: ball/move FX, cameras, audio missing");
     for(unsigned i=0;i<4;++i){hud.hp[i]=s->presentation.hp[i];hud.maximum_hp[i]=b->mons[i].maximum_hp;}
     const C3BattlePresentation *p=&s->presentation;
     if(p->cursor<p->count&&p->events[p->cursor].kind==C3_PREVIEW_EVENT_HP&&p->duration_ms){
@@ -161,9 +161,10 @@ int c3_battle_preview_scene_run(const C3BattleRequest *request,FILE *trace)
             }else{
                 ++frames;
                 if(trace&&now-metric_time>=1000000u){
-                    fprintf(trace,"battle_render frames=%u draw_cpu_us=%llu gpu_previous_ms=%.3f draws=%lu vertices=%lu gpu_buffer_bytes=%lu\n",frames,
+                    fprintf(trace,"battle_render frames=%u draw_cpu_us=%llu gpu_previous_ms=%.3f draws=%lu vertices=%lu gpu_buffer_bytes=%lu vertices_prepared=%lu cached_models=%lu\n",frames,
                         (unsigned long long)(c3_n3ds_time_us()-render_start),(double)stats.gpu_previous_ms,
-                        (unsigned long)stats.draw_calls,(unsigned long)stats.vertices,(unsigned long)stats.gpu_buffer_bytes);
+                        (unsigned long)stats.draw_calls,(unsigned long)stats.vertices,(unsigned long)stats.gpu_buffer_bytes,
+                        (unsigned long)stats.vertices_prepared,(unsigned long)stats.cached_models);
                     c3_n3ds_log_memory(trace,"battle_render");fflush(trace);metric_time=now;
                 }
             }

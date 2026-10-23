@@ -42,6 +42,12 @@ class RendererTextureBindingTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertEqual(result.stdout, "")
 
+    def test_static_staging_keeps_draws_and_invalidates_camera_state(self):
+        result = subprocess.run([str(self.executable), "0", "1"],
+            env={**os.environ,"C3_TEST_STATIC":"1"},capture_output=True,text=True,timeout=10)
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+        self.assertIn("Static staging reuse",result.stdout)
+
     def test_busy_returns_and_retains_ownership_until_idle_teardown(self):
         result = subprocess.run([str(self.executable), "0", "1"],
             env={**os.environ, "C3_TEST_GPU_BUSY": "1"},

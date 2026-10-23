@@ -1,6 +1,7 @@
 /* Execute the production scene initialization/teardown with a Citro3D
  * shader-pointer contract. The real SDK keeps that pointer until final Fini. */
 #include "stage_renderer.h"
+#include "stage_cache.h"
 #include <assert.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -16,6 +17,8 @@ typedef struct { int numDVLE, DVLE[1]; } DVLB_s;
 typedef struct { int *vertexShader; } shaderProgram_s;
 typedef unsigned u32;
 static SceneBinding scenes[C3_STAGE_MAX_MODELS];
+static C3StageVertexCache vertex_cache[C3_STAGE_MAX_MODELS];
+static uint8_t model_modulation[C3_STAGE_MAX_MODELS][4];
 static size_t scene_count;
 static bool c3d_started, program_started, driver_live;
 static bool completion_hooks;

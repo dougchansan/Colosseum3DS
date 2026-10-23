@@ -43,3 +43,6 @@ __pycache__/
 
 *.c3i
 *.c3p
+
+# Private source-derived WZX descriptor
+*.c3w

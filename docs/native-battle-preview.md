@@ -193,3 +193,11 @@ WZX effects, camera/UI/audio/shadow presentation and validated party/reward writ
 backend may return a result to native98 and allow the original story script to
 own progression flags. The preview must never become a shortcut around these
 requirements.
+
+## Optional source-timed Bite attack addon
+
+See [native-wzx-bite.md](native-wzx-bite.md) for preparation of the optional
+`boot/battle/bite.c3w` and `bite_attack.c3t`, exact source timing and current
+validation. The addon starts the original embedded attack model and floor-color
+entry for Umbreon/Bite. It does not supply damage GPT1, sound, original cameras
+or other missing battle systems. Native98 and all persistence remain unchanged.

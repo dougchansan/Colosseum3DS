@@ -3,6 +3,7 @@
 #include "stage_renderer.h"
 #include "colosseum3ds/battle_presentation.h"
 #include <stdio.h>
+#include "colosseum3ds/wzx_bite.h"
 #define C3_BATTLE_STAGE_MODELS 16u
 typedef struct {
     C3Title models[C3_BATTLE_STAGE_MODELS];
@@ -13,6 +14,11 @@ typedef struct {
     C3TitleCamera camera;
     C3BattlePresentation presentation;
     uint8_t initialized, fresh[C3_BATTLE_STAGE_MODELS];
+    uint8_t immutable[C3_BATTLE_STAGE_MODELS], sampled[C3_BATTLE_STAGE_MODELS];
+    C3WzxBiteProgram bite_program;
+    C3WzxBite bite;
+    uint32_t bite_model, bite_owner;
+    uint8_t bite_available;
     char error[192];
     FILE *trace;
 } C3BattleStage;

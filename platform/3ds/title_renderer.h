@@ -8,6 +8,7 @@ enum { C3_RENDER_ERROR = -1, C3_RENDER_OK = 0, C3_RENDER_BUSY = 1 };
 
 typedef struct {
     uint32_t draw_calls, vertices; /* Submitted totals, including specular/fade passes. */
+    uint32_t vertices_prepared, cached_models; /* CPU staging work; draws still submit cached models. */
     uint64_t draw_prepare_us; /* CPU work after FrameBegin; excludes animation. */
     float gpu_previous_ms;   /* Last completed GPU sample, not this frame. */
     size_t gpu_buffer_bytes; /* Owned vertices/textures and optional TV depth; excludes main output. */

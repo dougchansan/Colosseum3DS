@@ -123,3 +123,5 @@ test: battle-presentation-check
 .PHONY: battle-presentation-check
 battle-presentation-check: build/test_battle_presentation
 	./build/test_battle_presentation
+
+include tests/wzx-bite.mk

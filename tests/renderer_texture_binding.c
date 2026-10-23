@@ -1,6 +1,7 @@
 /* Host fixture for the production stage draw function. GPU work is stubbed;
  * texture binding enforces Citro3D's unit > 0 non-NULL contract. */
 #include "stage_renderer.h"
+#include "stage_cache.h"
 #include <assert.h>
 #include <stdbool.h>
 #include <math.h>
@@ -13,7 +14,8 @@
 #pragma GCC diagnostic ignored "-Wunused-variable"
 #pragma GCC diagnostic ignored "-Wunused-but-set-variable"
 
-typedef int C3D_Mtx, C3D_AttrInfo, C3D_BufInfo, C3D_TexEnv, GPU_TESTFUNC;
+typedef struct { float data[16]; } C3D_Mtx;
+typedef int C3D_AttrInfo, C3D_BufInfo, C3D_TexEnv, GPU_TESTFUNC;
 typedef struct { unsigned id; } C3D_Tex;
 typedef void C3D_RenderTarget;
 typedef int SpecularLight;
@@ -25,6 +27,8 @@ typedef struct {
     uint32_t specular_lights;
 } SceneBinding;
 static SceneBinding scenes[C3_STAGE_MAX_MODELS];
+static C3StageVertexCache vertex_cache[C3_STAGE_MAX_MODELS];
+static uint8_t model_modulation[C3_STAGE_MAX_MODELS][4];
 static size_t scene_count = 1, gpu_buffer_bytes;
 static TitleGPUVertex storage[6], *vertices = storage, *hud_vertices;
 static uint32_t vertex_count = 3;
@@ -36,7 +40,8 @@ static bool completion_hooks;
 static void *target = (void *)1, *shader = (void *)2;
 static int program, mvp_location, color_pass_location;
 static unsigned draws, overlays, binds;
-static unsigned gpu_writes, releases, frame_ends;
+static unsigned gpu_writes, releases, frame_ends, prepared;
+static float view_key;
 static C3D_Tex *bound[2], *expected_second;
 static unsigned alpha_reference, expected_alpha_reference;
 static bool alpha_enabled;
@@ -82,10 +87,11 @@ enum {
 #define C3D_ImmDrawEnd NOOP
 #define gfxFlushBuffers NOOP
 #define prepare_specular NOOP
-#define raster_color NOOP
+#define raster_color(...) ((void)++prepared)
 #define raster_specular NOOP
 #define view_normal(view, source, output) memcpy(output, source, sizeof(float)*3)
 #define combiner NOOP
+#define apply_model_modulation NOOP
 #define record_submission(stats) ((void)(stats))
 #define gspSetEventCallback NOOP
 
@@ -93,7 +99,7 @@ static uint64_t simulated_ticks;
 static unsigned begin_attempts;
 static uint64_t svcGetSystemTick(void)
 { simulated_ticks += SYSCLOCK_ARM11 / 1000; return simulated_ticks; }
-static void Mtx_Identity(C3D_Mtx *matrix) { *matrix = 1; }
+static void Mtx_Identity(C3D_Mtx *matrix) { memset(matrix,0,sizeof *matrix);matrix->data[0]=matrix->data[5]=matrix->data[10]=matrix->data[15]=1; }
 static void C3D_FVUnifMtx4x4(int shader_type, int location, const C3D_Mtx *matrix)
 { (void)matrix; ++gpu_writes; }
 static bool C3D_FrameBegin(unsigned flags)
@@ -123,7 +129,7 @@ static void release_resource(const void *resource)
 static int fail(char *error, size_t capacity, const char *message)
 { snprintf(error, capacity, "%s", message); return -1; }
 static bool camera_matrices(const C3TitleCamera *camera, C3D_Mtx *mvp, C3D_Mtx *view, bool tilted)
-{ (void)camera; (void)tilted; *mvp = *view = 0; return true; }
+{ (void)camera; (void)tilted; memset(mvp,0,sizeof *mvp);memset(view,0,sizeof *view);view->data[0]=view_key; return true; }
 static float clamp01(float value) { return fmaxf(0, fminf(1, value)); }
 static void C3D_FrameDrawOn(C3D_RenderTarget *draw_target)
 { active_target=draw_target; ++gpu_writes; }
@@ -206,6 +212,32 @@ int main(int argc, char **argv)
     C3TitleRenderStats stats;
     char error[128] = {0};
     const C3Title *models[] = {&title};
+    if(getenv("C3_TEST_STATIC")) {
+        vertex_cache[0].enabled=true;
+        for(unsigned frame=0;frame<3;++frame)
+            assert(c3_stage_renderer_draw(models,1,&title.pose.camera,1,&stats,error,sizeof error)==C3_RENDER_OK);
+        assert(prepared==3 && draws==3); /* one staging pass, three real draws */
+        assert(stats.cached_models==1&&stats.vertices_prepared==0);
+        view_key=1;
+        assert(c3_stage_renderer_draw(models,1,&title.pose.camera,1,&stats,error,sizeof error)==C3_RENDER_OK);
+        assert(prepared==3); /* diffuse cache is view independent */
+        vertex_cache[0].view_dependent=true;view_key=2;
+        assert(c3_stage_renderer_draw(models,1,&title.pose.camera,1,&stats,error,sizeof error)==C3_RENDER_OK);
+        assert(prepared==6&&stats.cached_models==0&&stats.vertices_prepared==3);
+        assert(c3_stage_renderer_draw(models,1,&title.pose.camera,1,&stats,error,sizeof error)==C3_RENDER_OK);
+        assert(prepared==6);
+        vertex_cache[0].valid=false;
+        assert(c3_stage_renderer_draw(models,1,&title.pose.camera,1,&stats,error,sizeof error)==C3_RENDER_OK);
+        assert(prepared==9);
+        vertex_cache[0].enabled=false;
+        for(unsigned frame=0;frame<2;++frame)
+            assert(c3_stage_renderer_draw(models,1,&title.pose.camera,1,&stats,error,sizeof error)==C3_RENDER_OK);
+        assert(prepared==15 && draws==9);
+        assert(c3_stage_renderer_try_shutdown());
+        assert(!vertex_cache[0].valid && !vertex_cache[0].enabled);
+        puts("Static staging reuse, camera invalidation, opt-out and teardown passed");
+        return 0;
+    }
     if(getenv("C3_TEST_TV")) {
         test_tv=true;
         C3Title television=title;
