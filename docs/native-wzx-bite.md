@@ -1,5 +1,10 @@
 # Native Bite attack slice and immutable arena staging
 
+Historical attack-slice qualification follows below. For the current defender
+particles, camera, audio and corrected damage timing boundary, see
+[native battle particles](native-battle-particles.md). Earlier evidence remains
+bound to its original build; it does not establish acceptance of the new path.
+
 This update starts executing the original Bite attack's timed effect model and
 floor-color entry. It is **not a complete WZX/GPT1 interpreter, complete Bite,
 or a retail-matching battle**. The existing preview remains nonpersistent;

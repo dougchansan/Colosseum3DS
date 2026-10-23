@@ -9,7 +9,8 @@
 static uint32_t word(const unsigned char *p){return (uint32_t)p[0]|(uint32_t)p[1]<<8|(uint32_t)p[2]<<16|(uint32_t)p[3]<<24;}
 static float real(const unsigned char *p){uint32_t u=word(p);float f;memcpy(&f,&u,4);return f;}
 static int fail(char *e,size_t n,const char *s){if(e&&n)snprintf(e,n,"%s",s);return 0;}
-static void release(C3BattleStage *s){for(uint32_t i=s->count;i>0;--i)c3_title_close(&s->models[i-1]);s->count=0;}
+static void release(C3BattleStage *s){c3_battle_camera_cancel(&s->source_camera);c3_battle_camera_close(&s->camera_program);for(uint32_t i=s->count;i>0;--i)c3_title_close(&s->models[i-1]);s->count=0;free(s->particle_bytes);s->particle_bytes=NULL;}
+#include "battle_damage_effect.inc"
 int c3_battle_stage_load(C3BattleStage *s,const char *root,const uint16_t hp[4],FILE *trace,char *error,size_t cap)
 {
     unsigned char data[128+128*C3_BATTLE_STAGE_MODELS];char path[512];
@@ -67,11 +68,14 @@ int c3_battle_stage_load(C3BattleStage *s,const char *root,const uint16_t hp[4],
         s->draw[i]=m;s->transforms[i][4]=1;s->bite_available=1;
         for(uint32_t j=0;j<i;++j)if(s->slots[j]==0)s->bite_owner=j;
         if(s->roles[s->bite_owner][1]!=s->bite_program.owner_clip)goto invalid;
-        if(trace){fprintf(trace,"wzx_bite_admitted model=1 floor_color=1 sound=unsupported damage_gpt1=unsupported camera=unsupported\n");fflush(trace);}
+        if(trace){fprintf(trace,"wzx_bite_admitted model=1 floor_color=1 sound_request=85 attack_binding=accepted_local_72_142_165\n");fflush(trace);}
     }else if(errno!=ENOENT){fail(error,cap,"Cannot inspect optional Bite WZX pack.");goto bad;}
+    if(!damage_load(s,root,error,cap))goto bad;
     c3_battle_presentation_init(&s->presentation,hp);
+    if(!c3_battle_presentation_wait_limit(&s->presentation,20000))goto invalid;
     if(c3_stage_renderer_init(s->draw,s->count,error,cap)!=C3_RENDER_OK)goto bad;
     s->initialized=1;
+    if(s->damage_available&&c3_stage_renderer_particle_pack(&s->particle_pack,error,cap)!=C3_RENDER_OK)return 0;
     for(uint32_t i=0;i<s->count;++i){
         const float *t=s->transforms[i];C3Title *m=&s->models[i];
         if(s->slots[i]==UINT32_MAX&&m->clip_count==1&&m->clips[0].frame_count==1&&
@@ -86,7 +90,14 @@ bad:release(s);return 0;
 }
 static void event(const C3BattlePreviewEvent *e,int finished,void *user)
 {
-    C3BattleStage *s=user;if(finished)return;
+    C3BattleStage *s=user;
+    if(finished){
+        if(e->kind==C3_PREVIEW_EVENT_HP&&s->damage.active&&e->group==s->bite_group)
+            c3_battle_presentation_wait(&s->presentation,1);
+        return;
+    }
+    if(e->kind==C3_PREVIEW_EVENT_HP&&s->damage_available&&s->damage_hit&&e->group==s->bite_group)return;
+    if(e->kind==C3_PREVIEW_EVENT_CRITICAL&&s->damage_hit&&e->group==s->bite_group){s->presentation.duration_ms=0;return;}
     unsigned role=0,slot=e->actor;
     switch(e->kind){case C3_PREVIEW_EVENT_SEND_OUT:role=5;break;
     case C3_PREVIEW_EVENT_MOVE:
@@ -108,12 +119,25 @@ static void event(const C3BattlePreviewEvent *e,int finished,void *user)
         if(!c3_wzx_bite_begin(&s->bite,&s->bite_program)){
             snprintf(s->error,sizeof s->error,"Bite WZX initialization failed.");return;
         }
+        s->bite_sequence=e->sequence;s->bite_group=e->group;s->damage_hit=0;s->damage_pending=0;
+        if(s->damage_available){
+            /* Select actual committed HP target, including combat retargets.
+             * Misses have no HP event and never start the damage resource. */
+            for(uint32_t j=s->presentation.cursor+1;j<s->presentation.count&&s->presentation.events[j].group==e->group;++j){
+                const C3BattlePreviewEvent *next=&s->presentation.events[j];
+                if(next->kind==C3_PREVIEW_EVENT_HP&&next->actor==e->actor&&next->target>=2&&next->target<4){
+                    for(uint32_t k=0;k<s->count;++k)if(s->slots[k]==next->target){s->damage_owner=k;s->damage_hit=1;s->damage_pending=1;}
+                    break;
+                }
+            }
+        }
+        if(!camera_begin(s,C3_BATTLE_CAMERA_ATTACK,e->actor,s->damage_hit?s->slots[s->damage_owner]:e->target,s->error,sizeof s->error))return;
         const float *owner=s->transforms[s->bite_owner],*a=s->bite_program.anchor;
         float *t=s->transforms[s->bite_model],co=cosf(owner[3]),si=sinf(owner[3]);
         t[0]=owner[0]+owner[4]*(co*a[0]+si*a[2]);t[1]=owner[1]+owner[4]*a[1];
         t[2]=owner[2]+owner[4]*(-si*a[0]+co*a[2]);t[3]=owner[3];t[4]=owner[4];
         c3_battle_presentation_wait(&s->presentation,1);s->presentation.duration_ms=0;
-        if(s->trace){fprintf(s->trace,"wzx_bite_start event=%lu start_tick=%lu stop_tick=%lu source_part=59 audio=unsupported\n",(unsigned long)e->sequence,(unsigned long)s->bite_program.model_start,(unsigned long)(s->bite_program.control_start+s->bite_program.control_delay));fflush(s->trace);}
+        if(s->trace){fprintf(s->trace,"wzx_bite_start event=%lu start_tick=%lu stop_tick=%lu source_part=59 audio=%s\n",(unsigned long)e->sequence,(unsigned long)s->bite_program.model_start,(unsigned long)(s->bite_program.control_start+s->bite_program.control_delay),s->sound_cue?"prepared":"unavailable");fflush(s->trace);}
     }
     for(uint32_t i=0;i<s->count;++i)if(s->slots[i]==slot||(e->kind==C3_PREVIEW_EVENT_OUTCOME&&s->slots[i]==5)||(e->kind==C3_PREVIEW_EVENT_SEND_OUT&&s->slots[i]<4&&(e->target_mask&(1u<<s->slots[i])))){
         unsigned actor_role=e->kind==C3_PREVIEW_EVENT_OUTCOME&&s->slots[i]==5?(role==7?8:7):role;
@@ -140,49 +164,95 @@ int c3_battle_stage_submit(C3BattleStage *s,const C3BattlePreviewEvent *e,uint32
 int c3_battle_stage_step(C3BattleStage *s,uint32_t ms,char *error,size_t cap)
 {
     if(!s||!s->initialized)return fail(error,cap,"Battle stage is not initialized.");
-    /* The admitted WZX slice retains all elapsed time, including slow frames.
-     * Other, still-development presentation paths retain their prior pacing. */
-    if(s->bite.active){
-        uint32_t before=s->bite.model_starts;
-        if(!c3_wzx_bite_step(&s->bite,ms))return fail(error,cap,"Bite WZX clock failed.");
-        if(s->trace&&s->bite.model_starts!=before){fprintf(s->trace,"wzx_bite_model_start tick=%lu sound85=unsupported\n",(unsigned long)s->bite_program.model_start);fflush(s->trace);}
-        if(!s->bite.active){
-            s->clips[s->bite_owner]=s->roles[s->bite_owner][0];s->clocks[s->bite_owner]=0;
-            if(s->trace){fprintf(s->trace,"wzx_bite_stop tick=%lu model_hidden=1 floor_restored=1\n",(unsigned long)(s->bite_program.control_start+s->bite_program.control_delay));fflush(s->trace);}
+    /* Retain every elapsed millisecond while bounding catch-up work. Geometry is
+     * sampled only after the event/clock timeline reaches its final state. */
+    if(ms>4000)return fail(error,cap,"Battle timeline overload: step exceeds 4000 ms.");
+    uint32_t remaining=ms;
+    int endpoint=1;
+    do {
+        if(s->presentation.paused)break;
+        /* Settle queued starts at this endpoint before advancing any clock.
+         * Each zero-duration completion advances the bounded event cursor;
+         * waits and positive-duration events leave it unchanged. */
+        for(unsigned settle=0;settle<C3_PREVIEW_EVENT_LIMIT;++settle){
+            uint32_t cursor=s->presentation.cursor;
+            if(!c3_battle_presentation_step(&s->presentation,0,event,s))return fail(error,cap,"Battle presentation event timeline failed.");
+            if(s->error[0])return fail(error,cap,s->error);
+            for(uint32_t i=0;i<s->count;++i)s->fresh[i]=0;
+            if(s->presentation.cursor==cursor)break;
         }
-    }
-    if(ms>100)ms=100;
-    if(s->presentation.waiting){
-        int active=s->bite.active;
-        for(uint32_t i=0;i<s->count;++i){C3Title *m=&s->models[i];
-            if(s->bite_available&&i==s->bite_model)continue;
-            if(s->clips[i]!=s->roles[i][0]&&s->clocks[i]*m->fps<(float)m->clips[s->clips[i]].frame_count)active=1;
+        uint32_t tick=endpoint?0:1;
+        if(s->bite.active){
+            uint32_t before=s->bite.model_starts,sound=s->bite.sound_requests;
+            if(!c3_wzx_bite_step(&s->bite,tick))return fail(error,cap,"Bite WZX clock failed.");
+            if(sound!=s->bite.sound_requests&&s->sound_cue&&!s->sound_cue(s->bite_sequence,0x85,error,cap))return 0;
+            if(s->trace&&s->bite.model_starts!=before){fprintf(s->trace,"wzx_bite_model_start tick=%lu sound85=%s\n",(unsigned long)s->bite_program.model_start,s->sound_cue?"requested":"unavailable");fflush(s->trace);}
+            if(!s->bite.active){
+                s->clips[s->bite_owner]=s->roles[s->bite_owner][0];s->clocks[s->bite_owner]=0;s->fresh[s->bite_owner]=1;
+                if(s->trace){fprintf(s->trace,"wzx_bite_stop tick=%lu model_hidden=1 floor_restored=1\n",(unsigned long)(s->bite_program.control_start+s->bite_program.control_delay));fflush(s->trace);}
+                if(s->damage_pending&&!damage_begin(s,error,cap))return 0;
+                else if(!s->damage.active&&s->source_camera.active){c3_battle_camera_cancel(&s->source_camera);s->camera=s->source_camera.camera;}
+            }
         }
-        if(!active)c3_battle_presentation_wait(&s->presentation,0);
-    }
-    if(!c3_battle_presentation_step(&s->presentation,ms,event,s))return fail(error,cap,"Battle presentation event timeline failed.");
-    if(s->error[0])return fail(error,cap,s->error);
+        else if(!damage_step(s,tick,error,cap))return 0;
+        if(s->source_camera.active){C3BattleCameraActor actors[4];camera_actors(s,actors);
+            if(!c3_battle_camera_step(&s->source_camera,tick,actors,error,cap))return 0;
+            s->camera=s->source_camera.camera;
+        }
+        /* Completion observes the clocks at this tick, before advancing events. */
+        for(uint32_t i=0;i<s->count;++i){
+            if(s->immutable[i]&&s->sampled[i])continue;
+            if(s->bite_available&&i==s->bite_model)s->clocks[i]=s->bite.model_seconds;
+            else if(s->damage_available&&i==s->damage_model)s->clocks[i]=s->damage.model_seconds;
+            else if(s->damage.active&&i==s->damage_owner)s->clocks[i]=s->damage.owner_seconds;
+            else if(s->bite.active&&i==s->bite_owner)s->clocks[i]=s->bite.owner_seconds;
+            else if(!s->fresh[i])s->clocks[i]+=(float)tick/1000.0f;
+        }
+        if(s->presentation.waiting){
+            int source_move=s->damage_hit&&s->presentation.cursor<s->presentation.count&&
+                s->presentation.events[s->presentation.cursor].kind==C3_PREVIEW_EVENT_MOVE&&
+                s->presentation.events[s->presentation.cursor].group==s->bite_group;
+            int active=source_move?(s->bite.active||s->damage_pending||!s->damage.hp_gates):(s->bite.active||s->damage.active);
+            for(uint32_t i=0;i<s->count;++i){C3Title *m=&s->models[i];
+                if(s->bite_available&&i==s->bite_model)continue;
+                if(s->damage_available&&(i==s->damage_model||(s->damage_hit&&i==s->damage_owner)))continue;
+                if(s->clips[i]!=s->roles[i][0]&&s->clocks[i]*m->fps<(float)m->clips[s->clips[i]].frame_count)active=1;
+            }
+            if(!active)c3_battle_presentation_wait(&s->presentation,0);
+        }
+        if(!c3_battle_presentation_step(&s->presentation,tick,event,s))return fail(error,cap,"Battle presentation event timeline failed.");
+        if(s->error[0])return fail(error,cap,s->error);
+        for(uint32_t i=0;i<s->count;++i){
+            C3Title *m=&s->models[i];
+            s->fresh[i]=0;
+            if(s->damage.active&&i==s->damage_owner)continue;
+            C3TitleClip *clip=&m->clips[s->clips[i]];
+            if(!clip->loop&&s->clocks[i]*m->fps>=(float)clip->frame_count&&s->clips[i]!=s->roles[i][4]){s->clips[i]=s->roles[i][0];s->clocks[i]=0;}
+        }
+        if(endpoint){
+            if(!remaining)break;
+            endpoint=0;
+        }else{
+            --remaining;endpoint=1;
+        } /* Every source endpoint settles, including newly started resources. */
+    } while(1);
     for(uint32_t i=0;i<s->count;++i){C3Title *m=&s->models[i];
-        if(s->slots[i]==UINT32_MAX&&!c3_stage_renderer_set_modulation(i,s->bite.floor_enabled?s->bite.floor_rgb:NULL))
+        if(s->slots[i]==UINT32_MAX&&!c3_stage_renderer_set_modulation(i,s->damage.floor_enabled?s->damage.floor_rgb:s->bite.floor_enabled?s->bite.floor_rgb:NULL))
             return fail(error,cap,"Battle floor modulation failed.");
         if(s->immutable[i]&&s->sampled[i])continue;
         int effect=s->bite_available&&i==s->bite_model;
-        if(effect)s->clocks[i]=s->bite.model_seconds;
-        else if(s->bite.active&&i==s->bite_owner)s->clocks[i]=s->bite.owner_seconds;
-        else if(!s->fresh[i])s->clocks[i]+=(float)ms/1000.0f;
-        s->fresh[i]=0;
-        C3TitleClip *clip=&m->clips[s->clips[i]];
-        if(!clip->loop&&s->clocks[i]*m->fps>=(float)clip->frame_count&&s->clips[i]!=s->roles[i][4]){s->clips[i]=s->roles[i][0];s->clocks[i]=0;}
+        int damage_effect=s->damage_available&&i==s->damage_model;
         if(!c3_title_animate(m,s->clips[i],s->clocks[i]))return fail(error,cap,"Battle clip sampling failed.");
         float *t=s->transforms[i],co=cosf(t[3]),si=sinf(t[3]);
-        int visible=effect?s->bite.model_visible:(s->slots[i]>=4||s->presentation.visible[s->slots[i]]);
+        int visible=effect?s->bite.model_visible:damage_effect?s->damage.model_visible:(s->slots[i]>=4||s->presentation.visible[s->slots[i]]);
         int identity=t[0]==0&&t[1]==0&&t[2]==0&&t[3]==0&&t[4]==1;
         if(!identity)for(uint32_t v=0;v<m->vertex_count;++v){C3TitleDrawVertex *d=&m->draw_vertices[v];float x=d->pos[0]*t[4],z=d->pos[2]*t[4],nx=d->normal[0],nz=d->normal[2];
             d->pos[0]=co*x+si*z+t[0];d->pos[1]=d->pos[1]*t[4]+t[1];d->pos[2]=-si*x+co*z+t[2];d->normal[0]=co*nx+si*nz;d->normal[2]=-si*nx+co*nz;
             for(unsigned axis=0;axis<3;++axis)if(!isfinite(d->pos[axis])||!isfinite(d->normal[axis]))return fail(error,cap,"Battle actor transform overflow.");}
         s->sampled[i]=1;
         if(!visible)for(uint32_t j=0;j<m->batch_count;++j)m->pose.materials[j].visible=0;
-    }return 1;
+    }
+    return damage_bind_particles(s,error,cap);
 }
 int c3_battle_stage_draw(C3BattleStage *s,C3TitleRenderStats *stats,char *error,size_t cap){return c3_stage_renderer_draw(s->draw,s->count,&s->camera,1,stats,error,cap);}
 int c3_battle_stage_close(C3BattleStage *s){c3_wzx_bite_cancel(&s->bite);if(s->initialized&&!c3_stage_renderer_try_shutdown())return 0;s->initialized=0;release(s);return 1;}

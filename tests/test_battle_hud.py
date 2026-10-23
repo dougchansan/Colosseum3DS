@@ -17,7 +17,7 @@ class BattleHudTests(unittest.TestCase):
             self.skipTest('A host C compiler is required')
         source = (ROOT / 'platform/3ds/title_renderer.c').read_text()
         drawing = source[source.index('static void hud_quad('):
-                         source.index('int c3_stage_renderer_draw(')]
+                         source.index('#include "particle_renderer.inc"')]
         harness = r'''
 #include <assert.h>
 #include <stdint.h>

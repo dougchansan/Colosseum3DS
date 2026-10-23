@@ -26,6 +26,10 @@ typedef struct {
     uint32_t textures[C3_TITLE_MAX_TEXTURES];
     uint32_t specular_lights;
 } SceneBinding;
+static const C3ParticlePack *particle_pack;
+static const C3ParticleSystem *particle_system;
+static TitleGPUVertex *particle_vertices;
+static bool scene_drawn;
 static SceneBinding scenes[C3_STAGE_MAX_MODELS];
 static C3StageVertexCache vertex_cache[C3_STAGE_MAX_MODELS];
 static uint8_t model_modulation[C3_STAGE_MAX_MODELS][4];
@@ -180,6 +184,10 @@ static void C3D_ImmDrawBegin(int primitive)
 /* This fixture verifies the authored material/TV path with the optional battle
  * overlay disabled. The HUD has a separate real ARM integration gate. */
 static void draw_battle_hud(C3TitleRenderStats *stats) { (void)stats; }
+/* Particle submission is independently exercised by its own fixture; this
+ * fixture continues executing the production authored-geometry draw path. */
+static int draw_particles(const C3TitleCamera *camera,const C3D_Mtx *mvp,C3TitleRenderStats *stats,char *error,size_t capacity)
+{(void)camera;(void)mvp;(void)stats;(void)error;(void)capacity;return 1;}
 #include "title_renderer_draw.inc"
 
 int main(int argc, char **argv)
@@ -261,6 +269,9 @@ int main(int argc, char **argv)
     }
     if (getenv("C3_TEST_GPU_BUSY")) {
         queued_busy = true;
+        particle_vertices=storage+3;
+        particle_pack=(const C3ParticlePack *)(uintptr_t)1;
+        particle_system=(const C3ParticleSystem *)(uintptr_t)2;
         memset(storage, 0xA5, sizeof(storage));
         TitleGPUVertex original[6];
         memcpy(original, storage, sizeof(original));
@@ -272,23 +283,24 @@ int main(int argc, char **argv)
         assert(!c3_stage_renderer_is_idle());
         assert(!c3_stage_renderer_try_shutdown());
         assert(releases == 0 && scene_count == 1 && vertices == storage && target);
+        assert(particle_vertices==storage+3&&particle_pack&&particle_system);
         assert(texture_count == 2 && c3d_started && program_started && shader);
         assert(gpu_writes == 0 && frame_ends == 0);
         queued_busy = false;
         assert(c3_stage_renderer_is_idle());
         assert(frame_ends == 1 && gpu_writes == 0 && releases == 0);
         assert(c3_stage_renderer_try_shutdown());
-        assert(frame_ends == 2 && releases == 4);
+        assert(frame_ends == 2 && releases == 5);
         assert(!vertices && !target && shader && c3d_started && program_started);
-        assert(!scene_count && !texture_count);
+        assert(!scene_count && !texture_count&&!particle_vertices&&!particle_pack&&!particle_system);
         /* Scene teardown must retain the currently bound program/context.
          * Only application finalization may invalidate that SDK pointer. */
         c3_stage_renderer_fini();
-        assert(releases == 7 && !shader && !c3d_started && !program_started);
+        assert(releases == 8 && !shader && !c3d_started && !program_started);
         unsigned old_attempts = begin_attempts;
         assert(c3_stage_renderer_is_idle());
         assert(c3_stage_renderer_try_shutdown());
-        assert(begin_attempts == old_attempts && releases == 7);
+        assert(begin_attempts == old_attempts && releases == 8);
         puts("BUSY returned; ownership retained; idle teardown verified");
         return 0;
     }

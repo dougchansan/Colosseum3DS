@@ -125,3 +125,42 @@ battle-presentation-check: build/test_battle_presentation
 	./build/test_battle_presentation
 
 include tests/wzx-bite.mk
+
+# Source-derived particle execution and WZX defender/camera contracts.
+build/test_particle: tests/test_particle.c src/particle.c include/colosseum3ds/particle.h | build
+	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_particle.c src/particle.c $(LDFLAGS) -lm -o $@
+
+build/test_particle_pack: tests/test_particle_pack.c src/particle_pack.c src/particle.c build/save_codec.c $(HEADERS)
+	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_particle_pack.c src/particle_pack.c src/particle.c build/save_codec.c $(LDFLAGS) -lm -o $@
+
+build/test_wzx_damage: tests/test_wzx_damage.c src/wzx_damage.c build/save_codec.c $(HEADERS)
+	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_wzx_damage.c src/wzx_damage.c build/save_codec.c $(LDFLAGS) -lm -o $@
+
+build/test_battle_camera: tests/test_battle_camera.c src/battle_camera.c build/save_codec.c $(HEADERS)
+	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_battle_camera.c src/battle_camera.c build/save_codec.c $(LDFLAGS) -lm -o $@
+
+all: build/test_particle build/test_particle_pack build/test_wzx_damage build/test_battle_camera
+.PHONY: battle-effects-check battle-audio-check
+battle-effects-check: build/test_particle build/test_particle_pack build/test_wzx_damage build/test_battle_camera
+	./build/test_particle
+	./build/test_particle_pack
+	./build/test_wzx_damage
+	./build/test_battle_camera
+
+# This existing Python suite builds/runs the production decoder and NDSP-player
+# C fixtures; ordinary `make test` includes it through full Python discovery.
+battle-audio-check:
+	python3 -m unittest discover -s tests -p 'test_prepare_battle_audio.py' -v
+
+test: battle-effects-check
+
+# Qualified CPU state/format core; capture and dependent GPU sampling remain required.
+build/test_wzx_confusion: tests/test_wzx_confusion.c src/wzx_confusion.c build/save_codec.c include/colosseum3ds/wzx_confusion.h | build
+	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_wzx_confusion.c src/wzx_confusion.c build/save_codec.c $(LDFLAGS) -lm -o $@
+
+all: build/test_wzx_confusion
+.PHONY: wzx-confusion-check
+wzx-confusion-check: build/test_wzx_confusion
+	./build/test_wzx_confusion
+
+test: wzx-confusion-check

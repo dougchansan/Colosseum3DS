@@ -1,6 +1,7 @@
 #include "battle_preview_scene.h"
 #include "n3ds_platform.h"
 #include "battle_stage.h"
+#include "battle_audio_player.h"
 #include "render_recovery.h"
 #include "colosseum3ds/battle_preview_menu.h"
 #include "colosseum3ds/game_state.h"
@@ -55,7 +56,7 @@ static void draw_bottom(PrintConsole *bottom,const C3BattlePreview *b,const C3Ba
 static int draw_hud(C3BattleStage *s,const C3BattlePreview *b,const C3BattlePreviewMenu *m,char *error,size_t cap)
 {
     C3StageBattleHud hud={0};hud.enabled=1;
-    snprintf(hud.lines[0],sizeof hud.lines[0],"%s",s->bite_available?"DEV: Bite partial; particles/cam/audio absent":"DEV: ball/move FX, cameras, audio missing");
+    snprintf(hud.lines[0],sizeof hud.lines[0],"%s",s->damage_available?"DEV: Bite hit FX; other FX/cameras incomplete":s->bite_available?"DEV: Bite attack FX; hit FX incomplete":"DEV: ball/move FX, cameras, audio missing");
     for(unsigned i=0;i<4;++i){hud.hp[i]=s->presentation.hp[i];hud.maximum_hp[i]=b->mons[i].maximum_hp;}
     const C3BattlePresentation *p=&s->presentation;
     if(p->cursor<p->count&&p->events[p->cursor].kind==C3_PREVIEW_EVENT_HP&&p->duration_ms){
@@ -111,6 +112,7 @@ int c3_battle_preview_scene_run(const C3BattleRequest *request,FILE *trace)
         trace_turn(trace,battle);
     }
     if(!stage&&!error[0])snprintf(error,sizeof error,"Battle stage allocation failed.");
+    uint64_t load_start=c3_n3ds_time_us();
     if(!error[0]){
         uint16_t hp[4];for(unsigned i=0;i<4;++i)hp[i]=battle->events[0].hp_before[i];
         if(c3_battle_stage_load(stage,BOOT_ROOT "battle",hp,trace,error,sizeof error)&&
@@ -118,15 +120,29 @@ int c3_battle_preview_scene_run(const C3BattleRequest *request,FILE *trace)
             snprintf(error,sizeof error,"Invalid introduction event batch.");
         c3_n3ds_log_memory(trace,"battle_stage_loaded");
     }
+    if(!error[0]&&stage->damage_available){
+        if(c3_battle_audio_player_open(BOOT_ROOT "battle",error,sizeof error)){
+            stage->sound_cue=c3_battle_audio_player_cue;
+            c3_render_recovery_set_pause_callback(c3_battle_audio_player_pause);
+        }
+    }
+    previous_time=c3_n3ds_active_time_us(); /* Loading time is not battle time. */
+    if(trace){fprintf(trace,"battle_load wall_us=%llu effects=%u source_camera=%u audio=%u\n",
+        (unsigned long long)(c3_n3ds_time_us()-load_start),stage?stage->damage_available:0,stage?stage->camera_available:0,stage&&stage->sound_cue?1:0);fflush(trace);}
     unsigned frames=0;uint64_t metric_time=previous_time;
+    uint64_t sample_cpu_us=0,full_frame_peak_us=0,sample_cpu_peak_us=0;unsigned interval_frames=0;
     unsigned last_turn=0;C3BattlePreviewMenuPage previous=menu.page;unsigned previous_event=0;
     while(c3_n3ds_poll(&input)){
-        uint64_t now=c3_n3ds_active_time_us();uint64_t delta=(now-previous_time)/1000u;previous_time=now;
+        uint64_t frame_start=c3_n3ds_time_us();
+        uint64_t now=c3_n3ds_active_time_us();uint64_t delta=(now-previous_time)/1000u;previous_time+=delta*1000u;
         uint32_t ms=delta>UINT32_MAX?UINT32_MAX:(uint32_t)delta;
         if(!input.held)released=1;
         if(error[0]){if(released&&(input.pressed&(C3_PAD_B|C3_PAD_X)))break;}
         else{
+            uint64_t sample_start=c3_n3ds_time_us();
             if(!c3_battle_stage_step(stage,ms,error,sizeof error))dirty=1;
+            sample_cpu_us=c3_n3ds_time_us()-sample_start;
+            if(sample_cpu_us>sample_cpu_peak_us)sample_cpu_peak_us=sample_cpu_us;
             C3BattlePresentation *p=&stage->presentation;
             int complete=p->cursor>=p->count;
             if(menu.page==C3_PREVIEW_MENU_EVENTS){
@@ -157,22 +173,33 @@ int c3_battle_preview_scene_run(const C3BattleRequest *request,FILE *trace)
             else if(drawn==C3_RENDER_BUSY){
                 C3RenderRecoveryResult recovered=c3_render_recover(trace,"battle",frames,C3_RECOVER_WAIT);
                 if(recovered==C3_RECOVERY_EXIT){result=1;break;}
-                previous_time=c3_n3ds_active_time_us();
+                if(recovered==C3_RECOVERY_RESUME_PAUSED)previous_time=c3_n3ds_active_time_us();
             }else{
                 ++frames;
+                ++interval_frames;uint64_t full_frame_us=c3_n3ds_time_us()-frame_start;
+                if(full_frame_us>full_frame_peak_us)full_frame_peak_us=full_frame_us;
                 if(trace&&now-metric_time>=1000000u){
                     fprintf(trace,"battle_render frames=%u draw_cpu_us=%llu gpu_previous_ms=%.3f draws=%lu vertices=%lu gpu_buffer_bytes=%lu vertices_prepared=%lu cached_models=%lu\n",frames,
                         (unsigned long long)(c3_n3ds_time_us()-render_start),(double)stats.gpu_previous_ms,
                         (unsigned long)stats.draw_calls,(unsigned long)stats.vertices,(unsigned long)stats.gpu_buffer_bytes,
                         (unsigned long)stats.vertices_prepared,(unsigned long)stats.cached_models);
                     c3_n3ds_log_memory(trace,"battle_render");fflush(trace);metric_time=now;
+                    fprintf(trace,"battle_frame sample_clock_cpu_us=%llu sample_clock_peak_us=%llu full_cpu_frame_us=%llu full_cpu_peak_us=%llu interval_frames=%u particles=%lu particle_vertices=%lu particle_live_peak=%lu\n",
+                        (unsigned long long)sample_cpu_us,(unsigned long long)sample_cpu_peak_us,
+                        (unsigned long long)full_frame_us,(unsigned long long)full_frame_peak_us,interval_frames,
+                        (unsigned long)stats.particles,(unsigned long)stats.particle_vertices,(unsigned long)stage->particles.peak_particles);
+                    sample_cpu_peak_us=full_frame_peak_us=0;interval_frames=0;
+                    c3_battle_audio_player_trace(trace,"battle_render");
                 }
             }
         }else{gfxFlushBuffers();gspWaitForVBlank();}
     }
     if(stage){
         if(stage->initialized&&c3_render_recover(trace,"battle",frames,result?C3_RECOVER_EXIT:C3_RECOVER_DRAIN)==C3_RECOVERY_EXIT)result=1;
-        c3_battle_stage_close(stage);
+        while(!c3_battle_stage_close(stage)){
+            if(c3_render_recover(trace,"battle_teardown",frames,C3_RECOVER_DRAIN)==C3_RECOVERY_EXIT)result=1;
+        }
+        c3_render_recovery_set_pause_callback(NULL);c3_battle_audio_player_close();
         c3_n3ds_log_memory(trace,"battle_released");
         free(stage);
     }

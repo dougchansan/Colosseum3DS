@@ -2,6 +2,8 @@
 #define COLOSSEUM3DS_STAGE_RENDERER_H
 
 #include "title_renderer.h"
+#include "colosseum3ds/particle.h"
+#include "colosseum3ds/particle_pack.h"
 
 #define C3_STAGE_MAX_MODELS 16u
 #define C3_STAGE_MAX_VERTICES 131072u
@@ -41,6 +43,11 @@ int c3_stage_renderer_set_static(size_t model_index, bool enabled);
 /* Source GSmaterial RGB modulation is 2*color*previous, not an opaque overlay.
  * NULL disables. Render-side only, no asset/animation mutation. */
 int c3_stage_renderer_set_modulation(size_t model_index, const uint8_t rgb[3]);
+/* Upload once before first draw. Borrowed pack/system outlive guarded teardown.
+ * Updating the live attachment only copies CPU state; GPU buffers are written
+ * after the sole nonblocking FrameBegin completion barrier. */
+int c3_stage_renderer_particle_pack(const C3ParticlePack *,char *,size_t);
+int c3_stage_renderer_particles(const C3ParticleSystem *,const float attachment[12]);
 void c3_stage_renderer_shutdown(void);
 
 /* Application shutdown only, after the scene's guarded teardown completed.

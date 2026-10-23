@@ -4,7 +4,8 @@
 #include <stdint.h>
 
 /* Executable, deliberately bounded WZX attack slice, not a general WZX VM.
- * Original sound is declared unavailable; damage GPT1/cameras are outside it.
+ * The legacy descriptor records a sound request; the stage now supplies its
+ * prepared NDSP cue. Defender GPT1/cameras use separate checked descriptors.
  * Packed data is private. All fields below are native values, never PPC pointers. */
 #define C3_WZX_BITE_BYTES 256u
 #define C3_WZX_BITE_SOUND_UNSUPPORTED 1u

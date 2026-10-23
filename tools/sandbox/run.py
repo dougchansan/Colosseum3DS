@@ -128,6 +128,7 @@ def main():
     parser.add_argument("--app-trace", type=Path,
                         help="SD-relative boot trace to archive and check for application errors")
     parser.add_argument("--gl", action="store_true", help="Optional Mesa EGL; default is Azahar software PICA")
+    parser.add_argument("--audio-wav", type=Path, help="New file for actual stereo callback PCM")
     args = parser.parse_args()
     if not 1 <= args.frames <= 36000 or not 1 <= args.seconds <= 300 or args.capture_every < 1:
         parser.error("Invalid run bounds")
@@ -162,6 +163,12 @@ def main():
               "scope": "Emulator integration evidence; not hardware performance or save-format verification"}
     if args.gl:
         command.append("--gl")
+    if args.audio_wav:
+        audio_path=args.audio_wav.resolve()
+        if audio_path.exists():
+            parser.error("Audio evidence must be a new file")
+        command += ["--audio-wav",str(audio_path)]
+        record["audio_wav"]={"path":str(audio_path),"source":"Actual libretro audio callbacks; no synthesized replacement"}
     recording_pipe = os.environ.get("C3_SANDBOX_RECORD_PIPE")
     if recording_pipe:
         command += ["--record-rgb", recording_pipe, "--record-every", "2"]

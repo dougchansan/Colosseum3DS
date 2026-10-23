@@ -309,6 +309,23 @@ int main(void)
     putf(p+FRAME_OFFSET+68,.5f); rejects(p,FILE_BYTES); putf(p+FRAME_OFFSET+68,1);
     putf(p+FRAME_OFFSET+96+32,-1); rejects(p,FILE_BYTES); putf(p+FRAME_OFFSET+96+32,.1f);
     p[112]=1; rejects(p,FILE_BYTES); p[112]=0;
+    /* Tiny near-uniform authored scales remain invertible at intermediate
+     * samples, including a sign change between adjacent valid endpoints. */
+    for(i=0;i<3;++i){
+        unsigned char *frame=p+FRAME_OFFSET+i*FRAME_BYTES;
+        putf(frame,1.32e-4f);putf(frame+20,1.32e-4f);putf(frame+40,1.32e-4f);
+    }
+    putf(p+FRAME_OFFSET+FRAME_BYTES,-.0428f);
+    putf(p+FRAME_OFFSET+FRAME_BYTES+20,-.0428f);
+    putf(p+FRAME_OFFSET+FRAME_BYTES+40,-.0428f);
+    assert(c3_title_parse(&title,p,FILE_BYTES,error,sizeof error));
+    assert(c3_title_animate(&title,0,.00102233885f));
+    assert(isfinite(title.draw_vertices[0].normal[0]));
+    near_value(title.draw_vertices[0].normal[0],.70710678f);
+    near_value(title.draw_vertices[0].normal[1],.70710678f);
+    assert(title.pose.matrices[0][0]>0&&title.pose.matrices[0][0]<1e-4f);
+    c3_title_close(&title);
+    free(p);p=fixture();
     /* Endpoint matrices can be invertible while their interpolation is not.
      * Reject that sample atomically, without a NaN normal or partial pose. */
     putf(p+FRAME_OFFSET+FRAME_BYTES,-2); putf(p+FRAME_OFFSET+FRAME_BYTES+20,-1);

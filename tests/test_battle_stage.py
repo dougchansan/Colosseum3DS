@@ -25,6 +25,8 @@ int c3_title_animate(C3Title *t,uint32_t c,float seconds){(void)seconds;return c
 int c3_stage_renderer_init(const C3Title *const *m,size_t n,char *e,size_t c){(void)m;(void)n;(void)e;(void)c;assert(!gpu);gpu=1;return 0;}
 int c3_stage_renderer_set_static(size_t n,bool e){(void)n;(void)e;return 1;}
 int c3_stage_renderer_set_modulation(size_t n,const uint8_t rgb[3]){(void)n;(void)rgb;return 1;}
+int c3_stage_renderer_particle_pack(const C3ParticlePack *p,char *e,size_t c){(void)p;(void)e;(void)c;return C3_RENDER_OK;}
+int c3_stage_renderer_particles(const C3ParticleSystem *s,const float a[12]){(void)s;(void)a;return 1;}
 bool c3_stage_renderer_try_shutdown(void){gpu=0;return true;}
 int c3_stage_renderer_draw(const C3Title *const *m,size_t n,const C3TitleCamera *cam,float f,C3TitleRenderStats *s,char *e,size_t c){(void)m;(void)n;(void)cam;(void)f;(void)s;(void)e;(void)c;return 0;}
 int main(int argc,char **argv){assert(argc==3);C3BattleStage *s=calloc(1,sizeof *s);char e[192];uint16_t hp[4]={30,40,20,20};int valid=atoi(argv[2]);
@@ -37,7 +39,9 @@ assert(c3_battle_stage_submit(s,batch,2));for(unsigned i=0;i<4;++i)assert(!s->pr
 for(unsigned i=0;i<25;++i)assert(c3_battle_stage_step(s,100,e,sizeof e));
 for(unsigned i=0;i<4;++i)assert(s->presentation.visible[i]);
 C3BattlePreviewEvent move={0};move.kind=C3_PREVIEW_EVENT_MOVE;move.sequence=3;move.actor=0;move.target=2;move.move=44;
-assert(c3_battle_stage_submit(s,&move,1));assert(c3_battle_stage_step(s,99999,e,sizeof e));assert(s->clips[1]==2&&s->clocks[1]==0&&s->presentation.waiting);
+assert(c3_battle_stage_submit(s,&move,1));C3BattleStage *before=malloc(sizeof *before);assert(before);*before=*s;
+assert(!c3_battle_stage_step(s,99999,e,sizeof e));assert(strstr(e,"overload"));assert(!memcmp(s,before,sizeof *s));free(before);
+assert(c3_battle_stage_step(s,0,e,sizeof e));assert(s->clips[1]==2&&s->clocks[1]==0&&s->presentation.waiting);
 for(unsigned i=0;i<25;++i){assert(c3_battle_stage_step(s,100,e,sizeof e));}
 assert(s->presentation.cursor==1);
 assert(c3_battle_stage_close(s));}
@@ -47,7 +51,7 @@ assert(!owners&&!instances&&!gpu);free(s);return 0;}
         with tempfile.TemporaryDirectory() as tmp:
             d=Path(tmp);(d/'h.c').write_text(harness);exe=d/'test'
             flags=shlex.split(os.environ.get('CFLAGS','-std=c11 -O2 -Wall -Wextra -Wpedantic -Werror'))
-            result=subprocess.run(cc+flags+['-I'+str(ROOT/'src'),'-I'+str(ROOT/'include'),'-I'+str(ROOT/'platform/3ds'),str(d/'h.c'),str(ROOT/'platform/3ds/battle_stage.c'),str(ROOT/'src/battle_presentation.c'),str(ROOT/'src/wzx_bite.c'),str(ROOT/'build/save_codec.c'),'-lm','-o',str(exe)],capture_output=True,text=True)
+            result=subprocess.run(cc+flags+['-I'+str(ROOT/'src'),'-I'+str(ROOT/'include'),'-I'+str(ROOT/'platform/3ds'),str(d/'h.c'),str(ROOT/'platform/3ds/battle_stage.c'),str(ROOT/'src/battle_presentation.c'),str(ROOT/'src/wzx_bite.c'),str(ROOT/'src/wzx_damage.c'),str(ROOT/'src/particle.c'),str(ROOT/'src/particle_pack.c'),str(ROOT/'src/battle_camera.c'),str(ROOT/'build/save_codec.c'),'-lm','-o',str(exe)],capture_output=True,text=True)
             self.assertEqual(result.returncode,0,result.stdout+result.stderr)
             data=bytearray(128+7*128);struct.pack_into('<4s4I',data,0,b'C3BV',1,len(data),7,6)
             struct.pack_into('<12f',data,32,0,10,20,0,0,0,0,45,1,1000,400/240,0)

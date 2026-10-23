@@ -46,24 +46,32 @@ static int unit(float value)
  * for authored nonuniform rest scaling and interpolated affine skin matrices. */
 static int normal_matrix(const float *m, float *n)
 {
-    float a = m[0], b = m[1], c = m[2];
-    float d = m[4], e = m[5], f = m[6];
-    float g = m[8], h = m[9], i = m[10];
-    double determinant = (double)a * ((double)e*i - (double)f*h)
-                       - (double)b * ((double)d*i - (double)f*g)
-                       + (double)c * ((double)d*h - (double)e*g);
-    double inverse;
-    if (!isfinite(determinant) || fabs(determinant) < 1e-12) return 0;
-    inverse = 1.0 / determinant;
-    n[0] = (float)(((double)e*i - (double)f*h) * inverse);
-    n[1] = (float)(((double)f*g - (double)d*i) * inverse);
-    n[2] = (float)(((double)d*h - (double)e*g) * inverse);
-    n[3] = (float)(((double)c*h - (double)b*i) * inverse);
-    n[4] = (float)(((double)a*i - (double)c*g) * inverse);
-    n[5] = (float)(((double)b*g - (double)a*h) * inverse);
-    n[6] = (float)(((double)b*f - (double)c*e) * inverse);
-    n[7] = (float)(((double)c*d - (double)a*f) * inverse);
-    n[8] = (float)(((double)a*e - (double)b*d) * inverse);
+    /* Absolute determinants reject small, well-conditioned authored scales.
+     * Normalize the basis for the singularity test, then restore inverse units. */
+    double scale=0;
+    static const unsigned basis[9]={0,1,2,4,5,6,8,9,10};
+    for(unsigned k=0;k<9;++k){
+        double value=fabs((double)m[basis[k]]);
+        if(!isfinite(value))return 0;
+        if(value>scale)scale=value;
+    }
+    if(scale==0)return 0;
+    double a=m[0]/scale,b=m[1]/scale,c=m[2]/scale;
+    double d=m[4]/scale,e=m[5]/scale,f=m[6]/scale;
+    double g=m[8]/scale,h=m[9]/scale,i=m[10]/scale;
+    double determinant=a*(e*i-f*h)-b*(d*i-f*g)+c*(d*h-e*g);
+    if(!isfinite(determinant)||fabs(determinant)<1e-12)return 0;
+    double inverse=1.0/(determinant*scale);
+    n[0]=(float)((e*i-f*h)*inverse);
+    n[1]=(float)((f*g-d*i)*inverse);
+    n[2]=(float)((d*h-e*g)*inverse);
+    n[3]=(float)((c*h-b*i)*inverse);
+    n[4]=(float)((a*i-c*g)*inverse);
+    n[5]=(float)((b*g-a*h)*inverse);
+    n[6]=(float)((b*f-c*e)*inverse);
+    n[7]=(float)((c*d-a*f)*inverse);
+    n[8]=(float)((a*e-b*d)*inverse);
+    for(unsigned k=0;k<9;++k)if(!isfinite(n[k]))return 0;
     return 1;
 }
 

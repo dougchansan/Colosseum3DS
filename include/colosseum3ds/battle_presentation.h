@@ -12,8 +12,8 @@ typedef struct {
     int8_t stages[4][7];
     uint8_t visible[4], confusion[4], taunt[4], reflect[2];
     C3BattlePreviewOutcome outcome;
-    uint8_t paused, started, waiting, failed;
-    uint32_t wait_ms;
+    uint8_t paused, started, waiting, failed, applied;
+    uint32_t wait_ms, wait_limit_ms;
 } C3BattlePresentation;
 void c3_battle_presentation_init(C3BattlePresentation *, const uint16_t hp[4]);
 /* Rejects replacing an unfinished batch and replayed/out-of-order sequences. */
@@ -22,6 +22,10 @@ void c3_battle_presentation_pause(C3BattlePresentation *, int paused);
 /* Renderer can require a clip/effect completion, then release that wait.
  * An unresolved wait fails after 5000 active milliseconds. */
 void c3_battle_presentation_wait(C3BattlePresentation *, int waiting);
+/* Source-derived waits may exceed the diagnostic default, but remain bounded.
+ * A finished callback can hold the applied event before the next event starts;
+ * resuming never reapplies HP or repeats that callback. */
+int c3_battle_presentation_wait_limit(C3BattlePresentation *, uint32_t milliseconds);
 int c3_battle_presentation_step(C3BattlePresentation *, uint32_t milliseconds,
                                 C3BattlePresentationNotify, void *);
 #endif

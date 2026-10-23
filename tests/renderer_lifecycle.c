@@ -16,6 +16,10 @@ typedef struct { int unused; } C3D_RenderTarget;
 typedef struct { int numDVLE, DVLE[1]; } DVLB_s;
 typedef struct { int *vertexShader; } shaderProgram_s;
 typedef unsigned u32;
+static const C3ParticlePack *particle_pack;
+static const C3ParticleSystem *particle_system;
+static TitleGPUVertex *particle_vertices;
+static bool scene_drawn;
 static SceneBinding scenes[C3_STAGE_MAX_MODELS];
 static C3StageVertexCache vertex_cache[C3_STAGE_MAX_MODELS];
 static uint8_t model_modulation[C3_STAGE_MAX_MODELS][4];
@@ -182,8 +186,13 @@ int main(int argc, char **argv)
             hud_vertices = linearAlloc(2358u * sizeof *hud_vertices);
             assert(hud_vertices && buffers == 2);
         }
+        /* Optional particle ownership follows the same sole-scene drain. */
+        particle_vertices=linearAlloc(6u*sizeof *particle_vertices);
+        assert(particle_vertices&&buffers==((transition&1u)?3u:2u));
+        particle_pack=(const C3ParticlePack *)(uintptr_t)1;
+        particle_system=(const C3ParticleSystem *)(uintptr_t)2;
         assert(c3_stage_renderer_try_shutdown());
-        assert(!hud_vertices);
+        assert(!hud_vertices&&!particle_vertices&&!particle_pack&&!particle_system);
         assert(!targets && !buffers && !images && !scene_count);
         assert(driver_live && program.vertexShader && shader);
         assert(init_calls == 1 && shader_inits == 1 && !fini_calls && !shader_frees);

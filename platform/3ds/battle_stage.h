@@ -4,6 +4,8 @@
 #include "colosseum3ds/battle_presentation.h"
 #include <stdio.h>
 #include "colosseum3ds/wzx_bite.h"
+#include "colosseum3ds/wzx_damage.h"
+#include "colosseum3ds/battle_camera.h"
 #define C3_BATTLE_STAGE_MODELS 16u
 typedef struct {
     C3Title models[C3_BATTLE_STAGE_MODELS];
@@ -19,6 +21,17 @@ typedef struct {
     C3WzxBite bite;
     uint32_t bite_model, bite_owner;
     uint8_t bite_available;
+    C3WzxDamageProgram damage_program;
+    C3WzxDamage damage;
+    C3ParticlePack particle_pack;
+    C3ParticleSystem particles;
+    uint8_t *particle_bytes;
+    uint32_t damage_model, damage_owner, bite_sequence, bite_group;
+    uint8_t damage_available, damage_pending, damage_hit, particles_started;
+    C3BattleCameraProgram camera_program;
+    C3BattleCamera source_camera;
+    uint8_t camera_available;
+    int (*sound_cue)(uint32_t,uint32_t,char *,size_t);
     char error[192];
     FILE *trace;
 } C3BattleStage;

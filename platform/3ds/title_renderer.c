@@ -35,6 +35,7 @@ static C3D_Tex textures[C3_STAGE_MAX_TEXTURES];
 static const C3TitleTexture *texture_sources[C3_STAGE_MAX_TEXTURES];
 static uint32_t texture_count, vertex_count;
 static size_t gpu_buffer_bytes;
+static bool scene_drawn;
 static C3StageBattleHud battle_hud;
 static uint32_t hud_texture = UINT32_MAX;
 #define C3_HUD_MAX_VERTICES ((9u + 8u * 48u) * 6u)
@@ -239,6 +240,7 @@ int c3_stage_renderer_init(const C3Title *const *models, size_t count,
     memset(vertex_cache, 0, sizeof vertex_cache);
     memset(model_modulation, 0, sizeof model_modulation);
     hud_texture = UINT32_MAX;
+    scene_drawn=false;
     if (!models || !count || count > C3_STAGE_MAX_MODELS)
         return fail(error, capacity, "Invalid bounded stage model count.");
     uint32_t total_vertices = 0;
@@ -808,6 +810,8 @@ static void draw_battle_hud(C3TitleRenderStats *stats)
     }
 }
 
+#include "particle_renderer.inc"
+
 int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
                           const C3TitleCamera *camera, float fade,
                           C3TitleRenderStats *stats, char *error, size_t capacity)
@@ -841,6 +845,7 @@ int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
         !camera_matrices(&models[tv.model]->pose.camera, &tv_mvp, &tv_view, false))
         return fail(error, capacity, "Invalid sampled television camera.");
     if (!C3D_FrameBegin(C3D_FRAME_NONBLOCK)) return C3_RENDER_BUSY;
+    scene_drawn=true;
     /* FrameBegin drains the previous GPU queue before this single bounded
      * arena is overwritten. No CPU buffer is reused within an open frame. */
     uint64_t start = svcGetSystemTick();
@@ -1001,6 +1006,9 @@ int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
             }
         }
     } /* The texture-backed pass precedes the main camera in one GPU queue. */
+    if(!draw_particles(camera,&mvp,stats,error,capacity)){
+        C3D_FrameEnd(0);return C3_RENDER_ERROR;
+    }
     draw_battle_hud(stats);
     fade = clamp01(fade);
     if (fade < 1.0f) {
@@ -1068,6 +1076,8 @@ void c3_title_renderer_shutdown(void)
     vertex_count = 0;
     if (vertices) { linearFree(vertices); vertices = NULL; }
     if (hud_vertices) { linearFree(hud_vertices); hud_vertices = NULL; }
+    if (particle_vertices) { linearFree(particle_vertices); particle_vertices=NULL; }
+    particle_pack=NULL;particle_system=NULL;
     gpu_buffer_bytes = 0;
 }
 
