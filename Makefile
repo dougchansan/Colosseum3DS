@@ -164,3 +164,5 @@ wzx-confusion-check: build/test_wzx_confusion
 	./build/test_wzx_confusion
 
 test: wzx-confusion-check
+
+include tests/field-items.mk

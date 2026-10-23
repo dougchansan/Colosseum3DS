@@ -1,4 +1,5 @@
 #include "field_scene.h"
+#include "bag_menu.h"
 #include "battle_preview_scene.h"
 #include "n3ds_platform.h"
 #include "render_recovery.h"
@@ -20,7 +21,7 @@
 #define SAVE_DIRECTORY "sdmc:/3ds/Colosseum3DS/saves"
 
 typedef enum { FIELD_SETUP, FIELD_ARRIVAL, FIELD_ARRIVAL_OUT, FIELD_FADE_IN, FIELD_CONTROL } FieldPhase;
-typedef enum { PAUSE_CLOSED, PAUSE_MAIN, PAUSE_PARTY, PAUSE_SAVE, PAUSE_LEAVE, PAUSE_MESSAGE } PausePage;
+typedef enum { PAUSE_CLOSED, PAUSE_MAIN, PAUSE_PARTY, PAUSE_SAVE, PAUSE_LEAVE, PAUSE_MESSAGE, PAUSE_BAG } PausePage;
 
 static int exists(const char *path)
 {
@@ -115,8 +116,8 @@ static void draw_console(const C3GameSummary *summary,FieldPhase phase,PausePage
                summary->party[1].hp,summary->party[1].max_hp);
         if(story && !story->control)printf("An original story event is running.\n");
     } else if(page==PAUSE_MAIN) {
-        static const char *const choices[]={"RESUME","POKEMON","SAVE","MAIN MENU"};
-        for(unsigned i=0;i<4;++i)printf("%s %s\n",i==selection?">":" ",choices[i]);
+        static const char *const choices[]={"RESUME","POKEMON","SAVE","MAIN MENU","BAG"};
+        for(unsigned i=0;i<5;++i)printf("%s %s\n",i==selection?">":" ",choices[i]);
         printf("\nA: choose   B: resume\n");
     } else if(page==PAUSE_PARTY) {
         printf("POKEMON\n\n");
@@ -163,6 +164,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                     FILE *trace,char *error,size_t capacity)
 {
     C3FieldMap map={0};C3Area area={0};C3FieldPlayer player={0};C3GameSummary summary;
+    C3ItemCatalog items={0};C3BagMenu bag={0};
     C3FieldStory story={0};C3AreaLights lights={0};C3AreaCamera room_camera={0};
     C3Title *storage=NULL;const C3Title *models[C3_STAGE_MAX_MODELS]={0};
     C3Title *actor_models[C3_AREA_MAX_ACTORS]={0};
@@ -335,10 +337,27 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                     }
                 }
             }else if(page==PAUSE_MAIN){
-                if(input.pressed&C3_PAD_UP){selection=(selection+3u)%4u;dirty=1;}
-                if(input.pressed&C3_PAD_DOWN){selection=(selection+1u)%4u;dirty=1;}
+                if(input.pressed&C3_PAD_UP){selection=(selection+4u)%5u;dirty=1;}
+                if(input.pressed&C3_PAD_DOWN){selection=(selection+1u)%5u;dirty=1;}
                 if(input.pressed&(C3_PAD_B|C3_PAD_START|C3_PAD_X)){page=PAUSE_CLOSED;dirty=1;}
-                else if(input.pressed&C3_PAD_A){static const PausePage choices[]={PAUSE_CLOSED,PAUSE_PARTY,PAUSE_SAVE,PAUSE_LEAVE};page=choices[selection];yes=0;dirty=1;}
+                else if(input.pressed&C3_PAD_A){
+                    static const PausePage choices[]={PAUSE_CLOSED,PAUSE_PARTY,PAUSE_SAVE,PAUSE_LEAVE,PAUSE_BAG};
+                    page=choices[selection];yes=0;dirty=1;
+                    if(page==PAUSE_BAG){
+                        if(!items.impl&&!c3_item_catalog_load(&items,BOOT_ROOT "items.c3it",message))page=PAUSE_MESSAGE;
+                        else c3_bag_menu_init(&bag,state,&items);
+                    }
+                }
+            }else if(page==PAUSE_BAG){
+                C3ItemUseResult used={0};
+                C3BagEvent event=c3_bag_menu_step(&bag,state,&items,input.pressed,&used);
+                if(event==C3_BAG_EVENT_CLOSED){page=PAUSE_MAIN;dirty=1;}
+                if(event==C3_BAG_EVENT_USED&&trace){
+                    fprintf(trace,"field_item_used id=%u party=%u quantity=%u->%u hp=%u->%u condition=%u->%u disk_writes=0\n",
+                        used.item,used.party_slot,used.quantity_before,used.quantity_after,
+                        used.hp_before,used.hp_after,used.condition_before,used.condition_after);
+                    fflush(trace);
+                }
             }else if(page==PAUSE_SAVE||page==PAUSE_LEAVE){
                 if(input.pressed&(C3_PAD_UP|C3_PAD_DOWN|C3_PAD_LEFT|C3_PAD_RIGHT)){yes=!yes;dirty=1;}
                 if(input.pressed&C3_PAD_B){page=PAUSE_MAIN;dirty=1;}
@@ -375,7 +394,9 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         }
         if(!c3_game_state_summary(state,&summary)){snprintf(error,capacity,"Game state became unavailable.");result=-1;break;}
         if(dirty||input.pressed||now>=next_console){
-            draw_console(&summary,phase,page,selection,yes,message,view);dirty=0;next_console=now+UINT64_C(100000);
+            if(page==PAUSE_BAG)c3_bag_menu_draw(&bag,&items);
+            else draw_console(&summary,phase,page,selection,yes,message,view);
+            dirty=0;next_console=now+UINT64_C(100000);
         }
         int draw_result=c3_stage_renderer_draw(models,count,&camera,fade,&stats,error,capacity);
         if(draw_result==C3_RENDER_BUSY){
@@ -400,6 +421,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
 story_failed:
     snprintf(error,capacity,"%s",story_error);result=-1;
 done:
+    c3_item_catalog_free(&items);
     if(result<0)c3_n3ds_log_memory(trace,"field_failed");
     if(c3_render_recover(trace,"field",frames,result==1?C3_RECOVER_EXIT:C3_RECOVER_DRAIN)==C3_RECOVERY_EXIT)result=1;
     c3_field_story_close(&story);

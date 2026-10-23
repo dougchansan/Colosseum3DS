@@ -68,9 +68,9 @@ endif
 
 .PHONY: all clean prepare-gekko prepare-save prepare-battle-action prepare-battle-rng prepare-battle-damage
 ifeq ($(C3_BOOT_ONLY),1)
-all: prepare-save prepare-battle-action prepare-battle-rng prepare-battle-damage | $(BUILD)
+all: prepare-field-items prepare-save prepare-battle-action prepare-battle-rng prepare-battle-damage | $(BUILD)
 else
-all: prepare-save prepare-battle-action prepare-battle-rng prepare-battle-damage prepare-gekko $(BUILD)/romfs/p5_material.shbin
+all: prepare-field-items prepare-save prepare-battle-action prepare-battle-rng prepare-battle-damage prepare-gekko $(BUILD)/romfs/p5_material.shbin
 endif
 	$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile.3ds
 
@@ -120,3 +120,7 @@ model_scene.o boot_scene.o render_recovery.o battle_preview_scene.o: force-build
 -include $(DEPSDIR)/*.d
 
 endif
+
+.PHONY: prepare-field-items
+prepare-field-items:
+	$(PYTHON) tools/prepare_field_items_source.py

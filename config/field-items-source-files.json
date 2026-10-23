@@ -1,0 +1,45 @@
+{
+  "source_commit": "51bfe4314a218dfaf9592fc80723c50498d0ee55",
+  "files": [
+    {
+      "path": "src/game/people/people_data.c",
+      "sha256": "a5ce74a0ed6f9497bb4452a9ea63055602ac03801debe0d5409992bb6583cfb6"
+    },
+    {
+      "path": "src/game/item_range_80144574.c",
+      "sha256": "875bf271f5f5a95a9dbaafa0d6e156965d385c9a7b125bd2ccffa6d7c6249109"
+    },
+    {
+      "path": "src/game/hero_savedata_exact_80129280.c",
+      "sha256": "22b3936eb1b63b858a435a14773b5ede7439e4aece37aa4f32c8e56f82cc84c0"
+    },
+    {
+      "path": "src/game/hero_bios_exact_8012A450.c",
+      "sha256": "660cdb9802501e82f63ed173a610cbeaec85bb79a046e2b95534654da0135505"
+    },
+    {
+      "path": "src/game/field_range_80117E58.c",
+      "sha256": "024f1b87bd348a69e3d4a1b309e268c928c803f6dd36b6a691f0da6cec4c2af4"
+    },
+    {
+      "path": "src/game/pokemon_data.c",
+      "sha256": "e40fc24c972135df30f2507b00054185c84bb15dcbf9c5c0b121bfa0c7ee7a45"
+    },
+    {
+      "path": "include/game/pokemon_data.h",
+      "sha256": "e92811673afba62df19788d78199e3a3996a85dcad4d2e4fc851c060be712c70"
+    },
+    {
+      "path": "src/game/gs_title.c",
+      "sha256": "44d16e57a2d081766cc1a77ba7c85464f94586bb235b8a1fa32c1b8054fb45cf"
+    },
+    {
+      "path": "src/game/people/people_item_getters_exact_80143C50.c",
+      "sha256": "4327ad4dc53b027e83a45e77d02ccee3607a1512e3833cb9f84d4e6488d25c6b"
+    },
+    {
+      "path": "src/game/people/people_item_tail_exact_80144064.c",
+      "sha256": "f740349389790f15ba6731cdea3ab7091c357ddd46195be6f9f94404f0299012"
+    }
+  ]
+}
