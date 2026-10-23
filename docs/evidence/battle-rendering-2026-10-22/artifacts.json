@@ -3,13 +3,13 @@
   "files": [
     {
       "file": ".gitattributes",
-      "bytes": 94,
-      "sha256": "dde9786283b8adae07fe1564787340224dfda798604c5610ed97e41e1320f830"
+      "bytes": 100,
+      "sha256": "54144784c0bf7cf5f63247895cec1d9139ed678eb2fc35bd8998df91ab3613db"
     },
     {
       "file": "asset-deployment.json",
-      "bytes": 2613,
-      "sha256": "381bb948a2d421bfae0888f4673ecd19b813b09abf5a095bf09dcb61ae06f091"
+      "bytes": 2533,
+      "sha256": "db79225381f9c034ec5aa4acc1bf5934d7f7d86961aef5ff17820636f1839d9e"
     },
     {
       "file": "emulator-application-trace.log",
@@ -48,18 +48,18 @@
     },
     {
       "file": "emulator-staging.json",
-      "bytes": 2573,
-      "sha256": "3972123a88622317cba528a78ddf023ce3a497b60acdf9caafc1de5a2bc7edef"
+      "bytes": 2499,
+      "sha256": "3d51676e2b8b14da2a55f2d3f03a758a7938d85a3ba391eaf0a3637d8c4966c1"
     },
     {
-      "file": "emulator-tracked-source.patch",
-      "bytes": 16657,
-      "sha256": "34ef34a01606d93195c1ad2177b53a0547e364c910540e01490e0449295ca69a"
+      "file": "emulator-tracked-source.patch.gz",
+      "bytes": 5630,
+      "sha256": "84ca0e89f8f77deef38e95b846401eb6955d635e1479f1db95a2a686c60fa74d"
     },
     {
       "file": "emulator-validation-report.json",
-      "bytes": 5027,
-      "sha256": "9853068bfe34b28ab614c2561dc1416b75846a30828f18e596263cd1be1870fe"
+      "bytes": 4891,
+      "sha256": "03227e8379d79a64da1b084f1b1b75d194ea00f6305ce7ce8d807cb35dbaaf5f"
     },
     {
       "file": "hardware-clean-exit.png",
@@ -108,8 +108,8 @@
     },
     {
       "file": "hardware-deployment.json",
-      "bytes": 4504,
-      "sha256": "eb1685845b11f25a17d65fbf7220949e48aeafbe6992583225469f7850bf318c"
+      "bytes": 4375,
+      "sha256": "cbc24ef553ad8ac89914a1437b2c8c3ae06360eb33458576b0d86e1ea883de71"
     },
     {
       "file": "hardware-final-ftpd.png",
@@ -133,8 +133,8 @@
     },
     {
       "file": "hardware-older-readback.json",
-      "bytes": 282,
-      "sha256": "e4e6cf1c05c7e9e8dcb60fd6c76b38f664eaf549925adb76d650cd4568e767d1"
+      "bytes": 273,
+      "sha256": "d8017639d6e683552df57481effc4700d421377a59d1acdeeec4d78ba0443b19"
     },
     {
       "file": "hardware-older-trace.log",
@@ -178,13 +178,13 @@
     },
     {
       "file": "hardware-readback.json",
-      "bytes": 418,
-      "sha256": "46855d153e821451dfa856bd0aeff89164f3ebb7af4dedf7efd3cf27f32db664"
+      "bytes": 405,
+      "sha256": "91af0613641a28fe0eb9a61763cee0ebd095e99c581b5b7860fc29830780740b"
     },
     {
       "file": "hardware-recording.json",
-      "bytes": 86801,
-      "sha256": "74e068b6ff1964baa3685dbf3af26c69ff594b64d2614f72d870aa96b220aa98"
+      "bytes": 83508,
+      "sha256": "c33f84209a84488ce902edeb40ec4c6e921192dd944a9286a2225d59159ab25b"
     },
     {
       "file": "hardware-reentry.png",
@@ -203,23 +203,23 @@
     },
     {
       "file": "older-run-verification.json",
-      "bytes": 101316,
-      "sha256": "9ea897d596b82dbc39f0abcdfa1d9dd21c4f32271282c7cb12b2a0c27441c6db"
+      "bytes": 97797,
+      "sha256": "9d8ab19bf5b25d65ad0b3c4b1bd389abb16094dfd57c724b22bc0b109f4490fa"
     },
     {
       "file": "performance.json",
-      "bytes": 2140,
-      "sha256": "2e974cc4365111373b13552a19494447c2c62af754cc7e845fac82aa89f9786f"
+      "bytes": 2086,
+      "sha256": "582f7fdc8aeb1cb48d9ba7a2b8474fbb06135ca1187316444ed2fd2039be68e5"
     },
     {
       "file": "README.md",
-      "bytes": 8122,
-      "sha256": "417fa5980e7facec6843e99975dd3989cecb2323f0f9fd0c51cb02e752397ae4"
+      "bytes": 8007,
+      "sha256": "84827d094f0eb87826410c7f5bb5aae361aa67a6c1ab919eda6e350fbc568896"
     },
     {
       "file": "verification.json",
-      "bytes": 101850,
-      "sha256": "032dc4ce88996c9a12437802c9bc73b1d2aa1a87eaf18d6dc94b5a653efa19a4"
+      "bytes": 98326,
+      "sha256": "74701c38c47b47bccea9bcb8493a2c587495af91a03c5709c084f28b5753c9f0"
     }
   ]
 }

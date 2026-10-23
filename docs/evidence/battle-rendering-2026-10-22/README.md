@@ -64,7 +64,7 @@ Azahar 2126.0 executed the diagnostic ARM probe with isolated in-memory WES and
 original prepared tables/assets. Its executable SHA-256 is
 `a18616a6fbf5c6136a3cc0bbd9f58aae1772b110d17e00de6add4f8fb16d0024`.
 This was built from the recorded `a99356029579` snapshot plus the attached
-[source patch](emulator-tracked-source.patch), **not relabeled as the normal
+[source patch](emulator-tracked-source.patch.gz), **not relabeled as the normal
 physical executable or a newer head**. The corrected renderer bytes match the
 subsequently committed renderer. The patch's historical submodule `-dirty`
 marker was stale Windows index metadata: all 4023 tracked upstream files were
