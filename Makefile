@@ -114,3 +114,12 @@ clean:
 include tests/battle-init.mk
 
 include tests/battle-preview.mk
+
+build/test_battle_presentation: tests/test_battle_presentation.c src/battle_presentation.c include/colosseum3ds/battle_presentation.h | build
+	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_battle_presentation.c src/battle_presentation.c $(LDFLAGS) -o $@
+
+all: build/test_battle_presentation
+test: battle-presentation-check
+.PHONY: battle-presentation-check
+battle-presentation-check: build/test_battle_presentation
+	./build/test_battle_presentation

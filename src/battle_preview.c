@@ -82,14 +82,27 @@ int c3_battle_preview_move(const C3BattlePreviewTables *t,uint16_t id,C3BattlePr
     }
     return 0;
 }
-static int event(C3BattlePreview *b,const char *format,...)
+static int typed_event(C3BattlePreview *b,C3BattlePreviewEventKind kind,const char *format,...)
 {
     if(b->event_count>=C3_PREVIEW_EVENT_LIMIT)return 0;
     C3BattlePreviewEvent *e=&b->events[b->event_count++];
+    e->kind=kind;e->sequence=++b->event_sequence;e->group=b->event_group;
+    e->actor=b->event_actor;e->target=b->event_target;
+    e->target_mask=(uint8_t)(e->target<4?1u<<e->target:0);
+    if(kind==C3_PREVIEW_EVENT_SEND_OUT)e->target_mask=15;
+    e->move=b->event_move;e->effect=b->event_effect;e->outcome=b->outcome;
+    for(unsigned i=0;i<4;++i){
+        e->hp_before[i]=b->event_count>1?b->events[b->event_count-2].hp[i]:b->mons[i].hp;
+        for(unsigned j=0;j<4;++j)e->pp[i][j]=b->mons[i].moves[j].pp;
+        memcpy(e->stages[i],b->mons[i].stages,sizeof e->stages[i]);
+        e->confusion[i]=b->mons[i].confusion;e->taunt[i]=b->mons[i].taunt;
+    }
+    memcpy(e->reflect,b->reflect,sizeof e->reflect);
     va_list ap;va_start(ap,format);vsnprintf(e->text,sizeof e->text,format,ap);va_end(ap);
     for(unsigned i=0;i<4;++i)e->hp[i]=b->mons[i].hp;
     e->draws=b->rng.draws;return 1;
 }
+#define event(b,...) typed_event(b,C3_PREVIEW_EVENT_STATUS,__VA_ARGS__)
 static int random_mod(C3BattlePreview *b,unsigned modulus,unsigned *out)
 {
     uint16_t v;
@@ -154,8 +167,9 @@ int c3_battle_preview_begin(C3BattlePreview *out,const C3BattleRequest *r,
         memcpy(m->stats,p->pokemon.stats,sizeof m->stats);memcpy(m->moves,p->moves,sizeof m->moves);
     }
     if(!state_valid(b,t)){fail(e,"Unsupported initial combat-preview state.");goto done;}
-    event(b,"Nonpersistent battle preview. No retail AI or story result.");
-    event(b,"WILLIE sends out two ZIGZAGOON!");
+    b->event_actor=b->event_target=C3_PREVIEW_NO_SLOT;
+    typed_event(b,C3_PREVIEW_EVENT_INTRO,"Nonpersistent battle preview. No retail AI or story result.");
+    typed_event(b,C3_PREVIEW_EVENT_SEND_OUT,"WILLIE sends out two ZIGZAGOON!");
     *out=*b;if(e)e[0]=0;ok=1;
 done:free(initial);free(b);return ok;
 }
@@ -195,12 +209,15 @@ static int hit(C3BattlePreview *b,const C3BattlePreviewTables *t,unsigned a,unsi
 static int hurt(C3BattlePreview *b,unsigned d,unsigned amount)
 {
     if(amount>b->mons[d].hp)amount=b->mons[d].hp;
+    uint16_t before=b->mons[d].hp;b->event_target=(uint8_t)d;
     b->mons[d].hp=(uint16_t)(b->mons[d].hp-amount);
-    if(!event(b,"%s loses %u HP.",c3_battle_preview_name(d),amount))return 0;
-    return b->mons[d].hp||event(b,"%s fainted!",c3_battle_preview_name(d));
+    if(!typed_event(b,C3_PREVIEW_EVENT_HP,"%s loses %u HP.",c3_battle_preview_name(d),amount))return 0;
+    b->events[b->event_count-1].hp_before[d]=before;
+    return b->mons[d].hp||typed_event(b,C3_PREVIEW_EVENT_FAINT,"%s fainted!",c3_battle_preview_name(d));
 }
 static int lower_stage(C3BattlePreview *b,unsigned d,unsigned stat)
 {
+    b->event_target=(uint8_t)d;
     static const char *const names[]={"Attack","Defense","Sp.Atk","Sp.Def","Speed","accuracy","evasion"};
     if(b->mons[d].stages[stat]<=-6)return event(b,"%s's %s cannot fall further.",c3_battle_preview_name(d),names[stat]);
     --b->mons[d].stages[stat];return event(b,"%s's %s fell.",c3_battle_preview_name(d),names[stat]);
@@ -216,6 +233,8 @@ static int execute(C3BattlePreview *b,const C3BattlePreviewTables *t,unsigned a,
 {
     C3BattlePreviewMon *attacker=&b->mons[a];unsigned roll;
     if(!attacker->hp)return 1;
+    ++b->event_group;b->event_actor=(uint8_t)a;b->event_target=c.target;
+    b->event_move=0;b->event_effect=0;
     if(attacker->flinched)return event(b,"%s flinched!",c3_battle_preview_name(a));
     if(attacker->confusion){
         --attacker->confusion;
@@ -232,9 +251,12 @@ static int execute(C3BattlePreview *b,const C3BattlePreviewTables *t,unsigned a,
     }
     uint16_t id=c.slot==4?165:attacker->moves[c.slot].id;C3BattlePreviewMove move;
     if(!c3_battle_preview_move(t,id,&move))return 0;
+    b->event_move=id;b->event_effect=move.effect;
+    if(id==115||id==289)b->event_target=(uint8_t)a;
+    if(id==270)b->event_target=(uint8_t)(a^1u);
     if(attacker->taunt&&!move.power)return event(b,"%s cannot use %s after TAUNT!",c3_battle_preview_name(a),c3_battle_preview_move_name(id));
     if(c.slot<4){if(!attacker->moves[c.slot].pp)return 0;--attacker->moves[c.slot].pp;}
-    if(!event(b,"%s used %s!",c3_battle_preview_name(a),c3_battle_preview_move_name(id)))return 0;
+    if(!typed_event(b,C3_PREVIEW_EVENT_MOVE,"%s used %s!",c3_battle_preview_name(a),c3_battle_preview_move_name(id)))return 0;
     if(id==289){attacker->snatch=1;return event(b,"%s is waiting to SNATCH a move.",c3_battle_preview_name(a));}
     if(id==270){unsigned ally=a^1u;
         if(!b->mons[ally].hp||acted[ally])return event(b,"But HELPING HAND failed.");
@@ -247,12 +269,13 @@ static int execute(C3BattlePreview *b,const C3BattlePreviewTables *t,unsigned a,
     if(id==39||id==45){for(unsigned d=(1-a/2)*2;d<(1-a/2)*2+2;++d)if(b->mons[d].hp){int success;
             if(!hit(b,t,a,d,&move,&success))return 0;
             if(success){if(!lower_stage(b,d,id==39?1:0))return 0;}
-            else if(!event(b,"It missed %s.",c3_battle_preview_name(d)))return 0;
+            else if(!typed_event(b,C3_PREVIEW_EVENT_MISS,"It missed %s.",c3_battle_preview_name(d)))return 0;
         }return 1;}
     unsigned d=c.target;
     if(!b->mons[d].hp){d^=1u;if(!b->mons[d].hp)return event(b,"There is no target remaining.");}
+    b->event_target=(uint8_t)d;
     int success;if(!hit(b,t,a,d,&move,&success))return 0;
-    if(!success)return event(b,"The attack missed %s.",c3_battle_preview_name(d));
+    if(!success)return typed_event(b,C3_PREVIEW_EVENT_MISS,"The attack missed %s.",c3_battle_preview_name(d));
     if(id==269){if(b->mons[d].taunt)return event(b,"But the target is already taunted.");
         b->mons[d].taunt=2;return event(b,"%s fell for the TAUNT!",c3_battle_preview_name(d));}
     unsigned power=id==216?attacker->friendship*10u/25u:move.power;
@@ -268,7 +291,7 @@ static int execute(C3BattlePreview *b,const C3BattlePreviewTables *t,unsigned a,
     if(!random_mod(b,16,&roll))return 0;
     damage=damage*(100u-roll)/100u;if(!damage)damage=1;
     unsigned dealt=damage>b->mons[d].hp?b->mons[d].hp:damage;
-    if(critical==2&&!event(b,"A critical hit!"))return 0;
+    if(critical==2&&!typed_event(b,C3_PREVIEW_EVENT_CRITICAL,"A critical hit!"))return 0;
     if(!hurt(b,d,damage))return 0;
     if(id==165){unsigned recoil=dealt/4;if(!recoil)recoil=1;
         return event(b,"%s is hit with recoil.",c3_battle_preview_name(a))&&hurt(b,a,recoil);}
@@ -296,7 +319,8 @@ int c3_battle_preview_turn(C3BattlePreview *out,const C3BattlePreviewTables *t,
     *b=*out;b->event_count=0;memset(b->events,0,sizeof b->events);++b->turn;
     C3BattlePreviewCommand commands[4]={player[0],player[1],{0,0},{0,0}};
     uint8_t order[4]={0,1,2,3},acted[4]={0};int ok=0;
-    if(!event(b,"TURN %lu",(unsigned long)b->turn))goto failed;
+    b->event_actor=b->event_target=C3_PREVIEW_NO_SLOT;b->event_move=b->event_effect=0;
+    if(!typed_event(b,C3_PREVIEW_EVENT_TURN,"TURN %lu",(unsigned long)b->turn))goto failed;
     for(unsigned a=0;a<4;++a){b->mons[a].flinched=b->mons[a].helped=b->mons[a].snatch=0;}
     /* Deliberately explicit preview policy, NOT the original Willie AI:
      * uniform among legal move slots, then among living enemy targets. */
@@ -334,9 +358,11 @@ int c3_battle_preview_turn(C3BattlePreview *out,const C3BattlePreviewTables *t,
     for(unsigned a=0;a<4;++a)if(b->mons[a].taunt)--b->mons[a].taunt;
     for(unsigned side=0;side<2;++side)if(b->reflect[side]&&!--b->reflect[side])
         if(!event(b,"%s's REFLECT wore off.",side?"WILLIE":"WES"))goto failed;
+    b->event_actor=b->event_target=C3_PREVIEW_NO_SLOT;b->event_move=b->event_effect=0;
+    if(!event(b,"Turn complete."))goto failed;
     if(b->outcome!=C3_PREVIEW_RUNNING){
         const char *result=b->outcome==C3_PREVIEW_PLAYER_WON?"WIN":b->outcome==C3_PREVIEW_PLAYER_LOST?"LOSS":"DRAW";
-        if(!event(b,"Preview result: %s. No rewards, save, or story flags were written.",result))goto failed;
+        if(!typed_event(b,C3_PREVIEW_EVENT_OUTCOME,"Preview result: %s. No rewards, save, or story flags were written.",result))goto failed;
     }
     if(!state_valid(b,t))goto failed;
     *out=*b;if(e)e[0]=0;ok=1;goto done;

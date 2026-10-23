@@ -30,7 +30,25 @@ typedef enum {
     C3_PREVIEW_RUNNING = 1, C3_PREVIEW_PLAYER_WON,
     C3_PREVIEW_PLAYER_LOST, C3_PREVIEW_DRAW
 } C3BattlePreviewOutcome;
+#define C3_PREVIEW_NO_SLOT 255u
+typedef enum {
+    C3_PREVIEW_EVENT_MESSAGE = 1, C3_PREVIEW_EVENT_INTRO,
+    C3_PREVIEW_EVENT_SEND_OUT, C3_PREVIEW_EVENT_TURN,
+    C3_PREVIEW_EVENT_MOVE, C3_PREVIEW_EVENT_HP,
+    C3_PREVIEW_EVENT_FAINT, C3_PREVIEW_EVENT_STATUS,
+    C3_PREVIEW_EVENT_MISS, C3_PREVIEW_EVENT_CRITICAL,
+    C3_PREVIEW_EVENT_OUTCOME
+} C3BattlePreviewEventKind;
 typedef struct {
+    C3BattlePreviewEventKind kind;
+    uint32_t sequence, group;
+    uint8_t actor, target, target_mask;
+    uint16_t move, effect;
+    uint16_t hp_before[4];
+    uint8_t pp[4][4];
+    int8_t stages[4][7];
+    uint8_t confusion[4], taunt[4], reflect[2];
+    C3BattlePreviewOutcome outcome;
     char text[128];
     uint16_t hp[4];
     uint64_t draws;
@@ -43,6 +61,10 @@ typedef struct {
     uint8_t reflect[2];
     C3BattleRequest original_request; /* Immutable: retained for comparison. */
     uint32_t opponent_trainer_id;
+    /* Event context is committed with the private turn; never drives RNG. */
+    uint32_t event_sequence, event_group;
+    uint8_t event_actor, event_target;
+    uint16_t event_move, event_effect;
     uint32_t event_count;
     C3BattlePreviewEvent events[C3_PREVIEW_EVENT_LIMIT];
 } C3BattlePreview;

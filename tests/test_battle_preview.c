@@ -157,6 +157,31 @@ static void menu_control(void)
     CHECK(c3_battle_preview_menu_step(&m,&b,&t,C3_PREVIEW_A,e));CHECK(m.page==C3_PREVIEW_MENU_CONFIRM);
     CHECK(c3_battle_preview_menu_step(&m,&b,&t,C3_PREVIEW_A,e));CHECK(contains(&b,"STRUGGLE"));
 }
+static void typed_contract(void)
+{
+    C3BattlePreview b;C3BattlePreviewTables t;C3BattleInitTables init;C3BattleRequest r;char error[192];
+    fixture(&r,&init,&t);begin(&b,&t,&init,&r,123);
+    CHECK(b.events[0].kind==C3_PREVIEW_EVENT_INTRO);
+    CHECK(b.events[1].kind==C3_PREVIEW_EVENT_SEND_OUT&&b.events[1].target_mask==15);
+    uint32_t sequence=b.event_sequence;uint16_t visual[4];
+    for(unsigned i=0;i<4;++i)visual[i]=b.mons[i].hp;
+    C3BattlePreviewCommand c[2]={command(&b,&t,0,0),command(&b,&t,1,0)};
+    CHECK(c3_battle_preview_turn(&b,&t,c,error));
+    unsigned moves=0,hits=0;
+    for(unsigned i=0;i<b.event_count;++i){const C3BattlePreviewEvent *e=&b.events[i];
+        CHECK(e->sequence==++sequence);
+        CHECK(e->kind>=C3_PREVIEW_EVENT_MESSAGE&&e->kind<=C3_PREVIEW_EVENT_OUTCOME);
+        if(e->kind==C3_PREVIEW_EVENT_MOVE){CHECK(e->actor<4&&e->move);++moves;}
+        if(e->kind==C3_PREVIEW_EVENT_HP){
+            CHECK(e->target<4);CHECK(e->hp_before[e->target]==visual[e->target]);
+            CHECK(e->hp[e->target]<=e->hp_before[e->target]);
+            memcpy(visual,e->hp,sizeof visual);++hits;
+        }
+        if(e->kind==C3_PREVIEW_EVENT_FAINT)CHECK(!visual[e->target]);
+    }
+    CHECK(moves&&hits);
+    for(unsigned i=0;i<4;++i)CHECK(visual[i]==b.mons[i].hp);
+}
 static void private_run(const char *directory)
 {
     char path[1024],error[192];C3GameState state={0};C3BattleData d;C3BattleRequest r;C3BattleInitTables i;C3BattlePreviewTables t;C3BattlePreview b;
@@ -176,4 +201,4 @@ static void private_run(const char *directory)
     CHECK(b.outcome!=C3_PREVIEW_RUNNING);CHECK(!memcmp(body,before,n));free(before);c3_game_state_free(&state);
 }
 int main(int argc,char **argv)
-{damage();reject_and_replay();effects_and_completion();menu_control();if(argc==2)private_run(argv[1]);printf("Battle preview: %u checks passed; no retail AI, GSVM completion or save writes\n",checks);return 0;}
+{typed_contract();damage();reject_and_replay();effects_and_completion();menu_control();if(argc==2)private_run(argv[1]);printf("Battle preview: %u checks passed; no retail AI, GSVM completion or save writes\n",checks);return 0;}
