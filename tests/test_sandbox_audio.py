@@ -51,6 +51,13 @@ class SandboxAudioTests(unittest.TestCase):
     def setUpClass(cls):
         cc=shlex.split(os.environ.get('CC','cc'))
         if not shutil.which(cc[0]):raise unittest.SkipTest('Host C compiler required')
+        include=ROOT/'tools/sandbox/include'
+        required=('libretro.h','EGL/egl.h','EGL/eglext.h','EGL/eglplatform.h',
+                  'KHR/khrplatform.h','GL/gl.h','GL/glext.h','GL/glcorearb.h')
+        missing=[name for name in required if not (include/name).is_file()]
+        if missing:
+            raise unittest.SkipTest('Optional sandbox headers not prepared; use '
+                'tools/sandbox/prepare_frontend.py (missing: '+', '.join(missing)+')')
         cls.temp=tempfile.TemporaryDirectory();cls.addClassCleanup(cls.temp.cleanup)
         cls.directory=Path(cls.temp.name);cls.harness=cls.directory/'harness';cls.core=cls.directory/'core.so'
         flags=['-std=c11','-O2','-g','-Wall','-Wextra','-Werror','-Wno-format-truncation','-I'+str(ROOT/'tools/sandbox/include')]
