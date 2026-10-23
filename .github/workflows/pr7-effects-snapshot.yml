@@ -1,0 +1,34 @@
+name: PR7 effects source snapshot
+on:
+  push:
+    branches: [work/pr7-effects-snapshot]
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    if: github.event.repository.private == true
+    runs-on: [self-hosted, Windows, X64, colosseum3ds-local]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 9147b4b9c6cddf0ce105a93f288cce3f4f987b11
+          persist-credentials: false
+          submodules: false
+      - name: Archive only tracked root source bytes and tree identities
+        shell: pwsh
+        run: |
+          $out = Join-Path $env:RUNNER_TEMP 'pr7-effects-source'
+          New-Item -ItemType Directory -Force $out | Out-Null
+          git archive --format=zip --output="$out/root.zip" HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Source archive failed' }
+          git rev-parse HEAD | Set-Content -Encoding utf8 "$out/commit.txt"
+          git rev-parse 'HEAD^{tree}' | Set-Content -Encoding utf8 "$out/tree.txt"
+          git ls-tree -r HEAD | Set-Content -Encoding utf8 "$out/files.txt"
+          Get-FileHash -Algorithm SHA256 "$out/root.zip" | Format-List | Out-File "$out/archive-hash.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PR7-effects-source
+          path: ${{ runner.temp }}/pr7-effects-source/
+          if-no-files-found: error
+          retention-days: 3
