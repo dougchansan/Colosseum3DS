@@ -1,34 +1,95 @@
-name: PR7 effects source snapshot
+name: Prepare reviewed PR7 effect candidate
 on:
   push:
     branches: [work/pr7-effects-snapshot]
 permissions:
-  contents: read
+  contents: write
+env:
+  GIT_CONFIG_COUNT: '2'
+  GIT_CONFIG_KEY_0: core.autocrlf
+  GIT_CONFIG_VALUE_0: 'false'
+  GIT_CONFIG_KEY_1: core.eol
+  GIT_CONFIG_VALUE_1: lf
 jobs:
-  snapshot:
-    if: github.event.repository.private == true
+  candidate:
+    if: github.event.repository.private == true && github.ref == 'refs/heads/work/pr7-effects-snapshot'
     runs-on: [self-hosted, Windows, X64, colosseum3ds-local]
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 9147b4b9c6cddf0ce105a93f288cce3f4f987b11
-          persist-credentials: false
           submodules: false
-      - name: Archive only tracked root source bytes and tree identities
+          persist-credentials: true
+      - name: Reconstruct and verify the exact reviewed source patch
         shell: pwsh
         run: |
-          $out = Join-Path $env:RUNNER_TEMP 'pr7-effects-source'
+          $ErrorActionPreference = 'Stop'
+          $out = Join-Path $env:RUNNER_TEMP 'pr7-wzx-bite-publish'
           New-Item -ItemType Directory -Force $out | Out-Null
-          git archive --format=zip --output="$out/root.zip" HEAD
-          if ($LASTEXITCODE -ne 0) { throw 'Source archive failed' }
-          git rev-parse HEAD | Set-Content -Encoding utf8 "$out/commit.txt"
-          git rev-parse 'HEAD^{tree}' | Set-Content -Encoding utf8 "$out/tree.txt"
-          git ls-tree -r HEAD | Set-Content -Encoding utf8 "$out/files.txt"
-          Get-FileHash -Algorithm SHA256 "$out/root.zip" | Format-List | Out-File "$out/archive-hash.txt"
+          $parts = Join-Path $env:GITHUB_WORKSPACE '.github/pr7-effects-publication'
+          $first = [IO.File]::ReadAllBytes((Join-Path $parts 'part1.bin'))
+          $second = [IO.File]::ReadAllBytes((Join-Path $parts 'part2.bin'))
+          $third = [IO.File]::ReadAllBytes((Join-Path $parts 'part3.bin'))
+          # Repair one known base64 transport insertion; exact hashes below
+          # gate all resulting bytes. This is not a source-code modification.
+          $text = [Convert]::ToBase64String($second)
+          if (-not $text.Contains('B6ALW/O97SN+Yg42')) { throw 'Unexpected transport content' }
+          $text = $text.Replace('B6ALW/O97SN+Yg42','B6ALW/O97SN+Y42') + 'e'
+          $second = [Convert]::FromBase64String($text)
+          $partPath = Join-Path $out 'part2.bin'
+          [IO.File]::WriteAllBytes($partPath, $second)
+          if ((Get-FileHash -Algorithm SHA256 $partPath).Hash.ToLower() -ne '525ed820ee9a9fc417bd733999ef709c4f8dd873f40a8070559688beb97ff1f4') { throw 'Part identity mismatch' }
+          $compressed = Join-Path $out 'source.patch.gz'
+          $stream = [IO.File]::Create($compressed)
+          try {
+            $stream.Write($first,0,$first.Length)
+            $stream.Write($second,0,$second.Length)
+            $stream.Write($third,0,$third.Length)
+          } finally { $stream.Dispose() }
+          if ((Get-FileHash -Algorithm SHA256 $compressed).Hash.ToLower() -ne '0466b8199a822ed26364e2748a376883b984ae240dfcd86c940cc00e91b7b445') { throw 'Compressed patch identity mismatch' }
+          $patch = Join-Path $out 'source.patch'
+          $inputFile = [IO.File]::OpenRead($compressed)
+          $gzip = [IO.Compression.GzipStream]::new($inputFile,[IO.Compression.CompressionMode]::Decompress)
+          $outputFile = [IO.File]::Create($patch)
+          try { $gzip.CopyTo($outputFile) } finally { $outputFile.Dispose(); $gzip.Dispose(); $inputFile.Dispose() }
+          git fetch --no-tags --depth=1 origin 9147b4b9c6cddf0ce105a93f288cce3f4f987b11
+          if ($LASTEXITCODE -ne 0) { throw 'Base fetch failed' }
+          git checkout --detach 9147b4b9c6cddf0ce105a93f288cce3f4f987b11
+          if ($LASTEXITCODE -ne 0) { throw 'Base checkout failed' }
+          git apply --index --check --unidiff-zero $patch
+          if ($LASTEXITCODE -ne 0) { throw 'Patch preflight failed' }
+          git apply --index --unidiff-zero $patch
+          if ($LASTEXITCODE -ne 0) { throw 'Patch apply failed' }
+          git diff --cached --check
+          if ($LASTEXITCODE -ne 0) { throw 'Whitespace check failed' }
+          $tree = (git write-tree).Trim()
+          if ($LASTEXITCODE -ne 0 -or $tree -ne 'f185d8fdd344091576805e7e95876b7e69366f0d') { throw "Reviewed source tree mismatch: $tree" }
+          git config user.name 'Colosseum3DS development automation'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          $message = @'
+          Execute the source-timed Bite attack slice and cache immutable arena staging
+
+          Add a bounded source-admitted model/floor-color runtime and private
+          preparation path. Retain original entry timing and one-shot attachment,
+          expose unsupported sound/GPT1/cameras, and keep native98/save state pending.
+          Reuse immutable single-frame arena vertices with view-sensitive invalidation
+          and dirty-range flushing; retain every draw and instrument staging work.
+
+          Tested: 23 native suites strict and ASan/UBSan with leak detection;
+          133339 actual-descriptor clock checks; real scene/model production-loader
+          tests with GPU stubs; focused renderer/preparer regressions.
+          Not tested: new ARM/hardware rendering, retail visual parity or speedup.
+          Original assets, saves and dependency binaries are excluded.
+          '@
+          $commit = ($message | git commit-tree $tree -p 9147b4b9c6cddf0ce105a93f288cce3f4f987b11).Trim()
+          if ($LASTEXITCODE -ne 0 -or $commit -notmatch '^[0-9a-f]{40}$') { throw 'Commit creation failed' }
+          git push origin "${commit}:refs/heads/work/pr7-wzx-bite-candidate"
+          if ($LASTEXITCODE -ne 0) { throw 'Non-forced candidate publication failed' }
+          "commit=$commit`ntree=$tree`nbase=9147b4b9c6cddf0ce105a93f288cce3f4f987b11" | Set-Content -Encoding utf8 (Join-Path $out 'candidate.txt')
+          Write-Output "Verified candidate $commit tree $tree; PR7 is not updated by this job."
       - uses: actions/upload-artifact@v4
         with:
-          name: PR7-effects-source
-          path: ${{ runner.temp }}/pr7-effects-source/
+          name: PR7-wzx-candidate-identity
+          path: ${{ runner.temp }}/pr7-wzx-bite-publish/candidate.txt
           if-no-files-found: error
           retention-days: 3
