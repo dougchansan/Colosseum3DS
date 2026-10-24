@@ -66,9 +66,20 @@ admission and pack identity are logged, but its motion number/matrices are not.
 Motion 2 can be inferred from the separate seed and source selector; it is not
 a direct log observation or physical coverage of all four camera motions.
 The host camera fixtures cover those branches and preserve Bite/Confusion pack
-bytes. Original Tail Whip comparison remains unqualified: two isolated original
-Dolphin command attempts did not accept the intended command pair. Their
-command-only footage is not presented as original Tail Whip execution.
+bytes. The earlier two command-only original Dolphin attempts remain excluded.
+A subsequent [verified original Tail Whip reference](../tail-whip-original-reference-2026-10-23/README.md)
+now includes the explicit announcement, female actor HUD, cyan rings and
+before/after frames. That original HUD/caption does not establish an A/B slot.
+The native B-slot identity above remains grounded in this run's native trace.
+
+The structured comparison is **76/100, revise**, with category match true:
+cyan-ring correspondence is visible, but camera/RNG variant, effect age,
+viewport and display aspect differ. This is not pixel/retail visual parity or
+a demonstrated geometry defect. Synchronized source-detail/frame-phase
+comparison is still required. The original reference also exposes separate
+green defender stat-down streaks/tint for both allies; those generic visuals
+remain missing from the current native caster slice. Typed DEFENSE-fell
+messages alone do not close that effect gap.
 
 Periodic command maximum is 111,256/262,144 words; minimum logged linear free
 memory is 4,627,328 bytes. Sampled full CPU maximum is 239,742 us; the distinct

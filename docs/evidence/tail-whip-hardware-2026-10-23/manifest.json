@@ -442,7 +442,22 @@
       "silent": true
     }
   ],
-  "original_tail_whip_reference": "Unqualified: two command-only DTM attempts did not accept the intended command pair; no retail Tail Whip image is claimed.",
+  "original_tail_whip_reference": {
+    "status": "Verified original Tail Whip action now published; earlier command-only attempts remain excluded.",
+    "manifest": "../tail-whip-original-reference-2026-10-23/manifest.json",
+    "comparison_score": 76,
+    "comparison_verdict": "revise",
+    "category_match": true,
+    "retail_visual_parity": false,
+    "original_actor_identity": "Explicit Tail Whip caption plus female Lv24 HUD; no original A/B slot inference.",
+    "native_actor_identity": "Native owner3/B is established only by native trace and admitted roster.",
+    "unsynchronized": [
+      "camera/RNG variant",
+      "authored effect age",
+      "viewport/SAR/HUD"
+    ],
+    "remaining_generic_stat_down_gap": "Original green defender streaks/tint for both allies are not implemented by the caster slice."
+  },
   "media": [
     {
       "file": "clean-exit.png",
