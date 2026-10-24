@@ -9,7 +9,7 @@
 #define C3_STAGE_MAX_MODELS 16u
 #define C3_STAGE_MAX_VERTICES 131072u
 #define C3_STAGE_MAX_TEXTURES 128u
-#define C3_STAGE_MAX_PARTICLE_BANKS 4u
+#define C3_STAGE_MAX_PARTICLE_BANKS 5u
 
 /* Pinned SDK steady particle draw uses 114 words; 192 also bounds setup.
  * Leave room for the subsequent HUD/fade and command-list finalization. */
@@ -72,6 +72,9 @@ int c3_stage_renderer_set_modulation(size_t model_index, const uint8_t rgb[3]);
  * same pack pointer is idempotent. Binding selects by bank.bytes identity. */
 int c3_stage_renderer_particle_pack(const C3ParticlePack *,char *,size_t);
 int c3_stage_renderer_particles(const C3ParticleSystem *,const float attachment[12]);
+/* Explicit source-world Growl adapter. Only AppSRT render caches may change;
+ * simulation coordinates, clocks and cosmetic RNG remain independent of draws. */
+int c3_stage_renderer_particles_app_srt(C3ParticleSystem *);
 void c3_stage_renderer_shutdown(void);
 
 /* Application shutdown only, after the scene's guarded teardown completed.

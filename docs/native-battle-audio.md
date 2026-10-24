@@ -192,3 +192,73 @@ bound and rejection of altered mapping/macro bodies. Optional private-pack
 regressions use `C3_AUDIO_BASELINE_PACK` and `C3_AUDIO_TAIL_WHIP_PACK` to compare
 all seven old payloads and the actual new PCM digest; without originals those
 checks skip explicitly.
+
+## Growl cue and source key-off boundary
+
+`--growl` explicitly requires both `--confusion --tail-whip` and appends request
+`0x210` as cue nine. The original three-, seven- and eight-cue selections remain
+unchanged. `C3AU` version 1's existing count/row layout admits nine bounded
+records without a byte-layout change; the native limit is now nine prepared
+cues, while active NDSP channels remain exactly four. File/frame bounds,
+duplicate-ID rejection, transactional parsing and SDK lifetime rules remain.
+
+The admitted bank-5 sound row maps request `0x210` to FX `0x283`, macro `0x39C`.
+Its immediate child `0x39B` starts child `0x39A`, whose sample waits 700 ms:
+
+| Macro | Sample / key / start | Body SHA-256 |
+| --- | --- | --- |
+| `0x39C` | `0x56` / 62 / 0 ms | `2c223c311b9acb58008e81b08130bac46461cb4c43a70df83554529780a230cb` |
+| `0x39B` | `0x73` / 62 / 0 ms | `b618be0dc1cca7e0dfda3af7416a581704a575ce01a96216e37ceaa11660244a` |
+| `0x39A` | `0x61` / 75 / 700 ms | `09650cfb359f118fbe20acf59e749510997cbc514e0b1f40cd2ca39e1568019f` |
+
+All three use source volume 127 and centered dry output, retaining their 15%
+auxiliary-controller selection as metadata. Existing bounded child/wait/sample
+handling renders this closure; no new opcode or reverb synthesis is introduced.
+
+The original Growl sound node is at member `0x69400`, key 3, linked to model key
+1. Its node flag is 1; payload `[0x210,3,0]` has sound-resource flags 3. It starts
+at normalized tick 130. Control node `0x6947C` carries `[0,100,3]`, also starting
+at 130; its stop threshold is 230. The source owner minimum is a separate gate.
+Do not replace source stopping with a wait for the entire decoded wave.
+
+`wazaSequenceApplyStop` calls `wazaSequenceEntryStop` with immediate mode for
+each entry. Kind 5 clears the sound-thread global when sound-resource flag bit 0 is set and
+calls `fn_80166B18`. The reached chain continues through `fn_80167070(id,1)`,
+`fn_801669E4(id,0,0)`, `_sndStopSE` and `sndFXKeyOff(handle)`. This proves
+**source key-off**, not an instantaneous retail PCM cut or a qualified release
+envelope. The selected dry backend clears the exact cue's NDSP buffer at a
+requested stop; original release-envelope/tail timing remains unqualified.
+
+The additive `c3_battle_audio_player_stop(serial,sound_id,...)` checks both
+identity components and touches only their matching active channel. Known
+finished/stopped pairs are idempotent; unknown/evicted pairs fail without
+altering unrelated voices. `c3_battle_audio_player_status` distinguishes
+ACTIVE (0), actual SDK FINISHED (1), explicit STOPPED (2) and invalid (-1).
+Existing `done` still returns 1 only for SDK DONE/FREE or exactly retained
+finished history; a stopped cue returns -1 with a diagnostic. Paused genuine
+completion retains the original guards. Trace telemetry adds `explicit_stop`:
+SDK FREE after buffer clearing must not be reported as full-wave completion.
+The bounded 64-identity history retains the terminal kind across channel reuse.
+
+```powershell
+python tools/prepare_battle_audio.py --disc G:/gamecube-decomp/disc-extract-dump --confusion --tail-whip --growl --output C:/Colosseum3DS-pr7-captures/growl-audio-new
+```
+
+Private `growl-audio-v2/audio.c3u` is 1,435,908 bytes (v1 has identical pack bytes), SHA-256
+`611286b47e183b8afd4f23e2d2de32183a50fd00b98a56fa66489258785d076a`,
+SHA-1 `ca2663fae9abe2fd9c9d9ef479fb3861b5932011`. All eight prior PCM payloads
+match the eight-cue baseline byte for byte. Growl contains 60,571 frames at
+32,000 Hz (1.89284375 seconds), PCM SHA-256
+`51051ad4a42c91ef578e5812d3b51dc3266219193c1a3173187cb455a5bb3ea2`;
+WAV SHA-256 `db26297eb16ba49c4a95de98c8a0bd9221251f604b0d58d3e2253292ba867d6f`.
+Its dry sum clips 2,081 frames. Starting at tick 130, the full dry wave would
+outlast control tick 230 by about 0.2262 seconds. Explicitly stopping that wave
+does not qualify the original key-off tail or mean all 60,571 frames played.
+
+Focused mock-NDSP tests cover exact-pair rejection, unrelated channels,
+idempotence, no replay resurrection, terminal history/eviction, pause guards,
+stopped-versus-finished telemetry, four-voice capacity, close/reopen and a
+synthetic nine-cue pack. Optional original-pack tests use `C3_AUDIO_GROWL_PACK`
+with the eight-cue fixture to verify all retained PCM and Growl's digest.
+These are host/source preparation checks, not stage integration or physical
+audible acceptance. Existing dry SRC/mixer/vibrato/reverb limits still apply.

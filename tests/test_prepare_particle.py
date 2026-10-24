@@ -113,6 +113,27 @@ class ParticlePreparationTests(unittest.TestCase):
         self.assertEqual(pack[96:128], bytes(32))
         self.assertNotIn("rgba", particle.report_json(report)["textures"][0])
 
+    def test_growl_is_explicit_original_bank_only_and_preserves_source_ids(self):
+        with self.assertRaises(ValueError):particle.bank(self.bank(),0,profile='growl')
+        with self.assertRaises(ValueError):particle.bank(self.bank(),0,profile='unknown')
+        path=Path(__file__).resolve().parents[2]/'growl-source-bank-v1/growl.gpt'
+        if not path.exists():self.skipTest('Private original Growl bank required')
+        raw=path.read_bytes()
+        with self.assertRaisesRegex(ValueError,'generator/reference bound'):particle.bank(raw,18)
+        for args in ((0,()),(18,(93,))):
+            with self.assertRaises(ValueError):particle.bank(raw,*args,profile='growl')
+        changed=bytearray(raw);changed[-1]^=1
+        with self.assertRaises(ValueError):particle.bank(changed,18,profile='growl')
+        report=particle.bank(raw,18,profile='growl')
+        self.assertEqual(report['generator_count'],113)
+        self.assertEqual(report['closure'],[18,93,111,112])
+        self.assertEqual(len(report['textures']),25)
+        self.assertEqual({t['group'] for t in report['textures']},{0,1})
+        self.assertEqual(report['references'],list(range(113)))
+        pack=particle.encode(raw,report,'12'*32)
+        offset,size=struct.unpack_from('<2I',pack,16)
+        self.assertEqual(pack[offset:offset+size],raw)
+
     def test_damage_descriptor_uses_separate_source_sound_time_and_hashes(self):
         report = {"owner_clip": 2, "anchor": [0., 0., 0.], "particle_attachment_sampled_bone": 11}
         packed = damage.encode(report, b"synthetic-model", b"synthetic-particles")

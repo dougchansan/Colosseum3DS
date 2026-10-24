@@ -23,7 +23,38 @@ class PreparationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'requires --confusion'):
             audio.selected_sounds(tail_whip=True)
         with self.assertRaisesRegex(ValueError, 'Cue count'):
-            audio.encode_pack([(i, b'\0\0') for i in range(9)])
+            audio.encode_pack([(i, b'\0\0') for i in range(10)])
+
+    def test_growl_explicit_ninth_cue_and_source_binding(self):
+        self.assertEqual(audio.selected_sounds(True, True, True), audio.selected_sounds(True, True) + (0x210,))
+        for confusion, tail in ((False, False), (True, False), (False, True)):
+            with self.assertRaisesRegex(ValueError, 'Growl requires'):
+                audio.selected_sounds(confusion, tail, True)
+        row=bytearray(12);row[:2]=bytes((0x80,5));struct.pack_into('>H',row,4,0x283)
+        effect={'macro':0x39C,'volume':127,'pan':64,'key':60}
+        with self.assertRaisesRegex(ValueError,'macro body'):
+            audio.verify_growl_binding(row,effect,{})
+        with self.assertRaisesRegex(ValueError,'binding'):
+            audio.verify_growl_binding(row,{**effect,'macro':0x39B},{})
+        with self.assertRaisesRegex(ValueError,'extent'):
+            audio.verify_growl_binding(row[:-1],effect,{})
+
+    def test_private_growl_and_all_eight_baseline_pcm_payloads(self):
+        baseline=os.environ.get('C3_AUDIO_TAIL_WHIP_PACK')
+        extended=os.environ.get('C3_AUDIO_GROWL_PACK')
+        if not baseline or not extended:self.skipTest('Private eight-cue and Growl packs required')
+        import hashlib
+        def payloads(path):
+            data=Path(path).read_bytes();result={}
+            for i in range(struct.unpack_from('<I',data,12)[0]):
+                sound,rate,frames,offset,size,*_=struct.unpack_from('<8I',data,64+i*32)
+                self.assertEqual((rate,size),(32000,frames*2));result[sound]=data[offset:offset+size]
+            return result
+        old,new=payloads(baseline),payloads(extended)
+        self.assertEqual(len(old),8);self.assertEqual(tuple(new),audio.selected_sounds(True,True,True))
+        for sound,pcm in old.items():self.assertEqual(new[sound],pcm)
+        self.assertEqual(len(new[0x210])//2,60571)
+        self.assertEqual(hashlib.sha256(new[0x210]).hexdigest(),'51051ad4a42c91ef578e5812d3b51dc3266219193c1a3173187cb455a5bb3ea2')
 
     def test_tail_whip_binding_and_macro_drift_fail_closed(self):
         # Synthetic record assembled from the reviewed numeric dispatch fields.

@@ -15,6 +15,7 @@ int c3_stage_renderer_init(const C3Title *const *m,size_t n,char *e,size_t c){(v
 int c3_stage_renderer_set_static(size_t i,bool value){assert(i<counts);static_count+=value;return 1;}
 int c3_stage_renderer_set_modulation(size_t i,const uint8_t rgb[3]){assert(i<counts);enabled[i]=(rgb!=NULL);return 1;}
 int c3_stage_renderer_particle_pack(const C3ParticlePack *p,char *e,size_t n){(void)e;(void)n;assert(p&&p->texture_count);return C3_RENDER_OK;}
+int c3_stage_renderer_particles_app_srt(C3ParticleSystem *s){(void)s;return 1;}
 int c3_stage_renderer_particles(const C3ParticleSystem *s,const float a[12]){if(s){assert(a);++particles_bound;}return 1;}
 static unsigned cues[4];
 static uint32_t emitted_sound[128];

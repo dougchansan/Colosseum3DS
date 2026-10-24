@@ -11,35 +11,101 @@ static float f32(const uint8_t *p){uint32_t v=u32(p);float f;memcpy(&f,&v,4);ret
 static int range(size_t n,size_t p,size_t z){return p<=n&&z<=n-p;}
 static int overlap(const void *a,size_t n,const void *b,size_t m)
 {uintptr_t x=(uintptr_t)a,y=(uintptr_t)b;return x>=y?x-y<m:y-x<n;}
-int c3_particle_bank_decode(C3ParticleBank *out,const void *data,size_t n,char *e,size_t cap)
+static int decode_bank(C3ParticleBank *out,const void *data,size_t n,int growl,char *e,size_t cap)
 {
  C3ParticleBank b={0};const uint8_t *p=data;
  if(!out||!p||n<32||n>1048576||overlap(out,sizeof *out,p,n)||memcmp(p,"GPT1",4))return error(e,cap,"Invalid GPT1 bank header/size.");
  uint32_t desc=u32(p+4),txg=u32(p+8),refs=u32(p+16);
  if(!range(n,desc,12)||u16(p+desc)!=0x43||u32(p+desc+4)||!range(n,txg,4)||desc>=txg)return error(e,cap,"Unsupported GPT1 description version/sections.");
- b.generator_count=u32(p+desc+8);b.texture_group_count=u32(p+txg);
- if(!b.generator_count||b.generator_count>C3_PARTICLE_MAX_GENERATORS||!b.texture_group_count||b.texture_group_count>C3_PARTICLE_MAX_TEXTURE_GROUPS||!range(n,desc+12,4*b.generator_count)||!range(n,txg+4,4*b.texture_group_count)||!range(n,refs,4*b.generator_count))return error(e,cap,"GPT1 table count/offset bound.");
+ b.source_generator_count=u32(p+desc+8);b.texture_group_count=u32(p+txg);
+ if(!b.source_generator_count||(growl?b.source_generator_count!=113:b.source_generator_count>C3_PARTICLE_MAX_GENERATORS)||!b.texture_group_count||b.texture_group_count>C3_PARTICLE_MAX_TEXTURE_GROUPS||!range(n,desc+12,4*b.source_generator_count)||!range(n,txg+4,4*b.texture_group_count)||!range(n,refs,4*b.source_generator_count))return error(e,cap,"GPT1 table count/offset bound.");
+ b.generator_count=growl?4:b.source_generator_count;b.reference_offset=refs;b.profile=(uint8_t)(growl?C3_PARTICLE_PROFILE_GROWL_V1:0);
+ for(unsigned i=0;i<b.source_generator_count;++i)if(u32(p+refs+4*i)>=b.source_generator_count)return error(e,cap,"GPT1 reference handle out of range.");
  for(unsigned i=0;i<b.texture_group_count;++i){
   uint32_t rel=u32(p+txg+4+i*4);size_t at=(size_t)txg+rel;
   if(at<txg||rel<4+4*b.texture_group_count||!range(n,at,24)||!(b.texture_frames[i]=u32(p+at))||b.texture_frames[i]>256||!u32(p+at+12)||!u32(p+at+16)||u32(p+at+12)>1024||u32(p+at+16)>1024)return error(e,cap,"GPT1 texture group/frame bound.");
  }
  for(unsigned i=0;i<b.generator_count;++i){
-  size_t at=(size_t)desc+u32(p+desc+12+i*4),end=i+1<b.generator_count?(size_t)desc+u32(p+desc+16+i*4):txg;
-  if(at<(size_t)desc+12+4*b.generator_count||end>txg||end<=at||!range(end,at,61)||end-at>4096)return error(e,cap,"GPT1 generator/script offset bound.");
+  static const uint16_t ids[4]={18,93,111,112};unsigned id=growl?ids[i]:i;b.source_ids[i]=(uint16_t)id;
+  size_t at=(size_t)desc+u32(p+desc+12+id*4),end=id+1<b.source_generator_count?(size_t)desc+u32(p+desc+16+id*4):txg;
+  if(at<(size_t)desc+12+4*b.source_generator_count||end>txg||end<=at||!range(end,at,61)||end-at>4096)return error(e,cap,"GPT1 generator/script offset bound.");
   C3ParticleGenerator *g=&b.generators[i];g->type=u16(p+at);g->tex_group=u16(p+at+2);g->gen_life=u16(p+at+4);g->life=u16(p+at+6);g->kind=(u32(p+at+8)&0xf1ffffffu)|0x08000000u;
   if(g->tex_group>=b.texture_group_count||!g->life||g->life==65535)return error(e,cap,"GPT1 generator texture/lifetime bound.");
   float v[12];for(unsigned j=0;j<12;++j){v[j]=f32(p+at+12+4*j);if(!isfinite(v[j])||fabsf(v[j])>1000000)return error(e,cap,"Nonfinite/excessive GPT1 generator scalar.");}
   g->grav=v[0];g->fric=v[1];memcpy(g->velocity,v+2,12);g->radius=v[5];g->angle=v[6];g->rate=v[7];g->size=v[8];memcpy(g->param,v+9,12);
-  g->script_offset=(uint32_t)at+60;g->script_bytes=(uint32_t)(end-at-60);b.refs[i]=u32(p+refs+4*i);
-  if(b.refs[i]>=b.generator_count)return error(e,cap,"GPT1 reference handle out of range.");
+  g->script_offset=(uint32_t)at+60;g->script_bytes=(uint32_t)(end-at-60);b.refs[i]=u32(p+refs+4*id);
  }
  b.bytes=p;b.length=n;*out=b;if(e&&cap)e[0]=0;
  return 1;
 }
+int c3_particle_bank_decode(C3ParticleBank *b,const void *p,size_t n,char *e,size_t cap)
+{return decode_bank(b,p,n,0,e,cap);}
+int c3_particle_bank_source_slot(const C3ParticleBank *b,unsigned id,unsigned *slot)
+{
+ if(!b||!slot||b->generator_count>C3_PARTICLE_MAX_GENERATORS||(b->profile&&b->profile!=C3_PARTICLE_PROFILE_GROWL_V1))return 0;
+ for(unsigned i=0;i<b->generator_count;++i)if((b->profile?b->source_ids[i]:i)==id){*slot=i;return 1;}
+ return 0;
+}
+/* Audited Growl bytecode permits identity-RS AppSRT only: no SRT state,
+ * detach, inheritance, loops or further dynamic spawn instructions in children. */
+static int growl_program(const C3ParticleBank *b,unsigned slot)
+{
+ const C3ParticleGenerator *g=&b->generators[slot];const uint8_t *p=b->bytes+g->script_offset;size_t at=0;
+ if(!slot){static const uint8_t root[]={0xf0,0,93,7,0xf0,0,111,7,0xf0,0,112,7,0xff};return g->script_bytes>=sizeof root&&!memcmp(p,root,sizeof root);}
+ unsigned ended=0;
+ while(at<g->script_bytes){unsigned op=p[at++],extra=0;
+  if(op==0xff){ended=1;break;}
+  if(op<0x80){if(op&32)extra++;if(op&64)extra++;}
+  else if(op==0xad||op==0xb1)extra=0;
+  else if(op==0xa0||op==0xac||op==0xcf||op==0xdf){
+   if(at>=g->script_bytes)return 0;
+   extra=1+((p[at]&128)?1:0)+(op==0xac?8:4);
+  }else if(op==0xed)extra=9;else return 0;
+  if(extra>g->script_bytes-at)return 0;
+  at+=extra;
+ }
+ return ended;
+}
+int c3_particle_bank_decode_reachable(C3ParticleBank *out,const void *p,size_t n,unsigned root,unsigned profile,char *e,size_t cap)
+{
+ if(!out||!p||overlap(out,sizeof *out,p,n)||root!=18||profile!=C3_PARTICLE_PROFILE_GROWL_V1)return error(e,cap,"Unsupported reachable particle profile/root/ownership.");
+ C3ParticleBank b;if(!decode_bank(&b,p,n,1,e,cap))return 0;
+ static const uint32_t kinds[4]={0x09000000u,0x09420100u,0x09420000u,0x09400001u};
+ for(unsigned i=0;i<4;++i)if(b.generators[i].type!=(i==3?8:0)||b.generators[i].tex_group!=((i==1||i==3)?1:0)||b.generators[i].kind!=kinds[i]||!growl_program(&b,i))return error(e,cap,"Unqualified Growl generator/AppSRT program.");
+ for(unsigned i=0;i<113;++i)if(u32(b.bytes+b.reference_offset+4*i)!=i)return error(e,cap,"Growl source reference mapping differs.");
+ *out=b;if(e&&cap)e[0]=0;return 1;
+}
 static int fault(C3ParticleSystem *s,unsigned gen,unsigned pc,unsigned op,const char *why)
-{snprintf(s->diagnostic,sizeof s->diagnostic,"GPT1 generator %u pc 0x%X opcode 0x%02X: %s",gen,pc,op,why);s->failed=1;return 0;}
+{if(s->bank.profile&&gen<s->bank.generator_count)gen=s->bank.source_ids[gen];snprintf(s->diagnostic,sizeof s->diagnostic,"GPT1 generator %u pc 0x%X opcode 0x%02X: %s",gen,pc,op,why);s->failed=1;return 0;}
 static float rnd(C3ParticleSystem *s)
 {s->cosmetic_seed=s->cosmetic_seed*214013u+2531011u;++s->cosmetic_draws;return (float)(s->cosmetic_seed>>16)/65536.f;}
+static C3ParticleAppSRT *app_srt(C3ParticleSystem *s,uint32_t handle)
+{
+ if(!handle)return NULL;
+ C3ParticleAppSRT *a=&s->app_srt[handle&15u];
+ return a->active&&a->generation==(handle>>4)?a:NULL;
+}
+static int app_release(C3ParticleSystem *s,uint32_t handle)
+{
+ C3ParticleAppSRT *a=app_srt(s,handle);if(!a||!a->references)return fault(s,0,0,0,"stale AppSRT release");
+ if(!--a->references)a->active=0;
+ return 1;
+}
+static uint32_t app_create(C3ParticleSystem *s,uint32_t owner,const float pos[3])
+{
+ if(s->app_srt_generation==0x0fffffffu)return 0;
+ for(unsigned i=0;i<C3_PARTICLE_MAX_APP_SRT;++i)if(!s->app_srt[i].active){
+  C3ParticleAppSRT *a=&s->app_srt[i];memset(a,0,sizeof *a);a->active=1;a->references=1;a->owner_serial=owner;a->generation=++s->app_srt_generation;memcpy(a->translate,pos,sizeof a->translate);
+  return (a->generation<<4)|i;
+ }
+ return 0;
+}
+static int reference_slot(const C3ParticleBank *b,unsigned reference,unsigned *slot)
+{
+ if(!b->profile){if(reference>=b->generator_count)return 0;*slot=b->refs[reference];return *slot<b->generator_count;}
+ if(reference>=b->source_generator_count||!range(b->length,b->reference_offset+4u*reference,4))return 0;
+ return c3_particle_bank_source_slot(b,u32(b->bytes+b->reference_offset+4u*reference),slot);
+}
 /* POSITION uses checked wazaSequenceEntry flags. Reflect 0x18A9 enables velocity-local rotation,
  * texture scaling and random-velocity scaling; no local-offset or tornado
  * height/radius scaling. Snapshots survive native emitter-slot reuse. */
@@ -49,7 +115,7 @@ static int emitter(C3ParticleSystem *s,unsigned g,unsigned depth,const float pos
 {
  if(g>=s->bank.generator_count||depth>C3_PARTICLE_MAX_DEPTH)return fault(s,g,0,0xF0,"reference/nesting bound");
  const C3ParticleGenerator *d=&s->bank.generators[g];
- if((d->type!=0&&d->type!=1&&d->type!=2&&d->type!=8)||d->rate>C3_PARTICLE_MAX_PARTICLES||d->rate< -(float)C3_PARTICLE_MAX_PARTICLES||d->kind&0x30000)return fault(s,g,0,0,"unsupported generator shape/camera basis/rate");
+ if((d->type!=0&&d->type!=1&&d->type!=2&&d->type!=8)||d->rate>C3_PARTICLE_MAX_PARTICLES||d->rate< -(float)C3_PARTICLE_MAX_PARTICLES||((d->kind&0x30000)&&!(s->bank.profile==C3_PARTICLE_PROFILE_GROWL_V1&&(d->kind&0x30000)==0x20000)))return fault(s,g,0,0,"unsupported generator shape/camera basis/rate");
 
  for(unsigned i=0;i<C3_PARTICLE_MAX_EMITTERS;++i)if(!s->emitters[i].active){
   C3ParticleEmitter *v=&s->emitters[i];memset(v,0,sizeof *v);v->active=1;v->generator=(uint16_t)g;v->depth=(uint8_t)depth;v->life=d->gen_life;v->kind=d->kind;
@@ -58,7 +124,9 @@ static int emitter(C3ParticleSystem *s,unsigned g,unsigned depth,const float pos
   v->attachment_scale=v->radius_scale=1;
   if(d->kind&0x100)v->count=d->rate<0?(1.f+d->rate>FLT_EPSILON?1.f:0.f):1.f-FLT_EPSILON;
   else v->count=d->rate<0?0:rnd(s);
-  v->serial=++s->spawned_emitters;return 1;
+  v->serial=++s->spawned_emitters;
+  if(s->bank.profile&&(d->kind&0x20000)){v->app_srt_handle=app_create(s,v->serial,pos);if(!v->app_srt_handle)return fault(s,g,0,0,"AppSRT pool/generation exhausted");memset(v->position,0,sizeof v->position);}
+  return 1;
  }
  return fault(s,g,0,0xF0,"emitter pool exhausted");
 }
@@ -152,10 +220,10 @@ static int interpret(C3ParticleSystem *s,C3Particle *p)
     case 0xe6:p->kind|=0x200000;break;
     case 0xe8:if(!scalar(s,p,&p->trail))return 0;if(p->trail<0)p->kind&=~0x100000u;else p->kind|=0x100000;break;
     case 0xed:{float a,b;if(!scalar(s,p,&a)||!scalar(s,p,&b)||!byte(s,p,&v))return 0;float delta=v?a+b*(int)((v+1)*rnd(s))/(float)v:a+b*rnd(s);p->rotation+=delta;p->rotate_target+=delta;break;}
-    case 0xf0:{unsigned hi,lo,flags;if(!byte(s,p,&hi)||!byte(s,p,&lo)||!byte(s,p,&flags))return 0;unsigned id=(hi<<8)|lo;if(id>=s->bank.generator_count)return fault(s,p->generator,pc,op,"spawn reference out of range");if(!emitter(s,s->bank.refs[id],p->depth+1,p->position,flags&7))return 0;
+    case 0xf0:{unsigned hi,lo,flags;if(!byte(s,p,&hi)||!byte(s,p,&lo)||!byte(s,p,&flags))return 0;unsigned id=(hi<<8)|lo,slot;if(!reference_slot(&s->bank,id,&slot))return fault(s,p->generator,pc,op,"spawn reference out of range/admitted closure");if(!emitter(s,slot,p->depth+1,p->position,flags&7))return 0;
      if(s->position_attachment)for(unsigned j=0;j<C3_PARTICLE_MAX_EMITTERS;++j)if(s->emitters[j].serial==s->spawned_emitters){s->emitters[j].attachment_yaw=p->attachment_yaw;s->emitters[j].attachment_scale=p->attachment_scale;s->emitters[j].radius_scale=p->radius_scale;s->emitters[j].source_flags=p->source_flags;}
      break;}
-    case 0xf1:{unsigned hi,lo;if(!byte(s,p,&hi)||!byte(s,p,&lo))return 0;unsigned id=(hi<<8)|lo;if(id>=s->bank.generator_count)return fault(s,p->generator,pc,op,"child particle reference bound");if(!child_particle(s,p,s->bank.refs[id]))return 0;break;}
+    case 0xf1:{unsigned hi,lo;if(!byte(s,p,&hi)||!byte(s,p,&lo))return 0;unsigned id=(hi<<8)|lo,slot;if(!reference_slot(&s->bank,id,&slot))return fault(s,p->generator,pc,op,"child particle reference bound");if(!child_particle(s,p,slot))return 0;break;}
     case 0xf3:{unsigned dir,count;if(!byte(s,p,&dir)||!scalar(s,p,&p->rotate_target)||!scalar(s,p,&p->rotate_accel)||!timearg(s,p,&count))return 0;p->rotate_count=(uint16_t)count;if(count){if(!dir)p->rotate_target+=p->rotate_accel/2;else p->rotate_target=-p->rotate_target-p->rotate_accel/2;}else p->rotate_target=p->rotate_accel=0;break;}
     case 0xfa:if(!byte(s,p,&v))return 0;if(!v)return fault(s,p->generator,pc,op,"zero loop count refused");p->loop_count=(uint8_t)v;p->loop_pc=p->pc;break;
     case 0xfb:if(!p->loop_count)return fault(s,p->generator,pc,op,"loop end without start");if(--p->loop_count)p->pc=p->loop_pc;break;
@@ -168,7 +236,7 @@ static int interpret(C3ParticleSystem *s,C3Particle *p)
   }
  }
  done:
- if(!--p->life){p->active=0;return 1;}
+ if(!--p->life){if(p->app_srt_handle&&!app_release(s,p->app_srt_handle))return 0;p->active=0;return 1;}
  if(p->kind&4){
   float sa=sinf(p->grav),sb=sinf(p->fric),ca=cosf(p->grav),cb=cosf(p->fric);p->velocity[2]+=p->tornado_speed;
   float r=fabsf(p->tornado_radius)+p->velocity[2]*tanf(fabsf(p->tornado_angle));r*=p->velocity[1];
@@ -196,9 +264,14 @@ static int emit(C3ParticleSystem *s,unsigned index,float angle_step,float *cur_a
 {
  C3ParticleEmitter *e=&s->emitters[index];const C3ParticleGenerator *g=&s->bank.generators[e->generator];
  C3ParticleGenerator adjusted;
- if(s->position_attachment){adjusted=*g;adjusted.radius*=e->radius_scale;for(unsigned j=0;j<3;++j)adjusted.param[j]*=e->radius_scale;g=&adjusted;}
+ if(s->position_attachment){adjusted=*g;adjusted.radius*=e->radius_scale;for(unsigned j=0;j<3;++j)adjusted.param[j]*=e->radius_scale;
+  /* Growl F0 psCopyGeneratorData invokes AngleRadiusScale(applyToMotion)
+   * for source flag0x1000. Keep legacy profiles' sampled behavior unchanged. */
+  if(s->bank.profile&&(e->source_flags&0x1000)){adjusted.grav*=e->radius_scale;adjusted.fric*=e->radius_scale;}
+  g=&adjusted;}
  for(unsigned i=0;i<C3_PARTICLE_MAX_PARTICLES;++i)if(!s->particles[i].active){
   C3Particle *p=&s->particles[i];initial_particle(s,p,e->generator,e->depth);p->emitter=(uint16_t)index;p->kind=e->kind;p->attachment_yaw=e->attachment_yaw;p->attachment_scale=e->attachment_scale;p->radius_scale=e->radius_scale;p->source_flags=e->source_flags;memcpy(p->position,e->position,sizeof p->position);
+  if(s->bank.profile){p->grav=g->grav;p->fric=g->fric;p->emitter_serial=e->serial;p->app_srt_handle=e->app_srt_handle;if(p->app_srt_handle){C3ParticleAppSRT *a=app_srt(s,p->app_srt_handle);if(!a||a->references==UINT16_MAX)return fault(s,e->generator,0,0,"invalid AppSRT particle attachment");++a->references;}}
   if(g->type==8){
    float lat=(g->param[0]==0?PI:fabsf(g->param[0]))*rnd(s),lon=2*PI*rnd(s),dist=g->radius<0?-g->radius:g->radius*rnd(s);
    float v[3]={sinf(lat)*cosf(lon),sinf(lat)*sinf(lon),cosf(lat)};rotate(g->velocity,v);
@@ -220,11 +293,12 @@ static int emit(C3ParticleSystem *s,unsigned index,float angle_step,float *cur_a
    float speed=sqrtf(g->velocity[0]*g->velocity[0]+g->velocity[1]*g->velocity[1]+g->velocity[2]*g->velocity[2]),cone=fabsf(g->angle)*(s->position_attachment?radius:1);
    float v[3]={speed*sinf(cone)*cosf(angle),speed*sinf(cone)*sinf(angle),speed*cosf(cone)};rotate(g->velocity,v);memcpy(p->velocity,v,sizeof v);
   }
-  if(s->position_attachment&&g->type!=2){
+  if(s->position_attachment&&g->type!=2&&!p->app_srt_handle){
    float offset[3];for(unsigned j=0;j<3;++j)offset[j]=p->position[j]-e->position[j];
    yaw_rotate(e->attachment_yaw,offset);yaw_rotate(e->attachment_yaw,p->velocity);
    for(unsigned j=0;j<3;++j){p->position[j]=e->position[j]+offset[j];p->velocity[j]*=e->attachment_scale;}
   }
+  if(s->position_attachment&&p->app_srt_handle)for(unsigned j=0;j<3;++j)p->velocity[j]*=e->attachment_scale;
   return interpret(s,p);
  }
  return fault(s,e->generator,0,0,"particle pool exhausted");
@@ -240,19 +314,28 @@ static int tick(C3ParticleSystem *s)
  uint32_t visited[C3_PARTICLE_MAX_EMITTERS]={0};unsigned passes=0;
  for(;;){int any=0;for(unsigned i=0;i<C3_PARTICLE_MAX_EMITTERS;++i){C3ParticleEmitter *e=&s->emitters[i];if(!e->active||visited[i]==e->serial)continue;any=1;visited[i]=e->serial;
    if(++passes>C3_PARTICLE_MAX_EMITTERS*(C3_PARTICLE_MAX_DEPTH+1))return fault(s,e->generator,0,0,"per-tick emitter work bound");
-   const C3ParticleGenerator *g=&s->bank.generators[e->generator];e->count+=g->rate<0?-g->rate:g->rate*rnd(s);
+   const C3ParticleGenerator *g=&s->bank.generators[e->generator];float rate=e->deferred?0:g->rate;e->count+=rate<0?-rate:rate*rnd(s);
    float step=0,angle=0;if(g->angle<0&&e->count>=1){if(g->type==0){float min=g->param[0],max=g->param[1];if(s->position_attachment){min*=e->radius_scale;max*=e->radius_scale;}if(min==0&&max==0)max=2*PI;step=(max-min)/(int)e->count;angle=step*rnd(s)+min;}else if(g->type==2){step=2*PI/(int)e->count;angle=step*rnd(s);}}
    unsigned emitted=0;while(e->count>=1){if(++emitted>C3_PARTICLE_MAX_PARTICLES)return fault(s,e->generator,0,0,"emission budget exceeded");if(!emit(s,i,step,&angle))return 0;e->count-=1;}
-   if(e->life&&!--e->life)e->active=0;
+   if(e->life&&!--e->life){
+    if(!s->bank.profile)e->active=0;
+    else{unsigned live=0;for(unsigned j=0;j<C3_PARTICLE_MAX_PARTICLES;++j)live+=s->particles[j].active&&s->particles[j].emitter_serial==e->serial;
+     C3ParticleAppSRT *a=e->app_srt_handle?app_srt(s,e->app_srt_handle):NULL;
+     if(e->app_srt_handle&&!a)return fault(s,e->generator,0,0,"stale AppSRT owner");
+     if(live||(a&&a->references!=1)){e->life=1;e->deferred=1;}
+     else{if(a&&!app_release(s,e->app_srt_handle))return 0;e->active=0;}
+    }
+   }
   }if(!any)break;
  }
  ++s->ticks;return 1;
 }
 int c3_particle_begin(C3ParticleSystem *out,const C3ParticleBank *bank,unsigned gen,uint32_t seed,char *e,size_t cap)
 {
- if(!out||!bank||!bank->bytes||gen>=bank->generator_count||overlap(out,sizeof *out,bank->bytes,bank->length))return error(e,cap,"Invalid particle begin arguments.");
+ if(!out||!bank||!bank->bytes||(!bank->profile&&gen>=bank->generator_count)||(bank->profile&&gen!=18)||overlap(out,sizeof *out,bank->bytes,bank->length))return error(e,cap,"Invalid particle begin arguments.");
  /* Avoid a large temporary on the 3DS stack; validate before clearing output. */
- C3ParticleBank validated;if(!c3_particle_bank_decode(&validated,bank->bytes,bank->length,e,cap))return 0;
+ C3ParticleBank validated;if(bank->profile){if(!c3_particle_bank_decode_reachable(&validated,bank->bytes,bank->length,gen,bank->profile,e,cap))return 0;if(!c3_particle_bank_source_slot(&validated,gen,&gen))return error(e,cap,"Missing source root.");}
+ else if(!c3_particle_bank_decode(&validated,bank->bytes,bank->length,e,cap))return 0;
  const C3ParticleGenerator *g=&validated.generators[gen];
  if((g->type!=0&&g->type!=1&&g->type!=2&&g->type!=8)||g->rate>C3_PARTICLE_MAX_PARTICLES||g->rate< -(float)C3_PARTICLE_MAX_PARTICLES||g->kind&0x30000)return error(e,cap,"Unsupported particle root emission shape/rate.");
  memset(out,0,sizeof *out);out->bank=validated;out->cosmetic_seed=seed;float zero[3]={0,0,0};
@@ -272,6 +355,7 @@ int c3_particle_position(C3ParticleSystem *s,const float pos[3],char *e,size_t c
 int c3_particle_begin_position_flags(C3ParticleSystem *s,const C3ParticleBank *bank,unsigned gen,uint32_t seed,const float pos[3],float yaw,float scale,float radius_scale,uint16_t flags,char *e,size_t cap)
 {
  if(flags!=1&&flags!=0x10a1&&flags!=0x18a9)return error(e,cap,"Unsupported source POSITION attachment profile.");
+ if(bank&&bank->profile&&flags!=0x10a1)return error(e,cap,"Qualified Growl POSITION requires source flags0x10A1.");
  if(!valid_position(pos)||!isfinite(yaw)||fabsf(yaw)>1000000||!isfinite(scale)||scale<=0||scale>1000||!isfinite(radius_scale)||radius_scale<=0||radius_scale>1000)return error(e,cap,"Invalid POSITION particle start transform.");
  float position[3];memcpy(position,pos,sizeof position);
  if(!c3_particle_begin(s,bank,gen,seed,e,cap))return 0;
@@ -281,6 +365,7 @@ int c3_particle_begin_position_flags(C3ParticleSystem *s,const C3ParticleBank *b
 }
 int c3_particle_append_position_flags(C3ParticleSystem *s,const C3ParticleBank *bank,unsigned gen,const float pos[3],float yaw,float scale,float radius_scale,uint16_t flags,uint32_t *handle,char *e,size_t cap)
 {
+ if(bank&&bank->profile)return error(e,cap,"Qualified Growl profile admits a single source root only.");
  if(!s||!s->position_attachment||s->failed||s->cancelled||!bank||bank->bytes!=s->bank.bytes||bank->length!=s->bank.length||gen>=s->bank.generator_count||!handle)return error(e,cap,"Invalid POSITION append system/bank/root.");
  if((flags!=1&&flags!=0x10a1&&flags!=0x18a9)||!valid_position(pos)||!isfinite(yaw)||fabsf(yaw)>1000000||!isfinite(scale)||scale<=0||scale>1000||!isfinite(radius_scale)||radius_scale<=0||radius_scale>1000)return error(e,cap,"Invalid POSITION append transform/profile.");
  const C3ParticleGenerator *g=&s->bank.generators[gen];
@@ -322,7 +407,7 @@ int c3_particle_step(C3ParticleSystem *s,uint32_t ms,int paused,char *e,size_t c
  return 1;
 }
 void c3_particle_cancel(C3ParticleSystem *s)
-{if(s){memset(s->particles,0,sizeof s->particles);memset(s->emitters,0,sizeof s->emitters);s->cancelled=1;s->remainder=0;}}
+{if(s){memset(s->particles,0,sizeof s->particles);memset(s->emitters,0,sizeof s->emitters);if(s->bank.profile)for(unsigned i=0;i<C3_PARTICLE_MAX_APP_SRT;++i){s->app_srt[i].active=0;s->app_srt[i].references=0;}s->cancelled=1;s->remainder=0;}}
 int c3_particle_finished(const C3ParticleSystem *s)
 {if(!s||s->failed)return 0;for(unsigned i=0;i<C3_PARTICLE_MAX_EMITTERS;++i)if(s->emitters[i].active)return 0;for(unsigned i=0;i<C3_PARTICLE_MAX_PARTICLES;++i)if(s->particles[i].active)return 0;return 1;}
 
@@ -338,6 +423,7 @@ int c3_particle_quad(const C3Particle *p,const float attachment[12],const C3Part
 {
  if(!p||!attachment||!camera||!out){error(e,cap,"Missing particle quad arguments.");return -1;}
  if(!p->active||p->size<FLT_EPSILON||(p->kind&0x20000000))return 0;
+ if(p->app_srt_handle){error(e,cap,"AppSRT particles require the checked system-aware adapter.");return -1;}
  if(p->kind&(0x80000000u|0x40000000u)){error(e,cap,"Unqualified particle lighting/point render mode.");return -1;}
  if((p->kind&0x100000)&&!(p->kind&0x80)){error(e,cap,"Unqualified non-PrimEnv particle trail.");return -1;}
  for(unsigned i=0;i<12;++i)if(!isfinite(attachment[i])){error(e,cap,"Nonfinite particle attachment.");return -1;}
@@ -391,4 +477,37 @@ int c3_particle_quad(const C3Particle *p,const float attachment[12],const C3Part
   if(q.trail&&(i==0||i==3)){float alpha=255*p->trail;if(alpha<0)alpha=0;if(alpha>255)alpha=255;v->rgba[3]=(uint8_t)alpha;}
  }
  *out=q;if(e&&cap)e[0]=0;return 1;
+}
+int c3_particle_app_srt_geometry(C3ParticleSystem *s,const C3Particle *p,const C3ParticleCamera *c,uint64_t frame,float position[3],float velocity[3],char *e,size_t cap)
+{
+ if(!s||!p||!c||!position||!velocity||s->failed||s->cancelled||s->bank.profile!=C3_PARTICLE_PROFILE_GROWL_V1||!p->active||!p->app_srt_handle||
+    overlap(position,12,s,sizeof *s)||overlap(velocity,12,s,sizeof *s)||overlap(position,12,velocity,12))return error(e,cap,"Invalid qualified AppSRT geometry arguments.");
+ C3ParticleAppSRT *a=app_srt(s,p->app_srt_handle);
+ if(!a||!a->references||a->status!=0)return error(e,cap,"Stale AppSRT handle or unsupported SRT status/setter.");
+ float rr=0,uu=0,ru=0;
+ for(unsigned i=0;i<3;++i){if(!isfinite(c->right[i])||!isfinite(c->up[i])||!isfinite(a->translate[i])||!isfinite(p->position[i])||!isfinite(p->velocity[i]))return error(e,cap,"Nonfinite AppSRT geometry.");rr+=c->right[i]*c->right[i];uu+=c->up[i]*c->up[i];ru+=c->right[i]*c->up[i];}
+ if(fabsf(rr-1)>.001f||fabsf(uu-1)>.001f||fabsf(ru)>.001f)return error(e,cap,"AppSRT camera basis must be orthonormal.");
+ /* HSD_MtxGetRotationMtx(inverse_view,'z','x'): normalize Z and X,
+  * then Y=Z cross X, X=Y cross Z. No actor yaw enters this basis. */
+ float z[3],x[3],y[3];
+ for(unsigned i=0;i<3;++i){z[i]=c->right[(i+1)%3]*c->up[(i+2)%3]-c->right[(i+2)%3]*c->up[(i+1)%3];x[i]=c->right[i]/sqrtf(rr);}
+ float zz=sqrtf(z[0]*z[0]+z[1]*z[1]+z[2]*z[2]);if(zz<=FLT_EPSILON)return error(e,cap,"Degenerate AppSRT camera basis.");
+ for(unsigned i=0;i<3;++i)z[i]/=zz;
+ for(unsigned i=0;i<3;++i)y[i]=z[(i+1)%3]*x[(i+2)%3]-z[(i+2)%3]*x[(i+1)%3];
+ for(unsigned i=0;i<3;++i)x[i]=y[(i+1)%3]*z[(i+2)%3]-y[(i+2)%3]*z[(i+1)%3];
+ if(!a->cache_valid||a->render_frame!=frame){memset(a->matrix,0,sizeof a->matrix);a->matrix[0]=a->matrix[5]=a->matrix[10]=1;for(unsigned i=0;i<3;++i)a->matrix[4*i+3]=a->translate[i];a->render_frame=frame;a->cache_valid=1;}
+ for(unsigned i=0;i<3;++i)for(unsigned j=0;j<3;++j)if(a->matrix[4*i+j]!=(i==j?1.f:0.f))return error(e,cap,"Unqualified nonidentity AppSRT rotation/scale cache.");
+ float world[3],motion[3];
+ for(unsigned i=0;i<3;++i){world[i]=a->matrix[4*i+3]+x[i]*p->position[0]+y[i]*p->position[1]+z[i]*p->position[2];motion[i]=x[i]*p->velocity[0]+y[i]*p->velocity[1]+z[i]*p->velocity[2];if(!isfinite(world[i])||!isfinite(motion[i]))return error(e,cap,"AppSRT geometry overflow.");}
+ memcpy(position,world,sizeof world);memcpy(velocity,motion,sizeof motion);if(e&&cap)e[0]=0;return 1;
+}
+int c3_particle_quad_app_srt(C3ParticleSystem *s,const C3Particle *p,const C3ParticleCamera *c,uint64_t frame,float native_scale,C3ParticleQuad *out,char *e,size_t cap)
+{
+ if(!p||!out||!isfinite(native_scale)||native_scale<=0){error(e,cap,"Invalid AppSRT quad conversion.");return -1;}
+ if(!p->active||p->size<FLT_EPSILON||(p->kind&0x20000000u))return 0;
+ if(!p->app_srt_handle){error(e,cap,"AppSRT quad requires an AppSRT particle.");return -1;}
+ C3Particle converted=*p;
+ if(!c3_particle_app_srt_geometry(s,p,c,frame,converted.position,converted.velocity,e,cap))return -1;
+ converted.app_srt_handle=0;float attachment[12]={native_scale,0,0,0,0,native_scale,0,0,0,0,native_scale,0};
+ return c3_particle_quad(&converted,attachment,c,out,e,cap);
 }

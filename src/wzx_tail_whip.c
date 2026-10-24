@@ -56,9 +56,9 @@ int c3_wzx_tail_whip_begin(C3WzxTailWhip *out,const C3WzxTailWhipProgram *p,cons
  C3WzxTailWhip s={0};s.program=*p;memcpy(s.root,root,sizeof s.root);s.root_yaw=yaw;s.actor_scale=scale;s.active=s.owner_attached=s.effect_visible=1;s.controller_starts=s.effect_starts=s.sound_requests=1;*out=s;return 1;
 }
 int c3_wzx_tail_whip_step(C3WzxTailWhip *s,uint32_t ms){if(!s||!valid(&s->program))return 0;if(!s->active)return 1;uint64_t bound=(uint64_t)C3_WZX_TAIL_WHIP_MAX_TICKS*1000,advance=(uint64_t)ms*60;if(s->units>bound||advance>bound-s->units)return 0;s->units+=advance;
- /* MotionStart801D9C1C: duration98/2=49, frameCount49. The
-  * exact-multiple branch replaces remainder0 with49 and decrements quotient,
-  * so initial owner frame=49-49=0; rate lbl8047E348=.5. */
+ /* Loader reserves track0 kind1/value0; fn801DD100 writes normalization0
+  * to entry.field90. MotionStart801D9C1C duration0 calls fn801DF070,
+  * which explicitly sets frame0 and rate lbl8047E3C8=.5. Gate98 is separate. */
  double seconds=(double)s->units/60000.;s->controller_seconds=(float)fmin(seconds*.5,31./60.);s->effect_seconds=(float)fmin(seconds*.5,45./60.);s->owner_seconds=(float)(seconds*.5);s->owner_gate_complete=s->units>=(uint64_t)s->program.owner_gate*1000;return 1;}
 int c3_wzx_tail_whip_signals(C3WzxTailWhip *s,int controller,int effect,int audio){if(!s||!valid(&s->program))return 0;if(!s->active)return 1;if(controller){s->controller_ended=1;s->owner_attached=0;}if(effect){s->effect_ended=1;s->effect_visible=0;}if(audio)s->audio_done=1;return 1;}
 int c3_wzx_tail_whip_finish(C3WzxTailWhip *s){if(!s||!valid(&s->program))return 0;if(s->completed)return 1;if(!s->active||!s->owner_gate_complete||!s->controller_ended||!s->effect_ended||!s->audio_done)return 0;c3_wzx_tail_whip_cancel(s);s->completed=1;return 1;}

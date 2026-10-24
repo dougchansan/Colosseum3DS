@@ -5,6 +5,8 @@
 #define C3_PARTICLE_MAX_GENERATORS 16u
 #define C3_PARTICLE_MAX_TEXTURE_GROUPS 16u
 #define C3_PARTICLE_MAX_EMITTERS 16u
+#define C3_PARTICLE_MAX_APP_SRT 16u
+#define C3_PARTICLE_PROFILE_GROWL_V1 1u
 #ifndef C3_PARTICLE_MAX_PARTICLES
 /* Measured admitted Reflect closure peak1369; bounded1536 live slots. */
 #define C3_PARTICLE_MAX_PARTICLES 1536u
@@ -28,29 +30,52 @@ typedef struct {
  uint32_t generator_count,texture_group_count,refs[C3_PARTICLE_MAX_GENERATORS];
  uint32_t texture_frames[C3_PARTICLE_MAX_TEXTURE_GROUPS];
  C3ParticleGenerator generators[C3_PARTICLE_MAX_GENERATORS];
+ /* Explicit sparse profile only: immutable original table IDs and references.
+  * generator_count remains decoded slots; old banks retain identity mapping. */
+ uint32_t source_generator_count,reference_offset;
+ uint16_t source_ids[C3_PARTICLE_MAX_GENERATORS];
+ uint8_t profile;
 } C3ParticleBank;
 typedef struct {
  uint8_t active,depth;uint16_t generator,life;
  uint32_t kind,serial;float count,position[3];
  float attachment_yaw,attachment_scale,radius_scale;
  uint16_t source_flags;
+ uint32_t app_srt_handle;
+ uint8_t deferred;
 } C3ParticleEmitter;
 typedef struct {
  uint8_t active,depth,tex_group,pose;
+ /* generator is a native decoded slot; source_ids[generator] preserves the
+  * original ID for an explicit sparse profile (identity for legacy banks). */
  uint16_t generator,emitter,life,wait,pc,size_count,rotate_count,loop_pc,mark_pc;
  uint8_t loop_count;uint32_t serial;
  uint16_t color_count[2],color_remain[2];
  uint32_t kind;
  float attachment_yaw,attachment_scale,radius_scale;
  uint16_t source_flags;
+ uint32_t app_srt_handle,emitter_serial;
  float tornado_radius,tornado_angle,tornado_speed,tornado_turn,tornado_origin[3];
  float position[3],velocity[3],size,size_target,rotation,rotate_target,rotate_accel,grav,fric,trail;
  uint8_t prim[4],env[4],color_base[2][4],color_target[2][4];
 } C3Particle;
+
+/* Reached Growl owns camera-relative SRTs with identity rotation/scale.
+ * Only source status0 is admitted; no general SRT setter is exposed.
+ * Handles encode slot+generation and are scoped to one begin/cancel session. */
+typedef struct {
+ uint32_t generation,owner_serial;
+ uint16_t references;
+ uint8_t active,status,cache_valid;
+ uint64_t render_frame;
+ float translate[3],matrix[12];
+} C3ParticleAppSRT;
 typedef struct {
  C3ParticleBank bank;
  C3ParticleEmitter emitters[C3_PARTICLE_MAX_EMITTERS];
  C3Particle particles[C3_PARTICLE_MAX_PARTICLES];
+ C3ParticleAppSRT app_srt[C3_PARTICLE_MAX_APP_SRT];
+ uint32_t app_srt_generation;
  uint32_t cosmetic_seed;uint64_t cosmetic_draws,ticks,remainder;
  uint32_t emitted,spawned_emitters,peak_particles;
  uint8_t failed,cancelled,position_attachment;
@@ -77,6 +102,18 @@ typedef struct {
 int c3_particle_quad(const C3Particle *,const float attachment[12],
                      const C3ParticleCamera *,C3ParticleQuad *,char *,size_t);
 int c3_particle_bank_decode(C3ParticleBank *,const void *,size_t,char *,size_t);
+/* Explicit Growl v1: source root18, original113 descriptors, decoded closure
+ * {18,93,111,112}. Raw bytes/IDs remain unchanged; unsupported state ops fail. */
+int c3_particle_bank_decode_reachable(C3ParticleBank *,const void *,size_t,
+ unsigned source_root,unsigned profile,char *,size_t);
+int c3_particle_bank_source_slot(const C3ParticleBank *,unsigned source_id,unsigned *slot);
+/* Source-world outputs; C is the inverse-view rotation orthonormalized Z,X.
+ * Does not mutate simulation coordinates or bake camera motion into particles. */
+int c3_particle_app_srt_geometry(C3ParticleSystem *,const C3Particle *,
+ const C3ParticleCamera *,uint64_t render_frame,float position[3],float velocity[3],char *,size_t);
+int c3_particle_quad_app_srt(C3ParticleSystem *,const C3Particle *,
+ const C3ParticleCamera *,uint64_t render_frame,float native_per_source_unit,
+ C3ParticleQuad *,char *,size_t);
 /* begin commits only after validation. Cosmetic RNG is per-system HSD LCG,
  * deliberately separate from combat; not a claim of original shared-RNG parity. */
 int c3_particle_begin(C3ParticleSystem *,const C3ParticleBank *,unsigned generator,

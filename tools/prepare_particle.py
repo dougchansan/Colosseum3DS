@@ -193,7 +193,13 @@ def decode_i4(data, width, height):
     return bytes(result)
 
 
-def bank(data, root=3, additional_roots=()):
+def bank(data, root=3, additional_roots=(), *, profile=None):
+    growl = profile == 'growl'
+    if profile not in (None, 'growl'):
+        raise ValueError('Unknown explicit particle source profile')
+    if growl and (root != 18 or additional_roots or len(data) != 365764 or
+                  hashlib.sha256(data).hexdigest() != '64867627ce7029307e3064e1af883cafb52995b7e2834980d7722d328ef043da'):
+        raise ValueError('Growl original bank/profile binding changed')
     if not 32 <= len(data) <= MAX_BANK or extent(data, 0, 4) != b"GPT1":
         raise ValueError("Invalid GPT1 signature/size")
     ptl, txg, tex_bytes, refs = (word(data, at) for at in (4, 8, 12, 16))
@@ -202,7 +208,7 @@ def bank(data, root=3, additional_roots=()):
     if struct.unpack(">H", extent(data, ptl, 2))[0] != 0x43 or word(data, ptl + 4):
         raise ValueError("Only source GPT1 command-bank version43 base0 is admitted")
     count = word(data, ptl + 8)
-    if not 1 <= count <= MAX_GENERATORS or not 0 <= root < count or refs + count * 4 != len(data):
+    if not 1 <= count <= (113 if growl else MAX_GENERATORS) or not 0 <= root < count or refs + count * 4 != len(data):
         raise ValueError("GPT1 generator/reference bound")
     offsets = [ptl + word(data, ptl + 12 + i * 4) for i in range(count)]
     if sorted(set(offsets)) != offsets or offsets[0] < ptl + 12 + count * 4 or offsets[-1] + 60 > txg:
@@ -213,13 +219,15 @@ def bank(data, root=3, additional_roots=()):
         index = pending.pop()
         if index in generators:
             continue
-        if not 0 <= index < count or len(generators) >= MAX_GENERATORS:
+        if not 0 <= index < count or len(generators) >= (16 if growl else MAX_GENERATORS):
             raise ValueError("Particle transitive generator reference outside bank")
         start, end = offsets[index], offsets[index + 1] if index + 1 < count else txg
         if end - start < 61:
             raise ValueError("Truncated generator header/program")
         raw = extent(data, start, end - start)
         gen_type, group, gen_life, life, kind = struct.unpack_from(">4HI", raw)
+        if growl and bool(kind & 0x30000) != (index in (93,111)):
+            raise ValueError('Unqualified Growl application-SRT generator')
         if gen_type not in (0, 1, 2, 6, 8) or not 1 <= life <= 1000 or not 1 <= gen_life <= 120:
             raise ValueError("Unqualified particle generator type/lifetime")
         params = list(struct.unpack_from(">12f", raw, 12))
@@ -247,6 +255,8 @@ def bank(data, root=3, additional_roots=()):
             depth(child, active + [index])
     for index in (root, *additional_roots):
         depth(index, [])
+    if growl and sorted(closure) != [18,93,111,112]:
+        raise ValueError('Growl admitted sparse closure changed')
     group_count = word(data, txg)
     if not 1 <= group_count <= 8:
         raise ValueError("Particle texture-group bound")
@@ -257,7 +267,7 @@ def bank(data, root=3, additional_roots=()):
             raise ValueError("Particle generator texture group missing")
         at = txg + word(data, txg + 4 + group * 4)
         frames, fmt, palflag, width, height, palnum = struct.unpack(">6I", extent(data, at, 24))
-        if not 1 <= frames <= 16 or fmt not in (0, 1) or palflag or palnum:
+        if not 1 <= frames <= (19 if growl and group==1 else 16) or fmt not in (0, 1) or palflag or palnum:
             raise ValueError("Unsupported particle texture format/palette/frame count")
         for pose in range(frames):
             offset = txg + word(data, at + 24 + pose * 4)

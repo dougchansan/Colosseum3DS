@@ -63,3 +63,30 @@ Dolly values and RNG order, world-axis translation, FOV bounds, pause, partition
 invariance, cancellation and malformed profile rejection. A private actual pack
 can be supplied as the fourth camera-test argument. No stage integration or
 hardware visual qualification is established by this camera-only change.
+
+## Growl 45 checked camera
+
+Growl has a separate C3GC v1 pack and `c3_battle_camera_growl_load` API. Its exact
+WZX header is `[1,6,0x200858,2,5,0]`, without an external camera resource. Derived
+camera flags are 0x42: motion options are source order 3,0,2, excluding translation 1.
+The same previous-motion fallthrough and Dolly branch are reused; no generic
+camera engine or unrestricted flag acceptance is introduced.
+
+Owner entry 1 starts at frame 0 with .5 authored frames per source 60 Hz tick.
+For Zigzagoon the original PKX raw timing table is `[0,130,244,366]`. DoPosition
+reads `count*4+4`: count 4 selects raw offset 20, which is timing 1=244. It does not
+use 130,366, or a normalized damage delay. The action body-map2 source-part track
+clamps at its endpoint; the Tail Whip idle track continues looping as before.
+
+Source distances are 30.625..43.75 GC units, bounded height 6..11, and yaw range
+.31415927..62831855 around the initial owner yaw, reversed for source-facing
+negative owners. Dolly uses direct static middle FOV mask 2. Orbit/still consume
+GetPattern's initial random draw but force short-table row 5, also mask 2; its
+segment modes 1/0 retain a constant FOV, so no new FOV keyframe animation is invented.
+The native cosmetic stream remains independent of combat and other move cameras.
+
+Growl phase/flags/entry/kind/timing admission is explicit. Its decoder rejects
+BC/CC/TC packs and existing decoders reject GC. Camera-only tests cover selection
+bins, RNG draw counts, bounds, source duration, pause, cancellation, partition
+invariance and rejection without mutation. Hardware Growl rendering and stage
+integration are separate work; this section claims neither.

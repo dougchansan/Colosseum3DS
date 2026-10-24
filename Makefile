@@ -200,3 +200,19 @@ all: build/test_wzx_tail_whip
 wzx-tail-whip-check: build/test_wzx_tail_whip
 	./build/test_wzx_tail_whip
 test: wzx-tail-whip-check
+
+build/test_particle_app_srt: tests/test_particle_app_srt.c src/particle.c src/particle_pack.c build/save_codec.c include/colosseum3ds/particle.h include/colosseum3ds/particle_pack.h | build
+	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_particle_app_srt.c src/particle.c src/particle_pack.c build/save_codec.c $(LDFLAGS) -lm -o $@
+all: build/test_particle_app_srt
+.PHONY: particle-app-srt-check
+particle-app-srt-check: build/test_particle_app_srt
+	./build/test_particle_app_srt
+test: particle-app-srt-check
+
+build/test_wzx_growl: tests/test_wzx_growl.c src/wzx_growl.c build/save_codec.c include/colosseum3ds/wzx_growl.h | build
+	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_wzx_growl.c src/wzx_growl.c build/save_codec.c $(LDFLAGS) -lm -o $@
+all: build/test_wzx_growl
+.PHONY: wzx-growl-check
+wzx-growl-check: build/test_wzx_growl
+	./build/test_wzx_growl
+test: wzx-growl-check

@@ -209,7 +209,7 @@ def prepare(disc, parser, output, source_root=None):
     outputs['tail_whip_effect.c3t']=drawable
     report=dict(source_commit=SOURCE_COMMIT,source_files=manifest['files'],archive=ARCHIVE,group=0x3A9,member=MEMBER,
         archive_sha256=ARCHIVE_SHA256,member_sha256=MEMBER_SHA256,nodes=nodes,models=[dict(offset=at,bytes=size,sha256=digest) for _,at,size,digest in MODEL_PROFILES],
-        owner=dict(species=288,entry=0,clip=0,kind=2,timing=[0,98],authored_end=49,initial_frame=0,remaining_loops=0,initial_frame_qualification='MotionStart801D9C1C duration98>>1=49; quotient1/remainder0 special branch makes remainder49 and quotient0, so frame49-49=0.',center_native=center,bounds_minimum=lo,bounds_maximum=hi,extracted_hsd_sha1=hashlib.sha1(owner_dat).hexdigest()),
+        owner=dict(species=288,entry=0,clip=0,kind=2,timing=[0,98],authored_end=49,initial_frame=0,remaining_loops=0,initial_frame_qualification='Sequence loader inserts reserved track0 kind1/value0; fn801DD100 writes normalization0 to entry.field90. MotionStart801D9C1C duration0 takes direct fn801DF070 clip0, which explicitly sets frame0/rate.5.',center_native=center,bounds_minimum=lo,bounds_maximum=hi,extracted_hsd_sha1=hashlib.sha1(owner_dat).hexdigest()),
         attachment=dict(controller='Owner follows source controller joint1 POSITION+ROTATION continuously; preserve scale; reset/detach on node stop.',
             effect='Selector16 creates original bound-midpoint center-null; POSITION-only attachment, own owner-yaw/class-scale remain. It is not original bone16.',
             controller_root='Initial owner root position/yaw and source class-scale .75. Motion pack stores unbound local matrices; runtime composition is not implemented.',

@@ -10,6 +10,7 @@
 #include "colosseum3ds/wzx_confusion.h"
 #include "colosseum3ds/battle_camera.h"
 #include "colosseum3ds/wzx_tail_whip.h"
+#include "colosseum3ds/wzx_growl.h"
 #define C3_BATTLE_STAGE_MODELS 16u
 typedef struct {
     C3Title models[C3_BATTLE_STAGE_MODELS];
@@ -66,8 +67,22 @@ typedef struct {
     C3BattleCamera tail_camera;
     uint32_t tail_model, tail_owner, tail_cue, tail_event;
     uint8_t tail_available, tail_camera_available;
+    C3WzxGrowlProgram growl_program;
+    C3WzxGrowl growl;
+    C3ParticlePack growl_pack;
+    uint8_t *growl_bytes;
+    C3BattleCameraProgram growl_camera_program;
+    C3BattleCamera growl_camera;
+    uint32_t growl_model, growl_owner, growl_cue, growl_event;
+    uint8_t growl_available, growl_camera_available, growl_particles_started;
+    uint8_t growl_teardown_started, growl_keyoff_sent;
+    uint32_t growl_audio_wait_ms;
+    uint8_t growl_motion[C3_BATTLE_STAGE_MODELS]; /* 1: remaining clip1, 2: source idle. */
+    uint64_t growl_motion_units[C3_BATTLE_STAGE_MODELS];
     int (*sound_done)(uint32_t,uint32_t,char *,size_t);
     int (*sound_cue)(uint32_t,uint32_t,char *,size_t);
+    int (*sound_status)(uint32_t,uint32_t,char *,size_t);
+    int (*sound_stop)(uint32_t,uint32_t,char *,size_t);
     char error[192];
     FILE *trace;
 } C3BattleStage;

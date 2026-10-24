@@ -88,6 +88,27 @@ class CameraPreparationTests(unittest.TestCase):
         changed=bytearray(patterns);changed[0]^=1
         with self.assertRaises(ValueError):camera.encode_tailwhip(actors,changed)
 
+    def test_growl_exact_profile_and_source_duration(self):
+        raw=bytearray(160);struct.pack_into('>6I',raw,112,1,6,0x200858,2,5,0)
+        self.assertEqual(camera.profile(raw,0x200858,5,2,1,6)['entry'],1)
+        for offset in (112,116,120,124,128,132,136,159):
+            changed=bytearray(raw);changed[offset]^=1
+            with self.assertRaises(ValueError):camera.profile(changed,0x200858,5,2,1,6)
+        path=Path(os.environ.get('C3_GROWL_CAMERA',str(ROOT/'private/growl-camera-v1/growl_camera.c3c')))
+        if not path.exists():self.skipTest('Private Growl camera descriptor required')
+        patterns=path.read_bytes()[512:1120]
+        actors=[dict(species=species,selector=-1,minimum=[-3.,0.,-3.],maximum=[3.,10.,3.],timing=[130,244,366,0],part=(42,62,53)[i],kind=4,track=[[0,.2,0],[0,.3,0]]) for i,(species,_,_) in enumerate(camera.ACTORS)]
+        packed=camera.encode_growl(actors,patterns)
+        self.assertEqual(packed[:4],b'C3GC');self.assertEqual(struct.unpack_from('<I',packed,12)[0],45);self.assertEqual(struct.unpack_from('<5I',packed,64),(0x200858,5,2,1,0));self.assertEqual(packed[128:192],bytes(64))
+        self.assertEqual(packed[480:500],hashlib.sha1(packed[:480]+bytes(20)+packed[500:]).digest())
+        for key,value in [('kind',2),('timing',[130,100,366,0]),('timing',[130,244,366,1]),('selector',0),('part',1)]:
+            bad=copy.deepcopy(actors);bad[0][key]=value
+            with self.assertRaises(ValueError):camera.encode_growl(bad,patterns)
+        # Runtime raw table offsets: count4*4+4 =>offset20 =>timing1=244.
+        owner=bytearray(32);struct.pack_into('>I',owner,0,4);struct.pack_into('>4I',owner,12,0,130,244,366)
+        count=struct.unpack_from('>I',owner)[0];duration=struct.unpack_from('>I',owner,count*4+4)[0]
+        self.assertEqual(duration,244)
+
     def test_source_files_match_exact_pinned_functions(self):
         for name,digest in camera.SOURCE_FILES.items():
             self.assertEqual(hashlib.sha256((ROOT/'vendor/colosseum'/name).read_bytes()).hexdigest(),digest)

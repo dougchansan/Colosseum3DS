@@ -54,10 +54,11 @@ animation-ended checks. `wazaSequenceSysGetWazaTime` (`0x801DB3F8`) and
 conditional early termination and sound-running checks. The descriptor records
 98 as the owner gate and zero as “no asserted fixed total”; it does not invent
 a 90-tick total or equate dry PCM completion with original DSP completion.
-The admitted owner idle clip ends at authored frame 49. Motion start halves
-duration 98; its exact-divisibility branch gives remainder 49 and zero remaining
-loops, so its original start frame is zero. This is one source traversal at
-rate 0.5, not a newly selected idle loop phase.
+The admitted owner idle clip ends at authored frame 49. The loader inserts a
+reserved track prefix with kind 1/value 0; `fn_801DD100` writes normalization
+zero to runtime entry `field_90`. Motion start therefore takes its duration-zero
+branch into `fn_801DF070`, which explicitly sets frame zero and rate 0.5.
+The 98-tick owner gate is a separate timing value, not this start-duration field.
 
 The root has no external camera data. Raw flags `0x78` admit motion modes
 3/0/1/2; derived camera parameter flags are zero, so FOV uses the original

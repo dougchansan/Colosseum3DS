@@ -30,6 +30,15 @@ TAIL_WHIP_MACROS = {
     0x402: '9116a23659a4d0e46a9efa1972118cb3dd8c8a8f73697a236e4bee43f1e3c4af',
     0x401: '1284da98a5ab921666c3a3132abe5d8053a8fc816eb52123ad779f097245018c',
 }
+GROWL_MACROS = {
+    0x39C: '2c223c311b9acb58008e81b08130bac46461cb4c43a70df83554529780a230cb',
+    0x39B: 'b618be0dc1cca7e0dfda3af7416a581704a575ce01a96216e37ceaa11660244a',
+    0x39A: '09650cfb359f118fbe20acf59e749510997cbc514e0b1f40cd2ca39e1568019f',
+}
+GROWL_STOP_SOURCE = {
+    'src/game/wazaSequence.c': '975afb18f19c6da6f7132fe3772d8ab3ab9546f528d8381073b59e614459444d',
+    'src/game/wazaSequenceEntry.c': '6500a4db7253ce776686b86d470a6f9587cfa3db10cf9fcfb9cca50328d0855f',
+}
 SOURCE_FILES = {
     'src/musyx/runtime/synthmacros.c': '0b45497b7761c23f52c6a0c0567258b5c5876d3c85c850c8ddbfb6c53d6c43c6',
     'src/musyx/runtime/synth.c': '43991b47e4c75dbc387708b2308085b0716c41d4e1a11da8b965c16bbdc8f473',
@@ -351,7 +360,7 @@ def checksum(data):
 
 
 def encode_pack(cues):
-    if not 1 <= len(cues) <= 8:
+    if not 1 <= len(cues) <= 9:
         raise ValueError('Cue count exceeds bound')
     rows, payload = bytearray(), bytearray()
     offset = 64 + len(cues) * 32
@@ -366,11 +375,13 @@ def encode_pack(cues):
     return header + bytes(32) + body
 
 
-def selected_sounds(confusion=False, tail_whip=False):
+def selected_sounds(confusion=False, tail_whip=False, growl=False):
+    if growl and not (confusion and tail_whip):
+        raise ValueError('Growl requires --confusion --tail-whip to extend the eight-cue bundle')
     if tail_whip and not confusion:
         raise ValueError('Tail Whip requires --confusion to extend the seven-cue bundle')
     sounds = (0x85, 0x86, 0x220, 0x443, 0xE9, 0x472, 0x473) if confusion else (0x85, 0x86, 0x220)
-    return sounds + ((0x1DB,) if tail_whip else ())
+    return sounds + ((0x1DB,) if tail_whip else ()) + ((0x210,) if growl else ())
 
 
 def verify_tail_whip_binding(row, effect, table):
@@ -388,11 +399,26 @@ def verify_tail_whip_binding(row, effect, table):
     return records
 
 
-def prepare(disc, output, confusion=False, tail_whip=False):
-    sounds = selected_sounds(confusion, tail_whip)
+def verify_growl_binding(row, effect, table):
+    if len(row) != 12:
+        raise ValueError('Growl sound record extent differs from admitted source')
+    if (row[0], row[1], be16(row, 4), effect['macro'], effect['volume'], effect['pan'], effect['key']) != \
+            (0x80, 5, 0x283, 0x39C, 127, 64, 60):
+        raise ValueError('Growl sound/FX/macro binding differs from admitted source')
+    records = []
+    for macro, expected in GROWL_MACROS.items():
+        if macro not in table or hashlib.sha256(table[macro][1]).hexdigest() != expected:
+            raise ValueError('Growl macro body differs from admitted source')
+        records.append({'macro': macro, 'pool_offset': table[macro][0],
+                        'bytes': len(table[macro][1]), 'sha256': expected})
+    return records
+
+
+def prepare(disc, output, confusion=False, tail_whip=False, growl=False):
+    sounds = selected_sounds(confusion, tail_whip, growl)
     disc = verify_disc(disc)
     root = Path(__file__).resolve().parents[1]
-    for name, digest in SOURCE_FILES.items():
+    for name, digest in {**SOURCE_FILES, **(GROWL_STOP_SOURCE if growl else {})}.items():
         path = root / 'vendor/colosseum' / name
         if path.is_symlink() or hashlib.sha256(path.read_bytes()).hexdigest() != digest:
             raise ValueError('Audio macro source drift: ' + name)
@@ -439,6 +465,14 @@ def prepare(disc, output, confusion=False, tail_whip=False):
         if sound == 0x1DB:
             report['tail_whip_binding'] = {'sound_id': sound, 'fx_id': identity,
                 'root_macro': effect['macro'], 'macros': verify_tail_whip_binding(row, effect, macro_table)}
+        if sound == 0x210:
+            report['growl_binding'] = {'sound_id': sound, 'fx_id': identity,
+                'root_macro': effect['macro'], 'macros': verify_growl_binding(row, effect, macro_table),
+                'stop_source_sha256': GROWL_STOP_SOURCE, 'sound_start_tick': 130,
+                'control_start_tick': 130, 'control_delay_ticks': 100,
+                'stop_tick': 230,
+                'stop_semantics': 'wazaSequenceApplyStop -> wazaSequenceEntryStop case5 -> fn_80166B18 -> fn_80167070(id,1) -> fn_801669E4(id,0,0) -> _sndStopSE -> sndFXKeyOff',
+                'native_stop_limit': 'Immediate dry PCM buffer clear adapts source key-off; original release-envelope/tail timing is unqualified. STOPPED is not full PCM finished.'}
         layers = resolve_layers(macro_table, effect['macro'], key=effect['key'], volume=effect['volume'])
         pcm, clipped = render_layers(layers, sdir, samples, sine)
         cues.append((sound, pcm))
@@ -463,6 +497,7 @@ if __name__ == '__main__':
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--confusion', action='store_true', help='Include the four source Confusion requests; fail closed on unsupported macro branches')
     parser.add_argument('--tail-whip', action='store_true', help='Extend --confusion with admitted Tail Whip request 0x1DB; defaults stay unchanged')
+    parser.add_argument('--growl', action='store_true', help='Extend --confusion --tail-whip with admitted Growl request 0x210')
     args = parser.parse_args()
-    report = prepare(args.disc, args.output, args.confusion, args.tail_whip)
+    report = prepare(args.disc, args.output, args.confusion, args.tail_whip, args.growl)
     print('Prepared source-derived dry SFX: ' + ', '.join('%04x' % x['sound_id'] for x in report['cues']))

@@ -54,7 +54,7 @@ static int tail_load(C3BattleStage *s,const char *root,char *e,size_t n)
 }
 static int tail_event(C3BattleStage *s,const C3BattlePreviewEvent *ev,char *e,size_t n)
 {
-    if(s->bite.active||s->damage.active||s->reflect.active||s->confusion_active||s->tail.active)
+    if(s->bite.active||s->damage.active||s->reflect.active||s->confusion_active||s->tail.active||s->growl.active)
         return fail(e,n,"Overlapping source effect ownership.");
     uint32_t owner=s->count;
     for(uint32_t i=0;i<s->count;++i)if(s->slots[i]==ev->actor){owner=i;break;}

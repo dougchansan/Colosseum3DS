@@ -17,7 +17,8 @@ static struct {
     uint32_t sequences[C3_BATTLE_AUDIO_MAX_CUES];
     ndspWaveBuf voices[VOICES];
     uint32_t voice_sound[VOICES],voice_sequence[VOICES];
-    struct {uint32_t sound,sequence;} finished[FINISHED_IDENTITIES];
+    uint8_t voice_stopped[VOICES];
+    struct {uint32_t sound,sequence;uint8_t stopped;} finished[FINISHED_IDENTITIES];
     unsigned finished_next;
 } audio;
 static int fail(char *e,size_t n,const char *s)
@@ -71,29 +72,58 @@ int c3_battle_audio_player_open(const char *root,char *error,size_t cap)
     if(error&&cap)error[0]=0;
     return 1;
 }
-static void remember_finished(uint32_t sequence,uint32_t sound)
+static void remember_terminal(uint32_t sequence,uint32_t sound,int stopped)
 {
     if(!sequence)return;
     for(unsigned i=0;i<FINISHED_IDENTITIES;++i)
         if(audio.finished[i].sequence==sequence&&audio.finished[i].sound==sound)return;
     audio.finished[audio.finished_next].sequence=sequence;audio.finished[audio.finished_next].sound=sound;
+    audio.finished[audio.finished_next].stopped=(uint8_t)(stopped!=0);
     audio.finished_next=(audio.finished_next+1u)%FINISHED_IDENTITIES;
 }
-int c3_battle_audio_player_done(uint32_t sequence,uint32_t sound,char *error,size_t cap)
+int c3_battle_audio_player_status(uint32_t sequence,uint32_t sound,char *error,size_t cap)
 {
     if(!audio.started||!sequence){fail(error,cap,"Audio completion requires active owner and cue identity.");return -1;}
     uint32_t cue=0;while(cue<audio.count&&audio.cues[cue].sound_id!=sound)++cue;
     if(cue==audio.count){fail(error,cap,"Audio completion requested an unprepared sound ID.");return -1;}
     for(unsigned i=0;i<VOICES;++i)if(audio.voice_sequence[i]==sequence&&audio.voice_sound[i]==sound){
         if(error&&cap)error[0]=0;
+        if(audio.voice_stopped[i])return C3_BATTLE_AUDIO_CUE_STOPPED;
         if(audio.paused||audio.apt_pause_mask||ndspChnIsPaused(CHANNEL_BASE+i))return 0;
         unsigned status=audio.voices[i].status;
         if(status!=NDSP_WBUF_DONE&&status!=NDSP_WBUF_FREE)return 0;
-        remember_finished(sequence,sound);return 1;
+        remember_terminal(sequence,sound,0);return C3_BATTLE_AUDIO_CUE_FINISHED;
+    }
+    for(unsigned i=0;i<FINISHED_IDENTITIES;++i)
+        if(audio.finished[i].sequence==sequence&&audio.finished[i].sound==sound){if(error&&cap)error[0]=0;return audio.finished[i].stopped?C3_BATTLE_AUDIO_CUE_STOPPED:C3_BATTLE_AUDIO_CUE_FINISHED;}
+    fail(error,cap,"Audio completion cue identity is unknown or retired beyond history.");return -1;
+}
+int c3_battle_audio_player_done(uint32_t sequence,uint32_t sound,char *error,size_t cap)
+{
+    int status=c3_battle_audio_player_status(sequence,sound,error,cap);
+    if(status==C3_BATTLE_AUDIO_CUE_STOPPED){fail(error,cap,"Audio cue was explicitly stopped; full PCM did not finish.");return -1;}
+    return status;
+}
+int c3_battle_audio_player_stop(uint32_t sequence,uint32_t sound,char *error,size_t cap)
+{
+    if(!audio.started||!sequence)return fail(error,cap,"Audio stop requires active owner and cue identity.");
+    uint32_t cue=0;while(cue<audio.count&&audio.cues[cue].sound_id!=sound)++cue;
+    if(cue==audio.count)return fail(error,cap,"Audio stop requested an unprepared sound ID.");
+    for(unsigned i=0;i<VOICES;++i)if(audio.voice_sequence[i]==sequence&&audio.voice_sound[i]==sound){
+        if(!audio.voice_stopped[i]){
+            unsigned status=audio.voices[i].status;
+            if(status==NDSP_WBUF_DONE||status==NDSP_WBUF_FREE)remember_terminal(sequence,sound,0);
+            else{
+                ndspChnWaveBufClear(CHANNEL_BASE+i);
+                audio.voice_stopped[i]=1;remember_terminal(sequence,sound,1);
+            }
+        }
+        if(error&&cap)error[0]=0;
+        return 1;
     }
     for(unsigned i=0;i<FINISHED_IDENTITIES;++i)
         if(audio.finished[i].sequence==sequence&&audio.finished[i].sound==sound){if(error&&cap)error[0]=0;return 1;}
-    fail(error,cap,"Audio completion cue identity is unknown or retired beyond history.");return -1;
+    return fail(error,cap,"Audio stop cue identity is unknown or retired beyond history.");
 }
 int c3_battle_audio_player_cue(uint32_t sequence,uint32_t sound,char *error,size_t cap)
 {
@@ -107,7 +137,8 @@ int c3_battle_audio_player_cue(uint32_t sequence,uint32_t sound,char *error,size
         if(wave->status!=NDSP_WBUF_FREE&&wave->status!=NDSP_WBUF_DONE)continue;
         /* A channel is reused only after the SDK reports its prior buffer
          * DONE/FREE. Remember that exact identity, never infer older IDs done. */
-        remember_finished(audio.voice_sequence[i],audio.voice_sound[i]);
+        remember_terminal(audio.voice_sequence[i],audio.voice_sound[i],audio.voice_stopped[i]);
+        audio.voice_stopped[i]=0;
         memset(wave,0,sizeof *wave);wave->data_vaddr=audio.pcm[cue];wave->nsamples=audio.cues[cue].frames;
         ndspChnSetRate(CHANNEL_BASE+i,(float)audio.cues[cue].rate);
         ndspChnSetPaused(CHANNEL_BASE+i,audio.paused||audio.apt_pause_mask);ndspChnWaveBufAdd(CHANNEL_BASE+i,wave);
@@ -124,9 +155,9 @@ void c3_battle_audio_player_trace(FILE *trace,const char *phase)
     fprintf(trace,"battle_audio phase=%s started=%d manual_pause=%d apt_pause=%u cues=%lu\n",
         phase?phase:"snapshot",audio.started,audio.paused,audio.apt_pause_mask,(unsigned long)audio.count);
     if(audio.started)for(unsigned i=0;i<VOICES;++i)
-        fprintf(trace,"battle_audio_voice channel=%u sound=%lu sequence=%lu playing=%u paused=%u sample_position=%lu wave_status=%u\n",
+        fprintf(trace,"battle_audio_voice channel=%u sound=%lu sequence=%lu playing=%u paused=%u sample_position=%lu wave_status=%u explicit_stop=%u\n",
             CHANNEL_BASE+i,(unsigned long)audio.voice_sound[i],(unsigned long)audio.voice_sequence[i],
             (unsigned)ndspChnIsPlaying(CHANNEL_BASE+i),(unsigned)ndspChnIsPaused(CHANNEL_BASE+i),
-            (unsigned long)ndspChnGetSamplePos(CHANNEL_BASE+i),(unsigned)audio.voices[i].status);
+            (unsigned long)ndspChnGetSamplePos(CHANNEL_BASE+i),(unsigned)audio.voices[i].status,(unsigned)audio.voice_stopped[i]);
     fflush(trace);
 }

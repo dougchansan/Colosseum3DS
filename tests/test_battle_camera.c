@@ -173,9 +173,45 @@ static void tail_actual(const char *path)
     CHECK(!c3_battle_camera_decode(&p,raw,(size_t)size,error,sizeof error));CHECK(!memcmp(&p,&previous,sizeof p));CHECK(!c3_battle_camera_confusion_decode(&p,raw,(size_t)size,error,sizeof error));CHECK(!memcmp(&p,&previous,sizeof p));
     raw[64]^=1;memset(raw+480,0,20);uint8_t hash[20];c3_save_codec_sha1(hash,raw,(uint32_t)size);memcpy(raw+480,hash,20);CHECK(!c3_battle_camera_tailwhip_decode(&p,raw,(size_t)size,error,sizeof error));CHECK(!memcmp(&p,&previous,sizeof p));free(raw);c3_battle_camera_close(&p);
 }
+static C3BattleCameraProgram growl_synthetic(void)
+{
+    C3BattleCameraProgram p=tail_synthetic();p.move_id=45;p.flags[0]=0x200858;p.pattern[0]=5;p.fov_mask[0]=2;p.entry[0]=1;
+    for(unsigned i=0;i<3;++i){p.actors[i].animation_kind[0]=4;p.actors[i].timing[0][0]=130;p.actors[i].timing[0][1]=244;p.actors[i].timing[0][2]=366;}
+    return p;
+}
+static void growl_exercise(const C3BattleCameraProgram *p)
+{
+    C3BattleCamera a,b,old;char error[192];unsigned modes=0,shortened=0;
+    for(unsigned seed=1;seed<20000;seed+=17){c3_battle_camera_init(&a,seed);CHECK(c3_battle_camera_begin_move(&a,p,45,C3_BATTLE_CAMERA_ATTACK,2,0,actors,&base,error,sizeof error));CHECK(a.move_id==45&&a.motion!=1&&a.duration==244&&!a.dynamic_fov&&a.track_delay==0);modes|=1u<<a.motion;
+        CHECK(a.distance>=3.0625f&&a.distance<=4.375f&&a.height>=.6f&&a.height<=1.1f);CHECK(a.fov>=15&&a.fov<=85);CHECK(a.camera.near_plane==base.near_plane&&a.camera.far_plane==base.far_plane&&a.camera.aspect==base.aspect);
+        if(a.motion==0){CHECK(a.fov_pattern==UINT32_MAX&&a.motion_duration>=122&&a.motion_duration<=244);shortened+=a.motion_duration<244;CHECK(a.random_draws==8||a.random_draws==10);}
+        else{CHECK(a.fov_pattern==5);CHECK(a.random_draws==(a.motion==3?6u:7u));}
+        b=a;CHECK(c3_battle_camera_step(&a,5100,actors,error,sizeof error));for(unsigned i=0;i<300;++i)CHECK(c3_battle_camera_step(&b,17,actors,error,sizeof error));CHECK(!memcmp(&a,&b,sizeof a));
+        c3_battle_camera_pause(&a,1);old=a;CHECK(c3_battle_camera_step(&a,UINT32_MAX,actors,error,sizeof error));CHECK(!memcmp(&a,&old,sizeof a));c3_battle_camera_pause(&a,0);old=a;CHECK(!c3_battle_camera_step(&a,60001,actors,error,sizeof error));CHECK(!memcmp(&a,&old,sizeof a));c3_battle_camera_cancel(&a);CHECK(!memcmp(&a.camera,&base,sizeof base));
+    }
+    CHECK(modes==13&&shortened);
+    for(unsigned bin=0;bin<3;++bin){unsigned seed=1;for(;;++seed){uint32_t state=seed;float r=tail_unit(&state);if(r>(float)bin/3&&r<(float)(bin+1)/3)break;}
+        c3_battle_camera_init(&a,seed);unsigned previous=(unsigned[]){3,0,2}[bin];a.previous_motion=previous;CHECK(c3_battle_camera_begin_move(&a,p,45,C3_BATTLE_CAMERA_ATTACK,2,0,actors,&base,error,sizeof error));CHECK(a.motion!=previous);if(bin<2)CHECK(a.motion==(bin==0?0u:2u));
+    }
+    /* Growl source parameter/RNG oracle uses the action duration244. */
+    uint32_t dolly_seed=1;for(;;++dolly_seed){uint32_t state=dolly_seed;float r=tail_unit(&state);if(r>1.f/3&&r<2.f/3)break;}
+    c3_battle_camera_init(&b,dolly_seed);CHECK(c3_battle_camera_begin_move(&b,p,45,C3_BATTLE_CAMERA_ATTACK,2,0,actors,&base,error,sizeof error));CHECK(b.motion==0);uint32_t rng=dolly_seed;(void)tail_unit(&rng);int alternate=tail_unit(&rng)<=.7f;float chance=tail_unit(&rng),threshold0=alternate?.3f:.5f,threshold1=alternate?.65f:.75f;uint32_t effective=p->actors[2].timing[0][1];unsigned expected_draws=8;
+    if(chance>=threshold0){uint32_t first=tail_word(&rng)&65535,second=tail_word(&rng)&65535,draw=((second<<16)|first)%effective;expected_draws+=2;if(chance<threshold1)effective=draw<effective/2?effective/2:draw;else effective-=draw>effective/2?effective/2:draw;}
+    float near=30.625f+13.125f*tail_unit(&rng),far=30.625f+13.125f*tail_unit(&rng);if((alternate&&near<far)||(!alternate&&near>far)){float swap=near;near=far;far=swap;}
+    float lo=p->actors[2].minimum[1],hi=p->actors[2].maximum[1];if(lo<6){lo=6;if(hi<6)hi=9;}if(hi>11){hi=11;if(lo>11)lo=.8f*11;}float height=lo+(hi-lo)*tail_unit(&rng);float r=tail_unit(&rng),rotation=actors[2].yaw-.31415927f-(.62831855f-.31415927f)*r;float mix=tail_unit(&rng);
+    CHECK(b.motion_duration==effective&&b.random_draws==expected_draws&&b.rng==rng);CHECK(fabsf(b.eye_from[0]-sinf(rotation)*near*.1f)<1e-6f&&fabsf(b.eye_to[2]-cosf(rotation)*far*.1f)<1e-6f);
+    float length=0;for(unsigned k=0;k<3;++k){float d=p->actors[2].maximum[k]-p->actors[2].minimum[k];length+=d*d;}float size=.57735026f*sqrtf(length)*1.1f,span=fmaxf(.75f*size,(p->actors[2].maximum[1]-p->actors[2].minimum[1])*1.1f),radius=sqrtf(near*near+height*height);float lower=fminf(85,fmaxf(15,57.29578f*2*atan2f(.5f*span,radius))),upper=fminf(85,fmaxf(15,57.29578f*2*atan2f(2*span,radius)));CHECK(fabsf(b.fov-(lower+(upper-lower)*(.35f+.25f*mix)))<1e-5f);
+    old=a;C3BattleCameraProgram bad=*p;bad.flags[0]|=0x20;CHECK(!c3_battle_camera_begin_move(&a,&bad,45,C3_BATTLE_CAMERA_ATTACK,2,0,actors,&base,error,sizeof error));CHECK(!memcmp(&old,&a,sizeof a));CHECK(!c3_battle_camera_begin_move(&a,p,45,C3_BATTLE_CAMERA_DAMAGE,2,0,actors,&base,error,sizeof error));CHECK(!memcmp(&old,&a,sizeof a));CHECK(!c3_battle_camera_begin_move(&a,p,39,C3_BATTLE_CAMERA_ATTACK,2,0,actors,&base,error,sizeof error));CHECK(!memcmp(&old,&a,sizeof a));
+}
+static void growl_actual(const char *path)
+{
+    C3BattleCameraProgram p={0};char error[192];CHECK(c3_battle_camera_growl_load(&p,path,error,sizeof error));CHECK(p.actors[2].timing[0][0]==130&&p.actors[2].timing[0][1]==244&&p.actors[2].timing[0][2]==366);growl_exercise(&p);
+    FILE *f=fopen(path,"rb");CHECK(f&&!fseek(f,0,SEEK_END));long length=ftell(f);rewind(f);uint8_t *raw=malloc((size_t)length);CHECK(raw&&fread(raw,1,(size_t)length,f)==(size_t)length);fclose(f);C3BattleCameraProgram before=p;CHECK(!c3_battle_camera_tailwhip_decode(&p,raw,(size_t)length,error,sizeof error));CHECK(!memcmp(&before,&p,sizeof p));
+    raw[64]^=0x20;memset(raw+480,0,20);uint8_t hash[20];c3_save_codec_sha1(hash,raw,(uint32_t)length);memcpy(raw+480,hash,20);CHECK(!c3_battle_camera_growl_decode(&p,raw,(size_t)length,error,sizeof error));CHECK(!memcmp(&before,&p,sizeof p));free(raw);c3_battle_camera_close(&p);
+}
 int main(int argc,char **argv)
 {
-    C3BattleCameraProgram p=synthetic();source_golden();exercise(&p);confusion_synthetic();C3BattleCameraProgram tail=tail_synthetic();tail_exercise(&tail);
+    C3BattleCameraProgram p=synthetic();source_golden();exercise(&p);confusion_synthetic();C3BattleCameraProgram tail=tail_synthetic();tail_exercise(&tail);C3BattleCameraProgram growl=growl_synthetic();growl_exercise(&growl);
     if(argc>1){char error[192];CHECK(c3_battle_camera_load(&p,argv[1],error,sizeof error));exercise(&p);
         FILE *f=fopen(argv[1],"rb");CHECK(f!=NULL);CHECK(!fseek(f,0,SEEK_END));long length=ftell(f);CHECK(length>=512&&length<=(long)C3_BATTLE_CAMERA_MAX_BYTES);rewind(f);
         uint8_t *bytes=malloc((size_t)length),*mut=malloc((size_t)length);CHECK(bytes&&mut);CHECK(fread(bytes,1,(size_t)length,f)==(size_t)length);fclose(f);
@@ -187,5 +223,6 @@ int main(int argc,char **argv)
     }
     if(argc>2)confusion_exercise(argv[2]);
     if(argc>3)tail_actual(argv[3]);
+    if(argc>4)growl_actual(argv[4]);
     printf("camera checks: %u\n",checks);return 0;
 }

@@ -5,6 +5,8 @@ static const C3ParticlePack *particle_bindings[C3_STAGE_MAX_PARTICLE_BANKS];
 static uint32_t particle_binding_textures[C3_STAGE_MAX_PARTICLE_BANKS][32];
 static unsigned particle_binding_count;
 static const C3ParticleSystem *particle_system;
+static C3ParticleSystem *particle_srt_system;
+static uint64_t particle_render_frame;
 static float particle_attachment[12];
 static TitleGPUVertex *particle_vertices;
 static uint32_t particle_textures[32];
@@ -49,7 +51,25 @@ int c3_stage_renderer_particles(const C3ParticleSystem *system,const float attac
     if(attachment){for(unsigned i=0;i<12;++i)if(!isfinite(attachment[i]))return 0;
         memcpy(particle_attachment,attachment,sizeof particle_attachment);}
     if(selected)memcpy(particle_textures,particle_binding_textures[binding],sizeof particle_textures);
-    particle_pack=selected;particle_system=system;return 1;
+    particle_pack=selected;particle_system=system;particle_srt_system=NULL;return 1;
+}
+int c3_stage_renderer_particles_app_srt(C3ParticleSystem *system)
+{
+    static const float world[12]={.1f,0,0,0,0,.1f,0,0,0,0,.1f,0};
+    if(!system||system->bank.profile!=C3_PARTICLE_PROFILE_GROWL_V1)return 0;
+    int registered=0;
+    for(unsigned i=0;i<particle_binding_count;++i)
+        if(particle_bindings[i]->bank.bytes==system->bank.bytes&&
+           particle_bindings[i]->bank.profile==C3_PARTICLE_PROFILE_GROWL_V1)registered=1;
+    if(!registered||!c3_stage_renderer_particles(system,world))return 0;
+    particle_srt_system=system;return 1;
+}
+static int particle_build_quad(const C3Particle *p,const C3ParticleCamera *camera,
+                               C3ParticleQuad *quad,char *error,size_t cap)
+{
+    if(p->app_srt_handle&&particle_srt_system)
+        return c3_particle_quad_app_srt(particle_srt_system,p,camera,particle_render_frame,.1f,quad,error,cap);
+    return c3_particle_quad(p,particle_attachment,camera,quad,error,cap);
 }
 static uint32_t particle_color(const uint8_t c[4])
 {return (uint32_t)c[0]|(uint32_t)c[1]<<8|(uint32_t)c[2]<<16|(uint32_t)c[3]<<24;}
@@ -81,7 +101,12 @@ static int draw_particles(const C3TitleCamera *camera,const C3D_Mtx *mvp,
                           C3TitleRenderStats *stats,char *error,size_t cap)
 {
     if(!particle_system||!particle_pack)return 1;
-    if(c3_particle_line_system_mode(particle_system)!=0)return draw_particle_mixed(camera,stats,error,cap);
+    if(c3_particle_line_system_mode(particle_system)!=0){
+        if(particle_srt_system){fail(error,cap,"Unqualified AppSRT line primitive.");return 0;}
+        return draw_particle_mixed(camera,stats,error,cap);
+    }
+    if(particle_render_frame==UINT64_MAX){fail(error,cap,"Particle render frame exhausted.");return 0;}
+    ++particle_render_frame;
     C3D_Mtx clip,view;C3ParticleCamera pc={0};
     if(!camera_matrices(camera,&clip,&view,false))return 0;
     for(unsigned i=0;i<4;++i){
@@ -94,7 +119,8 @@ static int draw_particles(const C3TitleCamera *camera,const C3D_Mtx *mvp,
     uint32_t count=0;C3ParticleQuad *quads=particle_quads;
     uint32_t *texids=particle_texids;
     for(unsigned i=0;i<C3_PARTICLE_MAX_PARTICLES;++i){
-        int result=c3_particle_quad(&particle_system->particles[i],particle_attachment,&pc,&quads[count],error,cap);
+        const C3Particle *p=&particle_system->particles[i];
+        int result=particle_build_quad(p,&pc,&quads[count],error,cap);
         if(result<0)return 0;
         if(!result)continue;
         const C3ParticleQuad *q=&quads[count];uint32_t texture=UINT32_MAX;
