@@ -24,6 +24,10 @@ CFLAGS := -g -O2 -Wall -Wextra -std=gnu11 -mword-relocations \
           -ffunction-sections -fdata-sections $(ARCH)
 CFLAGS += $(INCLUDE) -D__3DS__ $(C3_EXTRA_CFLAGS)
 C3_BUILD_ID ?= $(shell git rev-parse --short=12 HEAD)
+C3_BUILD_ID := $(strip $(C3_BUILD_ID))
+ifeq ($(strip $(C3_BUILD_ID)),)
+$(error Cannot resolve build identity; pass C3_BUILD_ID explicitly from the verified source checkout)
+endif
 CFLAGS += -DC3_BUILD_ID=\"$(C3_BUILD_ID)\"
 ifeq ($(C3_BOOT_ONLY),1)
 CFLAGS += -DC3_BOOT_ONLY
