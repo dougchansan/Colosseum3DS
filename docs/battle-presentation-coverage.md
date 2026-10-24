@@ -1,12 +1,15 @@
 # Encounter-10 presentation coverage and source closure
 
-This is a source trace, not evidence of complete rendered original move effects.
-The optional [Bite attack slice](native-wzx-bite.md) now implements its admitted
-model/floor-color timing; damage GPT1, sound and camera execution remain absent. The
-committed event/timeline layer exposes stable move/effect IDs and ordered visual
-state changes. It does not decode or execute the original effect scripts,
-particles, camera tracks, or sound sequences. Renderer scaffolding must not be
-reported as original-effect completion.
+This is a source trace, not evidence of complete encounter presentation.
+The optional [Bite slice](native-wzx-bite.md) executes its admitted attack and
+defender model, floor, GPT1, sound and camera bindings. Reflect executes its
+sequential caster/ally model, live attachment, floor, particles and sound bindings.
+Build `749708b3bd33` completed both effects, a preview WIN, return, re-entry/cancel
+and clean exit on hardware with NTR active on October 23, 2026 (HST). Its trace
+and byte-identical preview guards qualify that bounded run; they do not establish
+retail visual parity, performance acceptance or complete encounter coverage.
+Confusion capture, indirect sampling, particle primitives and sequencing remain
+under integration. Other moves retain explicitly incomplete presentation.
 
 Bindings below were read from the admitted GC6E01 revision-0 common REL
 (SHA-1 `e816761813900aa0fd4f87d012b3b2a19d2f003e`) and DOL
@@ -55,10 +58,10 @@ Zero means no default root for that kind, not absence of all visual behavior.
 
 For all twelve moves, combat is supported by the experimental preview coordinator;
 typed announcement, HP, status, miss, critical and faint events are available.
-For all twelve, complete WZX script playback, source camera playback and move
-sound playback remain unsupported. The optional Bite addon executes only its
-bounded attack-model/floor-color entries; it is not full attack/damage closure. No per-move camera or SE ID
-is asserted without parsing its selected sequence.
+Complete encounter-wide WZX, camera and sound coverage remains unsupported.
+Bite and Reflect have the bounded execution described above; other entries in
+this table are source bindings, not assertions of rendered execution. No per-move
+camera or SE ID is asserted without parsing its selected sequence.
 
 The original normal dispatcher `fight_waza.c::fightWazaWzxTypeFuncNormal`
 (`0x80211040`) calls `fightOutPokemonLoadWazaEffect` and
