@@ -3,6 +3,7 @@
  * No original assets are embedded. Usage: test_wzx_bite_stage PRIVATE_SCENE_DIR. */
 #include "battle_stage.h"
 #include <assert.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -11,7 +12,7 @@ int c3_stage_renderer_init(const C3Title *const *m,size_t n,char *e,size_t c){(v
 int c3_stage_renderer_set_static(size_t i,bool value){assert(i<counts);static_count+=value;return 1;}
 int c3_stage_renderer_set_modulation(size_t i,const uint8_t rgb[3]){assert(i<counts);enabled[i]=(rgb!=NULL);return 1;}
 int c3_stage_renderer_particle_pack(const C3ParticlePack *p,char *e,size_t n){(void)e;(void)n;assert(p&&p->texture_count==6);return C3_RENDER_OK;}
-int c3_stage_renderer_particles(const C3ParticleSystem *s,const float a[12]){if(s){assert(a);++particles_bound;}return 1;}
+int c3_stage_renderer_particles(const C3ParticleSystem *s,const float a[12]){if(s){assert(a&&s->position_attachment);assert(a[0]==.1f&&a[5]==.1f&&a[10]==.1f&&a[3]==0&&a[7]==0&&a[11]==0);++particles_bound;}return 1;}
 static int sound(uint32_t sequence,uint32_t id,char *e,size_t n){assert(sequence);if(fail_audio){snprintf(e,n,"Injected audio queue failure");return 0;}if(id==0x85)++audio85;else{assert(id==0x86);++audio86;}return 1;}
 bool c3_stage_renderer_try_shutdown(void){return !busy;}
 int c3_stage_renderer_draw(const C3Title *const *m,size_t n,const C3TitleCamera *c,float f,C3TitleRenderStats *st,char *e,size_t z){(void)m;(void)n;(void)c;(void)f;(void)st;(void)e;(void)z;return 0;}
@@ -30,6 +31,16 @@ static void damage_cases(C3BattleStage *s,char error[192],const void *immutable,
    assert(!memcmp(immutable,s->models[1].draw_vertices,immutable_bytes));
    for(unsigned i=0;i<s->count;++i)if(enabled[i])assert(s->slots[i]==UINT32_MAX);
    if(s->damage.active){
+    assert(s->transforms[s->damage_model][4]==.75f);
+    if(s->particles_started){
+     const float *t=s->transforms[s->damage_model],*b=s->damage_particle_local;float co=cosf(t[3]),si=sinf(t[3]);
+     float expected[3]={10*(t[0]+.75f*(co*b[0]+si*b[2])),10*(t[1]+.75f*b[1]),10*(t[2]+.75f*(-si*b[0]+co*b[2]))};
+     assert(s->particles.position_attachment);
+     for(unsigned k=0;k<C3_PARTICLE_MAX_EMITTERS;++k)if(s->particles.emitters[k].active&&s->particles.emitters[k].depth==0){
+      for(unsigned axis=0;axis<3;++axis)assert(fabsf(s->particles.emitters[k].position[axis]-expected[axis])<.001f);
+      assert(s->particles.emitters[k].attachment_scale==.75f&&s->particles.emitters[k].radius_scale==.75f);
+     }
+    }
     gates+=s->damage.hp_gates!=0;live+=s->particles_started!=0;
     if(s->damage.units<(uint64_t)s->damage_program.hp_start*1000u)assert(!s->damage.hp_gates&&s->presentation.hp[target]==initial[target]);
     assert(s->presentation.visible[target]); /* No faint before effect consumers finish. */

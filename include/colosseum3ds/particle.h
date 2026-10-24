@@ -16,8 +16,8 @@
  * Source: psstructs.h PSCmdList, particle.c, generator.c, psinterpret.c.
  * Admits reached Bite, Reflect and Confusion instruction/shape closures;
  * unsupported reached instructions and render modes fail explicitly.
- * Positions/velocities/size remain source-local units; the WZX owner supplies its
- * explicitly qualified one-shot/follow attachment transform at rendering. */
+ * Legacy begin retains source-local coordinates. POSITION begin simulates in
+ * source-world units; render that mode with native conversion only. */
 typedef struct {
  uint16_t type,tex_group,gen_life,life;
  uint32_t kind,script_offset,script_bytes;
@@ -32,6 +32,7 @@ typedef struct {
 typedef struct {
  uint8_t active,depth;uint16_t generator,life;
  uint32_t kind,serial;float count,position[3];
+ float attachment_yaw,attachment_scale,radius_scale;
 } C3ParticleEmitter;
 typedef struct {
  uint8_t active,depth,tex_group,pose;
@@ -39,6 +40,7 @@ typedef struct {
  uint8_t loop_count;uint32_t serial;
  uint16_t color_count[2],color_remain[2];
  uint32_t kind;
+ float attachment_yaw,attachment_scale,radius_scale;
  float tornado_radius,tornado_angle,tornado_speed,tornado_turn,tornado_origin[3];
  float position[3],velocity[3],size,size_target,rotation,rotate_target,rotate_accel,grav,fric,trail;
  uint8_t prim[4],env[4],color_base[2][4],color_target[2][4];
@@ -49,7 +51,9 @@ typedef struct {
  C3Particle particles[C3_PARTICLE_MAX_PARTICLES];
  uint32_t cosmetic_seed;uint64_t cosmetic_draws,ticks,remainder;
  uint32_t emitted,spawned_emitters,peak_particles;
- uint8_t failed,cancelled;
+ uint8_t failed,cancelled,position_attachment;
+ uint32_t root_emitter_serial;
+ uint16_t source_attachment_flags;
  char diagnostic[160];
 } C3ParticleSystem;
 typedef struct {
@@ -75,6 +79,18 @@ int c3_particle_bank_decode(C3ParticleBank *,const void *,size_t,char *,size_t);
  * deliberately separate from combat; not a claim of original shared-RNG parity. */
 int c3_particle_begin(C3ParticleSystem *,const C3ParticleBank *,unsigned generator,
                      uint32_t cosmetic_seed,char *,size_t);
+/* Reflect POSITION adapter: source world units (native world *10), radians.
+ * Captures rotation and uniform generator/billboard and angle/radius scales.
+ * Future root emissions follow position; emitted particles/child generators do
+ * not follow. Reflect flags 0x18A9; no motion/tornado scaling or local offsets. */
+int c3_particle_begin_position(C3ParticleSystem *,const C3ParticleBank *,unsigned,
+ uint32_t,const float source_world_position[3],float start_yaw,
+ float billboard_scale,float radius_scale,char *,size_t);
+/* Checked source profiles: Bite 0x10A1 or Reflect 0x18A9. */
+int c3_particle_begin_position_flags(C3ParticleSystem *,const C3ParticleBank *,unsigned,
+ uint32_t,const float source_world_position[3],float start_yaw,
+ float billboard_scale,float radius_scale,uint16_t source_flags,char *,size_t);
+int c3_particle_position(C3ParticleSystem *,const float source_world_position[3],char *,size_t);
 /* Fixed60Hz source simulation, retained millisecond fraction; paused consumes no
  * time. Catchup >600ticks fails explicitly; elapsed time is never silently lost.
  * Failure latches until cancel/new begin; diagnostics identify generator/PC/op. */

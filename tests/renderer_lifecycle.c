@@ -17,6 +17,9 @@ typedef struct { int numDVLE, DVLE[1]; } DVLB_s;
 typedef struct { int *vertexShader; } shaderProgram_s;
 typedef unsigned u32;
 static const C3ParticlePack *particle_pack;
+static const C3ParticlePack *particle_bindings[2];
+static uint32_t particle_binding_textures[2][32];
+static unsigned particle_binding_count;
 static const C3ParticleSystem *particle_system;
 static TitleGPUVertex *particle_vertices;
 static bool scene_drawn;
@@ -65,7 +68,7 @@ static int validate_asset(const C3Title *title, char *error, size_t capacity)
 { (void)title; (void)error; (void)capacity; return 0; }
 static uint32_t specular_light_mask(const C3Title *title) { (void)title; return 0; }
 static bool C3D_Init(size_t size)
-{ (void)size; assert(!driver_live); ++init_calls; if (should_fail()) return false; driver_live = true; return true; }
+{ assert(size==C3_RENDER_COMMAND_BUFFER_BYTES); assert(!driver_live); ++init_calls; if (should_fail()) return false; driver_live = true; return true; }
 static void C3D_Fini(void)
 {
     assert(driver_live);

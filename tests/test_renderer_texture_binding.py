@@ -56,6 +56,13 @@ class RendererTextureBindingTests(unittest.TestCase):
         self.assertEqual(result.stdout,
             "BUSY returned; ownership retained; idle teardown verified\n")
 
+    def test_particle_command_overload_closes_frame(self):
+        result = subprocess.run([str(self.executable), "0", "1"],
+            env={**os.environ, "C3_TEST_PARTICLE_OVERLOAD": "1"},
+            capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
+        self.assertIn("overload closed acquired frame safely", result.stdout)
+
     def test_single_texture(self):
         self.check_draw(0, 1)
 

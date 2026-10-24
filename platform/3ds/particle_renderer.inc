@@ -1,5 +1,8 @@
 /* Included by the sole Citro3D owner. No independent frame or GPU queue. */
 static const C3ParticlePack *particle_pack;
+static const C3ParticlePack *particle_bindings[2];
+static uint32_t particle_binding_textures[2][32];
+static unsigned particle_binding_count;
 static const C3ParticleSystem *particle_system;
 static float particle_attachment[12];
 static TitleGPUVertex *particle_vertices;
@@ -9,27 +12,43 @@ static uint32_t particle_texids[C3_PARTICLE_MAX_PARTICLES];
 
 int c3_stage_renderer_particle_pack(const C3ParticlePack *pack,char *error,size_t cap)
 {
-    if(!pack||particle_pack||!scene_count||scene_drawn||
-       pack->texture_count>32||texture_count+pack->texture_count>C3_STAGE_MAX_TEXTURES)
+    if(!pack||!pack->bank.bytes||!scene_count||scene_drawn||
+       pack->texture_count>32)
         return fail(error,cap,"Particle upload requires a fresh bounded scene.");
-    particle_vertices=linearAlloc(C3_PARTICLE_MAX_PARTICLES*6u*sizeof *particle_vertices);
-    if(!particle_vertices)return fail(error,cap,"Particle vertex allocation failed.");
-    gpu_buffer_bytes+=C3_PARTICLE_MAX_PARTICLES*6u*sizeof *particle_vertices;
+    for(unsigned i=0;i<particle_binding_count;++i){
+        if(particle_bindings[i]==pack)return C3_RENDER_OK;
+        if(particle_bindings[i]->bank.bytes==pack->bank.bytes)
+            return fail(error,cap,"Particle bank bytes already belong to another registered pack.");
+    }
+    if(texture_count+pack->texture_count>C3_STAGE_MAX_TEXTURES)return fail(error,cap,"Particle texture capacity exceeded.");
+    if(particle_binding_count==2)return fail(error,cap,"At most two particle banks may be registered.");
+    if(!particle_vertices){
+        particle_vertices=linearAlloc(C3_PARTICLE_MAX_PARTICLES*6u*sizeof *particle_vertices);
+        if(!particle_vertices)return fail(error,cap,"Particle vertex allocation failed.");
+        gpu_buffer_bytes+=C3_PARTICLE_MAX_PARTICLES*6u*sizeof *particle_vertices;
+    }
     for(uint32_t i=0;i<pack->texture_count;++i){
         const C3ParticlePackTexture *p=&pack->textures[i];
         C3TitleTexture source={p->width,p->height,0,0,p->rgba,(size_t)p->width*p->height*4};
         if(!upload_texture(&textures[texture_count],&source))return fail(error,cap,"Particle texture upload failed.");
-        particle_textures[i]=texture_count++;
+        particle_binding_textures[particle_binding_count][i]=texture_count++;
         gpu_buffer_bytes+=source.size;
     }
-    particle_pack=pack;return C3_RENDER_OK;
+    particle_bindings[particle_binding_count++]=pack;return C3_RENDER_OK;
 }
 int c3_stage_renderer_particles(const C3ParticleSystem *system,const float attachment[12])
 {
-    if(system&&(!particle_pack||!attachment))return 0;
+    const C3ParticlePack *selected=NULL;unsigned binding=0;
+    if(system){
+        if(!attachment)return 0;
+        for(unsigned i=0;i<particle_binding_count;++i)
+            if(particle_bindings[i]->bank.bytes==system->bank.bytes){selected=particle_bindings[i];binding=i;break;}
+        if(!selected)return 0;
+    }
     if(attachment){for(unsigned i=0;i<12;++i)if(!isfinite(attachment[i]))return 0;
         memcpy(particle_attachment,attachment,sizeof particle_attachment);}
-    particle_system=system;return 1;
+    if(selected)memcpy(particle_textures,particle_binding_textures[binding],sizeof particle_textures);
+    particle_pack=selected;particle_system=system;return 1;
 }
 static uint32_t particle_color(const uint8_t c[4])
 {return (uint32_t)c[0]|(uint32_t)c[1]<<8|(uint32_t)c[2]<<16|(uint32_t)c[3]<<24;}
@@ -65,6 +84,13 @@ static int draw_particles(const C3TitleCamera *camera,const C3D_Mtx *mvp,
         ++count;
     }
     if(!count)return 1;
+    /* Unlike GetCmdBufUsage (updated only at split/end), this is the live
+     * command cursor. This renderer does not split before the particle pass. */
+    uint32_t command_start=gpuCmdBufOffset;
+    if(!c3_stage_particle_commands_fit(command_start,count)){
+        fail(error,cap,"Particle command budget exceeded; frame closed without particle submission.");
+        return 0; /* Caller closes the acquired frame and reports ordinary ERROR. */
+    }
     GSPGPU_FlushDataCache(particle_vertices,count*6u*sizeof *particle_vertices);
     C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER,mvp_location,mvp);
     C3D_FVUnifSet(GPU_VERTEX_SHADER,color_pass_location,1,0,0,0);
@@ -93,6 +119,7 @@ static int draw_particles(const C3TitleCamera *camera,const C3D_Mtx *mvp,
         C3D_TexSetFilter(tex,q->filter_nearest?GPU_NEAREST:GPU_LINEAR,q->filter_nearest?GPU_NEAREST:GPU_LINEAR);
         C3D_TexBind(0,tex);C3D_TexBind(1,tex);C3D_DrawArrays(GPU_TRIANGLES,i*6,6);
     }
+    stats->particle_command_words=gpuCmdBufOffset-command_start;
     stats->particles=count;stats->particle_vertices=count*6;stats->draw_calls+=count;stats->vertices+=count*6;
     return 1;
 }

@@ -24,6 +24,9 @@ class BattleStageTimingTests(unittest.TestCase):
 #include <stdlib.h>
 #include <string.h>
 static unsigned samples,starts,finishes;
+static int stage_sound(C3BattleStage *s,uint32_t id,char *e,size_t n){return s->sound_cue(++s->cue_serial,id,e,n);}
+static int reflect_step(C3BattleStage *s,uint32_t ms,char *e,size_t n){(void)s;(void)ms;(void)e;(void)n;return 1;}
+static int reflect_bind_particles(C3BattleStage *s,char *e,size_t n){(void)s;(void)e;(void)n;return 1;}
 static int damage_step(C3BattleStage *s,uint32_t ms,char *e,size_t c){(void)ms;(void)e;(void)c;assert(!s->damage_available);return 1;}
 static int damage_begin(C3BattleStage *s,char *e,size_t c){(void)s;(void)e;(void)c;assert(0);return 0;}
 static int damage_bind_particles(C3BattleStage *s,char *e,size_t c){(void)e;(void)c;assert(!s->damage_available);return 1;}

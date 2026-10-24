@@ -164,3 +164,12 @@ wzx-confusion-check: build/test_wzx_confusion
 	./build/test_wzx_confusion
 
 test: wzx-confusion-check
+
+# Original assets remain optional; the core test uses synthetic descriptors.
+build/test_wzx_reflect: tests/test_wzx_reflect.c src/wzx_reflect.c $(HEADERS) build/save_codec.c | build
+	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_wzx_reflect.c src/wzx_reflect.c build/save_codec.c $(LDFLAGS) -lm -o $@
+all: build/test_wzx_reflect
+.PHONY: wzx-reflect-check
+wzx-reflect-check: build/test_wzx_reflect
+	./build/test_wzx_reflect
+test: wzx-reflect-check

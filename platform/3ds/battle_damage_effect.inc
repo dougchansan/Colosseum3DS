@@ -34,6 +34,18 @@ static int damage_load(C3BattleStage *s,const char *root,char *error,size_t cap)
     if(memcmp(hash,s->damage_program.model_sha1,20)||m->clip_count!=1||m->fps!=120||
        m->clips[0].loop||m->clips[0].frame_count!=51||m->bone_count<=s->damage_program.particle_bone)
         return fail(error,cap,"Damage model identity or retained bone mismatch.");
+    /* This qualified resource retains a constant linked part POSITION across
+     * every baked sample. Admit that fact explicitly; do not reuse a stale pose
+     * for a future pack whose attachment actually animates. */
+    for(uint32_t frame=0;frame<m->clips[0].frame_count;++frame){
+        if(!c3_title_animate(m,0,(float)frame/m->fps))return fail(error,cap,"Cannot sample damage linked part.");
+        const float *b=m->pose.matrices[s->damage_program.particle_bone];
+        for(unsigned axis=0;axis<3;++axis){float value=b[axis*4+3];
+            if(!frame)s->damage_particle_local[axis]=value;
+            else if(fabsf(value-s->damage_particle_local[axis])>0.00001f)return fail(error,cap,"Damage linked POSITION requires live animation sampling.");
+        }
+    }
+    if(!c3_title_animate(m,0,0))return fail(error,cap,"Cannot restore damage rest sample.");
     s->draw[i]=m;s->transforms[i][4]=1;
     for(unsigned j=0;j<9;++j)s->roles[i][j]=0;
     if(snprintf(path,sizeof path,"%s/bite_damage.c3p",root)>=(int)sizeof path)return 0;
@@ -53,6 +65,14 @@ static int damage_load(C3BattleStage *s,const char *root,char *error,size_t cap)
     if(s->trace){fprintf(s->trace,"wzx_damage_admitted source=04E32000 model_part=12 sampled_bone=11 generator=3 model_tick=0 hp_sound_tick=22 owner_start=22 owner_end=380\n");fflush(s->trace);}
     return 1;
 }
+static void damage_particle_position(const C3BattleStage *s,float position[3])
+{
+    const float *b=s->damage_particle_local,*t=s->transforms[s->damage_model];
+    float co=cosf(t[3]),si=sinf(t[3]);
+    position[0]=10*(t[0]+t[4]*(co*b[0]+si*b[2]));
+    position[1]=10*(t[1]+t[4]*b[1]);
+    position[2]=10*(t[2]+t[4]*(-si*b[0]+co*b[2]));
+}
 static int damage_step(C3BattleStage *,uint32_t,char *,size_t);
 static int damage_begin(C3BattleStage *s,char *error,size_t cap)
 {
@@ -60,7 +80,7 @@ static int damage_begin(C3BattleStage *s,char *error,size_t cap)
     uint32_t i=s->damage_owner;const float *owner=s->transforms[i],*a=s->damage_program.anchor;
     float *t=s->transforms[s->damage_model],co=cosf(owner[3]),si=sinf(owner[3]);
     t[0]=owner[0]+owner[4]*(co*a[0]+si*a[2]);t[1]=owner[1]+owner[4]*a[1];
-    t[2]=owner[2]+owner[4]*(-si*a[0]+co*a[2]);t[3]=owner[3];t[4]=owner[4];
+    t[2]=owner[2]+owner[4]*(-si*a[0]+co*a[2]);t[3]=owner[3];t[4]=.75f;
     s->clips[i]=s->damage_program.owner_clip;s->clocks[i]=0;s->fresh[i]=1;
     s->damage_pending=0;s->particles_started=0;
     if(!camera_begin(s,C3_BATTLE_CAMERA_DAMAGE,s->slots[i],0,error,cap))return 0;
@@ -72,13 +92,14 @@ static int damage_step(C3BattleStage *s,uint32_t ms,char *error,size_t cap)
     if(!s->damage.active)return 1;
     uint32_t sound=s->damage.sound_requests;
     if(!c3_wzx_damage_step(&s->damage,ms))return fail(error,cap,"Damage clock overload.");
+    float position[3];damage_particle_position(s,position);
     if(s->damage.particle_starts&&!s->particles_started){
-        if(!c3_particle_begin(&s->particles,&s->particle_pack.bank,s->damage_program.root_generator,0x42495445u^s->bite_sequence,error,cap))return 0;
+        if(!c3_particle_begin_position_flags(&s->particles,&s->particle_pack.bank,s->damage_program.root_generator,0x42495445u^s->bite_sequence,position,s->transforms[s->damage_model][3],.75f,.75f,0x10A1,error,cap))return 0;
         s->particles_started=1;
         if(s->trace){fprintf(s->trace,"wzx_damage_particles_start tick=0 generator=3 cosmetic_rng=separate\n");fflush(s->trace);}
-    }else if(s->particles_started&&!c3_particle_step(&s->particles,ms,0,error,cap))return 0;
+    }else if(s->particles_started&&(!c3_particle_position(&s->particles,position,error,cap)||!c3_particle_step(&s->particles,ms,0,error,cap)))return 0;
     if(sound!=s->damage.sound_requests){
-        if(s->sound_cue&&!s->sound_cue(s->bite_sequence,s->damage_program.sound_id,error,cap))return 0;
+        if(s->sound_cue&&!stage_sound(s,s->damage_program.sound_id,error,cap))return 0;
         if(s->trace){fprintf(s->trace,"wzx_damage_hp_gate tick=22 sound=86 playback=%s\n",s->sound_cue?"requested":"unavailable");fflush(s->trace);}
     }
     s->clocks[s->damage_owner]=s->damage.owner_seconds;
@@ -95,11 +116,7 @@ static int damage_step(C3BattleStage *s,uint32_t ms,char *error,size_t cap)
 static int damage_bind_particles(C3BattleStage *s,char *error,size_t cap)
 {
     if(!s->particles_started||!s->damage.active)return c3_stage_renderer_particles(NULL,NULL);
-    const float *b=s->models[s->damage_model].pose.matrices[s->damage_program.particle_bone];
-    const float *t=s->transforms[s->damage_model];float co=cosf(t[3]),si=sinf(t[3]),a[12];
-    /* Translation is already native; only the source particle basis gets .1. */
-    for(unsigned j=0;j<3;++j){a[j]=t[4]*.1f*(co*b[j]+si*b[8+j]);a[4+j]=t[4]*.1f*b[4+j];a[8+j]=t[4]*.1f*(-si*b[j]+co*b[8+j]);}
-    a[3]=t[0]+t[4]*(co*b[3]+si*b[11]);a[7]=t[1]+t[4]*b[7];a[11]=t[2]+t[4]*(-si*b[3]+co*b[11]);
-    if(!c3_stage_renderer_particles(&s->particles,a))return fail(error,cap,"Invalid live damage particle attachment.");
+    static const float identity[12]={.1f,0,0,0,0,.1f,0,0,0,0,.1f,0};
+    if(!c3_stage_renderer_particles(&s->particles,identity))return fail(error,cap,"Invalid world damage particle binding.");
     return 1;
 }

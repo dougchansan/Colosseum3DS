@@ -9,6 +9,16 @@
 #define C3_STAGE_MAX_VERTICES 131072u
 #define C3_STAGE_MAX_TEXTURES 128u
 
+/* Pinned SDK steady particle draw uses 114 words; 192 also bounds setup.
+ * Leave room for the subsequent HUD/fade and command-list finalization. */
+#define C3_STAGE_PARTICLE_COMMAND_WORDS 192u
+#define C3_STAGE_COMMAND_RESERVE_WORDS 8192u
+static inline bool c3_stage_particle_commands_fit(uint32_t used, uint32_t visible)
+{
+    return (uint64_t)used + (uint64_t)visible * C3_STAGE_PARTICLE_COMMAND_WORDS +
+        C3_STAGE_COMMAND_RESERVE_WORDS <= C3_RENDER_COMMAND_CAPACITY_WORDS;
+}
+
 /* Development HUD uses the libctru font, not the original game's font/UI.
  * Copied commands are drawn inside the sole stage frame, never CPU framebuffer
  * writes. Set while idle before the first frame; later updates only copy data. */
@@ -46,6 +56,8 @@ int c3_stage_renderer_set_modulation(size_t model_index, const uint8_t rgb[3]);
 /* Upload once before first draw. Borrowed pack/system outlive guarded teardown.
  * Updating the live attachment only copies CPU state; GPU buffers are written
  * after the sole nonblocking FrameBegin completion barrier. */
+/* Register up to two borrowed banks before first draw. Re-registering the
+ * same pack pointer is idempotent. Binding selects by bank.bytes identity. */
 int c3_stage_renderer_particle_pack(const C3ParticlePack *,char *,size_t);
 int c3_stage_renderer_particles(const C3ParticleSystem *,const float attachment[12]);
 void c3_stage_renderer_shutdown(void);

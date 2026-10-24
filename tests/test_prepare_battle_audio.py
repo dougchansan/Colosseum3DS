@@ -101,6 +101,7 @@ static unsigned allocated,queued,cleared,started,paused;
 static int fail_alloc,fail_ndsp;
 static void (*hook_callback)(APT_HookType,void *);
 static bool channel_paused[4];
+static ndspWaveBuf *channel_wave[4];
 void aptHook(aptHookCookie *c,void (*f)(APT_HookType,void *),void *u){(void)u;c->active=1;hook_callback=f;}
 void aptUnhook(aptHookCookie *c){assert(c->active);c->active=0;hook_callback=NULL;}
 bool ndspChnIsPlaying(int n){(void)n;return queued!=0;}
@@ -119,7 +120,7 @@ void ndspChnSetMix(unsigned n,float *p){(void)n;assert(p[0]==1&&p[1]==1);}
 void ndspChnWaveBufClear(unsigned n){assert(n>=4&&n<8);++cleared;}
 void ndspChnSetRate(unsigned n,float r){(void)n;assert(r==32000);}
 void ndspChnSetPaused(unsigned n,bool p){channel_paused[n-4]=p;if(p)++paused;}
-void ndspChnWaveBufAdd(unsigned n,ndspWaveBuf *w){assert(n>=4&&n<8&&w->data_vaddr&&w->nsamples==3);w->status=1;++queued;}
+void ndspChnWaveBufAdd(unsigned n,ndspWaveBuf *w){assert(n>=4&&n<8&&w->data_vaddr&&w->nsamples==3);w->status=1;channel_wave[n-4]=w;++queued;}
 int main(int argc,char **argv){assert(argc==2);char path[512],error[192];
  snprintf(path,sizeof path,"%s/audio.c3u",argv[1]);C3BattleAudio a={0};
  assert(c3_battle_audio_load(&a,path,error,sizeof error));assert(a.count==2);
@@ -127,9 +128,13 @@ int main(int argc,char **argv){assert(argc==2);char path[512],error[192];
  unsigned char *copy=malloc(a.bytes);memcpy(copy,a.storage,a.bytes);copy[a.bytes-1]^=1;
  assert(!c3_battle_audio_parse(&a,copy,a.bytes,error,sizeof error));assert(a.count==2);free(copy);c3_battle_audio_close(&a);
  assert(c3_battle_audio_player_open(argv[1],error,sizeof error));assert(started==1&&allocated==2);
+ assert(c3_battle_audio_player_done(2,85,error,sizeof error)==-1);
+ assert(c3_battle_audio_player_done(0,85,error,sizeof error)==-1);
+ assert(c3_battle_audio_player_done(2,999,error,sizeof error)==-1);
  assert(!c3_battle_audio_player_open(argv[1],error,sizeof error));assert(started==1);
  c3_battle_audio_player_pause(1);assert(paused==4);
  assert(c3_battle_audio_player_cue(2,85,error,sizeof error));assert(queued==1);
+ assert(c3_battle_audio_player_done(2,85,error,sizeof error)==0);
  assert(c3_battle_audio_player_cue(2,85,error,sizeof error));assert(queued==1);
  assert(!c3_battle_audio_player_cue(1,85,error,sizeof error));
  assert(!c3_battle_audio_player_cue(3,999,error,sizeof error));
@@ -143,10 +148,28 @@ int main(int argc,char **argv){assert(argc==2);char path[512],error[192];
  hook_callback(APTHOOK_ONSLEEP,NULL);hook_callback(APTHOOK_ONRESTORE,NULL);assert(ndspChnIsPaused(4));
  hook_callback(APTHOOK_ONWAKEUP,NULL);assert(!ndspChnIsPaused(4));
  assert(queued==before_queued&&ndspChnGetSamplePos(4)==73);
+ assert(c3_battle_audio_player_done(2,85,error,sizeof error)==0);
+ c3_battle_audio_player_pause(1);assert(c3_battle_audio_player_done(2,85,error,sizeof error)==0);
+ c3_battle_audio_player_pause(0);
+ channel_wave[0]->status=NDSP_WBUF_DONE;
+ assert(c3_battle_audio_player_done(2,85,error,sizeof error)==1);
+ assert(c3_battle_audio_player_cue(4,85,error,sizeof error));
+ assert(c3_battle_audio_player_done(2,85,error,sizeof error)==1); /* retired exact identity */
+ assert(c3_battle_audio_player_done(4,85,error,sizeof error)==0);
+ assert(c3_battle_audio_player_done(1,85,error,sizeof error)==-1); /* older but never queued */
+ channel_wave[0]->status=NDSP_WBUF_FREE;
+ assert(c3_battle_audio_player_done(4,85,error,sizeof error)==1);
+ assert(c3_battle_audio_player_cue(5,85,error,sizeof error));
+ assert(c3_battle_audio_player_done(4,85,error,sizeof error)==1);
+ /* Reuse can retire a completed buffer even if it was never queried. */
+ channel_wave[0]->status=NDSP_WBUF_DONE;
+ assert(c3_battle_audio_player_cue(6,85,error,sizeof error));
+ assert(c3_battle_audio_player_done(5,85,error,sizeof error)==1);
  FILE *trace=tmpfile();assert(trace);c3_battle_audio_player_trace(trace,"test");rewind(trace);
  char line[256];int found=0;while(fgets(line,sizeof line,trace))if(strstr(line,"sample_position=73"))++found;
  assert(found==4);fclose(trace);
- c3_battle_audio_player_close();assert(!started&&!allocated&&!hook_callback);c3_battle_audio_player_close();
+ c3_battle_audio_player_close();assert(!started&&!allocated&&!hook_callback);
+ assert(c3_battle_audio_player_done(2,85,error,sizeof error)==-1);c3_battle_audio_player_close();
  fail_alloc=1;assert(!c3_battle_audio_player_open(argv[1],error,sizeof error));assert(!started&&!allocated);fail_alloc=0;
  fail_alloc=2;assert(!c3_battle_audio_player_open(argv[1],error,sizeof error));assert(!started&&!allocated);fail_alloc=0;
  fail_ndsp=1;assert(!c3_battle_audio_player_open(argv[1],error,sizeof error));assert(!started&&!allocated);

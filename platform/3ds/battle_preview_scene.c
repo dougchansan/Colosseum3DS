@@ -120,9 +120,10 @@ int c3_battle_preview_scene_run(const C3BattleRequest *request,FILE *trace)
             snprintf(error,sizeof error,"Invalid introduction event batch.");
         c3_n3ds_log_memory(trace,"battle_stage_loaded");
     }
-    if(!error[0]&&stage->damage_available){
+    if(!error[0]&&(stage->damage_available||stage->reflect_available)){
         if(c3_battle_audio_player_open(BOOT_ROOT "battle",error,sizeof error)){
             stage->sound_cue=c3_battle_audio_player_cue;
+            stage->sound_done=c3_battle_audio_player_done;
             c3_render_recovery_set_pause_callback(c3_battle_audio_player_pause);
         }
     }
@@ -179,10 +180,11 @@ int c3_battle_preview_scene_run(const C3BattleRequest *request,FILE *trace)
                 ++interval_frames;uint64_t full_frame_us=c3_n3ds_time_us()-frame_start;
                 if(full_frame_us>full_frame_peak_us)full_frame_peak_us=full_frame_us;
                 if(trace&&now-metric_time>=1000000u){
-                    fprintf(trace,"battle_render frames=%u draw_cpu_us=%llu gpu_previous_ms=%.3f draws=%lu vertices=%lu gpu_buffer_bytes=%lu vertices_prepared=%lu cached_models=%lu\n",frames,
+                    fprintf(trace,"battle_render frames=%u draw_cpu_us=%llu gpu_previous_ms=%.3f draws=%lu vertices=%lu gpu_buffer_bytes=%lu vertices_prepared=%lu cached_models=%lu command_words=%lu particle_command_words=%lu command_capacity_words=%lu\n",frames,
                         (unsigned long long)(c3_n3ds_time_us()-render_start),(double)stats.gpu_previous_ms,
                         (unsigned long)stats.draw_calls,(unsigned long)stats.vertices,(unsigned long)stats.gpu_buffer_bytes,
-                        (unsigned long)stats.vertices_prepared,(unsigned long)stats.cached_models);
+                        (unsigned long)stats.vertices_prepared,(unsigned long)stats.cached_models,
+                        (unsigned long)stats.command_words,(unsigned long)stats.particle_command_words,(unsigned long)stats.command_capacity_words);
                     c3_n3ds_log_memory(trace,"battle_render");fflush(trace);metric_time=now;
                     fprintf(trace,"battle_frame sample_clock_cpu_us=%llu sample_clock_peak_us=%llu full_cpu_frame_us=%llu full_cpu_peak_us=%llu interval_frames=%u particles=%lu particle_vertices=%lu particle_live_peak=%lu\n",
                         (unsigned long long)sample_cpu_us,(unsigned long long)sample_cpu_peak_us,

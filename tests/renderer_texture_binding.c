@@ -27,6 +27,9 @@ typedef struct {
     uint32_t specular_lights;
 } SceneBinding;
 static const C3ParticlePack *particle_pack;
+static const C3ParticlePack *particle_bindings[2];
+static uint32_t particle_binding_textures[2][32];
+static unsigned particle_binding_count;
 static const C3ParticleSystem *particle_system;
 static TitleGPUVertex *particle_vertices;
 static bool scene_drawn;
@@ -187,7 +190,7 @@ static void draw_battle_hud(C3TitleRenderStats *stats) { (void)stats; }
 /* Particle submission is independently exercised by its own fixture; this
  * fixture continues executing the production authored-geometry draw path. */
 static int draw_particles(const C3TitleCamera *camera,const C3D_Mtx *mvp,C3TitleRenderStats *stats,char *error,size_t capacity)
-{(void)camera;(void)mvp;(void)stats;(void)error;(void)capacity;return 1;}
+{(void)camera;(void)mvp;(void)stats;if(getenv("C3_TEST_PARTICLE_OVERLOAD")){snprintf(error,capacity,"Particle command budget exceeded");return 0;}return 1;}
 #include "title_renderer_draw.inc"
 
 int main(int argc, char **argv)
@@ -220,6 +223,12 @@ int main(int argc, char **argv)
     C3TitleRenderStats stats;
     char error[128] = {0};
     const C3Title *models[] = {&title};
+    if(getenv("C3_TEST_PARTICLE_OVERLOAD")){
+        assert(c3_stage_renderer_draw(models,1,&title.pose.camera,1,&stats,error,sizeof error)==C3_RENDER_ERROR);
+        assert(!frame_open&&frame_ends==1&&strstr(error,"command budget"));
+        assert(stats.command_capacity_words==C3_RENDER_COMMAND_CAPACITY_WORDS);
+        puts("Particle overload closed acquired frame safely");return 0;
+    }
     if(getenv("C3_TEST_STATIC")) {
         vertex_cache[0].enabled=true;
         for(unsigned frame=0;frame<3;++frame)

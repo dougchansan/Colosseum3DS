@@ -6,6 +6,7 @@
 #include <string.h>
 #define VOICES 4u
 #define CHANNEL_BASE 4u
+#define FINISHED_IDENTITIES 64u
 static struct {
     int started,paused,hooked;
     unsigned apt_pause_mask;
@@ -16,6 +17,8 @@ static struct {
     uint32_t sequences[C3_BATTLE_AUDIO_MAX_CUES];
     ndspWaveBuf voices[VOICES];
     uint32_t voice_sound[VOICES],voice_sequence[VOICES];
+    struct {uint32_t sound,sequence;} finished[FINISHED_IDENTITIES];
+    unsigned finished_next;
 } audio;
 static int fail(char *e,size_t n,const char *s)
 {if(e&&n)snprintf(e,n,"%s",s);return 0;}
@@ -68,6 +71,30 @@ int c3_battle_audio_player_open(const char *root,char *error,size_t cap)
     if(error&&cap)error[0]=0;
     return 1;
 }
+static void remember_finished(uint32_t sequence,uint32_t sound)
+{
+    if(!sequence)return;
+    for(unsigned i=0;i<FINISHED_IDENTITIES;++i)
+        if(audio.finished[i].sequence==sequence&&audio.finished[i].sound==sound)return;
+    audio.finished[audio.finished_next].sequence=sequence;audio.finished[audio.finished_next].sound=sound;
+    audio.finished_next=(audio.finished_next+1u)%FINISHED_IDENTITIES;
+}
+int c3_battle_audio_player_done(uint32_t sequence,uint32_t sound,char *error,size_t cap)
+{
+    if(!audio.started||!sequence){fail(error,cap,"Audio completion requires active owner and cue identity.");return -1;}
+    uint32_t cue=0;while(cue<audio.count&&audio.cues[cue].sound_id!=sound)++cue;
+    if(cue==audio.count){fail(error,cap,"Audio completion requested an unprepared sound ID.");return -1;}
+    for(unsigned i=0;i<VOICES;++i)if(audio.voice_sequence[i]==sequence&&audio.voice_sound[i]==sound){
+        if(error&&cap)error[0]=0;
+        if(audio.paused||audio.apt_pause_mask||ndspChnIsPaused(CHANNEL_BASE+i))return 0;
+        unsigned status=audio.voices[i].status;
+        if(status!=NDSP_WBUF_DONE&&status!=NDSP_WBUF_FREE)return 0;
+        remember_finished(sequence,sound);return 1;
+    }
+    for(unsigned i=0;i<FINISHED_IDENTITIES;++i)
+        if(audio.finished[i].sequence==sequence&&audio.finished[i].sound==sound){if(error&&cap)error[0]=0;return 1;}
+    fail(error,cap,"Audio completion cue identity is unknown or retired beyond history.");return -1;
+}
 int c3_battle_audio_player_cue(uint32_t sequence,uint32_t sound,char *error,size_t cap)
 {
     if(!audio.started||!sequence)return fail(error,cap,"Battle audio cue requires active owner and sequence.");
@@ -78,6 +105,9 @@ int c3_battle_audio_player_cue(uint32_t sequence,uint32_t sound,char *error,size
     if(sequence<audio.sequences[cue])return fail(error,cap,"Out-of-order battle audio cue.");
     for(unsigned i=0;i<VOICES;++i){ndspWaveBuf *wave=&audio.voices[i];
         if(wave->status!=NDSP_WBUF_FREE&&wave->status!=NDSP_WBUF_DONE)continue;
+        /* A channel is reused only after the SDK reports its prior buffer
+         * DONE/FREE. Remember that exact identity, never infer older IDs done. */
+        remember_finished(audio.voice_sequence[i],audio.voice_sound[i]);
         memset(wave,0,sizeof *wave);wave->data_vaddr=audio.pcm[cue];wave->nsamples=audio.cues[cue].frames;
         ndspChnSetRate(CHANNEL_BASE+i,(float)audio.cues[cue].rate);
         ndspChnSetPaused(CHANNEL_BASE+i,audio.paused||audio.apt_pause_mask);ndspChnWaveBufAdd(CHANNEL_BASE+i,wave);

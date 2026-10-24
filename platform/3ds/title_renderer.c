@@ -80,11 +80,12 @@ void c3_stage_renderer_snapshot(C3TitleRenderSnapshot *snapshot)
     snapshot->gpu_buffer_bytes = gpu_buffer_bytes;
 }
 
-static void record_submission(const C3TitleRenderStats *stats)
+static void record_submission(C3TitleRenderStats *stats)
 {
     ++submission_snapshot.submissions;
     submission_snapshot.last_command_words = stats ? (uint32_t)(C3D_GetCmdBufUsage() *
-        (C3D_DEFAULT_CMDBUF_SIZE / sizeof(uint32_t))) : 0;
+        (C3_RENDER_COMMAND_CAPACITY_WORDS)) : 0;
+    if(stats)stats->command_words=submission_snapshot.last_command_words;
     submission_snapshot.last_draw_calls = stats ? stats->draw_calls : 0;
     submission_snapshot.last_vertices = stats ? stats->vertices : 0;
 }
@@ -256,7 +257,7 @@ int c3_stage_renderer_init(const C3Title *const *models, size_t count,
      * Keep the context and program alive until application shutdown; scene
      * changes release only drained targets, textures and vertex arenas. */
     if (!c3d_started) {
-        if (!C3D_Init(C3D_DEFAULT_CMDBUF_SIZE)) return fail(error, capacity, "Scene citro3d initialization failed.");
+        if (!C3D_Init(C3_RENDER_COMMAND_BUFFER_BYTES)) return fail(error, capacity, "Scene citro3d initialization failed.");
         c3d_started = true;
         shader = DVLB_ParseFile((u32 *)title_shader_shbin, title_shader_shbin_size);
         if (!shader || !shader->numDVLE) { fail(error, capacity, "Title vertex shader parse failed."); goto driver_error; }
@@ -819,6 +820,7 @@ int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
     C3TitleRenderStats local_stats;
     if (!stats) stats = &local_stats;
     if (stats) memset(stats, 0, sizeof(*stats));
+    stats->command_capacity_words=C3_RENDER_COMMAND_CAPACITY_WORDS;
     if (!models || !scene_count || count != scene_count)
         return fail(error, capacity, "Scene renderer does not own this model set.");
     if (!isfinite(fade) || !camera) return fail(error, capacity, "Invalid scene fade or camera.");
@@ -1078,6 +1080,8 @@ void c3_title_renderer_shutdown(void)
     if (hud_vertices) { linearFree(hud_vertices); hud_vertices = NULL; }
     if (particle_vertices) { linearFree(particle_vertices); particle_vertices=NULL; }
     particle_pack=NULL;particle_system=NULL;
+    memset(particle_bindings,0,sizeof particle_bindings);
+    memset(particle_binding_textures,0,sizeof particle_binding_textures);particle_binding_count=0;
     gpu_buffer_bytes = 0;
 }
 
