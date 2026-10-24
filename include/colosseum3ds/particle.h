@@ -8,6 +8,7 @@
 #define C3_PARTICLE_MAX_APP_SRT 16u
 #define C3_PARTICLE_PROFILE_GROWL_V1 1u
 #define C3_PARTICLE_PROFILE_GREEN_DOWN_V1 2u
+#define C3_PARTICLE_PROFILE_RED_DOWN_V1 3u
 #ifndef C3_PARTICLE_MAX_PARTICLES
 /* Measured admitted Reflect closure peak1369; bounded1536 live slots. */
 #define C3_PARTICLE_MAX_PARTICLES 1536u
@@ -103,8 +104,8 @@ typedef struct {
 int c3_particle_quad(const C3Particle *,const float attachment[12],
                      const C3ParticleCamera *,C3ParticleQuad *,char *,size_t);
 int c3_particle_bank_decode(C3ParticleBank *,const void *,size_t,char *,size_t);
-/* Explicit Growl v1 root18/113 source descriptors, or Green-down v1 root0/3
- * dense descriptors. Original IDs/bytes remain unchanged. Green source hash
+/* Explicit Growl v1 root18/113 source descriptors, or stat-down v1 root0/3
+ * dense descriptors. Original IDs/bytes remain unchanged. Stat-down source hash
  * authentication is enforced by the opt-in pack decoder; raw decode checks
  * the admitted generator/bytecode contract. */
 int c3_particle_bank_decode_reachable(C3ParticleBank *,const void *,size_t,
@@ -118,7 +119,8 @@ int c3_particle_quad_app_srt(C3ParticleSystem *,const C3Particle *,
  const C3ParticleCamera *,uint64_t render_frame,float native_per_source_unit,
  C3ParticleQuad *,char *,size_t);
 /* begin commits only after validation. Cosmetic RNG is per-system HSD LCG,
- * deliberately separate from combat; not a claim of original shared-RNG parity. */
+ * deliberately separate from combat. Native queue visitation is retained;
+ * original HSD list visitation/shared-RNG ordering remains unqualified. */
 int c3_particle_begin(C3ParticleSystem *,const C3ParticleBank *,unsigned generator,
                      uint32_t cosmetic_seed,char *,size_t);
 /* Reflect POSITION adapter: source world units (native world *10), radians.
@@ -141,6 +143,11 @@ int c3_particle_append_position_flags(C3ParticleSystem *,const C3ParticleBank *,
  float radius_scale,uint16_t source_flags,uint32_t *root_handle,char *,size_t);
 int c3_particle_position_root(C3ParticleSystem *,uint32_t root_handle,
  const float source_world_position[3],char *,size_t);
+/* RED's LIVE field is admitted only for a constant source-world root point:
+ * identical checked updates succeed until cancel/new begin, including after
+ * root0's emission ends. Changed roots fail without translating descendants
+ * or emitted particles. General source LIVE child/JObj following is unqualified.
+ * GREEN remains one-shot and rejects all position updates. */
 int c3_particle_position(C3ParticleSystem *,const float source_world_position[3],char *,size_t);
 /* Fixed60Hz source simulation, retained millisecond fraction; paused consumes no
  * time. Catchup >600ticks fails explicitly; elapsed time is never silently lost.

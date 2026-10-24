@@ -9,7 +9,7 @@
 #define C3_STAGE_MAX_MODELS 16u
 #define C3_STAGE_MAX_VERTICES 131072u
 #define C3_STAGE_MAX_TEXTURES 128u
-#define C3_STAGE_MAX_PARTICLE_BANKS 6u
+#define C3_STAGE_MAX_PARTICLE_BANKS 7u
 
 /* Pinned SDK steady particle draw uses 114 words; 192 also bounds setup.
  * Leave room for the subsequent HUD/fade and command-list finalization. */

@@ -7,6 +7,7 @@
 #define C3_BATTLE_CAMERA_MAX_TRACK_FRAMES 1025u
 #define C3_BATTLE_CAMERA_MAX_BYTES (1500u + 6u * C3_BATTLE_CAMERA_MAX_TRACK_FRAMES * 12u)
 #define C3_BATTLE_CAMERA_ACTORS 3u
+#define C3_BATTLE_CAMERA_RED_DOWN_PROFILE 0x10027u /* Internal RED special tag, not move39. */
 #define C3_BATTLE_CAMERA_GREEN_DOWN_PROFILE 0x10029u /* Internal profile tag, not a move ID. */
 #define C3_BATTLE_CAMERA_MAX_TICKS 3600u
 typedef enum { C3_BATTLE_CAMERA_ATTACK=0, C3_BATTLE_CAMERA_DAMAGE=1 } C3BattleCameraPhase;
@@ -45,6 +46,8 @@ typedef struct {
  * immutable part tracks; cancel camera before close. Failures preserve output. */
 int c3_battle_camera_decode(C3BattleCameraProgram *,const void *,size_t,char *,size_t);
 int c3_battle_camera_confusion_decode(C3BattleCameraProgram *,const void *,size_t,char *,size_t);
+int c3_battle_camera_attack_down_decode(C3BattleCameraProgram *,const void *,size_t,char *,size_t);
+int c3_battle_camera_attack_down_load(C3BattleCameraProgram *,const char *,char *,size_t);
 int c3_battle_camera_stat_down_decode(C3BattleCameraProgram *,const void *,size_t,char *,size_t);
 int c3_battle_camera_stat_down_load(C3BattleCameraProgram *,const char *,char *,size_t);
 int c3_battle_camera_growl_decode(C3BattleCameraProgram *,const void *,size_t,char *,size_t);
@@ -65,7 +68,7 @@ int c3_battle_camera_begin(C3BattleCamera *,const C3BattleCameraProgram *,C3Batt
 int c3_battle_camera_begin_move(C3BattleCamera *,const C3BattleCameraProgram *,uint32_t move,
                               C3BattleCameraPhase,unsigned owner,unsigned target,
                               const C3BattleCameraActor actors[4],const C3TitleCamera *,char *,size_t);
-/* GREEN special0x29 only: affected0/1 and triggering opponent2/3.
+/* GREEN special0x29 or separately loaded RED0x27: affected0/1 and triggering opponent2/3.
  * Separate entry point prevents treating a special code as a move number. */
 int c3_battle_camera_begin_special(C3BattleCamera *,const C3BattleCameraProgram *,uint32_t special,
                                  unsigned affected,unsigned opponent,const C3BattleCameraActor[4],

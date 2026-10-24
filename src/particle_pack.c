@@ -45,10 +45,11 @@ static int decode_pack(C3ParticlePack *out, const void *data, size_t bytes,
        !span(bytes,bank_at,bank_bytes))return fail(error,capacity,"C3PT bank/table count or offset bound.");
     if(!zero(p+128u+count*32u,bank_at-(128u+count*32u)))
         return fail(error,capacity,"Nonzero C3PT table alignment padding.");
-    if(profile==C3_PARTICLE_PROFILE_GREEN_DOWN_V1){
-        static const uint8_t source_pin[20]={0x0a,0x26,0xcc,0xa5,0x39,0x9b,0x0f,0xbe,0xb2,0xb6,0x9f,0x04,0x4a,0x38,0x8e,0x53,0xb9,0x16,0x2e,0x37};
+    if(profile==C3_PARTICLE_PROFILE_GREEN_DOWN_V1||profile==C3_PARTICLE_PROFILE_RED_DOWN_V1){
+        static const uint8_t source_pin[2][20]={{0x0a,0x26,0xcc,0xa5,0x39,0x9b,0x0f,0xbe,0xb2,0xb6,0x9f,0x04,0x4a,0x38,0x8e,0x53,0xb9,0x16,0x2e,0x37},
+            {0xe9,0x7d,0xf2,0x89,0xfb,0x31,0xe4,0xce,0xe3,0xb3,0x1d,0xe3,0x51,0x58,0x95,0x47,0x0b,0x4f,0xd9,0xba}};
         c3_save_codec_sha1(digest,p+bank_at,bank_bytes);
-        if(memcmp(digest,source_pin,20))return fail(error,capacity,"Green-down source GPT1 SHA-1 differs from special0x29.");
+        if(memcmp(digest,source_pin[profile==C3_PARTICLE_PROFILE_RED_DOWN_V1],20))return fail(error,capacity,"Stat-down source GPT1 SHA-1 differs from the selected RED/GREEN special.");
     }
     if(profile){if(!c3_particle_bank_decode_reachable(&next.bank,p+bank_at,bank_bytes,root,profile,error,capacity))return 0;}
     else if(!c3_particle_bank_decode(&next.bank,p+bank_at,bank_bytes,error,capacity))return 0;
@@ -115,4 +116,4 @@ static int decode_pack(C3ParticlePack *out, const void *data, size_t bytes,
 int c3_particle_pack_decode(C3ParticlePack *out,const void *p,size_t n,const uint8_t hash[20],char *e,size_t cap)
 {return decode_pack(out,p,n,hash,0,e,cap);}
 int c3_particle_pack_decode_reachable(C3ParticlePack *out,const void *p,size_t n,const uint8_t hash[20],unsigned profile,char *e,size_t cap)
-{if(profile!=C3_PARTICLE_PROFILE_GROWL_V1&&profile!=C3_PARTICLE_PROFILE_GREEN_DOWN_V1)return fail(e,cap,"Unsupported reachable particle pack profile.");return decode_pack(out,p,n,hash,profile,e,cap);}
+{if(profile!=C3_PARTICLE_PROFILE_GROWL_V1&&profile!=C3_PARTICLE_PROFILE_GREEN_DOWN_V1&&profile!=C3_PARTICLE_PROFILE_RED_DOWN_V1)return fail(e,cap,"Unsupported reachable particle pack profile.");return decode_pack(out,p,n,hash,profile,e,cap);}

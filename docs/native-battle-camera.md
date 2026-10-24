@@ -119,3 +119,24 @@ is separate: this is not a Tail Whip move alias. Each special camera must retain
 its own cosmetic stream; original shared RNG and outer target overlap/order
 parity remain unqualified. Caller cancellation restores the inherited camera.
 No stat-down stage, particle, audio or hardware implementation is claimed here.
+
+### RED Attack-down special0x27 camera
+
+`--attack-down` prepares `attack_down_camera.c3c` from original
+`wzx_reddown_status.fsys` group49B/member0B6E2000. The checked C3SC header
+uses special0x27 and internal tag `C3_BATTLE_CAMERA_RED_DOWN_PROFILE`; load it
+with `c3_battle_camera_attack_down_load/decode`, then
+`c3_battle_camera_begin_special(...,0x27,affected,opponent,...)`.
+GREEN0x29 descriptors and move39 descriptors reject this namespace.
+
+The exact RED header is `[0,4,0x78,2,5,0]`. Bits3/4/5/6 explicitly enable
+ordered still/dolly/translation/orbit choices3/0/1/2, with source previous-motion
+fallthrough exclusion. GREEN flags0 reaches the same choices through the
+CountSheep fallback; the descriptors preserve and check this distinction.
+Both affected owners reset original idle entry0/frame0, rate.5, no start delay:
+Umbreon sourcebodymap2=part42/duration118; Espeon part62/duration180. Camera
+Dolly uses direct middle FOV mask2; the other motions choose weighted short8
+initial FOV, with no idle segment interpolation. Near/far/aspect inherit the
+incoming camera. Cancellation restores it, and pausing advances no camera or
+cosmetic RNG clocks. This camera profile alone does not qualify RED stage
+playback, retail shared RNG parity, or hardware visuals.

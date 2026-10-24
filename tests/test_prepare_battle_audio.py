@@ -23,7 +23,7 @@ class PreparationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'requires --confusion'):
             audio.selected_sounds(tail_whip=True)
         with self.assertRaisesRegex(ValueError, 'Cue count'):
-            audio.encode_pack([(i, b'\0\0') for i in range(11)])
+            audio.encode_pack([(i, b'\0\0') for i in range(12)])
 
     def test_stat_down_explicit_tenth_cue_and_binding(self):
         self.assertEqual(audio.selected_sounds(True, True, True, True),
@@ -62,6 +62,38 @@ class PreparationTests(unittest.TestCase):
         self.assertEqual(len(new[0x19B])//2,51876)
         self.assertEqual(hashlib.sha256(new[0x19B]).hexdigest(),
                          '7de486d78f4fb5f6c3987657e2ffb731089b2d248cd7697ab8b653d4b89f3cf9')
+
+    def test_attack_down_explicit_eleventh_cue_and_binding(self):
+        self.assertEqual(audio.selected_sounds(True,True,True,True,True),
+                         audio.selected_sounds(True,True,True,True)+(0x19A,))
+        for flags in ((False,False,False,False),(True,True,True,False),(True,False,True,True)):
+            with self.assertRaisesRegex(ValueError,'Attack down requires'):
+                audio.selected_sounds(*flags,attack_down=True)
+        row=bytearray(12);row[:2]=bytes((0x80,5));struct.pack_into('>H',row,4,0x20D)
+        effect={'macro':0x22B,'volume':127,'pan':64,'key':60}
+        with self.assertRaisesRegex(ValueError,'macro body'):
+            audio.verify_attack_down_binding(row,effect,{})
+        with self.assertRaisesRegex(ValueError,'binding'):
+            audio.verify_attack_down_binding(row,{**effect,'macro':0x22D},{})
+        with self.assertRaisesRegex(ValueError,'extent'):
+            audio.verify_attack_down_binding(row[:-1],effect,{})
+
+    def test_private_attack_down_preserves_ten_pcm_payloads(self):
+        oldpath=os.environ.get('C3_AUDIO_STAT_DOWN_PACK');newpath=os.environ.get('C3_AUDIO_ATTACK_DOWN_PACK')
+        if not oldpath or not newpath:self.skipTest('Private ten-cue and attack-down packs required')
+        def payloads(path):
+            data=Path(path).read_bytes();result={}
+            for i in range(struct.unpack_from('<I',data,12)[0]):
+                sound,rate,frames,offset,size,*_=struct.unpack_from('<8I',data,64+i*32)
+                self.assertEqual((rate,size),(32000,frames*2));result[sound]=data[offset:offset+size]
+            return result
+        old,new=payloads(oldpath),payloads(newpath)
+        self.assertEqual(len(old),10);self.assertEqual(tuple(new),audio.selected_sounds(True,True,True,True,True))
+        for sound,pcm in old.items():self.assertEqual(new[sound],pcm)
+        import hashlib
+        self.assertEqual(len(new[0x19A])//2,50934)
+        self.assertEqual(hashlib.sha256(new[0x19A]).hexdigest(),
+                         'f8677eec71e71895b72a9983401193f76d90af50da304919ce359567ea16b809')
 
     def test_growl_explicit_ninth_cue_and_source_binding(self):
         self.assertEqual(audio.selected_sounds(True, True, True), audio.selected_sounds(True, True) + (0x210,))
@@ -292,10 +324,10 @@ int main(int argc,char **argv){assert(argc==2);char path[512],error[192];
  unsigned char *copy=malloc(a.bytes);memcpy(copy,a.storage,a.bytes);copy[a.bytes-1]^=1;
  assert(!c3_battle_audio_parse(&a,copy,a.bytes,error,sizeof error));assert(a.count==2);free(copy);c3_battle_audio_close(&a);
  snprintf(path,sizeof path,"%s/max.c3u",argv[1]);
- assert(c3_battle_audio_load(&a,path,error,sizeof error));assert(a.count==10);
+ assert(c3_battle_audio_load(&a,path,error,sizeof error));assert(a.count==11);
  assert(c3_battle_audio_find(&a,411));
- copy=malloc(a.bytes);memcpy(copy,a.storage,a.bytes);copy[12]=11;
- assert(!c3_battle_audio_parse(&a,copy,a.bytes,error,sizeof error));assert(a.count==10);
+ copy=malloc(a.bytes);memcpy(copy,a.storage,a.bytes);copy[12]=12;
+ assert(!c3_battle_audio_parse(&a,copy,a.bytes,error,sizeof error));assert(a.count==11);
  free(copy);c3_battle_audio_close(&a);
  assert(c3_battle_audio_player_open(argv[1],error,sizeof error));assert(started==1&&allocated==2);
  assert(c3_battle_audio_player_done(2,85,error,sizeof error)==-1);
@@ -349,7 +381,7 @@ int main(int argc,char **argv){assert(argc==2);char path[512],error[192];
             d=Path(tmp);(d/'3ds.h').write_text(sdk);(d/'test.c').write_text(harness)
             pcm=struct.pack('<3h',-32768,0,32767)
             (d/'audio.c3u').write_bytes(audio.encode_pack([(85,pcm),(86,pcm)]))
-            (d/'max.c3u').write_bytes(audio.encode_pack([(n,pcm) for n in (*range(1,10),411)]))
+            (d/'max.c3u').write_bytes(audio.encode_pack([(n,pcm) for n in (*range(1,10),411,410)]))
             flags=shlex.split(os.environ.get('CFLAGS','-std=c11 -O2 -g -Wall -Wextra -Wpedantic -Werror'))
             run=subprocess.run(cc+flags+['-I'+str(d),'-I'+str(ROOT/'include'),'-I'+str(ROOT/'platform/3ds'),str(d/'test.c'),str(ROOT/'src/battle_audio.c'),str(ROOT/'platform/3ds/battle_audio_player.c'),'-o',str(d/'test')],capture_output=True,text=True)
             self.assertEqual(run.returncode,0,run.stdout+run.stderr)

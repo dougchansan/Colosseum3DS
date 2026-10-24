@@ -70,11 +70,72 @@ class StatDownPreparationTests(unittest.TestCase):
             changed=copy.deepcopy(nodes);changed[0][key]=value
             with self.assertRaises(ValueError):stat.encode(changed,owners,b'pack')
 
+    def red_fixture(self):
+        b=bytearray(2264);struct.pack_into('>I',b,104,2);struct.pack_into('>6I',b,112,0,4,0x78,2,5,0)
+        for i,(kind,link,flags) in enumerate(((3,0,0),(4,0,1),(5,0,1))):
+            at=stat.RED_OFFSETS[i]
+            struct.pack_into('>28i',b,at,*([i+1,kind,0,1 if i==0 else 0,link,0,0,2]+[0]*16+[flags,0,2,0]))
+            payload=stat.RED_PAYLOADS[i];struct.pack_into('>%dI'%len(payload),b,at+112,*payload)
+        return b
+
+    def test_red_explicit_order_namespace_live_mode_and_checksum(self):
+        data=self.red_fixture();nodes=stat.parse(data,attack_down=True)
+        self.assertEqual([(n['key'],n['kind'],n['flags']) for n in nodes],[(1,3,0),(2,4,1),(3,5,1)])
+        self.assertEqual(nodes[0]['resource_words'],[0,1,1644,4])
+        self.assertEqual(nodes[2]['resource_words'],[0x19A,3,0])
+        with self.assertRaises(ValueError):stat.parse(data)
+        with self.assertRaises(ValueError):stat.parse(self.fixture(),attack_down=True)
+        b=stat.encode(nodes,self.owners(),b'checked-red',attack_down=True)
+        self.assertEqual(struct.unpack_from('<7I',b,4),(1,1024,0x27,4,1,2,3))
+        self.assertEqual(struct.unpack_from('<I',b,144)[0],0x78)
+        self.assertEqual(struct.unpack_from('<2I',b,196),(0,1))
+        self.assertEqual(b[52:84],bytes.fromhex(stat.RED_MEMBER_SHA256))
+        self.assertEqual(b[84:116],bytes.fromhex(stat.RED_BANK_SHA256))
+        self.assertEqual(b[236:256],hashlib.sha1(b[:236]+bytes(20)+b[256:]).digest())
+        with self.assertRaises(ValueError):stat.encode(nodes,self.owners(),b'pack')
+        for offset in (120,0x100,0x114,0x78C,0x7A4,0x824,0x8CC):
+            changed=bytearray(data);changed[offset]^=1
+            with self.subTest(offset=offset),self.assertRaises(ValueError):stat.parse(changed,attack_down=True)
+        for bad in (1,None,'red'):
+            with self.assertRaises(ValueError):stat.parse(data,attack_down=bad)
+
+    def test_live_original_part_track_checks_every_sample(self):
+        class Matrix:
+            def __init__(self,bad):self.bad=bad
+            def __getitem__(self,key):return self.bad if key==(2,3) else float(key[0]==key[1])
+        class Model:
+            def __init__(self,bad=0):self.bad=bad;self.calls=[]
+            def world(self,clip,frame):
+                self.calls.append((clip,frame))
+                return [[Matrix(self.bad if frame==59 else 0)]]
+        model=Model();result=stat.verify_live_root(model,0,59)
+        self.assertEqual(result,dict(samples=119,maximum_identity_error=0.))
+        self.assertEqual(model.calls,[(0,i/2) for i in range(119)])
+        for bad in (1.,float('nan'),float('inf')):
+            with self.assertRaises(ValueError):stat.verify_live_root(Model(bad),0,59)
+
+    def test_red_private_export_and_green_binary_compatibility(self):
+        path=Path(os.environ.get('C3_ATTACK_DOWN_FIXTURE','C:/stat-down-red-preparation-v1'))
+        if not (path/'attack_down.c3w').exists():self.skipTest('Private original RED fixture required')
+        raw=(path/'attack_down.gpt').read_bytes();pack=(path/'attack_down.c3p').read_bytes();b=(path/'attack_down.c3w').read_bytes()
+        report=stat.bank(raw,attack_down=True)
+        self.assertEqual(report['closure'],[0,1,2]);self.assertEqual(len(report['textures']),3)
+        self.assertEqual(pack,stat.particle.encode(raw,report,stat.RED_MEMBER_SHA256))
+        self.assertEqual(b[116:136],hashlib.sha1(pack).digest())
+        with self.assertRaises(ValueError):stat.bank(raw)
+        with self.assertRaises(ValueError):stat.bank(raw[:-1],attack_down=True)
+        baseline=ROOT.parent/'stat-down-preparation-v3';compat=ROOT.parent/'stat-down-green-red-compat-v1'
+        if compat.exists() and baseline.exists():
+            for name in ('stat_down.c3w','stat_down.c3p','stat_down.gpt','stat_down.json'):
+                self.assertEqual((baseline/name).read_bytes(),(compat/name).read_bytes(),name)
+
     def test_pinned_source_files(self):
         source=ROOT/'vendor/colosseum';profile=json.loads((ROOT/'config/wzx-stat-down-source-files.json').read_text())
         self.assertEqual(profile['commit'],stat.SOURCE_COMMIT)
         if not (source/'src/game/wazaSequence.c').exists():self.skipTest('Pinned source checkout required')
-        for name,digest in profile['files'].items():self.assertEqual(hashlib.sha256((source/name).read_bytes()).hexdigest(),digest)
+        for name,digest in {**profile['files'],**profile['attack_down']['files']}.items():self.assertEqual(hashlib.sha256((source/name).read_bytes()).hexdigest(),digest)
+        self.assertEqual(profile['attack_down']['profile']['special'],0x27)
+        self.assertEqual(profile['attack_down']['profile']['common_script'],0x803763CE)
 
     def test_private_export_original_bank_and_complete_texture_groups(self):
         path=Path(os.environ.get('C3_STAT_DOWN_FIXTURE',str(ROOT.parent/'stat-down-preparation-v2')))

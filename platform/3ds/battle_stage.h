@@ -80,6 +80,12 @@ typedef struct {
     uint32_t growl_audio_wait_ms;
     uint8_t growl_motion[C3_BATTLE_STAGE_MODELS]; /* 1: remaining clip1, 2: source idle. */
     uint64_t growl_motion_units[C3_BATTLE_STAGE_MODELS];
+    C3WzxStatDownProgram attack_down_program;
+    C3ParticlePack attack_down_pack;
+    uint8_t *attack_down_bytes;
+    C3BattleCameraProgram attack_down_camera_program;
+    C3BattleCamera attack_down_camera;
+    uint8_t attack_down_available, attack_down_camera_available;
     C3WzxStatDownProgram stat_down_program;
     C3WzxStatDown stat_down;
     C3ParticlePack stat_down_pack;
@@ -90,6 +96,8 @@ typedef struct {
     uint8_t stat_down_available, stat_down_camera_available;
     uint8_t stat_down_prior_enabled, stat_down_color_owned, stat_down_motion[2];
     uint64_t stat_down_motion_units[2];
+    uint32_t stat_down_motion_period[2];
+    float stat_down_motion_rate[2];
     uint8_t stat_down_teardown_started, stat_down_keyoff_sent;
     uint32_t stat_down_audio_wait_ms;
     int (*sound_done)(uint32_t,uint32_t,char *,size_t);

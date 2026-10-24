@@ -40,7 +40,7 @@ int main(void){
             result=subprocess.run(cc+flags+["-I"+str(ROOT/"include"),"-I"+str(ROOT/"platform/3ds"),str(source),"-o",str(exe)],capture_output=True,text=True)
             self.assertEqual(result.returncode,0,result.stdout+result.stderr)
             self.assertEqual(subprocess.run([str(exe)]).returncode,0)
-    def test_six_bank_registration_and_checked_app_srt_dispatch(self):
+    def test_seven_bank_registration_and_checked_app_srt_dispatch(self):
         cc=shlex.split(os.environ.get("CC","cc"))
         if not shutil.which(cc[0]):self.skipTest("Host C compiler required")
         implementation=(ROOT/"platform/3ds/particle_renderer.inc").read_text().split("static uint32_t particle_color")[0]
@@ -81,25 +81,26 @@ int c3_particle_quad_app_srt(C3ParticleSystem *s,const C3Particle *p,const C3Par
  return adapter_result;
 }
 '''+implementation+r'''
-int main(void){(void)particle_quads;(void)particle_texids;char e[192];uint8_t bytes[7]={0};C3ParticlePack packs[7]={0};
- assert(C3_STAGE_MAX_PARTICLE_BANKS==6);
- for(unsigned i=0;i<7;++i){packs[i].bank.bytes=bytes+i;packs[i].texture_count=1;packs[i].textures[0].width=packs[i].textures[0].height=8;}
+int main(void){(void)particle_quads;(void)particle_texids;char e[192];uint8_t bytes[8]={0};C3ParticlePack packs[8]={0};
+ assert(C3_STAGE_MAX_PARTICLE_BANKS==7);
+ for(unsigned i=0;i<8;++i){packs[i].bank.bytes=bytes+i;packs[i].texture_count=1;packs[i].textures[0].width=packs[i].textures[0].height=8;}
  packs[4].bank.profile=C3_PARTICLE_PROFILE_GROWL_V1;
- for(unsigned i=0;i<6;++i){
+ packs[6].bank.profile=C3_PARTICLE_PROFILE_RED_DOWN_V1;
+ for(unsigned i=0;i<7;++i){
   assert(c3_stage_renderer_particle_pack(&packs[i],e,sizeof e)==C3_RENDER_OK);
   assert(c3_stage_renderer_particle_pack(&packs[i],e,sizeof e)==C3_RENDER_OK);
  }
- assert(allocations==1&&uploads==6&&texture_count==11&&particle_binding_count==6);
+ assert(allocations==1&&uploads==7&&texture_count==12&&particle_binding_count==7);
  C3ParticlePack alias=packs[0];
  assert(c3_stage_renderer_particle_pack(&alias,e,sizeof e)==C3_RENDER_ERROR);
  assert(strstr(e,"already belong"));
- assert(c3_stage_renderer_particle_pack(&packs[6],e,sizeof e)==C3_RENDER_ERROR);
- assert(allocations==1&&uploads==6&&texture_count==11&&particle_binding_count==6);
+ assert(c3_stage_renderer_particle_pack(&packs[7],e,sizeof e)==C3_RENDER_ERROR);
+ assert(allocations==1&&uploads==7&&texture_count==12&&particle_binding_count==7);
  C3ParticleSystem s={0};float identity[12]={1,0,0,0,0,1,0,0,0,0,1,0};
- for(unsigned i=0;i<6;++i){s.bank=packs[i].bank;
+ for(unsigned i=0;i<7;++i){s.bank=packs[i].bank;
   assert(c3_stage_renderer_particles(&s,identity));assert(particle_pack==&packs[i]&&particle_textures[0]==5+i);
  }
- s.bank=packs[6].bank;assert(!c3_stage_renderer_particles(&s,identity));assert(particle_pack==&packs[5]);
+ s.bank=packs[7].bank;assert(!c3_stage_renderer_particles(&s,identity));assert(particle_pack==&packs[6]);
  C3ParticleSystem growl={0},invalid={0};growl.bank=packs[4].bank;
  C3Particle *p=&growl.particles[0];p->active=1;p->size=1;C3ParticleCamera camera={0};C3ParticleQuad q;
  expected_particle=p;expected_camera=&camera;expected_quad=&q;expected_error=e;expected_capacity=sizeof e;expected_attachment=particle_attachment;
@@ -111,8 +112,9 @@ int main(void){(void)particle_quads;(void)particle_texids;char e[192];uint8_t by
  /* Failed setters preserve all current mutable/const/pack/attachment state. */
  assert(!c3_stage_renderer_particles_app_srt(NULL));
  invalid.bank=packs[0].bank;assert(!c3_stage_renderer_particles_app_srt(&invalid));
+ invalid.bank=packs[6].bank;assert(!c3_stage_renderer_particles_app_srt(&invalid)); /* RED stays world POSITION, not AppSRT. */
  invalid.bank.profile=C3_PARTICLE_PROFILE_GROWL_V1;assert(!c3_stage_renderer_particles_app_srt(&invalid)); /* forged legacy-pack profile */
- invalid.bank=packs[6].bank;invalid.bank.profile=C3_PARTICLE_PROFILE_GROWL_V1;assert(!c3_stage_renderer_particles_app_srt(&invalid));
+ invalid.bank=packs[7].bank;invalid.bank.profile=C3_PARTICLE_PROFILE_GROWL_V1;assert(!c3_stage_renderer_particles_app_srt(&invalid));
  invalid.bank=packs[4].bank;invalid.bank.profile=0;assert(!c3_stage_renderer_particles_app_srt(&invalid));
  assert(!c3_stage_renderer_particles(&growl,NULL));
  s.bank=packs[0].bank;float bad[12];memcpy(bad,identity,sizeof bad);bad[7]=NAN;assert(!c3_stage_renderer_particles(&s,bad));

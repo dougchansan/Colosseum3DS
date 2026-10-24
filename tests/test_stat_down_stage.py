@@ -29,7 +29,12 @@ class StatDownStageTests(unittest.TestCase):
             exe = str(Path(temporary) / 'stage')
             result = subprocess.run([*cc, *flags, '-Iinclude', '-Isrc', '-Iplatform/3ds', *sources, '-lm', '-o', exe], cwd=ROOT, capture_output=True, text=True, timeout=120)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-            result = subprocess.run([exe, str(fixture)], cwd=ROOT, capture_output=True, text=True, timeout=120)
+            dual = Path(os.environ.get('C3_STAT_DOWN_RED_STAGE_FIXTURE', str(ROOT.parent / 'stat-down-red-stage-v1')))
+            red_only = Path(os.environ.get('C3_STAT_DOWN_RED_ONLY_STAGE_FIXTURE', str(ROOT.parent / 'stat-down-red-only-stage-v1')))
+            arguments = [exe, str(fixture)]
+            if (dual / 'attack_down.c3w').is_file() and (red_only / 'attack_down.c3w').is_file():
+                arguments += [str(dual), str(red_only)]
+            result = subprocess.run(arguments, cwd=ROOT, capture_output=True, text=True, timeout=120)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 if __name__ == '__main__':
     unittest.main()

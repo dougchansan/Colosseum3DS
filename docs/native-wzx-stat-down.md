@@ -1,7 +1,8 @@
-# GREEN Defense-down preparation contract
+# Common stat-down preparation contracts
 
-This tool prepares the original GREEN common Defense-down special `0x29`.
-It is not move ID 29, Tail Whip's cast root, a generic flash or red Attack-down.
+By default this tool prepares the original GREEN common Defense-down special
+`0x29`. Explicit `--attack-down` selects original RED Attack-down special `0x27`.
+These special IDs are independent of move IDs and caster WZX roots.
 Native clock, particle, camera, audio and stage verification are separate.
 Original and converted resources remain private; no actor/arena is regenerated.
 
@@ -46,7 +47,8 @@ parse English messages, rerun combat or advance combat RNG.
 The general outer target enumeration/sort and multiple-current global waiter
 overlap are not fully qualified by this preparer. The source global wait
 helper's first-eligible-current behavior must not become an invented wait-all
-rule. Red-down `0x27`, other target species and variants are unsupported here.
+rule. Only the two admitted player target species are supported. RED requires its
+explicit profile described below; other specials and variants fail closed.
 
 The two admitted targets are Umbreon entry 0/source clip 0/end 59 and Espeon
 entry 0/source clip 1/end 90. Their timing gates are 118/180 source ticks,
@@ -147,7 +149,7 @@ target order, suppressed outcomes, color restoration, source idle continuation,
 partitioned time, audio/error/pause cleanup and GPU-busy cancellation. These
 checks do not establish physical rendering, original target sorting, shared
 RNG, original sound release-tail fidelity or complete Tail Whip/Growl coverage.
-Red Attack-down special0x27 remains unsupported.
+This GREEN checkpoint does not qualify RED Attack-down special0x27.
 
 ## Physical green Defense-down checkpoint
 
@@ -161,5 +163,67 @@ color/camera restoration. Both preview guards/save bytes are unchanged.
 Modulo-idle continuity is source/host-qualified rather than directly
 measured per-actor hardware clocks. Original Defense-down comparison is 84/revise
 (category match), with camera/phase/RNG/aspect mismatch; there is no verified
-original Growl reference, audible proof or retail-performance acceptance. Red
-Attack-down and seven remaining move presentations remain unsupported.
+original Growl reference, audible proof or retail-performance acceptance. This GREEN evidence does not qualify RED Attack-down or the seven remaining
+move presentations.
+
+
+## Explicit RED Attack-down preparation
+
+```
+python tools/prepare_wzx_stat_down.py --disc G:/gamecube-decomp/disc-extract-dump --parser vendor/hsd-importer --output C:/stat-down-red-preparation-v1 --attack-down
+```
+
+This opt-in produces `attack_down.c3w`, `attack_down.c3p`, `attack_down.gpt`
+and `attack_down.json`. Default GREEN binary packs and the current corrected
+GREEN report remain byte-identical. RED native stage, camera, particle and
+audio qualifications belong to their separate implementation lanes; this
+preparation does not establish playback or hardware acceptance.
+
+DOL special table `0x803727C8 + 0x27*12` resolves group `0x49B`, member
+`0x0B6E2000`, `wzx_reddown_status.fsys`. Exact source proofs are in the
+`attack_down` section of `config/wzx-stat-down-source-files.json`.
+
+| Resource | Bytes | SHA-256 |
+| --- | ---: | --- |
+| Archive | 1,376 | `a05747fe283ce15e197cef32c61a1394de84ae66e5293fcf5bc2201095b1399c` |
+| Original WZX | 2,264 | `0e0103bdcf6f2dca317e8ae86cfbc5294de2bcd2d7f1af4bf42c04a01bdf08de` |
+| Original GPT1 | 1,644 | `9b54c2d13b9c50949ca13d7fec95ba1d49effb8268490ac1a65d4b04dcd27d97` |
+
+RED root header `[0,4,0x78,2,5,0]` and original node order differ from GREEN:
+
+| Key / offset | Source payload | Binding |
+| --- | --- | --- |
+| 1 / `0xA0` | `[0,1,1644,4]` | Root0, original part0, POSITION mode1, flags0: live attachment. |
+| 2 / `0x7A0` | Color program | Actor-only RGB modulation; duration50, segments10/10/30. |
+| 3 / `0x85C` | `[0x19A,3,0]` | Independent direct SE `0x19A`, runtime flags0, link0. |
+
+All starts and normalization are zero. Actor color word `0x80454681` yields
+low-byte RGB `(129,70,69)`; preserve the prior color and use the same clamped
+`previous - 128 + program` merge and restoration. Closure0/1/2 and all three
+textures are preserved in the original bank. Shapes0/7/7 reuse the source
+shape7 equations, with RED parameters/colors checked by the exact bank hash.
+The `8F` offset remains `(0,22,0)` with source particle kind bit8 clear;
+inspection metadata records that it is not locally rotated or height-scaled.
+No HSD model or actor geometry is generated.
+
+The preparer checks original part0 matrices over every half-frame idle sample:
+119 samples for Umbreon and181 for Espeon, including each endpoint. All are
+identity within `1e-7`; the report includes measured maximum errors. This is
+original part0, never compact C3T bone0. Current player world roots are also
+constant. Moving world roots and the breadth/order of live generator followers
+remain unqualified and must be refused until separately proven. The live mode
+must not be generalized from GREEN's one-shot flags2/modeA1.
+
+The common script address remains `0x803763CE`: successful source stat-down
+cases22..28 and46..52 call it after `fn_8021B910`. `fn_80222110` maps down kinds
+`0x16`/`0x2E`, stat1/4 to special27, while stat2/5/7 selects special29.
+Minimum-stage/failure suppression and committed target order remain required;
+Growl's announcement alone does not authorize a target effect.
+
+C3SG stays version1/1024 bytes. RED has special27 at12, stat1 at20,
+sequence flags78 at144, particle attachment flags0 at196 and particle mode1
+at200. Node records preserve PS/color/SE order. Member/bank/C3PT hashes and the
+whole-descriptor SHA1 cover the selected profile; cross-profile headers,
+nodes, payloads, altered source pins and bank bytes fail closed. Owner gates
+118/180, source frame0/rate.5, resource completion and explicit cleanup remain
+separate from the50-tick color program. No fixed50/118/180 terminal is inferred.

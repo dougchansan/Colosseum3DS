@@ -14,5 +14,38 @@
     "src/game/generator.c": "da5f8de6327e5cd5cb7ccd06513009408f6fd21542d228a42fd2ab2713301414",
     "src/game/psinterpret.c": "3cb29fe1b4e04d25f2c80553f2bebd2ad8fe7e7e470b1de40caf022ab5b907b6",
     "src/game/effect/effect_visual.c": "8f0dc333353b606fc000b20103ec451f220b7d9b548ae04e187b899a4d883144"
+  },
+  "attack_down": {
+    "files": {
+      "src/game/field_range_80117E58.c": "024f1b87bd348a69e3d4a1b309e268c928c803f6dd36b6a691f0da6cec4c2af4"
+    },
+    "dol_slices": [
+      {
+        "address": 2149720336,
+        "bytes": 220,
+        "sha256": "d117061484d71c542ea39a9ca2c042e0c0c981a64bdbd9ae72b1b0a54647e555"
+      },
+      {
+        "address": 2151113678,
+        "bytes": 64,
+        "sha256": "ef083f8287c484aa4a2b7c632adb8193c4e7cf67b4e39b52533aa5b4ed240599"
+      },
+      {
+        "address": 2151098780,
+        "bytes": 8,
+        "sha256": "bbcc51380401702527dd14a775d677509f6115c244a1cccdc8160b30e8cbde14"
+      }
+    ],
+    "source_dispatch": "fn249B8 cases22..28/46..52 call common803763CE after successfulB910. fn80222110 downkind16/2E stat1/4=>special27, stat2/5/7=>29.",
+    "profile": {
+      "special": 39,
+      "stat_id": 1,
+      "raw_flags": 120,
+      "particle_mode": 1,
+      "particle_attachment_flags": 0,
+      "color_word": 2152023681,
+      "sound": 410,
+      "common_script": 2151113678
+    }
   }
 }

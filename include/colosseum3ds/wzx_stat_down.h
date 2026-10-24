@@ -4,15 +4,17 @@
 #include <stdint.h>
 #define C3_WZX_STAT_DOWN_BYTES 1024u
 #define C3_WZX_STAT_DOWN_MAX_TICKS 3600u
-/* Admitted GREEN Defense-down special0x29/kind4, not move29. */
+/* Admitted RED Attack-down special0x27/stat1 and GREEN Defense-down
+ * special0x29/stat2, both kind4. These are special IDs, not move IDs. */
 typedef struct {
  uint32_t species,slot,entry,clip,authored_end,minimum,root_part,camera_part;
  uint8_t owner_sha1[20],member_sha1[20];float root_translation[3];
 } C3WzxStatDownOwner;
 typedef struct {uint32_t key,kind,start,attachment,position_type,link,source,target,timing_index,flags,part,state;uint32_t timing[16],resource[19];} C3WzxStatDownNode;
 typedef struct {
- uint8_t particles_sha1[20];float class_scale,owner_rate;
- uint32_t sound_id,root_generator,particle_flags,particle_mode,color_duration,target_model;
+ uint8_t particles_sha1[20],color_rgb[3];float class_scale,owner_rate;
+ uint32_t special,stat_id,sequence_flags,attachment_flags;
+ uint32_t sound_id,root_generator,particle_mode,color_duration,target_model;
  C3WzxStatDownOwner owners[2];C3WzxStatDownNode nodes[3];
 } C3WzxStatDownProgram;
 typedef enum {C3_STAT_DOWN_AUDIO_ACTIVE=0,C3_STAT_DOWN_AUDIO_FINISHED=1,C3_STAT_DOWN_AUDIO_STOPPED=2} C3WzxStatDownAudio;
@@ -37,7 +39,7 @@ int c3_wzx_stat_down_begin(C3WzxStatDown *,const C3WzxStatDownProgram *,unsigned
 int c3_wzx_stat_down_step(C3WzxStatDown *,uint32_t milliseconds);
 /* Admitted fn801DA9E8 clears owner17: normal early-abort branch is disabled.
  * Natural completion requires owner minimum + color end + no PS generator or
- * children + direct SE FINISHED. Raw sound payload[19B,3,0] has runtimeFlags0,
+ * children + direct SE FINISHED. Raw sound payload[19A/19B,3,0] has runtimeFlags0,
  * not threaded playback. Unexpected STOPPED is rejected; explicitly cancel. */
 int c3_wzx_stat_down_observe(C3WzxStatDown *,int particles_finished,C3WzxStatDownAudio);
 /* ApplyStop whole-family release/keyoff and prior actor-color/camera restoration

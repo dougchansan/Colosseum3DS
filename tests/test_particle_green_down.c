@@ -64,26 +64,50 @@ static void synthetic(void)
 }
 static uint8_t *read_file(const char *path,size_t *length)
 {FILE *f=fopen(path,"rb");assert(f);assert(!fseek(f,0,SEEK_END));long n=ftell(f);assert(n>0);rewind(f);uint8_t *p=malloc((size_t)n);assert(p);assert(fread(p,1,(size_t)n,f)==(size_t)n);fclose(f);*length=(size_t)n;return p;}
-static void actual(const char *raw_path,const char *pack_path)
+static void red_constant_live(void)
+{
+ uint8_t raw[GREEN_BYTES];fixture(raw);C3ParticleBank bank;char e[192];
+ assert(c3_particle_bank_decode_reachable(&bank,raw,sizeof raw,0,C3_PARTICLE_PROFILE_RED_DOWN_V1,e,sizeof e));
+ C3ParticleSystem *a=calloc(1,sizeof *a),*b=calloc(1,sizeof *b);assert(a&&b);float pos[3]={100,200,-30},changed[3]={101,200,-30},native_units[3]={10,20,-3};
+ assert(!c3_particle_begin_position_flags(a,&bank,0,123,pos,0,.75f,.75f,0xa1,e,sizeof e));
+ assert(c3_particle_begin_position_flags(a,&bank,0,123,pos,0,.75f,.75f,1,e,sizeof e));uint32_t root=a->root_emitter_serial;*b=*a;
+ assert(c3_particle_position(a,pos,e,sizeof e)&&c3_particle_position_root(a,root,pos,e,sizeof e));assert(!memcmp(a,b,sizeof *a));
+ assert(!c3_particle_position(a,changed,e,sizeof e));assert(!c3_particle_position_root(a,root,native_units,e,sizeof e));assert(!c3_particle_position_root(a,root+1,pos,e,sizeof e));assert(!memcmp(a,b,sizeof *a));
+ assert(c3_particle_step_ticks(a,1,0,e,sizeof e));assert(!a->emitters[0].active);
+ *b=*a;assert(c3_particle_position_root(a,root,pos,e,sizeof e));assert(!memcmp(a,b,sizeof *a));
+ C3Particle *p=&a->particles[0];uint32_t rng=123;random_value(&rng);random_value(&rng);float angle=-2*PI+(4*PI/8)*(1+random_value(&rng));
+ near(p->position[0],100+10*cosf(angle));near(p->position[2],-30-10*sinf(angle));near(p->position[1],200+22-.75f);
+ assert(!c3_particle_position_root(a,root,changed,e,sizeof e));assert(!memcmp(a,b,sizeof *a));
+ assert(c3_particle_step_ticks(a,39,0,e,sizeof e)&&c3_particle_finished(a));assert(a->emitted==369&&a->peak_particles==24&&a->cosmetic_draws==518);
+ assert(c3_particle_position(a,pos,e,sizeof e));c3_particle_cancel(a);assert(!c3_particle_position_root(a,root,pos,e,sizeof e));
+ free(a);free(b);
+}
+static void actual(const char *raw_path,const char *pack_path,unsigned profile)
 {
  size_t length;uint8_t *raw=read_file(raw_path,&length);C3ParticleBank bank;char e[192];
- if(!c3_particle_bank_decode_reachable(&bank,raw,length,0,2,e,sizeof e)){fprintf(stderr,"%s\n",e);assert(0);}
+ if(!c3_particle_bank_decode_reachable(&bank,raw,length,0,profile,e,sizeof e)){fprintf(stderr,"%s\n",e);assert(0);}
  C3ParticleSystem *s=calloc(1,sizeof *s);assert(s);float pos[3]={100,200,-30};
- assert(c3_particle_begin_position_flags(s,&bank,0,123,pos,.7f,.75f,.75f,0xa1,e,sizeof e));
+ int red=profile==C3_PARTICLE_PROFILE_RED_DOWN_V1;
+ assert(c3_particle_begin_position_flags(s,&bank,0,123,pos,.7f,.75f,.75f,(uint16_t)(red?1:0xa1),e,sizeof e));
  unsigned ticks=0;while(!c3_particle_finished(s)){assert(ticks<300);assert(c3_particle_step_ticks(s,1,0,e,sizeof e));++ticks;
   if(ticks==1){assert(s->emitted==13&&s->cosmetic_draws==47);C3Particle *p=&s->particles[0];
-   uint32_t rng=123;random_value(&rng);random_value(&rng);float angle=-1.5f*PI+(3*PI/8)*(1+random_value(&rng));random_value(&rng);float speed=1+7*random_value(&rng);
-   float x=7.5f*cosf(angle),z=-7.5f*sinf(angle);near(p->position[0],100+cosf(.7f)*x+sinf(.7f)*z);near(p->position[2],-30-sinf(.7f)*x+cosf(.7f)*z);near(p->position[1],200+22-speed*.74f);
+   float radius=red?10:7.5f,span=red?4*PI:3*PI;
+   uint32_t rng=123;random_value(&rng);random_value(&rng);float angle=-span/2+(span/8)*(1+random_value(&rng));random_value(&rng);float speed=1+7*random_value(&rng);
+   float x=radius*cosf(angle),z=-radius*sinf(angle);near(p->position[0],100+cosf(.7f)*x+sinf(.7f)*z);near(p->position[2],-30-sinf(.7f)*x+cosf(.7f)*z);near(p->position[1],200+22-speed*.74f);
+   const uint8_t green[2][3]={{97,254,92},{47,219,95}},red_rgb[2][3]={{252,134,95},{218,86,48}};
+   assert(!memcmp(s->particles[0].prim,red?red_rgb[0]:green[0],3));assert(!memcmp(s->particles[8].prim,red?red_rgb[1]:green[1],3));near(s->particles[8].fric,red?.74f:.72f);
   }
+  if(red)assert(c3_particle_position_root(s,s->root_emitter_serial,pos,e,sizeof e));
  }
  assert(ticks==54&&s->emitted==369&&s->peak_particles==232&&s->cosmetic_draws==1772);
- printf("Original Green-down root0: natural_end%u emitted%u peak%u RNG%llu\n",ticks,s->emitted,s->peak_particles,(unsigned long long)s->cosmetic_draws);
+ printf("Original %s-down root0: natural_end%u emitted%u peak%u RNG%llu\n",red?"Red":"Green",ticks,s->emitted,s->peak_particles,(unsigned long long)s->cosmetic_draws);
  if(pack_path){size_t bytes;uint8_t *data=read_file(pack_path,&bytes),hash[20];C3ParticlePack pack;c3_save_codec_sha1(hash,data,(uint32_t)bytes);
-  assert(c3_particle_pack_decode_reachable(&pack,data,bytes,hash,2,e,sizeof e));assert(pack.bank.profile==2&&pack.root_generator==0&&pack.texture_count==3&&pack.bank.bytes==data+get32(data+16));
+  assert(c3_particle_pack_decode_reachable(&pack,data,bytes,hash,profile,e,sizeof e));assert(pack.bank.profile==profile&&pack.root_generator==0&&pack.texture_count==3&&pack.bank.bytes==data+get32(data+16));
+  C3ParticlePack prior=pack;assert(!c3_particle_pack_decode_reachable(&pack,data,bytes,hash,red?2:3,e,sizeof e));assert(!memcmp(&pack,&prior,sizeof pack));
   /* Re-authenticating a modified whole pack must not bypass the source pin. */
   data[get32(data+16)+600]^=1;c3_save_codec_sha1(hash,data,(uint32_t)bytes);
-  assert(!c3_particle_pack_decode_reachable(&pack,data,bytes,hash,2,e,sizeof e));assert(strstr(e,"source GPT1 SHA-1"));free(data);
+  assert(!c3_particle_pack_decode_reachable(&pack,data,bytes,hash,profile,e,sizeof e));assert(strstr(e,"source GPT1 SHA-1"));assert(!memcmp(&pack,&prior,sizeof pack));free(data);
  }
  free(s);free(raw);
 }
-int main(int argc,char **argv){synthetic();if(argc>1)actual(argv[1],argc>2?argv[2]:NULL);puts("Qualified Green-down shape7/8F/one-shot checks passed");return 0;}
+int main(int argc,char **argv){synthetic();red_constant_live();if(argc>1)actual(argv[1],argc>2?argv[2]:NULL,2);if(argc>3)actual(argv[3],argc>4?argv[4]:NULL,3);puts("Qualified RED/GREEN shape7/8F and constant/one-shot position checks passed");return 0;}

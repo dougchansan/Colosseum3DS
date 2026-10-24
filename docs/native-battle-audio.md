@@ -111,7 +111,7 @@ also cover signed nibbles, predictor history, saturation and child timing.
 
 Reflect's actual WZX sound payload is hexadecimal `0x220` (544 decimal), not
 220 decimal. The sound node at member `0x07632000` offset `0x16FE0` resolves
-through game sound table row544 to bank5 FX`0x293`, macro`0x7AD`, with nested
+through game sound table row544 to bank 5 FX`0x293`, macro`0x7AD`, with nested
 children`0x7AE`, `0x7AF`, `0x7B0`. Source sample IDs are`0x55`, `0x79`, `0x56`,
 and `0x60`. The final child waits600ms before its sample. All bytes still come
 from the admitted battle bank; no synthetic tone or substituted waveform is used.
@@ -272,7 +272,7 @@ audible acceptance. Existing dry SRC/mixer/vibrato/reverb limits still apply.
 `--stat-down` requires `--confusion --tail-whip --growl` and appends only
 green Defense-down special `0x29`, SE `0x19B`, as cue ten. Existing three-,
 seven-, eight- and nine-cue commands retain their prior selections. Red
-Attack-down special `0x27` / SE `0x19A` remains outside this admission.
+Attack-down special `0x27` / SE `0x19A` requires the further opt-in below.
 
 ```powershell
 python tools/prepare_battle_audio.py --disc G:/gamecube-decomp/disc-extract-dump `
@@ -280,25 +280,60 @@ python tools/prepare_battle_audio.py --disc G:/gamecube-decomp/disc-extract-dump
   --confusion --tail-whip --growl --stat-down
 ```
 
-The pinned common REL sound row resolves bank5 FX `0x20E`, root macro `0x22D`
+The pinned common REL sound row resolves bank 5 FX `0x20E`, root macro `0x22D`
 and child `0x22E`, using samples `0x56` and `0x59`. Preparation checks both
 macro hashes and exact dispatch fields before rendering. The child uses the
-existing signed pitch sweep (count100, frequency -200, source low-job15ms).
-The newly admitted root25% auxiliary selection and child15% selection are
+existing signed pitch sweep (count100, frequency -200, source low-job 15ms).
+The newly admitted root25% auxiliary selection and child 15% selection are
 retained as dry metadata; no wet reverb or original DSP/release-tail parity
 is implied. Original successful-target ordering and native stage use are
 separate from this offline audio contract.
 
-C3AU remains version1 with the same layout; the parser/preparer bound is now
-ten prepared cues. The active NDSP voice bound remains four. The actual private
+C3AU remains version1 with the same layout; this opt-in prepares
+ten cues (the current parser bound is eleven). The active NDSP voice bound remains four. The actual private
 pack is1,539,692 bytes, SHA-256
 `557550648f3adaa7d31af0aacb52cd0fe4980c47b70c380c4419669dcbcd4d0c`
 (SHA-1 `62de1f554d4f0008ec0c2e5c1a6c8c9aa15a6816`). All nine prior PCM
-payloads remain byte-identical. SE19B is51,876 mono frames at32kHz
+payloads remain byte-identical. SE19B is51,876 mono frames at 32kHz
 (1.621125 seconds), PCM SHA-256
 `7de486d78f4fb5f6c3987657e2ffb731089b2d248cd7697ab8b653d4b89f3cf9`.
 The dry summed output clips142 frames; no source mixer-gain parity is claimed.
 Tests cover opt-in dependencies, exact dispatch/macro rejection,25% auxiliary
-admission/unknown rejection, native ten-cue acceptance/eleven-cue transactional
+admission/unknown rejection, native prepared-cue boundary acceptance/transactional
 rejection, and actual nine-to-ten PCM identity. No hardware test follows from
 this preparation.
+
+## Red Attack-down opt-in
+
+`--attack-down` requires `--confusion --tail-whip --growl --stat-down` and
+appends only red Attack-down special `0x27`, SE `0x19A`, as cue eleven. Every
+older flag combination retains its selection and byte-identical C3AU output.
+
+```powershell
+python tools/prepare_battle_audio.py --disc G:/gamecube-decomp/disc-extract-dump `
+  --output C:/stat-down-red-audio-v1 `
+  --confusion --tail-whip --growl --stat-down --attack-down
+```
+
+The pinned REL row maps bank 5 FX `0x20D`, macro `0x22B` and child `0x22C`,
+using samples `0x56` and `0x5B`. Exact dispatch and both macro body hashes
+are checked before rendering. The existing signed pitch sweep covers the child
+(count 127, frequency -20, source low-job 15ms). Root 25% and child 15% auxiliary
+selections remain explicit dry metadata; no new synthesis opcode, wet reverb
+or original DSP/keyoff/release-tail qualification is introduced. Source gameplay
+and stage ordering are separate from this preparation.
+
+C3AU version 1/layout is unchanged; the prepared-cue bound is eleven, with
+four active NDSP voices. The actual private eleven-cue pack is 1,641,592 bytes,
+SHA-256 `ab998e7f705142757a837a220c884a71e770afbb998e2277c48abb6f18d9f3b4`
+(SHA-1 `4790941bb300ccb6901c1f32db7beeeaf0dec74d`). All ten prior PCM
+payloads are byte-identical. SE19A is 50,934 mono frames at 32kHz (1.5916875s),
+PCM SHA-256 `f8677eec71e71895b72a9983401193f76d90af50da304919ce359567ea16b809`;
+its dry sum clips 59 frames. The WAV SHA-256 is
+`3cbc4d72835fd340575197070a740e2a65a2579a0a6e1592e3ea63ff76f27621`.
+
+Focused tests cover dependency rejection, dispatch/macro rejection, actual
+ten-to-eleven PCM identity, native eleven-cue load and transactional twelve-cue
+rejection. Independent preparation with the previous committed converter verifies
+all five older flag combinations produce byte-identical pack output. These are
+host/source checks and do not qualify physical red rendering or audible parity.
