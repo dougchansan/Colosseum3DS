@@ -227,3 +227,17 @@ whole-descriptor SHA1 cover the selected profile; cross-profile headers,
 nodes, payloads, altered source pins and bank bytes fail closed. Owner gates
 118/180, source frame0/rate.5, resource completion and explicit cleanup remain
 separate from the50-tick color program. No fixed50/118/180 terminal is inferred.
+
+
+The [2026-10-24 physical RED checkpoint](evidence/attack-down-hardware-2026-10-24/README.md)
+binds source `5519c82018fc58d3b8e8e9a50c1fa34e5ad388e9` to the normal executable,
+closed trace and 30 distinct verified battle readbacks. Actual fresh screens show
+RED Attack-down tint/streaks and later normal-color restoration for both Umbreon
+and Espeon, following GREEN Defense-down and Growl. RED events 24/25 use cues 7/8
+and complete at units 118000/180000 with 369 emitted, 232 peak, 1772 cosmetic draws,
+FINISHED audio/cleanup and color/camera restoration flags. The same boot reaches
+WIN, field return, reentry/cancel and HBL/HOME/FTPD; both preview guards and the
+before/final GCI are unchanged. Receiver interruption/restart and the partial
+Willie CLI failure are recorded explicitly. No qualified original RED reference,
+audible fidelity, all-variant acceptance, uninterrupted-stream or green-CI claim
+is made; see the linked audit and normal-speed/5Ã— silent excerpts for scope.

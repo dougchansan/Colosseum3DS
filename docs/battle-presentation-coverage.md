@@ -55,7 +55,7 @@ establishes a category match, not matched camera/effect-age or retail parity.
 | Bite / Reflect | Admitted source execution and separately identified hardware checkpoints; no complete retail-parity claim. |
 | Confusion | Implemented source-root/camera/composite/particle/audio closure; e996 hardware checkpoint covers both Zigzagoon targets. |
 | Tail Whip | Caster controller/model/camera/selected sound; 5539 hardware B-slot checkpoint and 99d6 original-reference comparison remain separate evidence. Source5b additionally qualifies successful green Defense-down on both player targets. |
-| Growl | Caster model, root-18 sparse-ID/AppSRT particles, floor, camera and selected sound/keyoff; 2e9 hardware A-slot glow/particle execution. Red Attack-down defender presentation remains absent. |
+| Growl | Caster model, root-18 sparse-ID/AppSRT particles, floor, camera and selected sound/keyoff; 2e9 hardware A-slot glow/particle execution. Source5519 additionally qualifies red Attack-down on both player targets. |
 | Seven remaining moves | Tackle, Return, Secret Power, Taunt, Snatch, Helping Hand and Struggle have incomplete original presentation; source camera/audio bindings and rendered-actor coverage vary by move. |
 
 The [5b green Defense-down checkpoint](evidence/stat-down-hardware-2026-10-23/README.md)
@@ -63,8 +63,11 @@ adds shared special0x29 particles, actor color, source target cameras and direct
 SE0x19B on Umbreon and Espeon. Both sequences and their restoration completed
 on hardware; source guards and save bytes remained unchanged. The original
 reference comparison is84/revise, so this is execution/category acceptance,
-not retail visual parity. Red Attack-down special0x27 and full encounter
-presentation remain incomplete.
+not retail visual parity. The [5519 red Attack-down checkpoint](evidence/attack-down-hardware-2026-10-24/README.md)
+adds special0x27 particles, actor tint, source target cameras and directSE0x19A
+on both player targets. Both red sequences restore color/camera and finish their
+cues. Original RED visual/audio parity and full encounter presentation remain
+incomplete.
 
 ## Move bindings
 
@@ -153,7 +156,7 @@ sound-bank mapping. The vendored MusyX `runtime/seq.c`, `synthmacros.c`,
 not a native 3DS MusyX runtime. A bounded [offline audio conversion](native-battle-audio.md)
 and NDSP player are now connected to the admitted events: Bite `0x85/0x86`,
 Reflect `0x220`, Confusion `0x443/0xE9/0x472/0x473`, Tail Whip `0x1DB`
-Growl `0x210` and green Defense-down `0x19B`. These ten requests use
+Growl `0x210`, green Defense-down `0x19B` and red Attack-down `0x19A`. These eleven requests use
 real admitted macros/samples with checked cue identities and buffer lifetime.
 Dry mixing, linear SRC, source vibrato/sweep timing and original DSP/mixer/reverb
 precision limits remain explicit; neither cue telemetry nor a silent recording
@@ -201,5 +204,5 @@ owner rate, all five overlapping damage roots, live/frozen POSITION semantics,
 capture pass classification, indirect sampling, POINT+TRAIL handling and sound
 dependencies. Their bounded source/host coverage and precision limits are
 recorded in [the Confusion contract](native-wzx-confusion.md); they do not qualify
-the remaining seven moves, original HUD/shadows, red Attack-down defender visuals,
+the remaining seven moves, original HUD/shadows, unqualified original status visual/audio parity,
 full send-outs or retail performance.
