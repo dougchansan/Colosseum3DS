@@ -98,4 +98,3 @@ static int tail_step(C3BattleStage *s,uint32_t ms,char *e,size_t n)
     }
     return 1;
 }
-
