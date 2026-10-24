@@ -149,3 +149,21 @@ checks the real faint clip completed before hiding, and then reaches Tackle
 ResetExcept without manually supplying a completed-faint pose. The exact
 previous stage implementation fails the new faint-completion assertion; the
 corrected stage passes. This keeps the narrow released-owner predicate intact.
+
+## Physical checkpoint
+
+Normal build `c2712ebb0f6e` completed Willie through turn-4 WIN, field return,
+re-entry/cancel and clean exit with NTR still loaded. The two Umbreon sequences
+finished at298040 source units and the later Espeon sequence at176000; each
+emitted134 particles, peaked at133 and consumed964 cosmetic draws. All three
+recorded natural audio FINISHED, family teardown and camera restoration.
+Thirty-three distinct effect/audio asset readbacks match the canonical fixture;
+both122832-byte preview guards and the save bytes are unchanged.
+
+The earlier `f6ef3a7` candidate completed the two Umbreon sequences but stopped
+safely on the later Espeon hit: a stale Bite marker bypassed the intervening
+faint animation wait. `c2712eb` limits that exemption to active damage ownership.
+The real cross-effect regression fails with the old condition and passes strict
+and sanitized checks with the fix. [Hardware evidence](evidence/tackle-hardware-2026-10-24/README.md)
+keeps the failed candidate separate from corrected acceptance. Original visual,
+shared RNG, wet audio and full-speed parity remain unqualified.

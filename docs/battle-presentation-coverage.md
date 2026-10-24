@@ -56,7 +56,7 @@ establishes a category match, not matched camera/effect-age or retail parity.
 | Confusion | Implemented source-root/camera/composite/particle/audio closure; e996 hardware checkpoint covers both Zigzagoon targets. |
 | Tail Whip | Caster controller/model/camera/selected sound; 5539 hardware B-slot checkpoint and 99d6 original-reference comparison remain separate evidence. Source5b additionally qualifies successful green Defense-down on both player targets. |
 | Growl | Caster model, root-18 sparse-ID/AppSRT particles, floor, camera and selected sound/keyoff; 2e9 hardware A-slot glow/particle execution. Source5519 additionally qualifies red Attack-down on both player targets. |
-| Tackle | Successful-hit source controller, guarded defender handoff, one-shot particles, mixed POINT/TRAIL rendering, target cameras and selected dry audio are implemented; actual-resource host checks are separate from pending hardware qualification. Miss special57 remains actor-only fallback. |
+| Tackle | Successful-hit source controller, guarded defender handoff, one-shot particles, mixed POINT/TRAIL rendering, target cameras and selected dry audio are implemented; actual-resource host checks and the c271 hardware checkpoint cover both player defenders, WIN and clean lifecycle. Miss special57 remains actor-only fallback. |
 | Six remaining moves | Return, Secret Power, Taunt, Snatch, Helping Hand and Struggle have incomplete original presentation; source camera/audio bindings and rendered-actor coverage vary by move. |
 
 The [5b green Defense-down checkpoint](evidence/stat-down-hardware-2026-10-23/README.md)
@@ -74,8 +74,10 @@ The [Tackle slice](native-wzx-tackle.md) stops the attacker at source tick133,
 starts the successful defender phase and HP gate at0, and waits for the
 admitted defender minimum plus natural particle/audio completion. Its separate
 shape4/source-list particle profile and exact fractional handoff preserve the
-previous move profiles. Hardware and original-reference parity remain separate
-qualifications.
+previous move profiles. The [c271 physical checkpoint](evidence/tackle-hardware-2026-10-24/README.md)
+covers two Umbreon hits and the later Espeon hit after a Bite-induced faint,
+WIN, re-entry/cancel and clean exit with unchanged state/save guards. Original
+reference parity and full-speed performance remain unqualified.
 
 ## Move bindings
 
