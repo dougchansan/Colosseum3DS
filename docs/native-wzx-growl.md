@@ -167,3 +167,15 @@ Synthetic fixtures cover these rejection boundaries. Optional private tests
 verify unchanged bank bytes, descriptor bindings and native load/sampling of
 every original model frame under strict and sanitizer builds. Native sparse
 particle and AppSRT qualification are separate from this conversion contract.
+
+## Physical execution checkpoint
+
+The [2026-10-23 normal-application checkpoint](evidence/growl-hardware-2026-10-23/README.md)
+records actual Growl A caption, actor motion, glow/particles, subsequent WIN,
+field return and HBL/FTPD exit at source `2e9ec7108d16ad1519f935f16c84d57874f52314`.
+Reentry/exit renderer recovery overlays are disclosed in the evidence. The independent
+trace audit records family cancellation and cue 4 STOPPED at units 230000, with
+26 emitted/25 peak particles and 200 cosmetic draws. Owner continuation remains
+a completion assertion rather than per-actor hardware clock telemetry. There is no verified
+original Growl reference, pixel-parity acceptance, audible capture or retail
+performance qualification; the generic defender stat-down presentation remains absent.

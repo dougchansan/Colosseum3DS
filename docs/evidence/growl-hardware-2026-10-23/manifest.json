@@ -1,0 +1,587 @@
+{
+  "source": {
+    "commit": "2e9ec7108d16ad1519f935f16c84d57874f52314",
+    "tree": "3cb124f0c05a442b7f54f90e6b03536134068dbd",
+    "build_id": "2e9ec7108d16",
+    "toolchain": "devkitpro/devkitarm@sha256:116afba8df8453961de2936ffab20dd441edf4d682856c1ec8b0e53d7ed0bbf5",
+    "strict": true,
+    "files": [
+      {
+        "file": "Colosseum3DS-battle-preview-probe.3dsx",
+        "bytes": 538732,
+        "sha256": "a13837ee56ae93acabfb7ca082ca06a1e25aff77361c1a18f06b9bd7c62c9d17"
+      },
+      {
+        "file": "Colosseum3DS.3dsx",
+        "bytes": 572800,
+        "sha256": "389cc6fedc4aca83c5918af147ca77d910c556ac8306045fdca947d485238a7f"
+      },
+      {
+        "file": "Colosseum3DS.smdh",
+        "bytes": 14016,
+        "sha256": "f3fad3feb7b42caab0a647bb392050bf72e4507593cded5a16819cc1c68e5a55"
+      }
+    ]
+  },
+  "recording": {
+    "view_only": true,
+    "input_packets_sent": 0,
+    "tcp_commands_sent": 0,
+    "frames": 8369,
+    "encoded_fps": 10,
+    "wall_seconds": 839.5939999999828,
+    "first_frame_wall_seconds": 0.09399999998277053,
+    "stale_samples": 1,
+    "decode_errors": 0,
+    "encoder_exit": 0,
+    "silent": true,
+    "scope": "Continuous actual NTR screens sampled at10fps; repeated frames and freshness retained in frames.jsonl; no audio stream",
+    "sha256": "d5a83ac8b06b1f7300ff2bbc77a60e1476fda60f541b01ab71eaf2871b7dda74"
+  },
+  "readback": [
+    {
+      "file": "confusion_sequence.c3s",
+      "bytes": 13048,
+      "sha256": "a2bd7564e9b1a04343cc6002782dd71bf26bf4a19de3bea70c491d20fe8c2f8f",
+      "postrun_verified": true
+    },
+    {
+      "file": "confusion_type12.c3f",
+      "bytes": 16640,
+      "sha256": "21a0ebb2cb2b06decd1b69ac365f83e0c375b616529f8ec0929a5812d02b6e4b",
+      "postrun_verified": true
+    },
+    {
+      "file": "confusion_attack.c3p",
+      "bytes": 414688,
+      "sha256": "c4fb9eab25cf99ed5814e34eb6ab7873204de336afd1975bc7ef1536a500d4bb",
+      "postrun_verified": true
+    },
+    {
+      "file": "confusion_damage.c3p",
+      "bytes": 160672,
+      "sha256": "9570f60e0793e8ebc194c8f6cc07b16338dcbe4c225ab47a8980a2c94703aeef",
+      "postrun_verified": true
+    },
+    {
+      "file": "confusion_camera.c3c",
+      "bytes": 22524,
+      "sha256": "6818a7908bc9ca4f392b6815681af191e9046fb35b7f44e71b57bb633d19a6a2",
+      "postrun_verified": true
+    },
+    {
+      "file": "tail_whip.c3w",
+      "bytes": 512,
+      "sha256": "cea9395e8275c238efb3a9b7244e58e2ab23299ad67b398fe9f069a244a90466",
+      "postrun_verified": true
+    },
+    {
+      "file": "tail_whip_controller.c3m",
+      "bytes": 6176,
+      "sha256": "fec21131059e7a2ab94e60a66e2dc5beb4838bdb2866238e1af71a7154bb88b7",
+      "postrun_verified": true
+    },
+    {
+      "file": "tail_whip_effect.c3t",
+      "bytes": 330104,
+      "sha256": "8d097323ad0f9c2f17ced5ce0fff340ab96ffee6e2a47a786676247b7e74f891",
+      "postrun_verified": true
+    },
+    {
+      "file": "tailwhip_camera.c3c",
+      "bytes": 5908,
+      "sha256": "2b17963c68c9066d7ce4c9bb6beeaecfcefab0044e22fbf2a9bc19e7c8187255",
+      "postrun_verified": true
+    },
+    {
+      "file": "growl.c3w",
+      "bytes": 1280,
+      "sha256": "ddfc4864cabd7413e1249addef888e0f551869eb497e37679431bcc7d5a28ab7",
+      "postrun_verified": true
+    },
+    {
+      "file": "growl_model.c3t",
+      "bytes": 585528,
+      "sha256": "b36c101bdfe76e5b99ef2f9137d8955f9733e611d195bf1890c680d967480064",
+      "postrun_verified": true
+    },
+    {
+      "file": "growl.c3p",
+      "bytes": 1710208,
+      "sha256": "538e94f797a4307f57f7c3ec15b481528664f56e138f3994d9a321fb7a90ed67",
+      "postrun_verified": true
+    },
+    {
+      "file": "growl_camera.c3c",
+      "bytes": 12124,
+      "sha256": "c0698aca8c969eaacffb083e6aa26a65ec1159f31e41788fad08d42849f8059a",
+      "postrun_verified": true
+    },
+    {
+      "file": "audio.c3u",
+      "bytes": 1435908,
+      "sha256": "611286b47e183b8afd4f23e2d2de32183a50fd00b98a56fa66489258785d076a",
+      "postrun_verified": true
+    }
+  ],
+  "postrun_files": [
+    {
+      "file": "Colosseum3DS.3dsx",
+      "bytes": 572800,
+      "sha256": "389cc6fedc4aca83c5918af147ca77d910c556ac8306045fdca947d485238a7f"
+    },
+    {
+      "file": "Colosseum3DS.smdh",
+      "bytes": 14016,
+      "sha256": "f3fad3feb7b42caab0a647bb392050bf72e4507593cded5a16819cc1c68e5a55"
+    },
+    {
+      "file": "boot-trace.log",
+      "bytes": 551400,
+      "sha256": "861c8df3a66eb4d31190add4f3c701444bf8378d7230314a7eb88899a45057c7"
+    },
+    {
+      "file": "saves/pokemon_colosseum.gci",
+      "bytes": 393280,
+      "sha256": "7e1cb3159756293bf938fd922fe45e82448d1b667f6833a48da351af3cbd0f23"
+    },
+    {
+      "file": "saves/pokemon_colosseum.gci.bak",
+      "absent": true
+    },
+    {
+      "file": "boot/battle/bite.c3w",
+      "bytes": 256,
+      "sha256": "d09f9616086beae627464d594be18397fa0e1bf3f73e478bb7d291fb3040c1d9"
+    },
+    {
+      "file": "boot/battle/bite_attack.c3t",
+      "bytes": 189680,
+      "sha256": "d15ec7e3fac067bcee2b8a82eb3ed280f75f09893afd9c9e41f1187a2e78cb74"
+    },
+    {
+      "file": "boot/battle/bite_damage.c3w",
+      "bytes": 256,
+      "sha256": "ecf7be4b638f467b896bef17d07eba1394d76c044046e485a25e9f324ccc962e"
+    },
+    {
+      "file": "boot/battle/bite_damage.c3t",
+      "bytes": 627512,
+      "sha256": "f49562d04ec2117e61f22c9c9c23a2b775cf15474b77069dcb2e91474927752c"
+    },
+    {
+      "file": "boot/battle/bite_damage.c3p",
+      "bytes": 308480,
+      "sha256": "9fe84012d54bba173a53dc9fc4eaf9aee782ba390e21e03a46d4aa651564e45d"
+    },
+    {
+      "file": "boot/battle/bite_camera.c3c",
+      "bytes": 18368,
+      "sha256": "93f105aef2ec3644f71d66eb24a3b05640fe91893b9012aff5179d829b0e0b35"
+    },
+    {
+      "file": "boot/battle/audio.c3u",
+      "bytes": 1435908,
+      "sha256": "611286b47e183b8afd4f23e2d2de32183a50fd00b98a56fa66489258785d076a"
+    },
+    {
+      "file": "boot/battle/reflect.c3w",
+      "bytes": 288,
+      "sha256": "d7540d79983505e3b0d342352d5d9b19fe8d620f25ab1f2a4256e5b8ff2fc1c8"
+    },
+    {
+      "file": "boot/battle/reflect.c3t",
+      "bytes": 176344,
+      "sha256": "58dac5ec1dff0f46699a2f3ceb32eb15be3f5657935f76605dd37f3451332bdc"
+    },
+    {
+      "file": "boot/battle/reflect.c3p",
+      "bytes": 462944,
+      "sha256": "a397faff5a7ee5acb1b31b37ec63ef50aaf8ca81394c249f079ef313e3e36a5b"
+    },
+    {
+      "file": "boot/battle/reflect_parts.c3r",
+      "bytes": 3728,
+      "sha256": "e6b6c61a0036ea9a1220dccf28ac4cfdf49470469bb8bca9704d867fa67e2906"
+    }
+  ],
+  "selections": [
+    {
+      "file": "tail-whip-b.png",
+      "source_frame": 5170,
+      "sha256": "303f21a36e617e9e5695ea30a559b72e3a29dc68b2ff355dca22e3307cad7a02",
+      "bytes": 106548,
+      "capture": {
+        "frame": 5170,
+        "wall_seconds": 517.0939999999828,
+        "utc": "2026-10-24T08:36:59.865685+00:00",
+        "screens": {
+          "bottom": {
+            "frame_id": 106,
+            "counter": 8802,
+            "received_utc": "2026-10-24T08:36:59.840147+00:00"
+          },
+          "top": {
+            "frame_id": 106,
+            "counter": 8787,
+            "received_utc": "2026-10-24T08:36:59.817122+00:00"
+          }
+        },
+        "ages": {
+          "top": 0.0470000000204891,
+          "bottom": 0.03200000000651926
+        },
+        "fresh": true
+      }
+    },
+    {
+      "file": "growl-before.png",
+      "source_frame": 5200,
+      "sha256": "71b61beb95651ef65a92b9fc31183e85ac3bbf501f79272fda98af6b4d01f952",
+      "bytes": 107026,
+      "capture": {
+        "frame": 5200,
+        "wall_seconds": 520.0939999999828,
+        "utc": "2026-10-24T08:37:02.871975+00:00",
+        "screens": {
+          "bottom": {
+            "frame_id": 159,
+            "counter": 8855,
+            "received_utc": "2026-10-24T08:37:02.854844+00:00"
+          },
+          "top": {
+            "frame_id": 159,
+            "counter": 8840,
+            "received_utc": "2026-10-24T08:37:02.834494+00:00"
+          }
+        },
+        "ages": {
+          "top": 0.03200000000651926,
+          "bottom": 0.01600000000325963
+        },
+        "fresh": true
+      }
+    },
+    {
+      "file": "growl-glow.png",
+      "source_frame": 5220,
+      "sha256": "9b78f0398921f11a2ecb617ac72bad4d4535c2be73e4e4c3a9db742a69224942",
+      "bytes": 96884,
+      "capture": {
+        "frame": 5220,
+        "wall_seconds": 522.0939999999828,
+        "utc": "2026-10-24T08:37:04.866752+00:00",
+        "screens": {
+          "bottom": {
+            "frame_id": 194,
+            "counter": 8890,
+            "received_utc": "2026-10-24T08:37:04.817535+00:00"
+          },
+          "top": {
+            "frame_id": 195,
+            "counter": 8876,
+            "received_utc": "2026-10-24T08:37:04.851362+00:00"
+          }
+        },
+        "ages": {
+          "top": 0.01600000000325963,
+          "bottom": 0.0470000000204891
+        },
+        "fresh": true
+      }
+    },
+    {
+      "file": "growl-after.png",
+      "source_frame": 5230,
+      "sha256": "c3718ada21b9a809f4e92e94e1e9b8db42f1deb405d5ae4afc0e14c8f7806ab1",
+      "bytes": 106133,
+      "capture": {
+        "frame": 5230,
+        "wall_seconds": 523.0939999999828,
+        "utc": "2026-10-24T08:37:05.865135+00:00",
+        "screens": {
+          "bottom": {
+            "frame_id": 212,
+            "counter": 8908,
+            "received_utc": "2026-10-24T08:37:05.846064+00:00"
+          },
+          "top": {
+            "frame_id": 212,
+            "counter": 8893,
+            "received_utc": "2026-10-24T08:37:05.823757+00:00"
+          }
+        },
+        "ages": {
+          "top": 0.0470000000204891,
+          "bottom": 0.01600000000325963
+        },
+        "fresh": true
+      }
+    },
+    {
+      "file": "preview-win.png",
+      "source_frame": 7000,
+      "sha256": "eb4a14af3b0ae8170c75ef8600a8485a22fb212507925a545a963761f282f692",
+      "bytes": 112818,
+      "capture": {
+        "frame": 7000,
+        "wall_seconds": 700.0939999999828,
+        "utc": "2026-10-24T08:40:02.870403+00:00",
+        "screens": {
+          "bottom": {
+            "frame_id": 160,
+            "counter": 11928,
+            "received_utc": "2026-10-24T08:40:02.816800+00:00"
+          },
+          "top": {
+            "frame_id": 161,
+            "counter": 11914,
+            "received_utc": "2026-10-24T08:40:02.854836+00:00"
+          }
+        },
+        "ages": {
+          "top": 0.01600000000325963,
+          "bottom": 0.0470000000204891
+        },
+        "fresh": true
+      }
+    },
+    {
+      "file": "field-return.png",
+      "source_frame": 7150,
+      "sha256": "8174e6adeca5677f87c073d6131db416e2ef82b59ff3ad95b488fac2bb345a9c",
+      "bytes": 114012,
+      "capture": {
+        "frame": 7150,
+        "wall_seconds": 715.0939999999828,
+        "utc": "2026-10-24T08:40:17.873972+00:00",
+        "screens": {
+          "bottom": {
+            "frame_id": 160,
+            "counter": 12184,
+            "received_utc": "2026-10-24T08:40:17.839196+00:00"
+          },
+          "top": {
+            "frame_id": 160,
+            "counter": 12168,
+            "received_utc": "2026-10-24T08:40:17.811177+00:00"
+          }
+        },
+        "ages": {
+          "top": 0.0470000000204891,
+          "bottom": 0.03200000000651926
+        },
+        "fresh": true
+      }
+    },
+    {
+      "file": "reentry-recovery.png",
+      "source_frame": 7350,
+      "sha256": "e7255c908309a28a2304a6c40ab1635f6b289a0c0d57a5e086cb10105d9c03b0",
+      "bytes": 122432,
+      "capture": {
+        "frame": 7350,
+        "wall_seconds": 735.0939999999828,
+        "utc": "2026-10-24T08:40:37.866487+00:00",
+        "screens": {
+          "bottom": {
+            "frame_id": 231,
+            "counter": 12511,
+            "received_utc": "2026-10-24T08:40:37.809896+00:00"
+          },
+          "top": {
+            "frame_id": 232,
+            "counter": 12496,
+            "received_utc": "2026-10-24T08:40:37.838254+00:00"
+          }
+        },
+        "ages": {
+          "top": 0.03200000000651926,
+          "bottom": 0.06300000002374873
+        },
+        "fresh": true
+      }
+    },
+    {
+      "file": "reentry-discard.png",
+      "source_frame": 7600,
+      "sha256": "716b5a6cbd9f016779c86931c0f36247f9b837886b749118fa8620bcf118aa39",
+      "bytes": 110221,
+      "capture": {
+        "frame": 7600,
+        "wall_seconds": 760.0939999999828,
+        "utc": "2026-10-24T08:41:02.866262+00:00",
+        "screens": {
+          "bottom": {
+            "frame_id": 146,
+            "counter": 12938,
+            "received_utc": "2026-10-24T08:41:02.824762+00:00"
+          },
+          "top": {
+            "frame_id": 146,
+            "counter": 12922,
+            "received_utc": "2026-10-24T08:41:02.800422+00:00"
+          }
+        },
+        "ages": {
+          "top": 0.06300000002374873,
+          "bottom": 0.0470000000204891
+        },
+        "fresh": true
+      }
+    },
+    {
+      "file": "exit-recovery.png",
+      "source_frame": 7800,
+      "sha256": "377774da2c34ac1bb413d63cf93781f5176eb5b3482f45fdbc485b1b1f9f4cf2",
+      "bytes": 123105,
+      "capture": {
+        "frame": 7800,
+        "wall_seconds": 780.0939999999828,
+        "utc": "2026-10-24T08:41:22.870675+00:00",
+        "screens": {
+          "bottom": {
+            "frame_id": 226,
+            "counter": 13274,
+            "received_utc": "2026-10-24T08:41:22.836948+00:00"
+          },
+          "top": {
+            "frame_id": 226,
+            "counter": 13258,
+            "received_utc": "2026-10-24T08:41:22.812581+00:00"
+          }
+        },
+        "ages": {
+          "top": 0.0470000000204891,
+          "bottom": 0.03200000000651926
+        },
+        "fresh": true
+      }
+    },
+    {
+      "file": "homebrew-launcher.png",
+      "source_frame": 7850,
+      "sha256": "3117d8da57c5dc87a1563678e286eae551ca77909c2722b7b88fa7fe8185435e",
+      "bytes": 134251,
+      "capture": {
+        "frame": 7850,
+        "wall_seconds": 785.6869999999763,
+        "utc": "2026-10-24T08:41:28.489729+00:00",
+        "screens": {
+          "bottom": {
+            "frame_id": 68,
+            "counter": 13372,
+            "received_utc": "2026-10-24T08:41:28.435549+00:00"
+          },
+          "top": {
+            "frame_id": 68,
+            "counter": 13356,
+            "received_utc": "2026-10-24T08:41:28.410508+00:00"
+          }
+        },
+        "ages": {
+          "top": 0.0470000000204891,
+          "bottom": 0.031000000017229468
+        },
+        "fresh": true
+      }
+    },
+    {
+      "file": "ftpd.png",
+      "source_frame": 8150,
+      "sha256": "34fb8177a80ae7e37377ed8e9f10806a81e7a23076a123a35289ba840ae31fce",
+      "bytes": 87426,
+      "capture": {
+        "frame": 8150,
+        "wall_seconds": 817.1719999999623,
+        "utc": "2026-10-24T08:42:00.060225+00:00",
+        "screens": {
+          "bottom": {
+            "frame_id": 151,
+            "counter": 13967,
+            "received_utc": "2026-10-24T08:41:59.826460+00:00"
+          },
+          "top": {
+            "frame_id": 151,
+            "counter": 13951,
+            "received_utc": "2026-10-24T08:41:59.808543+00:00"
+          }
+        },
+        "ages": {
+          "top": 0.14100000000325963,
+          "bottom": 0.125
+        },
+        "fresh": true
+      }
+    }
+  ],
+  "trace_audit": {
+    "status": "completed bounded independent audit",
+    "report": "hardware-trace-audit.md",
+    "json": "hardware-trace-audit.json",
+    "sha256": "aeac27128f8472378fb600ab3ed1a8f028fc14cbd9f47e5a8dcb0d5146d87f56"
+  },
+  "ci": {
+    "commit_prefix": "99d6",
+    "run_id": 40078179049,
+    "result": "success",
+    "scope": "same code per integration owner; 2e9 CI cancelled/superseded, not successful",
+    "url": "https://github.com/dougchansan/Colosseum3DS/actions/runs/40078179049"
+  },
+  "limitations": [
+    "No verified original Growl reference or pixel parity",
+    "Generic defender stat-down presentation absent",
+    "Screenshots do not prove AppSRT matrix identity or source key-off release-tail parity",
+    "Renderer recovery overlays observed during reentry and exit; route subsequently reached HBL and FTPD",
+    "Silent capture cannot qualify audible output or retail performance"
+  ],
+  "media": [
+    {
+      "file": "growl-native-silent.mp4",
+      "bytes": 227823,
+      "sha256": "e4b311feabe6e359464f3f9da82f2d3c648a2ed3ec5078a4f3a08a79539eb0ed",
+      "source_encoded_start_seconds": 518,
+      "source_encoded_frames": 70,
+      "viewing_speed": 1,
+      "full_ffmpeg_decode_exit": 0,
+      "audio": false,
+      "probe": {
+        "programs": [],
+        "stream_groups": [],
+        "streams": [
+          {
+            "codec_type": "video",
+            "nb_read_frames": "70"
+          }
+        ],
+        "format": {
+          "duration": "7.000000"
+        }
+      }
+    },
+    {
+      "file": "finish-route-silent-5x.mp4",
+      "bytes": 409148,
+      "sha256": "fbdcd3d89a630a03ac65767d3f3f89d32b6ab6ce6529f0c48af0f3e6b98874b8",
+      "source_encoded_start_seconds": 698,
+      "source_encoded_frames": 1190,
+      "viewing_speed": 5,
+      "full_ffmpeg_decode_exit": 0,
+      "audio": false,
+      "probe": {
+        "programs": [],
+        "stream_groups": [],
+        "streams": [
+          {
+            "codec_type": "video",
+            "nb_read_frames": "238"
+          }
+        ],
+        "format": {
+          "duration": "23.800000"
+        }
+      }
+    }
+  ],
+  "timing": "PNG source UTC/counters are from frames.jsonl. MP4 is nominal 10fps encoded timeline; encoder time gaps mean encoded seconds are not wall UTC. Excerpts select encoded time, not asserted exact UTC duration."
+}

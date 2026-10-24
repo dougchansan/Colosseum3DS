@@ -6,7 +6,17 @@ and NDSP gates, unchanged state/save guards and clean exit with NTR active.
 Its sampled CPU timings and 82/revise visual comparison leave performance and
 retail parity unaccepted.
 
-This is a source trace, not evidence of complete encounter presentation.
+The [Growl caster slice](native-wzx-growl.md) now has a physical checkpoint at
+build `2e9ec7108d16`: Zigzagoon A's Growl announcement, actor motion, curved
+peach-pink glow and spark particles, followed by WIN, field return,
+reentry/discard and exit. Reentry and exit recovery overlays remain part of that
+record, not uninterrupted-transition acceptance. Its checked source schedule
+starts model, root-18 AppSRT particles and SE `0x210` at tick 130 and applies
+family/model/floor/camera stop at tick 230; source owner motion continues
+independently. Hardware playback and explicit stop do not establish original
+release-tail timing or audible mixing in the silent recording.
+
+This is a source and bounded-execution trace, not evidence of complete encounter presentation.
 The optional [Bite slice](native-wzx-bite.md) executes its admitted attack and
 defender model, floor, GPT1, sound and camera bindings. Reflect executes its
 sequential caster/ally model, live attachment, floor, particles and sound bindings.
@@ -19,9 +29,9 @@ Build `749708b3bd33` completed both effects, a preview WIN, return, re-entry/can
 and clean exit on hardware with NTR active on October 23, 2026 (HST). Its trace
 and byte-identical preview guards qualify that bounded run; they do not establish
 retail visual parity, performance acceptance or complete encounter coverage.
-That hardware build used Confusion's incomplete fallback, not the current
-implementation. Current Confusion code and host/emulator evidence do not extend
-the 749 hardware acceptance. Other moves retain explicitly incomplete presentation.
+The 749 build used Confusion's incomplete fallback. Its acceptance remains
+historical; the later e996 checkpoint separately qualifies the implemented
+Confusion path on hardware. Other moves retain explicitly incomplete presentation.
 
 Bindings below were read from the admitted GC6E01 revision-0 common REL
 (SHA-1 `e816761813900aa0fd4f87d012b3b2a19d2f003e`) and DOL
@@ -33,8 +43,23 @@ the admitted Zigzagoon controller/model, center-null attachment, source camera
 and selected dry sound. Its decoding/stage fixtures pass. A separate
 [5539 hardware checkpoint](evidence/tail-whip-hardware-2026-10-23/README.md)
 qualifies Tail Whip on B, WIN, lifecycle and state preservation; the earlier
-e996 checkpoint does not cover it. Tackle, Growl, Return, Secret Power, Taunt, Snatch,
-Helping Hand and Struggle retain incomplete original-effect presentation.
+e996 checkpoint does not cover it. The [original Tail Whip reference and
+comparison](evidence/tail-whip-original-reference-2026-10-23/README.md), published
+at documentation checkpoint `99d6d4a`, identifies the original cyan-ring caster
+effect and separate green defender stat-down streaks. Its 76/100, revise verdict
+establishes a category match, not matched camera/effect-age or retail parity.
+`99d6` adds reference evidence; it is not a replacement hardware binary identity.
+
+| Presentation slice | Current bounded qualification |
+| --- | --- |
+| Bite / Reflect | Admitted source execution and separately identified hardware checkpoints; no complete retail-parity claim. |
+| Confusion | Implemented source-root/camera/composite/particle/audio closure; e996 hardware checkpoint covers both Zigzagoon targets. |
+| Tail Whip | Caster controller/model/camera/selected sound; 5539 hardware B-slot checkpoint and 99d6 original-reference comparison remain separate evidence. |
+| Growl | Caster model, root-18 sparse-ID/AppSRT particles, floor, camera and selected sound/keyoff; 2e9 hardware A-slot glow/particle execution. Generic defender stat-down remains absent. |
+| Seven remaining moves | Tackle, Return, Secret Power, Taunt, Snatch, Helping Hand and Struggle have incomplete original presentation; source camera/audio bindings and rendered-actor coverage vary by move. |
+
+Growl and Tail Whip caster execution do not implement the shared original defender
+stat-down visuals. Full encounter presentation remains incomplete.
 
 ## Move bindings
 
@@ -79,10 +104,11 @@ Zero means no default root for that kind, not absence of all visual behavior.
 For all twelve moves, combat is supported by the experimental preview coordinator;
 typed announcement, HP, status, miss, critical and faint events are available.
 Complete encounter-wide WZX, camera and sound coverage remains unsupported.
-Bite, Reflect and Confusion have the bounded execution described above; the
-other nine entries remain source bindings, not assertions of rendered effect
-execution: Secret Power, Taunt, Snatch, Return, Helping Hand, Tackle, Growl,
-Tail Whip and Struggle. Original send-outs/ball and light effects, trainer
+Bite, Reflect, Confusion, Tail Whip and Growl have the bounded execution
+described above. The remaining seven entries retain incomplete original-effect
+presentation: Secret Power, Taunt, Snatch, Return, Helping Hand, Tackle and
+Struggle. Their source bindings, selected cameras/audio and rendered-actor paths
+must be qualified independently; a table entry is not rendered-effect evidence. Original send-outs/ball and light effects, trainer
 commands, HUD/font assets and battle shadows also remain incomplete. The native
 preview overlay is not the original HUD. No per-move camera or SE ID is asserted
 without parsing its selected sequence, and no complete retail visual or
@@ -121,7 +147,8 @@ sound-bank mapping. The vendored MusyX `runtime/seq.c`, `synthmacros.c`,
 `synthdata.c`, `synth_vsamples.c` and hardware layer are available references,
 not a native 3DS MusyX runtime. A bounded [offline audio conversion](native-battle-audio.md)
 and NDSP player are now connected to the admitted events: Bite `0x85/0x86`,
-Reflect `0x220`, and Confusion `0x443/0xE9/0x472/0x473`. These seven requests use
+Reflect `0x220`, Confusion `0x443/0xE9/0x472/0x473`, Tail Whip `0x1DB`
+and Growl `0x210`. These nine requests use
 real admitted macros/samples with checked cue identities and buffer lifetime.
 Dry mixing, linear SRC, source vibrato/sweep timing and original DSP/mixer/reverb
 precision limits remain explicit; neither cue telemetry nor a silent recording
@@ -142,10 +169,10 @@ that arbitrary move cameras/effects are supported. A present inconsistent pack
 fails; absence must remain explicitly incomplete presentation. Preserve matched
 descriptors and dependencies rather than installing one pack in isolation.
 
-For the remaining nine moves, the next gate is still to parse and hash their
+For the remaining seven moves, the next gate is still to parse and hash their
 table-selected WZX roots and embedded model/particle/camera/SE payloads, then
 implement their required entry handlers through the private preparer/native
-renderer. For the current three slices, source-reference comparison, physical
+renderer. For the current five slices, source-reference comparison, physical
 GPU/audio acceptance and measured performance retain their own exact build and
 asset identities. Keep unknown handlers as explicit unsupported errors. Do not
 treat fixed timeline durations or an attack clip alone as successful original
@@ -169,4 +196,5 @@ owner rate, all five overlapping damage roots, live/frozen POSITION semantics,
 capture pass classification, indirect sampling, POINT+TRAIL handling and sound
 dependencies. Their bounded source/host coverage and precision limits are
 recorded in [the Confusion contract](native-wzx-confusion.md); they do not qualify
-the remaining nine moves, original HUD/shadows, full send-outs or retail performance.
+the remaining seven moves, original HUD/shadows, shared defender stat-down visuals,
+full send-outs or retail performance.
