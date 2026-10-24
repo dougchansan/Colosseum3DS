@@ -27,8 +27,8 @@ typedef struct {
     uint32_t specular_lights;
 } SceneBinding;
 static const C3ParticlePack *particle_pack;
-static const C3ParticlePack *particle_bindings[2];
-static uint32_t particle_binding_textures[2][32];
+static const C3ParticlePack *particle_bindings[C3_STAGE_MAX_PARTICLE_BANKS];
+static uint32_t particle_binding_textures[C3_STAGE_MAX_PARTICLE_BANKS][32];
 static unsigned particle_binding_count;
 static const C3ParticleSystem *particle_system;
 static TitleGPUVertex *particle_vertices;
@@ -56,7 +56,11 @@ typedef struct { bool configured, enabled; size_t model, screen_model; uint32_t 
 static TVBinding tv;
 static C3D_Tex tv_texture;
 static C3D_RenderTarget *tv_target, *active_target;
-static bool test_tv;
+static bool test_tv,test_confusion;
+static bool test_capture_classes;
+static unsigned class_draws;
+static unsigned capture_draws,composites,particle_calls;
+static C3D_RenderTarget *confusion_target;
 static unsigned offscreen_draws, main_draws;
 
 enum {
@@ -159,7 +163,17 @@ static void C3D_TexBind(unsigned unit, C3D_Tex *texture)
 static void C3D_DrawArrays(int primitive, unsigned first, unsigned count)
 {
     assert(primitive == GPU_TRIANGLES && first == 0 && count == 3);
-    if(test_tv) {
+    if(test_capture_classes){
+        const unsigned expected[]={33,22,11,11,22,33};
+        assert(class_draws<6&&alpha_reference==expected[class_draws]);
+        assert(active_target==(class_draws<3?confusion_target:target));
+        assert(alpha_enabled==(alpha_reference==33));
+        ++class_draws;
+    } else if(test_confusion){
+        assert(bound[0]==&textures[4]||bound[0]==&textures[5]);
+        if(active_target==confusion_target){assert(main_draws==0);++capture_draws;}
+        else {assert(active_target==target&&capture_draws==2);++main_draws;}
+    } else if(test_tv) {
         if(active_target==tv_target) {
             assert(tv.enabled && bound[0]==&textures[5] && bound[1]==&textures[5]);
             ++offscreen_draws;
@@ -171,8 +185,10 @@ static void C3D_DrawArrays(int primitive, unsigned first, unsigned count)
         assert(bound[0] == &textures[4]);
         assert(bound[1] == expected_second);
     }
-    assert(alpha_enabled == (expected_alpha_reference != 0));
-    assert(alpha_reference == expected_alpha_reference);
+    if(!test_capture_classes){
+        assert(alpha_enabled == (expected_alpha_reference != 0));
+        assert(alpha_reference == expected_alpha_reference);
+    }
     ++draws;
 }
 static void C3D_ImmDrawBegin(int primitive)
@@ -183,6 +199,16 @@ static void C3D_ImmDrawBegin(int primitive)
     ++overlays;
 }
 
+/* Optional capture state is exercised separately; these stubs assert the
+ * unbound API never submits work in the existing material regression suite. */
+#define CONFUSION_WIDTH 512u
+#define CONFUSION_HEIGHT 256u
+static int confusion_prepare(const C3D_Mtx *clip,const C3D_Mtx *view,char *e,size_t n){assert(frame_open);return test_confusion||test_capture_classes;}
+static int confusion_draw(const C3D_Mtx *mvp,C3TitleRenderStats *stats,char *e,size_t n){assert(frame_open);if(test_capture_classes)assert(class_draws==6);else assert(test_confusion&&capture_draws==2&&main_draws==2&&particle_calls==0);++composites;return 1;}
+static void confusion_shutdown(void){}
+static void particle_line_shutdown(void){}
+static void particle_line_fini(void){}
+
 /* Generated from the current production file by test_renderer_texture_binding.py. */
 /* This fixture verifies the authored material/TV path with the optional battle
  * overlay disabled. The HUD has a separate real ARM integration gate. */
@@ -190,7 +216,7 @@ static void draw_battle_hud(C3TitleRenderStats *stats) { (void)stats; }
 /* Particle submission is independently exercised by its own fixture; this
  * fixture continues executing the production authored-geometry draw path. */
 static int draw_particles(const C3TitleCamera *camera,const C3D_Mtx *mvp,C3TitleRenderStats *stats,char *error,size_t capacity)
-{(void)camera;(void)mvp;(void)stats;if(getenv("C3_TEST_PARTICLE_OVERLOAD")){snprintf(error,capacity,"Particle command budget exceeded");return 0;}return 1;}
+{(void)camera;(void)mvp;(void)stats;if(test_confusion){assert(composites==1&&active_target==target);++particle_calls;}if(getenv("C3_TEST_PARTICLE_OVERLOAD")){snprintf(error,capacity,"Particle command budget exceeded");return 0;}return 1;}
 #include "title_renderer_draw.inc"
 
 int main(int argc, char **argv)
@@ -204,6 +230,7 @@ int main(int argc, char **argv)
     if (flags & C3_TITLE_REFLECTION_BLEND) flags |= C3_TITLE_LIT;
     C3TitleBatch batch = {.count = 3, .texture = 0, .texture2 = 1, .flags = flags,
         .color_mode = 4, .alpha_mode = 0, .alpha_compare0 = 7, .alpha_compare1 = 7};
+    if(getenv("C3_TEST_MAIN_UNKNOWN_CLASS"))batch.render_mode=0x20000000u;
     const char *alpha = getenv("C3_TEST_ALPHA_REF");
     if (alpha) {
         expected_alpha_reference = (unsigned)strtoul(alpha, NULL, 10);
@@ -223,6 +250,42 @@ int main(int argc, char **argv)
     C3TitleRenderStats stats;
     char error[128] = {0};
     const C3Title *models[] = {&title};
+    if(getenv("C3_TEST_CAPTURE_CLASSES")){
+        test_capture_classes=true;confusion_target=(void *)9;
+        C3TitleBatch categories[3]={batch,batch,batch};
+        /* Deliberately contradict source class with native custom-PE state. */
+        categories[0].render_mode=0x60000000u;categories[0].flags=0;
+        categories[1].render_mode=0x40000000u;categories[1].flags=C3_TITLE_TRANSLUCENT;
+        categories[2].render_mode=0;categories[2].flags=C3_TITLE_TRANSLUCENT|C3_TITLE_ADDITIVE;
+        for(unsigned i=0;i<3;++i){categories[i].alpha_ref0=(i+1)*11;title.pose.materials[i].visible=1;}
+        categories[2].alpha_compare0=categories[2].alpha_compare1=4;
+        categories[2].alpha_ref1=categories[2].alpha_ref0;
+        title.batches=categories;title.batch_count=3;scenes[0].batch_count=3;
+        if(getenv("C3_TEST_CAPTURE_CLASS_INVALID")){
+            categories[0].render_mode=0x20000000u;
+            assert(c3_stage_renderer_draw(models,1,&title.pose.camera,1,&stats,error,sizeof error)==C3_RENDER_ERROR);
+            assert(!frame_open&&frame_ends==1&&!class_draws&&!prepared&&!composites);
+            assert(strstr(error,"transparency class"));
+            puts("Unknown source capture class fails before geometry submission");return 0;
+        }
+        assert(c3_stage_renderer_draw(models,1,&title.pose.camera,1,&stats,error,sizeof error)==C3_RENDER_OK);
+        assert(class_draws==6&&composites==1&&stats.draw_calls==6);
+        puts("Capture source classes follow OPA TEXEDGE XLU independently of PE; main order unchanged");return 0;
+    }
+    if(getenv("C3_TEST_CONFUSION")){
+        test_confusion=true;confusion_target=(void *)9;
+        C3Title actor=title;const C3Title *pair[]={&title,&actor};
+        scene_count=2;vertex_count=6;scenes[1]=scenes[0];
+        scenes[1].asset=&actor;scenes[1].first_vertex=3;scenes[1].textures[0]=5;
+        queued_busy=true;
+        assert(c3_stage_renderer_draw(pair,2,&title.pose.camera,1,&stats,error,sizeof error)==C3_RENDER_BUSY);
+        assert(!gpu_writes&&!prepared&&!capture_draws&&!composites&&!particle_calls);
+        queued_busy=false;
+        assert(c3_stage_renderer_draw(pair,2,&title.pose.camera,1,&stats,error,sizeof error)==C3_RENDER_OK);
+        assert(capture_draws==2&&main_draws==2&&composites==1&&particle_calls==1);
+        assert(stats.draw_calls==4&&stats.vertices_prepared==6&&frame_ends==1);
+        puts("Confusion captures every model before main, composite before particles, BUSY preserves storage");return 0;
+    }
     if(getenv("C3_TEST_PARTICLE_OVERLOAD")){
         assert(c3_stage_renderer_draw(models,1,&title.pose.camera,1,&stats,error,sizeof error)==C3_RENDER_ERROR);
         assert(!frame_open&&frame_ends==1&&strstr(error,"command budget"));

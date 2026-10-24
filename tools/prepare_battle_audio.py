@@ -24,6 +24,14 @@ PROFILES = {
 SAMP_PROFILE = (1325920, 'caa0ad205c1f33f3310ca7b5137ec619aa514e9bc16c3c6d0d2b59d93c44d062')
 RATE = 32000
 MAX_FRAMES = RATE * 10
+SINE_TABLE_ADDRESS = 0x80369D20
+SINE_TABLE_SHA256 = 'aeab0f3fd8f52860e77db653864b644271098f6a827d303674502861f55824b3'
+SOURCE_FILES = {
+    'src/musyx/runtime/synthmacros.c': '0b45497b7761c23f52c6a0c0567258b5c5876d3c85c850c8ddbfb6c53d6c43c6',
+    'src/musyx/runtime/synth.c': '43991b47e4c75dbc387708b2308085b0716c41d4e1a11da8b965c16bbdc8f473',
+    'src/musyx/runtime/snd_service_exact_80162070.c': 'cc9c0949a99d469c6e38f68baf61c6ba071e6b729a796751bd53fc4fb0a01927',
+    'src/musyx/runtime/hardware.c': '990f5fe26a684729c9de41de2bbdd5512a5af1b90f209e6e139bf644bd7c375a',
+}
 
 
 def extent(data, offset, size):
@@ -147,7 +155,7 @@ def resolve_layers(table, macro, *, key=60, volume=127, start_ms=0, depth=0, sta
     if depth >= 8 or macro in stack or macro not in table:
         raise ValueError('Macro recursion/missing resource exceeds bound')
     offset, code = table[macro]
-    layers, audible, pan, sweep = [], False, 64, None
+    layers, audible, pan, sweep, vibrato, reverb = [], False, 64, None, None, None
     for pc in range(min(len(code) // 8, 64)):
         a, b = struct.unpack_from('>II', code, pc * 8)
         op = a & 127
@@ -162,8 +170,10 @@ def resolve_layers(table, macro, *, key=60, volume=127, start_ms=0, depth=0, sta
             layers += resolve_layers(table, a >> 16, key=key, volume=volume,
                                      start_ms=start_ms, depth=depth + 1, stack=stack + (macro,))
         elif op == 0x46:
-            if a not in (0x140146, 0x1E0146) or b:
+            if a not in (0x0F0146, 0x140146, 0x1E0146) or b:
                 raise ValueError('Unqualified reverb controller')
+            reverb = {'controller': 1, 'scale_percent': a >> 16,
+                      'combine': 0, 'dry_only': True}
         elif op == 0x40:
             if (a & 0xFFFF) != 0x0740 or b or not 0 <= a >> 16 <= 127:
                 raise ValueError('Unqualified volume controller')
@@ -176,11 +186,20 @@ def resolve_layers(table, macro, *, key=60, volume=127, start_ms=0, depth=0, sta
             if a != 0x4015 or b:
                 raise ValueError('Only centered surround setup is qualified for mono output')
         elif op == 0x1D:
-            if (a, b) != (0x01F4141D, 0x100) or audible:
+            if a & 0xFF != 0x1D or b != 0x100 or audible or not (a >> 8) & 255:
                 raise ValueError('Unqualified source pitch-sweep setup')
-            # mcmdPitchSweep:20 counts, hwFrq2Pitch(+500Hz), no wait.
-            sweep = {'count': 20, 'frequency': 500, 'mix_rate': 32000,
+            # mcmdPitchSweep: byte count, signed16 frequency, real-time wait0.
+            frequency = struct.unpack('>h', struct.pack('>H', a >> 16))[0]
+            sweep = {'count': (a >> 8) & 255, 'frequency': frequency, 'mix_rate': 32000,
                      'low_job_ms': 15, 'first_update_ms': 0}
+        elif op == 0x1C:
+            # Source dispatch is mcmdVibrato, not MIDI pitch bend. Reached
+            # macros use positive key/cents ranges and unmodulated ms periods.
+            keys, cents, period = (a >> 8) & 255, (a >> 16) & 255, b >> 16
+            if audible or a >> 24 or b & 0xFFFF != 0x100 or not 1 <= period <= 1000 or keys > 127 or cents > 99:
+                raise ValueError('Unqualified source vibrato setup')
+            vibrato = {'key_range': keys, 'cent_range': cents, 'period_ms': period,
+                       'low_job_ms': 15, 'first_update_ms': 0, 'modulation_scaled': False}
         elif op == 0x19:
             if a >> 16 or b != 0x100:
                 raise ValueError('Unqualified key/detune setup')
@@ -191,14 +210,16 @@ def resolve_layers(table, macro, *, key=60, volume=127, start_ms=0, depth=0, sta
             layers.append({'macro': macro, 'macro_offset': offset, 'pc': pc,
                            'sample': (a >> 8) & 0xFFFF, 'key': key,
                            'volume': volume, 'pan': pan, 'start_ms': start_ms,
-                           **({'sweep': dict(sweep)} if sweep else {})})
+                           **({'sweep': dict(sweep)} if sweep else {}),
+                           **({'vibrato': dict(vibrato)} if vibrato else {}),
+                           **({'dry_aux_a_selection': dict(reverb)} if reverb else {})})
             audible = True
         elif op == 7:
             # Opcode7 forces real-time (para[1] bit8) per macHandleActive.
             delay = b >> 16
             if a == 0x01000007 and delay == 0xFFFF and audible:
                 return layers  # Sample-end wait; trailing keyoff/end have no tail.
-            if a != 7 or b & 0xFFFF or delay > 1000 or audible:
+            if a != 7 or b & 0xFFFF or delay > 1000 or audible or sweep or vibrato:
                 raise ValueError('Unqualified macro wait')
             start_ms += delay
         else:
@@ -213,8 +234,10 @@ def pitch_sweep(spec):
     are1/256ms. Offline phase starts at the macro's first sample frame. Original
     job/DSP phase within that15ms interval remains an explicit substitution.
     """
-    if spec != {'count': 20, 'frequency': 500, 'mix_rate': 32000,
-                'low_job_ms': 15, 'first_update_ms': 0}:
+    if (set(spec) != {'count', 'frequency', 'mix_rate', 'low_job_ms', 'first_update_ms'} or
+        not isinstance(spec['count'], int) or not 1 <= spec['count'] <= 255 or
+        not isinstance(spec['frequency'], int) or not -32768 <= spec['frequency'] <= 32767 or
+        spec['mix_rate'] != RATE or spec['low_job_ms'] != 15 or spec['first_update_ms'] != 0):
         raise ValueError('Unqualified pitch-sweep profile')
     counter = spec['count'] << 16
     offset = 0
@@ -226,11 +249,39 @@ def pitch_sweep(spec):
             counter = spec['count'] << 16
             offset = 0
         else:
-            offset += ((pitch << 16) >> 12) * delta
+            offset = (offset + ((pitch << 16) >> 12) * delta + (1 << 31)) % (1 << 32) - (1 << 31)
         yield offset
 
 
-def render_layers(layers, sdir, samples):
+def pitch_vibrato(spec, sine):
+    """mcmdVibrato/sndSin/LowPrecisionHandler, yielding Q16 semitone offsets.
+
+    This preserves the original table/quadrant/integer arithmetic. Offline
+    first-sample low-job phase is the same explicit substitution as the sweep.
+    """
+    if (set(spec) != {'key_range', 'cent_range', 'period_ms', 'low_job_ms', 'first_update_ms', 'modulation_scaled'} or
+        any(type(spec[k]) is not int for k in ('key_range', 'cent_range', 'period_ms')) or
+        not 0 <= spec['key_range'] <= 127 or not 0 <= spec['cent_range'] <= 99 or
+        not 1 <= spec['period_ms'] <= 1000 or spec['low_job_ms'] != 15 or
+        spec['first_update_ms'] != 0 or spec['modulation_scaled'] is not False or
+        sine is None or len(sine) != 1024 or any(not isinstance(x, int) or not 0 <= x <= 4095 for x in sine)):
+        raise ValueError('Unqualified source vibrato profile/table')
+    period = spec['period_ms'] * 256
+    phase = 0
+    span = spec['key_range'] * 256 + spec['cent_range'] * 256 // 100
+    while True:
+        phase = (phase + spec['low_job_ms'] * 256) & 0xFFFFFFFF
+        angle = ((phase % period * 16) // (period // 256)) & 0xFFF
+        index = angle & 0x3FF
+        if angle & 0x400:
+            index = 0x3FF - index
+        value = sine[index]
+        if angle & 0x800:
+            value = -value
+        yield (span * value) >> 4
+
+
+def render_layers(layers, sdir, samples, sine=None):
     output = [0] * MAX_FRAMES
     end = 0
     for layer in layers:
@@ -242,7 +293,7 @@ def render_layers(layers, sdir, samples):
         # Offline linear resampling, not the original DSP polyphase SRC/mixer.
         step = record['rate'] * 2 ** ((layer['key'] - record['root_key']) / 12) / RATE
         begin = (layer['start_ms'] * RATE) // 1000
-        if 'sweep' not in layer:
+        if 'sweep' not in layer and 'vibrato' not in layer:
             count = math.ceil(len(pcm) / step)
             if begin + count > MAX_FRAMES:
                 raise ValueError('Rendered cue exceeds ten-second bound')
@@ -253,22 +304,31 @@ def render_layers(layers, sdir, samples):
                 value = pcm[first] + (pcm[second] - pcm[first]) * (x - first)
                 output[begin + i] += round(value * layer['volume'] / 127)
         else:
-            steps = pitch_sweep(layer['sweep'])
-            job_frames = RATE * layer['sweep']['low_job_ms'] // 1000
-            pitch = next(steps)
+            sweeps = pitch_sweep(layer['sweep']) if 'sweep' in layer else None
+            vibratos = pitch_vibrato(layer['vibrato'], sine) if 'vibrato' in layer else None
+            job_frames = RATE * 15 // 1000
+            pitch = next(sweeps) if sweeps else 0
+            cents = next(vibratos) if vibratos else 0
             x, count = 0., 0
             while x < len(pcm):
                 if begin + count >= MAX_FRAMES:
                     raise ValueError('Rendered swept cue exceeds ten-second bound')
                 if count and count % job_frames == 0:
-                    pitch = next(steps)
+                    pitch = next(sweeps) if sweeps else 0
+                    cents = next(vibratos) if vibratos else 0
                 first = int(x)
                 second = min(first + 1, len(pcm) - 1)
                 value = pcm[first] + (pcm[second] - pcm[first]) * (x - first)
                 output[begin + count] += round(value * layer['volume'] / 127)
                 # Source cpitch addition is Q16 then truncates to Q12 DSPpitch.
-                base_q16 = int(step * 4096 * 65536)
-                x += ((base_q16 + pitch) >> 16) / 4096.
+                # Existing dry musical ratio remains a substitute for source
+                # convert_cents/sndGetPitch's fixed table interpolation.
+                modulated = step * 2 ** (cents / (12 * 65536)) if vibratos else step
+                base_q16 = int(modulated * 4096 * 65536)
+                increment = ((base_q16 + pitch) >> 16) / 4096.
+                if increment <= 0:
+                    raise ValueError('Source pitch modulation produced nonpositive playback step')
+                x += increment
                 count += 1
         end = max(end, begin + count)
         layer['source'] = record
@@ -302,8 +362,20 @@ def encode_pack(cues):
     return header + bytes(32) + body
 
 
-def prepare(disc, output):
+def prepare(disc, output, confusion=False):
     disc = verify_disc(disc)
+    root = Path(__file__).resolve().parents[1]
+    for name, digest in SOURCE_FILES.items():
+        path = root / 'vendor/colosseum' / name
+        if path.is_symlink() or hashlib.sha256(path.read_bytes()).hexdigest() != digest:
+            raise ValueError('Audio macro source drift: ' + name)
+    sine = None
+    if confusion:
+        from prepare_game_state import Dol
+        data = Dol((disc / 'sys/main.dol').read_bytes()).read(SINE_TABLE_ADDRESS, 2048)
+        if hashlib.sha256(data).hexdigest() != SINE_TABLE_SHA256:
+            raise ValueError('Original MusyX sine table differs from admitted DOL')
+        sine = struct.unpack('>1024h', data)
     common_path = disc / 'files/common.fsys'
     sample_path = disc / 'files/sound/snd_se_battle.samp'
     if common_path.is_symlink() or sample_path.is_symlink():
@@ -317,13 +389,19 @@ def prepare(disc, output):
     samples = admit(sample_path.read_bytes(), SAMP_PROFILE)
     macro_table, fx = macros(pool), fx_table(proj)
     cues, report = [], {'source_commit': SOURCE_COMMIT, 'common_sha1': COMMON_SHA1, 'cues': [],
+        'macro_source_sha256': SOURCE_FILES,
         'sample_archive': {'file': 'sound/snd_se_battle.samp', 'sha256': SAMP_PROFILE[1]},
         'bank_members': [{'id': identity, 'bytes': size, 'sha256': digest} for identity, (size, digest) in PROFILES.items()],
         'limitations': ['Selected dry offline macro rendering; no MusyX runtime or reverb.',
             'Linear SRC and musical semitone ratios replace original DSP polyphase SRC and fixed-point pitch table.',
             'Centered mono PCM uses source controller volume scales; original mixer envelope/output gain not qualified.',
-            'Reflect pitch sweep uses source integer recurrence at15ms low-job cadence, with offline first-sample phase; original within-job/DSP phase not qualified.']}
-    for sound in (0x85, 0x86, 0x220):
+            'Pitch sweep and vibrato use source integer recurrence at15ms low-job cadence, with offline first-sample phase; original within-job/DSP phase not qualified.',
+            'Opcode1C is mcmdVibrato, not MIDI pitch bend; reached positive unmodulated real-time ranges only.',
+            'Confusion472/473 reverb selection is retained as dry auxiliary-controller metadata; no reverb tail or wet mix is rendered.']}
+    if confusion:
+        report['vibrato_sine_table'] = {'dol_address': SINE_TABLE_ADDRESS, 'bytes': 2048,
+                                      'sha256': SINE_TABLE_SHA256, 'entries': 1024}
+    for sound in ((0x85, 0x86, 0x220, 0x443, 0xE9, 0x472, 0x473) if confusion else (0x85, 0x86, 0x220)):
         row = extent(rel, 0x13FE08 + sound * 12, 12)
         if row[0] != 0x80 or row[1] != 5:
             raise ValueError('Sound request no longer resolves to battle bank5')
@@ -332,7 +410,7 @@ def prepare(disc, output):
             raise ValueError('Missing mapped FX ID')
         effect = fx[identity]
         layers = resolve_layers(macro_table, effect['macro'], key=effect['key'], volume=effect['volume'])
-        pcm, clipped = render_layers(layers, sdir, samples)
+        pcm, clipped = render_layers(layers, sdir, samples, sine)
         cues.append((sound, pcm))
         report['cues'].append({'sound_id': sound, 'sound_table_offset': 0x13FE08 + sound * 12,
             'fx_id': identity, 'fx': effect, 'layers': layers, 'frames': len(pcm) // 2,
@@ -353,6 +431,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--disc', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--confusion', action='store_true', help='Include the four source Confusion requests; fail closed on unsupported macro branches')
     args = parser.parse_args()
-    report = prepare(args.disc, args.output)
+    report = prepare(args.disc, args.output, args.confusion)
     print('Prepared source-derived dry SFX: ' + ', '.join('%04x' % x['sound_id'] for x in report['cues']))

@@ -1,7 +1,7 @@
 # Native battle effects: current execution boundary
 
-The preview now has an executable, bounded GPT1 particle runtime and a Bite
-defender integration. This remains a nonpersistent preview, not a completed
+The preview has an executable, bounded GPT1 particle runtime with Bite,
+Reflect and a current Confusion integration. This remains a nonpersistent preview, not a completed
 retail battle. It never consumes combat RNG or writes party/story/save results.
 
 ## Bite
@@ -51,17 +51,40 @@ than discarding elapsed time. Pause consumes no source time.
 | Actual program | Executed particles | Peak live | Battle integration |
 | --- | ---: | ---: | --- |
 | Bite damage3 | 82 | 81 | Implemented |
-| Reflect0 and child closure | 2938 | 1369 | Integrated; hardware acceptance pending |
-| Confusion attack1 | 26 | 24 | Pending |
-| Confusion damage7 | 96 | 64 | Pending |
-| Confusion damage4 | 512 | 512 | Point/trail rendering unsupported |
-| Confusion damage3 | 32 | 28 | Pending |
-| Confusion damage2 | 2 | 2 | Pending |
+| Reflect0 and child closure | 2938 | 1369 | Hardware execution checked on [749708b](evidence/reflect-bite-hardware-2026-10-23/README.md); retail visual parity pending |
+| Confusion attack1 | 26 | 24 | Integrated; fresh rendered acceptance pending |
+| Confusion damage7 | 96 | 64 | Integrated with overlapping roots |
+| Confusion damage4 | 512 | 512 | POINT+TRAIL adapter present; GPU qualification pending |
+| Confusion damage3 | 32 | 28 | Integrated with overlapping roots |
+| Confusion damage2 | 2 | 2 | Integrated with overlapping roots |
+| Confusion damage8 | 96 | 64 | Integrated with overlapping roots |
 
 The 1536-particle bound derives from the measured Reflect closure peak. It is
 not an emission reduction. Interpreter acceptance does not establish rendered
-or original-game visual acceptance. Confusion type12 needs its original model
-capture and indirect texture stage, separate from ordinary particle quads.
+or original-game visual acceptance. These counts are isolated interpreter
+fixtures, not a measurement of the complete rendered multi-root sequence.
+Confusion damage also retains root8 at tick44; resource-sharing state1 does not
+mean emitter stop. Its five roots start 2@0, 3@12 and 7/4/8@44 in one system.
+The five-root core fixture at seed 123 emits 738 particles, peak 652; root 8's
+isolated fixture consumes 576 cosmetic draws. These are distinct workloads from
+the line renderer fixture's different launch order and peak 666, not one combined
+acceptance measurement.
+
+The [Confusion implementation and contract](native-wzx-confusion.md) now cover
+all 15 WZX nodes, `.5` owner animation on a separate 60 Hz event clock, source-part
+tracks, scene capture and indirect composite, mixed POINT+TRAIL/quad submission,
+and a four-bank particle registry. Attack POSITION is ONESHOT with source flags
+`0x0001`; damage POSITION continuously follows with `0x10A1`. Existing emitted
+particles remain world-fixed. The new 512×256 capture adds 6,553,600 owned bytes;
+source capture was 640×480. Filtering, raster and physical visual parity remain
+unqualified.
+
+The seven-cue private audio bundle adds genuine Confusion requests to Bite and
+Reflect, with bounded source vibrato/pitch-sweep handling. It remains dry
+offline PCM with explicit SRC, mixer, phase and reverb limitations. Build
+`749708b3bd33`'s [physical checkpoint](evidence/reflect-bite-hardware-2026-10-23/README.md)
+covers its Bite/Reflect route and explicitly incomplete Confusion fallback;
+it is not acceptance of the current Confusion implementation or later fixes.
 
 ## Private preparation
 
@@ -71,6 +94,8 @@ Use the admitted disc and pinned importer; outputs remain private:
 python tools/prepare_wzx_bite.py --disc $disc --parser $parser --output $attack
 python tools/prepare_wzx_damage.py --disc $disc --parser $parser --output $damage
 python tools/prepare_battle_camera.py --disc $disc --parser $parser --output $camera
+python tools/prepare_wzx_confusion.py --disc $disc --parser $parser --output $confusion
+python tools/prepare_battle_audio.py --disc $disc --confusion --output $audio
 python tools/prepare_battle_audio.py --help
 ```
 

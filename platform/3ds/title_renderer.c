@@ -812,6 +812,8 @@ static void draw_battle_hud(C3TitleRenderStats *stats)
 }
 
 #include "particle_renderer.inc"
+#include "particle_line_renderer.inc"
+#include "confusion_renderer.inc"
 
 int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
                           const C3TitleCamera *camera, float fade,
@@ -842,20 +844,33 @@ int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
                         return fail(error, capacity, "Dual-texture material requires zero TEV0 endpoints.");
         }
     }
+    C3D_Mtx capture_mvp, capture_view;
+    if (!camera_matrices(camera,&capture_mvp,&capture_view,false))
+        return fail(error,capacity,"Invalid Confusion capture camera.");
     C3D_Mtx tv_mvp, tv_view;
     if (tv.configured && tv.enabled &&
         !camera_matrices(&models[tv.model]->pose.camera, &tv_mvp, &tv_view, false))
         return fail(error, capacity, "Invalid sampled television camera.");
     if (!C3D_FrameBegin(C3D_FRAME_NONBLOCK)) return C3_RENDER_BUSY;
     scene_drawn=true;
+    uint64_t start = svcGetSystemTick();
+    int confusion_active=confusion_prepare(&capture_mvp,&capture_view,error,capacity);
+    if(confusion_active<0){C3D_FrameEnd(0);return C3_RENDER_ERROR;}
+    if(confusion_active){
+        for(size_t model=0;model<count;++model)
+            for(uint32_t i=0;i<models[model]->batch_count;++i)
+                if((models[model]->batches[i].render_mode&0x60000000u)==0x20000000u){
+                    C3D_FrameEnd(0);
+                    return fail(error,capacity,"Unsupported original HSD transparency class for capture.");
+                }
+    }
     /* FrameBegin drains the previous GPU queue before this single bounded
      * arena is overwritten. No CPU buffer is reused within an open frame. */
-    uint64_t start = svcGetSystemTick();
     if (stats) stats->gpu_previous_ms = C3D_GetDrawingTime();
     for (size_t model = 0; model < count; ++model) {
-        if (tv.configured && model == tv.model && !tv.enabled) continue;
+        if (tv.configured && model == tv.model && !tv.enabled && !confusion_active) continue;
         const C3Title *title = models[model];
-        const C3D_Mtx *model_view = tv.configured && model == tv.model ? &tv_view : &view;
+        const C3D_Mtx *model_view = tv.configured && tv.enabled && model == tv.model && !confusion_active ? &tv_view : &view;
         TitleGPUVertex *destination = vertices + scenes[model].first_vertex;
         _Static_assert(sizeof(C3D_Mtx)==64,"Prepared-view cache matrix extent");
         if(c3_stage_cache_hit(&vertex_cache[model],model_view)){
@@ -899,11 +914,15 @@ int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
     }
     /* Only rewritten ranges need cache maintenance. Immutable arena ranges
      * retain their GPU bytes across completed frames. */
-    unsigned target_passes = tv.configured && tv.enabled ? 2u : 1u;
+    unsigned tv_passes=tv.configured&&tv.enabled?1u:0u;
+    unsigned target_passes = 1u+tv_passes+(confusion_active?1u:0u);
     for (unsigned target_pass = 0; target_pass < target_passes; ++target_pass) {
-        bool offscreen = target_passes == 2u && target_pass == 0;
-        C3D_RenderTarget *draw_target = offscreen ? tv_target : target;
-        C3D_RenderTargetClear(draw_target, C3D_CLEAR_ALL, 0x000000FF, 0);
+        bool capture=confusion_active&&target_pass==tv_passes;
+        bool offscreen=tv_passes&&target_pass==0;
+        C3D_RenderTarget *draw_target = capture ? confusion_target : offscreen ? tv_target : target;
+        /* PICA reversed depth clears to zero (GX ZFFFFFF/far); source capture
+         * inherits transparent black instead of the main opaque clear. */
+        C3D_RenderTargetClear(draw_target, C3D_CLEAR_ALL, capture?0:0x000000FF, 0);
         C3D_FrameDrawOn(draw_target);
         /* Preserve the authored camera aspect rather than stretching its image.
          * GPU coordinates are rotated: viewport height is display width. */
@@ -911,10 +930,11 @@ int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
         unsigned display_width = 400, display_height = 240;
         if (aspect < 400.0f/240.0f) display_width = (unsigned)(240.0f * aspect + 0.5f);
         else display_height = (unsigned)(400.0f / aspect + 0.5f);
-        if (offscreen) C3D_SetViewport(0, 0, 256, 256);
+        if(capture) C3D_SetViewport(0,0,CONFUSION_WIDTH,CONFUSION_HEIGHT);
+        else if (offscreen) C3D_SetViewport(0, 0, 256, 256);
         else C3D_SetViewport((240-display_height)/2, (400-display_width)/2, display_height, display_width);
         C3D_BindProgram(&program);
-        C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, mvp_location, offscreen ? &tv_mvp : &mvp);
+        C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, mvp_location, capture ? &capture_mvp : offscreen ? &tv_mvp : &mvp);
         C3D_FVUnifSet(GPU_VERTEX_SHADER, color_pass_location, 1, 0, 0, 0);
         C3D_AttrInfo *attributes = C3D_GetAttrInfo();
         AttrInfo_Init(attributes);
@@ -931,10 +951,10 @@ int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
          * submits all opaque geometry before transparent overlays, so an actor
          * cannot disappear behind a late opaque pack. Within each class, source
          * model/batch order is retained; dynamic depth sorting is not invented. */
-        unsigned passes = !offscreen && count > 1 ? 2u : 1u;
+        unsigned passes = !capture && !offscreen && count > 1 ? 2u : 1u;
         for (unsigned pass = 0; pass < passes; ++pass) {
             for (size_t model = 0; model < count; ++model) {
-                if (tv.configured && (offscreen ? model != tv.model : model == tv.model)) continue;
+                if (!capture && tv.configured && (offscreen ? model != tv.model : model == tv.model)) continue;
                 const C3Title *title = models[model];
                 const SceneBinding *binding = &scenes[model];
                 /* The getter marks this state dirty. Reacquire it for each pack:
@@ -943,12 +963,19 @@ int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
                 C3D_BufInfo *buffers = C3D_GetBufInfo();
                 BufInfo_Init(buffers);
                 BufInfo_Add(buffers, vertices + binding->first_vertex, sizeof(*vertices), 5, 0x43210);
+                /* GS flags0x3010: each model opaque, texture edge, translucent. */
+                for(unsigned model_pass=0;model_pass<(capture?3u:1u);++model_pass){
                 for (uint32_t i = 0; i < title->batch_count; ++i) {
                     const C3TitleBatch *batch = &title->batches[i];
                     const C3TitleMaterialState *material = &title->pose.materials[i];
                     unsigned transparent = !!(batch->flags & (C3_TITLE_TRANSLUCENT | C3_TITLE_ADDITIVE |
                         C3_TITLE_SUBTRACT | C3_TITLE_ADDITIVE_ONE));
-                    if ((passes == 2 && transparent != pass) || material->visible < 0.5f ||
+                    /* HSD DObjLoad derives OPA/TEXEDGE/XLU from the original
+                     * MObj mode, independently of custom pixel-engine overrides.
+                     * Keep GSmodel's pass order 1,4,2; retain the native PE below. */
+                    uint32_t source_class=batch->render_mode&0x60000000u;
+                    unsigned capture_class=source_class==0?0u:source_class==0x40000000u?1u:2u;
+                    if ((capture && capture_class!=model_pass) || (passes == 2 && transparent != pass) || material->visible < 0.5f ||
                         ((batch->flags & C3_TITLE_CULL_BACK) && (batch->flags & C3_TITLE_CULL_FRONT))) continue;
                     C3D_CullFace(batch->flags & C3_TITLE_CULL_BACK ? GPU_CULL_BACK_CCW :
                                  batch->flags & C3_TITLE_CULL_FRONT ? GPU_CULL_FRONT_CCW : GPU_CULL_NONE);
@@ -1005,9 +1032,13 @@ int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
                         if (stats) { stats->draw_calls++; stats->vertices += batch->count; }
                     }
                 }
+                } /* per-model capture material classes */
             }
         }
     } /* The texture-backed pass precedes the main camera in one GPU queue. */
+    if(confusion_active&&!confusion_draw(&mvp,stats,error,capacity)){
+        C3D_FrameEnd(0);return C3_RENDER_ERROR;
+    }
     if(!draw_particles(camera,&mvp,stats,error,capacity)){
         C3D_FrameEnd(0);return C3_RENDER_ERROR;
     }
@@ -1067,6 +1098,7 @@ void c3_title_renderer_shutdown(void)
     memset(model_modulation, 0, sizeof model_modulation);
     /* Target deletion drains the linked GPU queue. Do not use FrameSync here:
      * HOME cancellation can shut down while VBlank callbacks are suspended. */
+    confusion_shutdown();
     if (target) { C3D_RenderTargetDelete(target); target = NULL; }
     if (tv_target) { C3D_RenderTargetDelete(tv_target); tv_target = NULL; }
     if (tv.configured) C3D_TexDelete(&tv_texture);
@@ -1082,6 +1114,7 @@ void c3_title_renderer_shutdown(void)
     particle_pack=NULL;particle_system=NULL;
     memset(particle_bindings,0,sizeof particle_bindings);
     memset(particle_binding_textures,0,sizeof particle_binding_textures);particle_binding_count=0;
+    particle_line_shutdown();
     gpu_buffer_bytes = 0;
 }
 
@@ -1103,6 +1136,7 @@ void c3_stage_renderer_fini(void)
         completion_hooks = false;
     }
     if (c3d_started) { C3D_Fini(); c3d_started = false; }
+    particle_line_fini();
     if (program_started) { shaderProgramFree(&program); program_started = false; }
     if (shader) { DVLB_Free(shader); shader = NULL; }
 }

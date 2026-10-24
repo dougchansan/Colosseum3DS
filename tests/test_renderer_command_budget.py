@@ -29,6 +29,10 @@ int main(void){
     assert(!c3_stage_particle_commands_fit(UINT32_MAX,UINT32_MAX));
     assert(c3_stage_particle_commands_fit(C3_RENDER_COMMAND_CAPACITY_WORDS-C3_STAGE_COMMAND_RESERVE_WORDS,0));
     assert(!c3_stage_particle_commands_fit(C3_RENDER_COMMAND_CAPACITY_WORDS-C3_STAGE_COMMAND_RESERVE_WORDS+1,0));
+    assert(c3_stage_particle_segment_fits(100,2,100+384+8192));
+    assert(!c3_stage_particle_segment_fits(101,2,100+384+8192));
+    assert(!c3_stage_particle_segment_fits(100,2,8192));
+    assert(c3_stage_particle_commands_fit(100,2)); /* would admit a split overflow */
     return 0;
 }
 ''')
@@ -36,7 +40,7 @@ int main(void){
             result=subprocess.run(cc+flags+["-I"+str(ROOT/"include"),"-I"+str(ROOT/"platform/3ds"),str(source),"-o",str(exe)],capture_output=True,text=True)
             self.assertEqual(result.returncode,0,result.stdout+result.stderr)
             self.assertEqual(subprocess.run([str(exe)]).returncode,0)
-    def test_two_bank_registration_and_selection(self):
+    def test_four_bank_registration_and_selection(self):
         cc=shlex.split(os.environ.get("CC","cc"))
         if not shutil.which(cc[0]):self.skipTest("Host C compiler required")
         implementation=(ROOT/"platform/3ds/particle_renderer.inc").read_text().split("static uint32_t particle_color")[0]
@@ -55,27 +59,33 @@ static int fail(char *e,size_t n,const char*s){if(e&&n)snprintf(e,n,"%s",s);retu
 static void *linearAlloc(size_t n){++allocations;return malloc(n);}
 static int upload_texture(int *t,const C3TitleTexture *s){(void)t;(void)s;++uploads;return 1;}
 '''+implementation+r'''
-int main(void){(void)particle_quads;(void)particle_texids;char e[192];uint8_t bytes[3]={0};C3ParticlePack a={0},b={0},c={0};
- a.bank.bytes=bytes;b.bank.bytes=bytes+1;c.bank.bytes=bytes+2;
- a.texture_count=b.texture_count=c.texture_count=1;a.textures[0].width=b.textures[0].width=c.textures[0].width=8;
- a.textures[0].height=b.textures[0].height=c.textures[0].height=8;
- assert(c3_stage_renderer_particle_pack(&a,e,sizeof e)==C3_RENDER_OK);
- assert(c3_stage_renderer_particle_pack(&b,e,sizeof e)==C3_RENDER_OK);
- assert(c3_stage_renderer_particle_pack(&a,e,sizeof e)==C3_RENDER_OK);
- assert(allocations==1&&uploads==2&&texture_count==7);
- assert(c3_stage_renderer_particle_pack(&c,e,sizeof e)==C3_RENDER_ERROR);
- C3ParticleSystem s={0};s.bank=a.bank;float identity[12]={1,0,0,0,0,1,0,0,0,0,1,0};
- assert(c3_stage_renderer_particles(&s,identity));assert(particle_pack==&a&&particle_textures[0]==5);
- s.bank=b.bank;assert(c3_stage_renderer_particles(&s,identity));assert(particle_pack==&b&&particle_textures[0]==6);
- s.bank=c.bank;assert(!c3_stage_renderer_particles(&s,identity));assert(particle_pack==&b);
+int main(void){(void)particle_quads;(void)particle_texids;char e[192];uint8_t bytes[5]={0};C3ParticlePack packs[5]={0};
+ assert(C3_STAGE_MAX_PARTICLE_BANKS==4);
+ for(unsigned i=0;i<5;++i){packs[i].bank.bytes=bytes+i;packs[i].texture_count=1;packs[i].textures[0].width=packs[i].textures[0].height=8;}
+ for(unsigned i=0;i<4;++i){
+  assert(c3_stage_renderer_particle_pack(&packs[i],e,sizeof e)==C3_RENDER_OK);
+  assert(c3_stage_renderer_particle_pack(&packs[i],e,sizeof e)==C3_RENDER_OK);
+ }
+ assert(allocations==1&&uploads==4&&texture_count==9&&particle_binding_count==4);
+ C3ParticlePack alias=packs[0];
+ assert(c3_stage_renderer_particle_pack(&alias,e,sizeof e)==C3_RENDER_ERROR);
+ assert(strstr(e,"already belong"));
+ assert(c3_stage_renderer_particle_pack(&packs[4],e,sizeof e)==C3_RENDER_ERROR);
+ assert(allocations==1&&uploads==4&&texture_count==9&&particle_binding_count==4);
+ C3ParticleSystem s={0};float identity[12]={1,0,0,0,0,1,0,0,0,0,1,0};
+ for(unsigned i=0;i<4;++i){s.bank=packs[i].bank;
+  assert(c3_stage_renderer_particles(&s,identity));assert(particle_pack==&packs[i]&&particle_textures[0]==5+i);
+ }
+ s.bank=packs[4].bank;assert(!c3_stage_renderer_particles(&s,identity));assert(particle_pack==&packs[3]);
  assert(c3_stage_renderer_particles(NULL,NULL));assert(!particle_pack&&!particle_system);
- scene_drawn=1;assert(c3_stage_renderer_particle_pack(&a,e,sizeof e)==C3_RENDER_ERROR);
+ scene_drawn=1;assert(c3_stage_renderer_particle_pack(&packs[0],e,sizeof e)==C3_RENDER_ERROR);
  free(particle_vertices);return 0;
 }
 '''
         with tempfile.TemporaryDirectory() as tmp:
             source=Path(tmp)/"banks.c";exe=Path(tmp)/"banks";source.write_text(harness)
-            result=subprocess.run(cc+["-std=c11","-O2","-Wall","-Wextra","-Wpedantic","-Werror","-I"+str(ROOT/"include"),"-I"+str(ROOT/"platform/3ds"),str(source),"-lm","-o",str(exe)],capture_output=True,text=True)
+            flags=shlex.split(os.environ.get("CFLAGS","-std=c11 -O2 -Wall -Wextra -Wpedantic -Werror"))
+            result=subprocess.run(cc+flags+["-I"+str(ROOT/"include"),"-I"+str(ROOT/"platform/3ds"),str(source),"-lm","-o",str(exe)],capture_output=True,text=True)
             self.assertEqual(result.returncode,0,result.stdout+result.stderr)
             self.assertEqual(subprocess.run([str(exe)]).returncode,0)
 if __name__=="__main__":unittest.main()

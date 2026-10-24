@@ -130,6 +130,15 @@ include tests/wzx-bite.mk
 build/test_particle: tests/test_particle.c src/particle.c include/colosseum3ds/particle.h | build
 	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_particle.c src/particle.c $(LDFLAGS) -lm -o $@
 
+build/test_particle_line: tests/test_particle_line.c src/particle_line.c src/particle.c include/colosseum3ds/particle_line.h include/colosseum3ds/particle.h | build
+	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_particle_line.c src/particle_line.c src/particle.c $(LDFLAGS) -lm -o $@
+
+all: build/test_particle_line
+test: particle-line-check
+.PHONY: particle-line-check
+particle-line-check: build/test_particle_line
+	./build/test_particle_line
+
 build/test_particle_pack: tests/test_particle_pack.c src/particle_pack.c src/particle.c build/save_codec.c $(HEADERS)
 	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_particle_pack.c src/particle_pack.c src/particle.c build/save_codec.c $(LDFLAGS) -lm -o $@
 
@@ -164,6 +173,16 @@ wzx-confusion-check: build/test_wzx_confusion
 	./build/test_wzx_confusion
 
 test: wzx-confusion-check
+
+build/test_confusion_indirect: tests/test_confusion_indirect.c src/confusion_indirect.c src/wzx_confusion.c build/save_codec.c include/colosseum3ds/confusion_indirect.h | build
+	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_confusion_indirect.c src/confusion_indirect.c src/wzx_confusion.c build/save_codec.c $(LDFLAGS) -lm -o $@
+
+all: build/test_confusion_indirect
+
+confusion-indirect-check: build/test_confusion_indirect
+	./build/test_confusion_indirect
+
+test: confusion-indirect-check
 
 # Original assets remain optional; the core test uses synthetic descriptors.
 build/test_wzx_reflect: tests/test_wzx_reflect.c src/wzx_reflect.c $(HEADERS) build/save_codec.c | build

@@ -17,8 +17,8 @@ typedef struct { int numDVLE, DVLE[1]; } DVLB_s;
 typedef struct { int *vertexShader; } shaderProgram_s;
 typedef unsigned u32;
 static const C3ParticlePack *particle_pack;
-static const C3ParticlePack *particle_bindings[2];
-static uint32_t particle_binding_textures[2][32];
+static const C3ParticlePack *particle_bindings[C3_STAGE_MAX_PARTICLE_BANKS];
+static uint32_t particle_binding_textures[C3_STAGE_MAX_PARTICLE_BANKS][32];
 static unsigned particle_binding_count;
 static const C3ParticleSystem *particle_system;
 static TitleGPUVertex *particle_vertices;
@@ -111,6 +111,9 @@ static void C3D_FrameEnd(unsigned flags) { assert(flags == 0); }
 static void install_completion_counters(void) { completion_hooks = true; }
 #define gspSetEventCallback(...) ((void)0)
 
+static void confusion_shutdown(void){}
+static void particle_line_shutdown(void){}
+static void particle_line_fini(void){}
 #include "renderer_lifecycle.inc"
 
 int main(int argc, char **argv)

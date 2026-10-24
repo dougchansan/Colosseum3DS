@@ -48,8 +48,55 @@ class PreparationTests(unittest.TestCase):
         invalid=code[:8]+struct.pack('>II',0x01f4141d,0)+code[16:]
         with self.assertRaisesRegex(ValueError,'pitch-sweep'):
             audio.resolve_layers({1:(0,invalid)},1)
-        bad=dict(layers[0]['sweep']);bad['frequency']=501
+        bad=dict(layers[0]['sweep']);bad['frequency']=32768
         with self.assertRaises(ValueError):next(audio.pitch_sweep(bad))
+
+    def test_confusion_sweep_vibrato_and_dry_aux_source(self):
+        def code(*steps): return b''.join(struct.pack('>II', *s) for s in steps)
+        table = {1: (0, code((2 << 16 | 8, 0xff320000),
+                            (0x000f021c, 0x00320100), (0x0f0146, 0),
+                            (0x5910, 0), (0x1000007, 0xffff0000))),
+                 2: (64, code((0x03200a1d, 0x100), (0x6e10, 0),
+                              (0x1000007, 0xffff0000)))}
+        child, parent = audio.resolve_layers(table, 1)
+        self.assertNotIn('vibrato', child)
+        self.assertNotIn('sweep', parent)
+        self.assertEqual(parent['dry_aux_a_selection'],
+                         {'controller': 1, 'scale_percent': 15, 'combine': 0, 'dry_only': True})
+        sweep = audio.pitch_sweep(child['sweep'])
+        values = [next(sweep) for _ in range(12)]
+        self.assertEqual((values[0], values[9], values[10], values[11]),
+                         (int(800*4096/32000)*61440, int(800*4096/32000)*614400,
+                          0, int(800*4096/32000)*61440))
+        # A ramp table makes source quadrant reflection and negative half explicit.
+        sine = list(range(1024))
+        vibrato = audio.pitch_vibrato(parent['vibrato'], sine)
+        span = 2*256 + 15*256//100
+        self.assertEqual([next(vibrato) for _ in range(4)],
+                         [(span*819)>>4, (span*-409)>>4, (span*-409)>>4, (span*819)>>4])
+        bad = dict(parent['vibrato']); bad['modulation_scaled'] = True
+        with self.assertRaises(ValueError): next(audio.pitch_vibrato(bad, sine))
+        with self.assertRaises(ValueError): next(audio.pitch_vibrato(parent['vibrato'], None))
+        for a, b in [(0x000f021c, 0x00320000), (0x010f021c, 0x00320100),
+                     (0x0320001d, 0x100)]:
+            with self.assertRaises(ValueError):
+                audio.resolve_layers({1: (0, code((a,b), (0,0)))}, 1)
+
+    def test_private_prepared_baseline_pcm_identity(self):
+        pack = ROOT / 'private/battle-audio-confusion-v2/audio.c3u'
+        if not pack.exists(): self.skipTest('Private original-asset pack required')
+        import hashlib
+        expected = {0x85: 'a0d7e31534970d1c99113bffe1c5e37d06ef3939f4782116fa35ea1f429ae87c',
+                    0x86: '3c6d8d8be98eae029dbb8f46ee3b8a4a4ed379124c316195d07a952765ac8ed0',
+                    0x220: 'c0d140e017061b4bd57c289dfdc3b7bb19c004972746501d6ab6c7f8245acce1'}
+        data = pack.read_bytes()
+        self.assertEqual(struct.unpack_from('<I', data, 12)[0], 7)
+        for i in range(7):
+            sound, rate, frames, offset, size, *_ = struct.unpack_from('<8I', data, 64+i*32)
+            self.assertEqual((rate, size), (32000, frames*2))
+            if sound in expected:
+                self.assertEqual(hashlib.sha256(data[offset:offset+size]).hexdigest(), expected.pop(sound))
+        self.assertFalse(expected)
 
     def test_unknown_sample_and_pack_limits(self):
         with self.assertRaises(ValueError): audio.sample_record(bytes.fromhex('ffff')+bytes(30), 85)

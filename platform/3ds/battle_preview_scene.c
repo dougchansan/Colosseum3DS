@@ -120,7 +120,7 @@ int c3_battle_preview_scene_run(const C3BattleRequest *request,FILE *trace)
             snprintf(error,sizeof error,"Invalid introduction event batch.");
         c3_n3ds_log_memory(trace,"battle_stage_loaded");
     }
-    if(!error[0]&&(stage->damage_available||stage->reflect_available)){
+    if(!error[0]&&(stage->damage_available||stage->reflect_available||stage->confusion_available)){
         if(c3_battle_audio_player_open(BOOT_ROOT "battle",error,sizeof error)){
             stage->sound_cue=c3_battle_audio_player_cue;
             stage->sound_done=c3_battle_audio_player_done;

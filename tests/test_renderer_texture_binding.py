@@ -63,6 +63,31 @@ class RendererTextureBindingTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
         self.assertIn("overload closed acquired frame safely", result.stdout)
 
+    def test_confusion_shared_capture_order_and_busy_barrier(self):
+        result = subprocess.run([str(self.executable), "0", "1"],
+            env={**os.environ,"C3_TEST_CONFUSION":"1"},capture_output=True,text=True,timeout=10)
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+        self.assertIn("Confusion captures every model",result.stdout)
+
+    def test_capture_uses_source_classes_independent_of_custom_pe(self):
+        result=subprocess.run([str(self.executable),"0","1"],
+            env={**os.environ,"C3_TEST_CAPTURE_CLASSES":"1"},capture_output=True,text=True,timeout=10)
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+        self.assertIn("OPA TEXEDGE XLU independently of PE; main order unchanged",result.stdout)
+
+    def test_capture_unknown_source_class_fails_closed(self):
+        result=subprocess.run([str(self.executable),"0","1"],
+            env={**os.environ,"C3_TEST_CAPTURE_CLASSES":"1","C3_TEST_CAPTURE_CLASS_INVALID":"1"},
+            capture_output=True,text=True,timeout=10)
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+        self.assertIn("fails before geometry submission",result.stdout)
+
+    def test_non_capture_does_not_reclassify_legacy_materials(self):
+        result=subprocess.run([str(self.executable),"0","1"],
+            env={**os.environ,"C3_TEST_MAIN_UNKNOWN_CLASS":"1"},capture_output=True,text=True,timeout=10)
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+        self.assertEqual(result.stdout,"")
+
     def test_single_texture(self):
         self.check_draw(0, 1)
 

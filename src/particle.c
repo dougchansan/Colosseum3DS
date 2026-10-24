@@ -97,7 +97,7 @@ static int child_particle(C3ParticleSystem *s,C3Particle *parent,unsigned genera
 {
  if(parent->depth>=C3_PARTICLE_MAX_DEPTH)return fault(s,generator,0,0xf1,"particle nesting bound");
  for(unsigned i=0;i<C3_PARTICLE_MAX_PARTICLES;++i)if(!s->particles[i].active){
-  C3Particle *p=&s->particles[i];initial_particle(s,p,generator,parent->depth+1);p->emitter=parent->emitter;p->attachment_yaw=parent->attachment_yaw;p->attachment_scale=parent->attachment_scale;p->radius_scale=parent->radius_scale;if(s->position_attachment&&(s->source_attachment_flags&8))yaw_rotate(p->attachment_yaw,p->velocity);memcpy(p->position,parent->position,sizeof p->position);
+  C3Particle *p=&s->particles[i];initial_particle(s,p,generator,parent->depth+1);p->emitter=parent->emitter;p->attachment_yaw=parent->attachment_yaw;p->attachment_scale=parent->attachment_scale;p->radius_scale=parent->radius_scale;p->source_flags=parent->source_flags;if(s->position_attachment&&(p->source_flags&8))yaw_rotate(p->attachment_yaw,p->velocity);memcpy(p->position,parent->position,sizeof p->position);
   if(parent->kind&0x20000000)p->kind|=0x20000000;
   return interpret(s,p);
  }
@@ -137,7 +137,7 @@ static int interpret(C3ParticleSystem *s,C3Particle *p)
     case 0xb1:p->kind|=0x60;break;
     case 0xb6:{float value;if(!timearg(s,p,&v)||!scalar(s,p,&value))return 0;p->rotate_count=(uint16_t)v;p->rotate_target+=value;if(!v)p->rotation=p->rotate_target;break;}
     case 0xbc:{unsigned base,span;if(!byte(s,p,&base)||!byte(s,p,&span))return 0;unsigned frame=base+(unsigned)(span*rnd(s));if(frame>=s->bank.texture_frames[p->tex_group])return fault(s,p->generator,pc,op,"random texture frame bound");p->pose=(uint8_t)frame;p->kind|=0x400;break;}
-    case 0xbd:{float a,b;if(!scalar(s,p,&a)||!scalar(s,p,&b))return 0;if(s->position_attachment){a*=p->attachment_scale;b*=p->attachment_scale;}a+=b*rnd(s);float mag=sqrtf(p->velocity[0]*p->velocity[0]+p->velocity[1]*p->velocity[1]+p->velocity[2]*p->velocity[2]);if(mag>1e-10f)for(unsigned j=0;j<3;++j)p->velocity[j]*=a/mag;break;}
+    case 0xbd:{float a,b;if(!scalar(s,p,&a)||!scalar(s,p,&b))return 0;if(s->position_attachment&&(p->source_flags&0x1000)){a*=p->attachment_scale;b*=p->attachment_scale;}a+=b*rnd(s);float mag=sqrtf(p->velocity[0]*p->velocity[0]+p->velocity[1]*p->velocity[1]+p->velocity[2]*p->velocity[2]);if(mag>1e-10f)for(unsigned j=0;j<3;++j)p->velocity[j]*=a/mag;break;}
     case 0xe9:{
      unsigned flags,steps;if(!byte(s,p,&flags)||!byte(s,p,&steps))return 0;
      for(unsigned k=0;k<2;++k){color(p,k);memcpy(p->color_base[k],k?p->env:p->prim,4);}
@@ -153,7 +153,7 @@ static int interpret(C3ParticleSystem *s,C3Particle *p)
     case 0xe8:if(!scalar(s,p,&p->trail))return 0;if(p->trail<0)p->kind&=~0x100000u;else p->kind|=0x100000;break;
     case 0xed:{float a,b;if(!scalar(s,p,&a)||!scalar(s,p,&b)||!byte(s,p,&v))return 0;float delta=v?a+b*(int)((v+1)*rnd(s))/(float)v:a+b*rnd(s);p->rotation+=delta;p->rotate_target+=delta;break;}
     case 0xf0:{unsigned hi,lo,flags;if(!byte(s,p,&hi)||!byte(s,p,&lo)||!byte(s,p,&flags))return 0;unsigned id=(hi<<8)|lo;if(id>=s->bank.generator_count)return fault(s,p->generator,pc,op,"spawn reference out of range");if(!emitter(s,s->bank.refs[id],p->depth+1,p->position,flags&7))return 0;
-     if(s->position_attachment)for(unsigned j=0;j<C3_PARTICLE_MAX_EMITTERS;++j)if(s->emitters[j].serial==s->spawned_emitters){s->emitters[j].attachment_yaw=p->attachment_yaw;s->emitters[j].attachment_scale=p->attachment_scale;s->emitters[j].radius_scale=p->radius_scale;}
+     if(s->position_attachment)for(unsigned j=0;j<C3_PARTICLE_MAX_EMITTERS;++j)if(s->emitters[j].serial==s->spawned_emitters){s->emitters[j].attachment_yaw=p->attachment_yaw;s->emitters[j].attachment_scale=p->attachment_scale;s->emitters[j].radius_scale=p->radius_scale;s->emitters[j].source_flags=p->source_flags;}
      break;}
     case 0xf1:{unsigned hi,lo;if(!byte(s,p,&hi)||!byte(s,p,&lo))return 0;unsigned id=(hi<<8)|lo;if(id>=s->bank.generator_count)return fault(s,p->generator,pc,op,"child particle reference bound");if(!child_particle(s,p,s->bank.refs[id]))return 0;break;}
     case 0xf3:{unsigned dir,count;if(!byte(s,p,&dir)||!scalar(s,p,&p->rotate_target)||!scalar(s,p,&p->rotate_accel)||!timearg(s,p,&count))return 0;p->rotate_count=(uint16_t)count;if(count){if(!dir)p->rotate_target+=p->rotate_accel/2;else p->rotate_target=-p->rotate_target-p->rotate_accel/2;}else p->rotate_target=p->rotate_accel=0;break;}
@@ -198,7 +198,7 @@ static int emit(C3ParticleSystem *s,unsigned index,float angle_step,float *cur_a
  C3ParticleGenerator adjusted;
  if(s->position_attachment){adjusted=*g;adjusted.radius*=e->radius_scale;for(unsigned j=0;j<3;++j)adjusted.param[j]*=e->radius_scale;g=&adjusted;}
  for(unsigned i=0;i<C3_PARTICLE_MAX_PARTICLES;++i)if(!s->particles[i].active){
-  C3Particle *p=&s->particles[i];initial_particle(s,p,e->generator,e->depth);p->emitter=(uint16_t)index;p->kind=e->kind;p->attachment_yaw=e->attachment_yaw;p->attachment_scale=e->attachment_scale;p->radius_scale=e->radius_scale;memcpy(p->position,e->position,sizeof p->position);
+  C3Particle *p=&s->particles[i];initial_particle(s,p,e->generator,e->depth);p->emitter=(uint16_t)index;p->kind=e->kind;p->attachment_yaw=e->attachment_yaw;p->attachment_scale=e->attachment_scale;p->radius_scale=e->radius_scale;p->source_flags=e->source_flags;memcpy(p->position,e->position,sizeof p->position);
   if(g->type==8){
    float lat=(g->param[0]==0?PI:fabsf(g->param[0]))*rnd(s),lon=2*PI*rnd(s),dist=g->radius<0?-g->radius:g->radius*rnd(s);
    float v[3]={sinf(lat)*cosf(lon),sinf(lat)*sinf(lon),cosf(lat)};rotate(g->velocity,v);
@@ -271,13 +271,33 @@ int c3_particle_position(C3ParticleSystem *s,const float pos[3],char *e,size_t c
 }
 int c3_particle_begin_position_flags(C3ParticleSystem *s,const C3ParticleBank *bank,unsigned gen,uint32_t seed,const float pos[3],float yaw,float scale,float radius_scale,uint16_t flags,char *e,size_t cap)
 {
- if(flags!=0x10a1&&flags!=0x18a9)return error(e,cap,"Unsupported source POSITION attachment profile.");
+ if(flags!=1&&flags!=0x10a1&&flags!=0x18a9)return error(e,cap,"Unsupported source POSITION attachment profile.");
  if(!valid_position(pos)||!isfinite(yaw)||fabsf(yaw)>1000000||!isfinite(scale)||scale<=0||scale>1000||!isfinite(radius_scale)||radius_scale<=0||radius_scale>1000)return error(e,cap,"Invalid POSITION particle start transform.");
  float position[3];memcpy(position,pos,sizeof position);
  if(!c3_particle_begin(s,bank,gen,seed,e,cap))return 0;
  s->position_attachment=1;s->source_attachment_flags=flags;s->root_emitter_serial=s->emitters[0].serial;
- s->emitters[0].attachment_yaw=yaw;s->emitters[0].attachment_scale=scale;s->emitters[0].radius_scale=radius_scale;
+ s->emitters[0].attachment_yaw=yaw;s->emitters[0].attachment_scale=scale;s->emitters[0].radius_scale=(flags&0x20)?radius_scale:1;s->emitters[0].source_flags=flags;
  return c3_particle_position(s,position,e,cap);
+}
+int c3_particle_append_position_flags(C3ParticleSystem *s,const C3ParticleBank *bank,unsigned gen,const float pos[3],float yaw,float scale,float radius_scale,uint16_t flags,uint32_t *handle,char *e,size_t cap)
+{
+ if(!s||!s->position_attachment||s->failed||s->cancelled||!bank||bank->bytes!=s->bank.bytes||bank->length!=s->bank.length||gen>=s->bank.generator_count||!handle)return error(e,cap,"Invalid POSITION append system/bank/root.");
+ if((flags!=1&&flags!=0x10a1&&flags!=0x18a9)||!valid_position(pos)||!isfinite(yaw)||fabsf(yaw)>1000000||!isfinite(scale)||scale<=0||scale>1000||!isfinite(radius_scale)||radius_scale<=0||radius_scale>1000)return error(e,cap,"Invalid POSITION append transform/profile.");
+ const C3ParticleGenerator *g=&s->bank.generators[gen];
+ if((g->type!=0&&g->type!=1&&g->type!=2&&g->type!=8)||g->rate>C3_PARTICLE_MAX_PARTICLES||g->rate< -(float)C3_PARTICLE_MAX_PARTICLES||g->kind&0x30000)return error(e,cap,"Unsupported POSITION append root shape/rate.");
+ /* Stage inputs before emitter allocation: callers may point into system data. */
+ float position[3];memcpy(position,pos,sizeof position);
+ if(!emitter(s,gen,0,position,8))return error(e,cap,s->diagnostic);
+ for(unsigned i=0;i<C3_PARTICLE_MAX_EMITTERS;++i)if(s->emitters[i].serial==s->spawned_emitters){C3ParticleEmitter *v=&s->emitters[i];v->attachment_yaw=yaw;v->attachment_scale=scale;v->radius_scale=(flags&0x20)?radius_scale:1;v->source_flags=flags;}
+ *handle=s->spawned_emitters;
+ if(e&&cap)e[0]=0;
+ return 1;
+}
+int c3_particle_position_root(C3ParticleSystem *s,uint32_t handle,const float pos[3],char *e,size_t cap)
+{
+ if(!s||!s->position_attachment||s->failed||s->cancelled||!handle||!valid_position(pos))return error(e,cap,"Invalid POSITION root handle/position.");
+ for(unsigned i=0;i<C3_PARTICLE_MAX_EMITTERS;++i)if(s->emitters[i].serial==handle&&s->emitters[i].depth==0){memmove(s->emitters[i].position,pos,sizeof s->emitters[i].position);if(e&&cap)e[0]=0;return 1;}
+ return error(e,cap,"Expired or non-root POSITION handle.");
 }
 int c3_particle_begin_position(C3ParticleSystem *s,const C3ParticleBank *bank,unsigned gen,uint32_t seed,const float pos[3],float yaw,float scale,float radius_scale,char *e,size_t cap)
 {return c3_particle_begin_position_flags(s,bank,gen,seed,pos,yaw,scale,radius_scale,0x18a9,e,cap);}
@@ -337,7 +357,7 @@ int c3_particle_quad(const C3Particle *p,const float attachment[12],const C3Part
   transform(attachment,prev,world,1);for(unsigned j=0;j<3;++j)velocity[j]=position[j]-world[j];
  }
 
- float half=p->size*scale[0]*(p->attachment_scale>0?p->attachment_scale:1),angle=p->rotation;
+ float half=p->size*scale[0]*((p->source_flags&0x80)&&p->attachment_scale>0?p->attachment_scale:1),angle=p->rotation;
  for(unsigned j=0;j<3;++j){r[j]=(camera->right[j]+camera->up[j])*half;u[j]=(camera->right[j]-camera->up[j])*half;}
  if(p->kind&(0x100000|0x200000)){
   float previous[3],a[2],b[2];for(unsigned j=0;j<3;++j)previous[j]=position[j]-velocity[j];

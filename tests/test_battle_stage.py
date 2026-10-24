@@ -22,6 +22,8 @@ int c3_title_load(C3Title *t,const char *p,char *e,size_t c){(void)p;(void)e;(vo
 int c3_title_instance(C3Title *t,const C3Title *o,char *e,size_t c){(void)e;(void)c;*t=*o;t->borrowed_storage=1;++instances;return 1;}
 void c3_title_close(C3Title *t){if(t->file_data){if(t->borrowed_storage)--instances;else{free(t->file_data);--owners;}}memset(t,0,sizeof *t);}
 int c3_title_animate(C3Title *t,uint32_t c,float seconds){(void)seconds;return c<t->clip_count;}
+int c3_stage_renderer_confusion_program(const C3WzxConfusionProgram *p,char *e,size_t n){(void)p;(void)e;(void)n;return 1;}
+int c3_stage_renderer_confusion(const C3ConfusionType12 *s){(void)s;return 1;}
 int c3_stage_renderer_init(const C3Title *const *m,size_t n,char *e,size_t c){(void)m;(void)n;(void)e;(void)c;assert(!gpu);gpu=1;return 0;}
 int c3_stage_renderer_set_static(size_t n,bool e){(void)n;(void)e;return 1;}
 int c3_stage_renderer_set_modulation(size_t n,const uint8_t rgb[3]){(void)n;(void)rgb;return 1;}
@@ -51,7 +53,7 @@ assert(!owners&&!instances&&!gpu);free(s);return 0;}
         with tempfile.TemporaryDirectory() as tmp:
             d=Path(tmp);(d/'h.c').write_text(harness);exe=d/'test'
             flags=shlex.split(os.environ.get('CFLAGS','-std=c11 -O2 -Wall -Wextra -Wpedantic -Werror'))
-            result=subprocess.run(cc+flags+['-I'+str(ROOT/'src'),'-I'+str(ROOT/'include'),'-I'+str(ROOT/'platform/3ds'),str(d/'h.c'),str(ROOT/'platform/3ds/battle_stage.c'),str(ROOT/'src/battle_presentation.c'),str(ROOT/'src/wzx_bite.c'),str(ROOT/'src/wzx_damage.c'),str(ROOT/'src/wzx_reflect.c'),str(ROOT/'src/particle.c'),str(ROOT/'src/particle_pack.c'),str(ROOT/'src/battle_camera.c'),str(ROOT/'build/save_codec.c'),'-lm','-o',str(exe)],capture_output=True,text=True)
+            result=subprocess.run(cc+flags+['-I'+str(ROOT/'src'),'-I'+str(ROOT/'include'),'-I'+str(ROOT/'platform/3ds'),str(d/'h.c'),str(ROOT/'platform/3ds/battle_stage.c'),str(ROOT/'src/battle_presentation.c'),str(ROOT/'src/wzx_bite.c'),str(ROOT/'src/wzx_damage.c'),str(ROOT/'src/wzx_confusion_sequence.c'),str(ROOT/'src/wzx_confusion.c'),str(ROOT/'src/battle_audio.c'),str(ROOT/'src/wzx_reflect.c'),str(ROOT/'src/particle.c'),str(ROOT/'src/particle_pack.c'),str(ROOT/'src/battle_camera.c'),str(ROOT/'build/save_codec.c'),'-lm','-o',str(exe)],capture_output=True,text=True)
             self.assertEqual(result.returncode,0,result.stdout+result.stderr)
             data=bytearray(128+7*128);struct.pack_into('<4s4I',data,0,b'C3BV',1,len(data),7,6)
             struct.pack_into('<12f',data,32,0,10,20,0,0,0,0,45,1,1000,400/240,0)

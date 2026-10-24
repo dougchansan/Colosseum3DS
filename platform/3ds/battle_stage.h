@@ -6,6 +6,8 @@
 #include "colosseum3ds/wzx_bite.h"
 #include "colosseum3ds/wzx_damage.h"
 #include "colosseum3ds/wzx_reflect.h"
+#include "colosseum3ds/wzx_confusion_sequence.h"
+#include "colosseum3ds/wzx_confusion.h"
 #include "colosseum3ds/battle_camera.h"
 #define C3_BATTLE_STAGE_MODELS 16u
 typedef struct {
@@ -41,6 +43,19 @@ typedef struct {
     uint32_t cue_serial, reflect_cue;
     unsigned reflect_alive, reflect_index;
     uint8_t reflect_available, reflect_particles;
+    C3WzxConfusionSequenceProgram confusion_program;
+    C3WzxConfusionProgram confusion_mask;
+    C3ConfusionType12 confusion_type12;
+    C3ParticlePack confusion_pack[2];
+    C3ParticleSystem *confusion_damage_particles;
+    uint8_t *confusion_bytes[2];
+    uint64_t confusion_units;
+    uint32_t confusion_owner, confusion_target, confusion_event, confusion_group;
+    uint32_t confusion_seen, confusion_cues[4], confusion_roots[5];
+    float confusion_idle;
+    uint8_t confusion_available, confusion_active, confusion_phase;
+    uint8_t confusion_pending, confusion_hit, confusion_hp_gate;
+    uint8_t confusion_particles_started, confusion_floor_enabled, confusion_floor_rgb[3];
     int (*sound_done)(uint32_t,uint32_t,char *,size_t);
     int (*sound_cue)(uint32_t,uint32_t,char *,size_t);
     char error[192];

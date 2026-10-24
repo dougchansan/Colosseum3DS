@@ -33,6 +33,7 @@ typedef struct {
  uint8_t active,depth;uint16_t generator,life;
  uint32_t kind,serial;float count,position[3];
  float attachment_yaw,attachment_scale,radius_scale;
+ uint16_t source_flags;
 } C3ParticleEmitter;
 typedef struct {
  uint8_t active,depth,tex_group,pose;
@@ -41,6 +42,7 @@ typedef struct {
  uint16_t color_count[2],color_remain[2];
  uint32_t kind;
  float attachment_yaw,attachment_scale,radius_scale;
+ uint16_t source_flags;
  float tornado_radius,tornado_angle,tornado_speed,tornado_turn,tornado_origin[3];
  float position[3],velocity[3],size,size_target,rotation,rotate_target,rotate_accel,grav,fric,trail;
  uint8_t prim[4],env[4],color_base[2][4],color_target[2][4];
@@ -86,10 +88,19 @@ int c3_particle_begin(C3ParticleSystem *,const C3ParticleBank *,unsigned generat
 int c3_particle_begin_position(C3ParticleSystem *,const C3ParticleBank *,unsigned,
  uint32_t,const float source_world_position[3],float start_yaw,
  float billboard_scale,float radius_scale,char *,size_t);
-/* Checked source profiles: Bite 0x10A1 or Reflect 0x18A9. */
+/* Checked source profiles: Confusion attack 0x0001, Bite/Confusion damage
+ * 0x10A1, Reflect 0x18A9. Bit5 controls radius_scale; bit7 billboards. */
 int c3_particle_begin_position_flags(C3ParticleSystem *,const C3ParticleBank *,unsigned,
  uint32_t,const float source_world_position[3],float start_yaw,
  float billboard_scale,float radius_scale,uint16_t source_flags,char *,size_t);
+/* Append a root to an existing POSITION system without resetting time, RNG or
+ * live particles. Bank identity must match the same immutable bytes/length.
+ * Root handle is its checked native emitter serial; source launch order owns RNG. */
+int c3_particle_append_position_flags(C3ParticleSystem *,const C3ParticleBank *,unsigned,
+ const float source_world_position[3],float start_yaw,float billboard_scale,
+ float radius_scale,uint16_t source_flags,uint32_t *root_handle,char *,size_t);
+int c3_particle_position_root(C3ParticleSystem *,uint32_t root_handle,
+ const float source_world_position[3],char *,size_t);
 int c3_particle_position(C3ParticleSystem *,const float source_world_position[3],char *,size_t);
 /* Fixed60Hz source simulation, retained millisecond fraction; paused consumes no
  * time. Catchup >600ticks fails explicitly; elapsed time is never silently lost.

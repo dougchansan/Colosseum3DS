@@ -81,7 +81,20 @@ static void position_children(void)
  const uint8_t bd[]={0xbd,0x41,0,0,0,0,0,0,0,31};memcpy(bytes+child+60,bd,sizeof bd);
  assert(c3_particle_bank_decode(&bank,bytes,sizeof bytes,error,sizeof error));
  for(unsigned profile=0;profile<2;++profile){assert(c3_particle_begin_position_flags(a,&bank,3,42,pos,1.57079632679f,.75f,.75f,profile?0x18a9:0x10a1,error,sizeof error));assert(c3_particle_step_ticks(a,1,0,error,sizeof error));assert(fabsf(a->particles[1].velocity[profile?2:0]-(profile?-6:6))<.00001f);assert(fabsf(a->particles[2].velocity[2]+6)<.00001f);}
+ assert(c3_particle_begin_position_flags(a,&bank,3,42,pos,1.57079632679f,.75f,.75f,1,error,sizeof error));assert(c3_particle_step_ticks(a,1,0,error,sizeof error));assert(a->particles[1].velocity[0]==8);assert(fabsf(a->particles[2].velocity[2]+8)<.00001f);
  free(a);
+}
+static void multiple_roots(void)
+{
+ uint8_t bytes[2048];fixture(bytes);unsigned gen=at(1);put16(bytes+gen,1);put16(bytes+gen+4,20);putf(bytes+gen+20,2);putf(bytes+gen+48,4);bytes[gen+60]=31;
+ C3ParticleBank bank;char error[160];C3ParticleSystem *a=calloc(1,sizeof *a),*b=calloc(1,sizeof *b);assert(a&&b);float pos[3]={10,20,30},other[3]={100,20,30};uint32_t handle=0;
+ assert(c3_particle_bank_decode(&bank,bytes,sizeof bytes,error,sizeof error));assert(c3_particle_begin_position(a,&bank,1,42,pos,0,.75f,.75f,error,sizeof error));assert(c3_particle_step_ticks(a,1,0,error,sizeof error));
+ *b=*a;uint32_t emitted=a->emitted,seed=a->cosmetic_seed;uint64_t draws=a->cosmetic_draws,ticks=a->ticks;C3Particle old=a->particles[0];
+ assert(c3_particle_append_position_flags(a,&bank,1,other,0,.5f,.5f,0x10a1,&handle,error,sizeof error));assert(handle!=a->root_emitter_serial);assert(a->emitted==emitted&&a->cosmetic_seed==seed&&a->cosmetic_draws==draws&&a->ticks==ticks);assert(!memcmp(&old,&a->particles[0],sizeof old));
+ uint32_t second;assert(c3_particle_append_position_flags(b,&bank,1,other,0,.5f,.5f,0x10a1,&second,error,sizeof error));assert(second==handle);assert(c3_particle_step(a,100,0,error,sizeof error));for(unsigned i=0;i<100;++i)assert(c3_particle_step(b,1,0,error,sizeof error));assert(!memcmp(a,b,sizeof *a));
+ other[0]=200;assert(c3_particle_position_root(a,handle,other,error,sizeof error));assert(a->emitters[0].position[0]==10&&a->emitters[1].position[0]==200);assert(a->particles[0].position[0]<30);assert(!c3_particle_position_root(a,999,other,error,sizeof error));
+ C3ParticleBank impostor=bank;impostor.bytes=bytes+1;*b=*a;assert(!c3_particle_append_position_flags(a,&impostor,1,other,0,1,1,1,&second,error,sizeof error));assert(!memcmp(a,b,sizeof *a));
+ assert(c3_particle_append_position_flags(a,&bank,1,other,0,.75f,.75f,1,&second,error,sizeof error));assert(a->emitters[2].radius_scale==1&&a->emitters[2].source_flags==1);free(a);free(b);
 }
 static void position_tornado(void)
 {
@@ -107,7 +120,8 @@ static void quad(void)
  assert(fabsf(q.vertices[1].position[0]-5)<.00001f&&fabsf(q.vertices[1].position[1]-6)<.00001f);
  assert(q.vertices[0].rgba[3]==127&&q.vertices[1].rgba[3]==255);
  attachment[0]=2;assert(c3_particle_quad(&p,attachment,&c,&q,error,sizeof error)==-1);assert(strstr(error,"nonuniform"));
- p.kind=0x480;p.attachment_scale=.75f;attachment[0]=1;assert(c3_particle_quad(&p,attachment,&c,&q,error,sizeof error)==1);assert(fabsf(q.vertices[0].position[0]-1.5f)<.00001f);
+ p.kind=0x480;p.source_flags=0x80;p.attachment_scale=.75f;attachment[0]=1;assert(c3_particle_quad(&p,attachment,&c,&q,error,sizeof error)==1);assert(fabsf(q.vertices[0].position[0]-1.5f)<.00001f);
+ p.source_flags=1;assert(c3_particle_quad(&p,attachment,&c,&q,error,sizeof error)==1);assert(fabsf(q.vertices[0].position[0]-1)<.00001f);
  p.active=0;assert(c3_particle_quad(&p,attachment,&c,&q,error,sizeof error)==0);
 }
 static void private_bank(const char *path,unsigned root)
@@ -115,8 +129,20 @@ static void private_bank(const char *path,unsigned root)
  FILE *file=fopen(path,"rb");assert(file);assert(!fseek(file,0,SEEK_END));long n=ftell(file);assert(n>0);rewind(file);uint8_t *bytes=malloc((size_t)n);assert(bytes);assert(fread(bytes,1,(size_t)n,file)==(size_t)n);fclose(file);
  C3ParticleBank bank;char error[160];assert(c3_particle_bank_decode(&bank,bytes,(size_t)n,error,sizeof error));C3ParticleSystem *a=calloc(1,sizeof *a),*b=calloc(1,sizeof *b);assert(a&&b);assert(c3_particle_begin(a,&bank,root,123,error,sizeof error));assert(c3_particle_begin(b,&bank,root,123,error,sizeof error));
  if(!c3_particle_step(a,5000,0,error,sizeof error)){fprintf(stderr,"%s\n",error);assert(0);}for(unsigned i=0;i<5000;++i)assert(c3_particle_step(b,1,0,error,sizeof error));assert(!memcmp(a,b,sizeof *a));assert(c3_particle_finished(a));if(root==3&&bank.generator_count==6)assert(a->emitted==82&&a->spawned_emitters==3);if(root==0&&bank.generator_count==10)assert(a->emitted==2938&&a->peak_particles==1369);if(root==4&&bank.generator_count==13)assert(a->emitted==512&&a->peak_particles==512);/* Same retail closure through POSITION attachment, partitioned time, and pause. */
- float pos[3]={100,20,-30};uint16_t flags=root==3&&bank.generator_count==6?0x10a1:0x18a9;assert(c3_particle_begin_position_flags(a,&bank,root,123,pos,.7f,.75f,.75f,flags,error,sizeof error));assert(c3_particle_begin_position_flags(b,&bank,root,123,pos,.7f,.75f,.75f,flags,error,sizeof error));
+ float pos[3]={100,20,-30};uint16_t flags=bank.generator_count==13?(root==1?1:0x10a1):(root==3&&bank.generator_count==6?0x10a1:0x18a9);assert(c3_particle_begin_position_flags(a,&bank,root,123,pos,.7f,.75f,.75f,flags,error,sizeof error));assert(c3_particle_begin_position_flags(b,&bank,root,123,pos,.7f,.75f,.75f,flags,error,sizeof error));
  assert(c3_particle_step(a,5000,0,error,sizeof error));for(unsigned i=0;i<5000;++i)assert(c3_particle_step(b,1,0,error,sizeof error));assert(!memcmp(a,b,sizeof *a));assert(c3_particle_finished(a));
- printf("Original GPT1 root %u executed %u particles, peak %u, %llu private cosmetic draws\n",root,a->emitted,a->peak_particles,(unsigned long long)a->cosmetic_draws);free(a);free(b);free(bytes);
+ printf("Original GPT1 root %u executed %u particles, peak %u, %llu private cosmetic draws\n",root,a->emitted,a->peak_particles,(unsigned long long)a->cosmetic_draws);
+ if(bank.generator_count==13&&root==0){
+  uint32_t handles[4],mirror[4];float other[3]={-50,10,20};
+  assert(c3_particle_begin_position_flags(a,&bank,2,123,pos,0,.75f,.75f,0x10a1,error,sizeof error));assert(c3_particle_begin_position_flags(b,&bank,2,123,pos,0,.75f,.75f,0x10a1,error,sizeof error));
+  assert(c3_particle_step_ticks(a,12,0,error,sizeof error));assert(c3_particle_step(b,200,0,error,sizeof error));
+  assert(c3_particle_append_position_flags(a,&bank,3,other,0,.75f,.75f,0x10a1,&handles[0],error,sizeof error));assert(c3_particle_append_position_flags(b,&bank,3,other,0,.75f,.75f,0x10a1,&mirror[0],error,sizeof error));
+  assert(c3_particle_step_ticks(a,32,0,error,sizeof error));for(unsigned i=0;i<32;++i)assert(c3_particle_step_ticks(b,1,0,error,sizeof error));
+  const unsigned roots[3]={7,4,8};for(unsigned i=0;i<3;++i){assert(c3_particle_append_position_flags(a,&bank,roots[i],pos,0,.75f,.75f,0x10a1,&handles[i+1],error,sizeof error));assert(c3_particle_append_position_flags(b,&bank,roots[i],pos,0,.75f,.75f,0x10a1,&mirror[i+1],error,sizeof error));}
+  assert(!memcmp(handles,mirror,sizeof handles));assert(c3_particle_step(a,5000,0,error,sizeof error));for(unsigned i=0;i<5000;++i)assert(c3_particle_step(b,1,0,error,sizeof error));assert(!memcmp(a,b,sizeof *a));assert(c3_particle_finished(a));
+  assert(a->emitted==738&&a->peak_particles==652&&a->cosmetic_draws==3302);
+  printf("Confusion overlapping roots 2,3,7,4,8: %u particles, peak %u, %llu cosmetic draws\n",a->emitted,a->peak_particles,(unsigned long long)a->cosmetic_draws);
+ }
+ free(a);free(b);free(bytes);
 }
-int main(int argc,char **argv){synthetic();position_attachment();position_children();position_tornado();quad();if(argc>=2)private_bank(argv[1],argc>=3?(unsigned)strtoul(argv[2],NULL,0):3);puts("Bounded GPT1 source execution, timing, color, spawn, cancellation checks passed");return 0;}
+int main(int argc,char **argv){synthetic();position_attachment();position_children();multiple_roots();position_tornado();quad();if(argc>=2)private_bank(argv[1],argc>=3?(unsigned)strtoul(argv[2],NULL,0):3);puts("Bounded GPT1 source execution, timing, color, spawn, cancellation checks passed");return 0;}
