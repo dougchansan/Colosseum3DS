@@ -140,3 +140,60 @@ initial FOV, with no idle segment interpolation. Near/far/aspect inherit the
 incoming camera. Cancellation restores it, and pausing advances no camera or
 cosmetic RNG clocks. This camera profile alone does not qualify RED stage
 playback, retail shared RNG parity, or hardware visuals.
+
+## Tackle33: separate checked camera profile
+
+`tools/prepare_battle_camera.py --tackle` writes `tackle_camera.c3c` and its
+source report. Load with `c3_battle_camera_tackle_load` (or the corresponding
+transactional decoder), then use `c3_battle_camera_begin_move(...,33,phase,...)`.
+The attack admits Zigzagoon slots2/3 targeting Umbreon/Espeon slots0/1; damage
+admits the reverse roles. It cannot enter through the legacy Bite API.
+
+The original `wzx_taiatari_attack/damage` archives and members are pinned by
+SHA256 against vendor commit `51bfe4314a218dfaf9592fc80723c50498d0ee55`.
+Both headers contain raw flags0x78, entry2/8, targetclass2 and no external camera.
+SelectMotion enables bits3/4/5/6 in source order3/0/1/2, with previous-motion
+exclusion. CalculateParams derives flags0: default rotation18..63degrees,
+height clamp6..20GC units, distance20..52.5 after the original0.875 scale/clamp.
+This uses the existing bounded four-motion evaluator; no old RNG path changes.
+
+The owner bindings are original entry2 clip4 for Zigzagoon attack, and entry8
+clip3/2 for Umbreon/Espeon damage. Original body_map[2] resolves to JObj53/42/62,
+independently sampled at animation frame0 plus0.5frame per source60Hz tick.
+Both owner starts and normalization shifts are zero. DoPosition selects the
+count-dependent timing field, giving attack130ticks and damage170/100ticks.
+The later raw damage minimum298/176 is not the camera motion duration.
+
+C3KC version1 retains the checked512-byte header/actor block, followed by the
+exact608-byte short8 FOV table at512, the988-byte long13 table at1120, and
+contiguous source part tracks at2108. Both LE table SHA1s and the whole-file
+checksum are checked. Runtime admission checks all six source timing/sample
+counts; it rejects mismatched phase/owner roles without changing the camera.
+The program owns21rows of table storage; existing serialized formats remain
+unchanged.
+
+Dolly uses direct FOV mask2. The other motions select weighted short8 for
+attack and long13 for damage, preserving the source initial random draw,
+initial FOV mix, and two dynamic segments. Their gates are implicit0 then
+62/130 for Zigzagoon attack,170/298 for Umbreon damage or100/176 for Espeon.
+Source duration modes2/5/12/13, timing placement, and near/mid/far radius use
+are evaluated explicitly. All8 short rows and11 reachable long rows are
+covered; the long table reaches cumulative weight1 at row10, so its later
+fixed-choice rows are not reached by these flags.
+
+Verification used the admitted original disc/importer. All six previous packs
+were regenerated and were byte-identical to the5519c82 hardware asset set.
+Strict C11 and ASan/UBSan runs with all seven actual camera packs passed
+4,116,755 checks, including all four motions, reachable FOV patterns,
+chunked/batched clock equivalence, pause/cancel, malformed/checksum-repaired
+inputs, profile isolation and actor-role rejection. Preparation tests verify
+both exact table hashes and Tackle timing rejection. Private evidence lives in
+`tackle-camera-v1` and `tackle-camera-legacy-regression-v1` in the capture root.
+The cosmetic RNG remains independent of the retail shared stream; PPC float,
+thread/frame-edge and hardware visual parity are not claimed.
+
+The stage handoff also uses `c3_battle_camera_step_units`:1000units per original
+tick,60per millisecond. It retains the fractional elapsed after attack tick133
+without rounding or advancing the defender camera for a whole extra millisecond.
+The old millisecond entry point delegates exactly;20+40units equals1ms,
+paused clocks ignore elapsed, and overflow preserves camera state.

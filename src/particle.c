@@ -44,7 +44,7 @@ int c3_particle_bank_decode(C3ParticleBank *b,const void *p,size_t n,char *e,siz
 {return decode_bank(b,p,n,0,e,cap);}
 int c3_particle_bank_source_slot(const C3ParticleBank *b,unsigned id,unsigned *slot)
 {
- if(!b||!slot||b->generator_count>C3_PARTICLE_MAX_GENERATORS||(b->profile&&b->profile!=C3_PARTICLE_PROFILE_GROWL_V1&&!stat_down_profile(b->profile)))return 0;
+ if(!b||!slot||b->generator_count>C3_PARTICLE_MAX_GENERATORS||(b->profile&&b->profile!=C3_PARTICLE_PROFILE_GROWL_V1&&!stat_down_profile(b->profile)&&b->profile!=C3_PARTICLE_PROFILE_TACKLE_V1))return 0;
  for(unsigned i=0;i<b->generator_count;++i)if((b->profile?b->source_ids[i]:i)==id){*slot=i;return 1;}
  return 0;
 }
@@ -101,9 +101,95 @@ static int stat_down_bank(C3ParticleBank *b,unsigned profile)
  }
  b->profile=(uint8_t)profile;return 1;
 }
+/* Pinned source51bfe Tackle's eight original descriptors and complete padded
+ * programs. Exact bytes bound the F0-only/static-key closure: F1 and mutable
+ * sort-key instructions cannot enter this opt-in list-order model. */
+static int tackle_bank(C3ParticleBank *b)
+{
+ static const uint8_t generators[1104]={
+  0x00,0x00,0x00,0x00,0x00,0x01,0x00,0x0a,0x81,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+  0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+  0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0xbf,0x80,0x00,0x00,0x3f,0x80,0x00,0x00,
+  0x00,0x00,0x00,0x00,0x40,0xc9,0x0f,0xdb,0x00,0x00,0x00,0x00,0xf0,0x00,0x05,0x05,
+  0xf0,0x00,0x04,0x04,0xf0,0x00,0x06,0x07,0xf0,0x00,0x01,0x06,0xf0,0x00,0x02,0x06,
+  0xf0,0x00,0x03,0x06,0xf0,0x00,0x07,0x03,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,
+  0x00,0x00,0x00,0x03,0x00,0x01,0x00,0x14,0x00,0x40,0x00,0x00,0x00,0x00,0x00,0x00,
+  0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+  0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0xbf,0x80,0x00,0x00,0x3f,0x80,0x00,0x00,
+  0x00,0x00,0x00,0x00,0x40,0xc9,0x0f,0xdb,0x00,0x00,0x00,0x00,0x40,0x00,0xed,0x00,
+  0x00,0x00,0x00,0x40,0xc9,0x0f,0xdb,0x02,0xf3,0x01,0x3e,0xa0,0xd9,0x7c,0xbc,0x64,
+  0xc3,0x88,0x14,0xa0,0x00,0x40,0x10,0x00,0x00,0xcf,0x00,0xe8,0xa4,0x95,0xff,0xad,
+  0xdf,0x00,0x7b,0x6b,0x4f,0x00,0xa0,0x04,0x40,0x88,0x00,0x00,0xcf,0x04,0xe8,0xa4,
+  0x95,0xff,0xad,0xdf,0x04,0x7b,0x6b,0x4f,0x00,0x04,0xa0,0x10,0x40,0xa0,0x00,0x00,
+  0xcf,0x10,0xe8,0xa4,0x95,0x00,0xad,0xdf,0x10,0x7b,0x6b,0x4f,0x00,0x10,0xff,0xff,
+  0x00,0x00,0x00,0x03,0x00,0x01,0x00,0x20,0x00,0x40,0x00,0x00,0x00,0x00,0x00,0x00,
+  0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+  0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0xbf,0x80,0x00,0x00,0x3f,0x80,0x00,0x00,
+  0x00,0x00,0x00,0x00,0x40,0xc9,0x0f,0xdb,0x00,0x00,0x00,0x00,0x40,0x01,0xed,0x00,
+  0x00,0x00,0x00,0x40,0xc9,0x0f,0xdb,0x02,0xf3,0x00,0x3e,0x8e,0xfa,0x35,0xbb,0xe6,
+  0x5a,0x3a,0x24,0xa0,0x00,0x40,0x00,0x00,0x00,0xcf,0x00,0xfb,0xef,0xdb,0xff,0xad,
+  0xdf,0x00,0xe7,0xc9,0x98,0x00,0xa0,0x04,0x40,0x20,0x00,0x00,0xcf,0x04,0xfb,0xef,
+  0xdb,0xff,0xad,0xdf,0x04,0x53,0x48,0x35,0x00,0x04,0xa0,0x1c,0x40,0x88,0x00,0x00,
+  0xcf,0x1c,0xfb,0xf0,0xdb,0x00,0xad,0xdf,0x1c,0x53,0x48,0x35,0x00,0x1c,0xff,0xff,
+  0x00,0x00,0x00,0x03,0x00,0x01,0x00,0x24,0x00,0x40,0x00,0x00,0x00,0x00,0x00,0x00,
+  0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+  0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0xbf,0x80,0x00,0x00,0x3f,0x80,0x00,0x00,
+  0x00,0x00,0x00,0x00,0x40,0xc9,0x0f,0xdb,0x00,0x00,0x00,0x00,0x40,0x02,0xed,0x00,
+  0x00,0x00,0x00,0x40,0xc9,0x0f,0xdb,0x02,0xf3,0x01,0x3e,0xc4,0x98,0x09,0xbc,0x26,
+  0xce,0x93,0x24,0xa0,0x00,0x3f,0x80,0x00,0x00,0xcf,0x00,0xfb,0xef,0xdb,0xff,0xad,
+  0xdf,0x00,0xe7,0xc9,0x98,0x00,0xa0,0x04,0x40,0x20,0x00,0x00,0xcf,0x04,0xfb,0xef,
+  0xdb,0xff,0xad,0xdf,0x04,0x9b,0x88,0x64,0x00,0x04,0xa0,0x20,0x40,0x48,0x00,0x00,
+  0xcf,0x20,0xfb,0xef,0xdb,0x00,0xad,0xdf,0x20,0x9b,0x88,0x64,0x00,0x20,0x20,0xff,
+  0x00,0x00,0x00,0x00,0x00,0x01,0x00,0x10,0x01,0x40,0x00,0x00,0x00,0x00,0x00,0x00,
+  0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+  0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0xbf,0x80,0x00,0x00,0x3f,0x80,0x00,0x00,
+  0x00,0x00,0x00,0x00,0x40,0xc9,0x0f,0xdb,0x00,0x00,0x00,0x00,0x40,0x00,0xb1,0xed,
+  0x00,0x00,0x00,0x00,0x40,0xc9,0x0f,0xdb,0x00,0xf3,0x01,0x3e,0x0e,0xfa,0x35,0xbb,
+  0xe4,0xc3,0x88,0x14,0xa0,0x00,0x3f,0x80,0x00,0x00,0xcf,0x00,0xfb,0xef,0xdb,0xff,
+  0xad,0xdf,0x00,0xe7,0xc9,0x98,0x00,0xa0,0x04,0x41,0x00,0x00,0x00,0xcf,0x04,0xfb,
+  0xef,0xdb,0xff,0xad,0xdf,0x04,0x61,0x2e,0x1f,0x00,0x04,0xa0,0x10,0x40,0x80,0x00,
+  0x00,0xcf,0x0c,0xfb,0xef,0xdb,0x00,0xad,0xdf,0x0c,0x61,0x2e,0x1f,0x00,0x0c,0xff,
+  0x00,0x00,0x00,0x02,0x00,0x01,0x00,0x24,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+  0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+  0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0xbf,0x80,0x00,0x00,0x3f,0x80,0x00,0x00,
+  0x00,0x00,0x00,0x00,0x40,0xc9,0x0f,0xdb,0x00,0x00,0x00,0x00,0x40,0x00,0xb1,0xa0,
+  0x00,0x40,0x40,0x00,0x00,0xcf,0x00,0xe6,0x59,0x24,0xff,0xad,0xdf,0x00,0x95,0x4d,
+  0x59,0x00,0xa0,0x10,0x41,0x00,0x00,0x00,0xcf,0x10,0xe6,0x59,0x24,0xff,0xad,0xdf,
+  0x10,0x95,0x4d,0x59,0x00,0x10,0xa0,0x14,0x40,0x00,0x00,0x00,0xcf,0x14,0xe6,0x59,
+  0x24,0x00,0xad,0xdf,0x14,0x95,0x4d,0x59,0x00,0x14,0xff,0xff,0xff,0xff,0xff,0xff,
+  0x00,0x04,0x00,0x00,0x00,0x04,0x00,0x20,0x40,0x40,0x00,0x02,0x00,0x00,0x00,0x00,
+  0x3f,0x5e,0xb8,0x52,0x00,0x00,0x00,0x00,0xc0,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+  0x00,0x00,0x00,0x00,0xc0,0xc9,0x0f,0xdb,0xc1,0x40,0x00,0x00,0x3f,0x80,0x00,0x00,
+  0xc0,0xc9,0x0f,0xdb,0x40,0xc9,0x0f,0xdb,0x00,0x00,0x00,0x00,0xe8,0x00,0x00,0x00,
+  0x00,0xbd,0x3f,0x80,0x00,0x00,0x3f,0xc0,0x00,0x00,0xa0,0x00,0x00,0x00,0x00,0x00,
+  0x01,0xac,0x00,0x3f,0x80,0x00,0x00,0x40,0x00,0x00,0x00,0xcf,0x00,0xf8,0xe1,0xad,
+  0xff,0x0f,0xcf,0x10,0xf8,0xe1,0xad,0x00,0x10,0xff,0xff,0xff,0xff,0xff,0xff,0xff,
+  0x00,0x00,0x00,0x04,0x00,0x08,0x00,0x60,0x00,0x00,0x00,0x03,0xba,0x1d,0x49,0x52,
+  0x3f,0x79,0x99,0x9a,0x00,0x00,0x00,0x00,0x38,0xd1,0xb7,0x17,0x00,0x00,0x00,0x00,
+  0x40,0x80,0x00,0x00,0x40,0xc9,0x0f,0xdb,0xc1,0x20,0x00,0x00,0x3f,0x80,0x00,0x00,
+  0xc0,0xc9,0x0f,0xdb,0x40,0xc9,0x0f,0xdb,0x00,0x00,0x00,0x00,0xbc,0x00,0x02,0xa8,
+  0x3f,0x80,0x00,0x00,0x3f,0x80,0x00,0x00,0x3f,0x80,0x00,0x00,0xed,0x00,0x00,0x00,
+  0x00,0x40,0xc9,0x0f,0xdb,0x24,0xf3,0x00,0x3c,0x2b,0x92,0xa7,0xb9,0x02,0xb8,0xe1,
+  0x54,0xbd,0x3d,0xa3,0xd7,0x0a,0x3e,0x19,0x99,0x9a,0xcf,0x00,0x76,0x64,0x50,0x00,
+  0xad,0xdf,0x00,0x45,0x42,0x36,0x00,0xac,0x14,0x3f,0xc0,0x00,0x00,0x3f,0x40,0x00,
+  0x00,0xcf,0x14,0x76,0x64,0x50,0xff,0xad,0xdf,0x14,0x45,0x42,0x36,0x00,0x14,0xac,
+  0x4c,0x40,0x13,0x33,0x33,0x3f,0x40,0x00,0x00,0xcf,0x4c,0x42,0x38,0x2d,0x00,0xad,
+  0xdf,0x4c,0x16,0x15,0x12,0x00,0x20,0x4c,0xff,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+  0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00
+ };
+ if(b->generator_count!=8||b->texture_group_count!=5||b->generators[0].script_offset!=140||b->generators[7].script_offset+b->generators[7].script_bytes!=1184||memcmp(b->bytes+80,generators,sizeof generators))return 0;
+ static const uint32_t frames[5]={1,3,1,3,2};
+ for(unsigned i=0;i<5;++i)if(b->texture_frames[i]!=frames[i])return 0;
+ for(unsigned i=0;i<8;++i)if(b->refs[i]!=i)return 0;
+ b->profile=C3_PARTICLE_PROFILE_TACKLE_V1;return 1;
+}
 int c3_particle_bank_decode_reachable(C3ParticleBank *out,const void *p,size_t n,unsigned root,unsigned profile,char *e,size_t cap)
 {
  if(!out||!p||overlap(out,sizeof *out,p,n))return error(e,cap,"Unsupported reachable particle profile/root/ownership.");
+ if(profile==C3_PARTICLE_PROFILE_TACKLE_V1){C3ParticleBank b;
+  if(root||n!=91680||!decode_bank(&b,p,n,0,e,cap)||!tackle_bank(&b))return error(e,cap,"Unqualified Tackle source bank/root/program.");
+  *out=b;if(e&&cap)e[0]=0;return 1;
+ }
  if(stat_down_profile(profile)){C3ParticleBank b;
   if(root||n!=1644||!decode_bank(&b,p,n,0,e,cap)||!stat_down_bank(&b,profile))return error(e,cap,"Unqualified stat-down source bank/root/program.");
   *out=b;if(e&&cap)e[0]=0;return 1;
@@ -152,7 +238,7 @@ static int reference_slot(const C3ParticleBank *b,unsigned reference,unsigned *s
 static void yaw_rotate(float yaw,float v[3])
 {float x=v[0],z=v[2],c=cosf(yaw),sn=sinf(yaw);v[0]=c*x+sn*z;v[2]=-sn*x+c*z;}
 static int emission_shape(const C3ParticleBank *b,const C3ParticleGenerator *g)
-{return g->type==0||g->type==1||g->type==2||g->type==8||(stat_down_profile(b->profile)&&g->type==7);}
+{return g->type==0||g->type==1||g->type==2||g->type==8||(stat_down_profile(b->profile)&&g->type==7)||(b->profile==C3_PARTICLE_PROFILE_TACKLE_V1&&g==&b->generators[6]&&g->type==4);}
 static int emitter(C3ParticleSystem *s,unsigned g,unsigned depth,const float pos[3],unsigned flags)
 {
  if(g>=s->bank.generator_count||depth>C3_PARTICLE_MAX_DEPTH)return fault(s,g,0,0xF0,"reference/nesting bound");
@@ -201,6 +287,11 @@ static void initial_particle(C3ParticleSystem *s,C3Particle *p,unsigned generato
  p->attachment_scale=p->radius_scale=1;
  p->life=(uint16_t)(g->life+1);p->wait=1;p->trail=1;p->size=g->size;p->grav=g->grav;p->fric=g->fric;
  memcpy(p->velocity,g->velocity,sizeof p->velocity);memset(p->prim,255,4);memset(p->color_base[0],255,4);memset(p->color_target[0],255,4);
+ if(s->bank.profile==C3_PARTICLE_PROFILE_TACKLE_V1){
+  unsigned slot=(unsigned)(p-s->particles),n=0;
+  for(unsigned j=0;j<s->source_order_count;++j){unsigned old=s->source_order[j];if(old!=slot&&s->particles[old].active)s->source_order[n++]=s->source_order[j];}
+  memmove(s->source_order+1,s->source_order,n*sizeof *s->source_order);s->source_order[0]=(uint16_t)slot;s->source_order_count=(uint16_t)(n+1);
+ }
  p->serial=++s->emitted;unsigned live=0;for(unsigned i=0;i<C3_PARTICLE_MAX_PARTICLES;++i)live+=s->particles[i].active!=0;if(live>s->peak_particles)s->peak_particles=live;
 }
 static int child_particle(C3ParticleSystem *s,C3Particle *parent,unsigned generator)
@@ -334,13 +425,14 @@ static int emit(C3ParticleSystem *s,unsigned index,float angle_step,float *cur_a
    p->kind|=4;p->velocity[0]=angle;p->velocity[1]=dist;p->velocity[2]=0;p->grav=a1;p->fric=a3;p->tornado_radius=g->radius;p->tornado_angle=g->angle;
    p->tornado_turn=g->grav;p->tornado_speed=sqrtf(g->velocity[0]*g->velocity[0]+g->velocity[1]*g->velocity[1]+g->velocity[2]*g->velocity[2]);memcpy(p->tornado_origin,e->position,sizeof p->tornado_origin);
   }else{
-   float radius=g->radius<0?1:rnd(s),dist=g->radius<0?-g->radius:radius*g->radius;
+   float radius=g->radius<0?1:rnd(s);if(g->type==4)radius=sqrtf(radius);
+   float dist=g->radius<0?-g->radius:radius*g->radius;
    float min=g->param[0],max=g->param[1];if(min==0&&max==0)max=2*PI;
    float angle;if(g->angle<0){*cur_angle+=angle_step;angle=*cur_angle;}else angle=(max-min)*rnd(s)+min;
    /* Shape7 keeps a uniform radial fraction and consumes the height RNG even
     * for the audited zero-height disc. Its cone angle is independent of radius. */
    float local[3]={dist*cosf(angle),dist*sinf(angle),g->type==7?rnd(s)*g->param[2]:0};rotate(g->velocity,local);for(unsigned j=0;j<3;++j)p->position[j]+=local[j];
-   float speed=sqrtf(g->velocity[0]*g->velocity[0]+g->velocity[1]*g->velocity[1]+g->velocity[2]*g->velocity[2]),cone=fabsf(g->angle)*(s->position_attachment?radius:1);
+   float speed=sqrtf(g->velocity[0]*g->velocity[0]+g->velocity[1]*g->velocity[1]+g->velocity[2]*g->velocity[2]),cone=fabsf(g->angle)*((s->position_attachment||g->type==4)?radius:1);
    if(g->type==7)cone=g->angle<0?PI/2-g->angle:PI/2+g->angle;
    float v[3]={speed*sinf(cone)*cosf(angle),speed*sinf(cone)*sinf(angle),speed*cosf(cone)};rotate(g->velocity,v);memcpy(p->velocity,v,sizeof v);
   }
@@ -359,14 +451,23 @@ static int tick(C3ParticleSystem *s)
  /* Source snapshots particle next before interpreting; F1 children initialize
   * immediately but must not receive a second update in this particle pass. */
  uint32_t particles[C3_PARTICLE_MAX_PARTICLES];for(unsigned i=0;i<C3_PARTICLE_MAX_PARTICLES;++i)particles[i]=s->particles[i].active?s->particles[i].serial:0;
- for(unsigned i=0;i<C3_PARTICLE_MAX_PARTICLES;++i)if(particles[i]&&s->particles[i].active&&s->particles[i].serial==particles[i])if(!interpret(s,&s->particles[i]))return 0;
+ /* Source display's stable bucket sort mutates the list. Between displays,
+  * F0 births prepend; do not re-sort at simulation boundaries. */
+ uint16_t update_order[C3_PARTICLE_MAX_PARTICLES];unsigned updates=C3_PARTICLE_MAX_PARTICLES;
+ if(s->bank.profile==C3_PARTICLE_PROFILE_TACKLE_V1){updates=s->source_order_count;memcpy(update_order,s->source_order,updates*sizeof *update_order);}
+ for(unsigned visit=0;visit<updates;++visit){unsigned i=s->bank.profile==C3_PARTICLE_PROFILE_TACKLE_V1?update_order[visit]:visit;if(particles[i]&&s->particles[i].active&&s->particles[i].serial==particles[i])if(!interpret(s,&s->particles[i]))return 0;}
  /* Child emitters created by zero-wait particle initialization are eligible
   * in this generator pass. Checked native handle order owns cosmetic ordering. */
  uint32_t visited[C3_PARTICLE_MAX_EMITTERS]={0};unsigned passes=0;
- for(;;){int any=0;for(unsigned i=0;i<C3_PARTICLE_MAX_EMITTERS;++i){C3ParticleEmitter *e=&s->emitters[i];if(!e->active||visited[i]==e->serial)continue;any=1;visited[i]=e->serial;
+ for(;;){int any=0;for(unsigned visit=0;visit<C3_PARTICLE_MAX_EMITTERS;++visit){unsigned i=visit;
+   if(s->bank.profile==C3_PARTICLE_PROFILE_TACKLE_V1){unsigned best=C3_PARTICLE_MAX_EMITTERS;for(unsigned j=0;j<C3_PARTICLE_MAX_EMITTERS;++j){const C3ParticleEmitter *candidate=&s->emitters[j];if(!candidate->active||visited[j]==candidate->serial)continue;if(best==C3_PARTICLE_MAX_EMITTERS||candidate->depth==0||(s->emitters[best].depth!=0&&candidate->serial>s->emitters[best].serial))best=j;}if(best==C3_PARTICLE_MAX_EMITTERS)break;i=best;}
+   C3ParticleEmitter *e=&s->emitters[i];if(!e->active||visited[i]==e->serial)continue;any=1;visited[i]=e->serial;
    if(++passes>C3_PARTICLE_MAX_EMITTERS*(C3_PARTICLE_MAX_DEPTH+1))return fault(s,e->generator,0,0,"per-tick emitter work bound");
-   const C3ParticleGenerator *g=&s->bank.generators[e->generator];float rate=e->deferred?0:g->rate;e->count+=rate<0?-rate:rate*rnd(s);
-   float step=0,angle=0;if(g->angle<0&&e->count>=1){if(g->type==0||g->type==7){float min=g->param[0],max=g->param[1];if(s->position_attachment){min*=e->radius_scale;max*=e->radius_scale;}if(min==0&&max==0)max=2*PI;step=(max-min)/(int)e->count;angle=step*rnd(s)+min;}else if(g->type==2){step=2*PI/(int)e->count;angle=step*rnd(s);}}
+   const C3ParticleGenerator *g=&s->bank.generators[e->generator];float rate=e->deferred?0:g->rate;
+   /* Source expired owners set kind0x800 and skip RNG/emission entirely.
+    * Retain frozen legacy accounting; Tackle alone admits that dormant path. */
+   if(!(s->bank.profile==C3_PARTICLE_PROFILE_TACKLE_V1&&e->deferred))e->count+=rate<0?-rate:rate*rnd(s);
+   float step=0,angle=0;if(g->angle<0&&e->count>=1){if(g->type==0||g->type==4||g->type==7){float min=g->param[0],max=g->param[1];if(s->position_attachment){min*=e->radius_scale;max*=e->radius_scale;}if(min==0&&max==0)max=2*PI;step=(max-min)/(int)e->count;angle=step*rnd(s)+min;}else if(g->type==2){step=2*PI/(int)e->count;angle=step*rnd(s);}}
    unsigned emitted=0;while(e->count>=1){if(++emitted>C3_PARTICLE_MAX_PARTICLES)return fault(s,e->generator,0,0,"emission budget exceeded");if(!emit(s,i,step,&angle))return 0;e->count-=1;}
    if(e->life&&!--e->life){
     if(!s->bank.profile)e->active=0;
@@ -410,6 +511,7 @@ static int red_constant_position(C3ParticleSystem *s,uint32_t handle,const float
 }
 int c3_particle_position(C3ParticleSystem *s,const float pos[3],char *e,size_t cap)
 {
+ if(s&&s->bank.profile==C3_PARTICLE_PROFILE_TACKLE_V1)return error(e,cap,"Tackle POSITION is a one-shot snapshot.");
  if(s&&s->bank.profile==C3_PARTICLE_PROFILE_GREEN_DOWN_V1)return error(e,cap,"Green-down POSITION is a one-shot snapshot.");
  if(s&&s->bank.profile==C3_PARTICLE_PROFILE_RED_DOWN_V1)return red_constant_position(s,s->root_emitter_serial,pos,e,cap);
  if(!s||!s->position_attachment||s->failed||!valid_position(pos))return error(e,cap,"Invalid POSITION particle attachment.");
@@ -420,6 +522,7 @@ int c3_particle_position(C3ParticleSystem *s,const float pos[3],char *e,size_t c
 int c3_particle_begin_position_flags(C3ParticleSystem *s,const C3ParticleBank *bank,unsigned gen,uint32_t seed,const float pos[3],float yaw,float scale,float radius_scale,uint16_t flags,char *e,size_t cap)
 {
  if(flags!=1&&flags!=0x10a1&&flags!=0x18a9&&!(bank&&bank->profile==C3_PARTICLE_PROFILE_GREEN_DOWN_V1&&flags==0xa1))return error(e,cap,"Unsupported source POSITION attachment profile.");
+ if(bank&&bank->profile==C3_PARTICLE_PROFILE_TACKLE_V1&&flags!=1)return error(e,cap,"Qualified Tackle POSITION requires source flags0x0001.");
  if(bank&&bank->profile==C3_PARTICLE_PROFILE_GROWL_V1&&flags!=0x10a1)return error(e,cap,"Qualified Growl POSITION requires source flags0x10A1.");
  if(bank&&bank->profile==C3_PARTICLE_PROFILE_GREEN_DOWN_V1&&flags!=0xa1)return error(e,cap,"Qualified Green-down POSITION requires source flags0xA1.");
  if(bank&&bank->profile==C3_PARTICLE_PROFILE_RED_DOWN_V1&&flags!=1)return error(e,cap,"Qualified Red-down POSITION requires source flags0x0001.");
@@ -428,7 +531,7 @@ int c3_particle_begin_position_flags(C3ParticleSystem *s,const C3ParticleBank *b
  if(!c3_particle_begin(s,bank,gen,seed,e,cap))return 0;
  s->position_attachment=1;s->source_attachment_flags=flags;s->root_emitter_serial=s->emitters[0].serial;
  s->emitters[0].attachment_yaw=yaw;s->emitters[0].attachment_scale=scale;s->emitters[0].radius_scale=(flags&0x20)?radius_scale:1;s->emitters[0].source_flags=flags;
- if(stat_down_profile(s->bank.profile)){memcpy(s->emitters[0].position,position,sizeof position);if(e&&cap)e[0]=0;return 1;}
+ if(stat_down_profile(s->bank.profile)||s->bank.profile==C3_PARTICLE_PROFILE_TACKLE_V1){memcpy(s->emitters[0].position,position,sizeof position);if(e&&cap)e[0]=0;return 1;}
  return c3_particle_position(s,position,e,cap);
 }
 int c3_particle_append_position_flags(C3ParticleSystem *s,const C3ParticleBank *bank,unsigned gen,const float pos[3],float yaw,float scale,float radius_scale,uint16_t flags,uint32_t *handle,char *e,size_t cap)
@@ -448,6 +551,7 @@ int c3_particle_append_position_flags(C3ParticleSystem *s,const C3ParticleBank *
 }
 int c3_particle_position_root(C3ParticleSystem *s,uint32_t handle,const float pos[3],char *e,size_t cap)
 {
+ if(s&&s->bank.profile==C3_PARTICLE_PROFILE_TACKLE_V1)return error(e,cap,"Tackle POSITION is a one-shot snapshot.");
  if(s&&s->bank.profile==C3_PARTICLE_PROFILE_GREEN_DOWN_V1)return error(e,cap,"Green-down POSITION is a one-shot snapshot.");
  if(s&&s->bank.profile==C3_PARTICLE_PROFILE_RED_DOWN_V1)return red_constant_position(s,handle,pos,e,cap);
  if(!s||!s->position_attachment||s->failed||s->cancelled||!handle||!valid_position(pos))return error(e,cap,"Invalid POSITION root handle/position.");
@@ -465,19 +569,22 @@ int c3_particle_step_ticks(C3ParticleSystem *s,uint32_t ticks,int paused,char *e
  if(e&&cap)e[0]=0;
  return 1;
 }
-int c3_particle_step(C3ParticleSystem *s,uint32_t ms,int paused,char *e,size_t cap)
+int c3_particle_step_units(C3ParticleSystem *s,uint64_t units,int paused,char *e,size_t cap)
 {
  if(!s||s->failed)return error(e,cap,s?s->diagnostic:"Missing particle system.");
  if(s->cancelled||paused)return 1;
- uint64_t elapsed=s->remainder+(uint64_t)ms*60,ticks=elapsed/1000;
+ if(units>UINT64_MAX-s->remainder){fault(s,0,0,0,"source clock fraction overflow");return error(e,cap,s->diagnostic);}
+ uint64_t elapsed=s->remainder+units,ticks=elapsed/1000;
  if(ticks>C3_PARTICLE_MAX_CATCHUP){fault(s,0,0,0,"catch-up exceeds 600 source ticks");return error(e,cap,s->diagnostic);}
  s->remainder=elapsed%1000;
  if(!c3_particle_step_ticks(s,(uint32_t)ticks,0,e,cap))return 0;
  if(e&&cap)e[0]=0;
  return 1;
 }
+int c3_particle_step(C3ParticleSystem *s,uint32_t ms,int paused,char *e,size_t cap)
+{return c3_particle_step_units(s,(uint64_t)ms*60,paused,e,cap);}
 void c3_particle_cancel(C3ParticleSystem *s)
-{if(s){memset(s->particles,0,sizeof s->particles);memset(s->emitters,0,sizeof s->emitters);if(s->bank.profile)for(unsigned i=0;i<C3_PARTICLE_MAX_APP_SRT;++i){s->app_srt[i].active=0;s->app_srt[i].references=0;}s->cancelled=1;s->remainder=0;}}
+{if(s){memset(s->particles,0,sizeof s->particles);memset(s->emitters,0,sizeof s->emitters);if(s->bank.profile)for(unsigned i=0;i<C3_PARTICLE_MAX_APP_SRT;++i){s->app_srt[i].active=0;s->app_srt[i].references=0;}s->cancelled=1;s->remainder=0;if(s->bank.profile==C3_PARTICLE_PROFILE_TACKLE_V1)s->source_order_count=0;}}
 int c3_particle_finished(const C3ParticleSystem *s)
 {if(!s||s->failed)return 0;for(unsigned i=0;i<C3_PARTICLE_MAX_EMITTERS;++i)if(s->emitters[i].active)return 0;for(unsigned i=0;i<C3_PARTICLE_MAX_PARTICLES;++i)if(s->particles[i].active)return 0;return 1;}
 
@@ -580,4 +687,19 @@ int c3_particle_quad_app_srt(C3ParticleSystem *s,const C3Particle *p,const C3Par
  if(!c3_particle_app_srt_geometry(s,p,c,frame,converted.position,converted.velocity,e,cap))return -1;
  converted.app_srt_handle=0;float attachment[12]={native_scale,0,0,0,0,native_scale,0,0,0,0,native_scale,0};
  return c3_particle_quad(&converted,attachment,c,out,e,cap);
+}
+
+static unsigned draw_key(const C3Particle *p)
+{return ((p->kind>>25)&7u)+((p->kind&8u)?0u:8u);}
+int c3_particle_render_indices(C3ParticleSystem *s,uint16_t *indices,size_t capacity,size_t *count,char *e,size_t cap)
+{
+ if(!s||!indices||!count||s->failed)return error(e,cap,"Invalid particle draw index arguments.");
+ size_t n=0;for(unsigned i=0;i<C3_PARTICLE_MAX_PARTICLES;++i)if(s->particles[i].active){
+  if(n>=capacity)return error(e,cap,"Particle draw index capacity exceeded.");
+  size_t at=n++;if(s->bank.profile==C3_PARTICLE_PROFILE_TACKLE_V1){const C3Particle *p=&s->particles[i];
+   while(at){const C3Particle *before=&s->particles[indices[at-1]];if(draw_key(before)<draw_key(p)||(draw_key(before)==draw_key(p)&&before->serial>=p->serial))break;indices[at]=indices[at-1];--at;}}
+  indices[at]=(uint16_t)i;
+ }
+ if(s->bank.profile==C3_PARTICLE_PROFILE_TACKLE_V1){memcpy(s->source_order,indices,n*sizeof *indices);s->source_order_count=(uint16_t)n;}
+ *count=n;if(e&&cap)e[0]=0;return 1;
 }

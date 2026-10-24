@@ -195,8 +195,12 @@ def decode_i4(data, width, height):
 
 def bank(data, root=3, additional_roots=(), *, profile=None):
     growl = profile == 'growl'
-    if profile not in (None, 'growl'):
+    tackle = profile == 'tackle'
+    if profile not in (None, 'growl', 'tackle'):
         raise ValueError('Unknown explicit particle source profile')
+    if tackle and (root != 0 or additional_roots or len(data) != 91680 or
+                   hashlib.sha256(data).hexdigest() != '40269fb5a7111267999a9e9d9fd72f18c24a4b54a9b452267c782b7123f8bdef'):
+        raise ValueError('Tackle original bank/profile binding changed')
     if growl and (root != 18 or additional_roots or len(data) != 365764 or
                   hashlib.sha256(data).hexdigest() != '64867627ce7029307e3064e1af883cafb52995b7e2834980d7722d328ef043da'):
         raise ValueError('Growl original bank/profile binding changed')
@@ -228,7 +232,7 @@ def bank(data, root=3, additional_roots=(), *, profile=None):
         gen_type, group, gen_life, life, kind = struct.unpack_from(">4HI", raw)
         if growl and bool(kind & 0x30000) != (index in (93,111)):
             raise ValueError('Unqualified Growl application-SRT generator')
-        if gen_type not in (0, 1, 2, 6, 8) or not 1 <= life <= 1000 or not 1 <= gen_life <= 120:
+        if (gen_type not in (0, 1, 2, 6, 8) and not (tackle and index == 6 and gen_type == 4)) or not 1 <= life <= 1000 or not 1 <= gen_life <= 120:
             raise ValueError("Unqualified particle generator type/lifetime")
         params = list(struct.unpack_from(">12f", raw, 12))
         if not all(math.isfinite(x) for x in params):
@@ -284,6 +288,8 @@ def bank(data, root=3, additional_roots=(), *, profile=None):
                 raise ValueError("Particle texture pose outside original frame table")
     if len(textures) > MAX_TEXTURES:
         raise ValueError("Particle texture allocation bound")
+    if tackle and (count != 8 or sorted(closure) != list(range(8)) or groups != [0, 2, 3, 4] or len(textures) != 7):
+        raise ValueError('Tackle reached generator/texture closure changed')
     return {"root_generator": root, "root_generators": [root, *additional_roots],
             "bank_bytes": len(data), "bank_sha256": hashlib.sha256(data).hexdigest(),
             "generator_count": count, "references": references, "closure": sorted(closure),

@@ -5,7 +5,7 @@
 #include <stdint.h>
 #define C3_BATTLE_CAMERA_HEADER_BYTES 512u
 #define C3_BATTLE_CAMERA_MAX_TRACK_FRAMES 1025u
-#define C3_BATTLE_CAMERA_MAX_BYTES (1500u + 6u * C3_BATTLE_CAMERA_MAX_TRACK_FRAMES * 12u)
+#define C3_BATTLE_CAMERA_MAX_BYTES (2108u + 6u * C3_BATTLE_CAMERA_MAX_TRACK_FRAMES * 12u)
 #define C3_BATTLE_CAMERA_ACTORS 3u
 #define C3_BATTLE_CAMERA_RED_DOWN_PROFILE 0x10027u /* Internal RED special tag, not move39. */
 #define C3_BATTLE_CAMERA_GREEN_DOWN_PROFILE 0x10029u /* Internal profile tag, not a move ID. */
@@ -17,7 +17,7 @@ typedef struct {
     float minimum[3], maximum[3]; /* Original GC units, from GSmodel bound sampling. */
 } C3BattleCameraBinding;
 typedef struct {
-    uint32_t move_id, patterns[13][19]; /* move0: Bite; move93: long13; move39: short8; move45: fixed short5 (exact LE tables). */
+    uint32_t move_id, patterns[21][19]; /* move33: short8+long13; move93: long13; others use their original table. */
     uint32_t flags[2], pattern[2], fov_mask[2], entry[2], owner_start[2];
     C3BattleCameraBinding actors[C3_BATTLE_CAMERA_ACTORS];
     float (*samples)[3]; /* Owned immutable source JObj camera-part local positions, native units. */
@@ -45,6 +45,8 @@ typedef struct {
 /* Zero-initialize before load/decode. Program must outlive all cameras using its
  * immutable part tracks; cancel camera before close. Failures preserve output. */
 int c3_battle_camera_decode(C3BattleCameraProgram *,const void *,size_t,char *,size_t);
+int c3_battle_camera_tackle_decode(C3BattleCameraProgram *,const void *,size_t,char *,size_t);
+int c3_battle_camera_tackle_load(C3BattleCameraProgram *,const char *,char *,size_t);
 int c3_battle_camera_confusion_decode(C3BattleCameraProgram *,const void *,size_t,char *,size_t);
 int c3_battle_camera_attack_down_decode(C3BattleCameraProgram *,const void *,size_t,char *,size_t);
 int c3_battle_camera_attack_down_load(C3BattleCameraProgram *,const char *,char *,size_t);
@@ -63,7 +65,7 @@ void c3_battle_camera_init(C3BattleCamera *,uint32_t cosmetic_seed);
 int c3_battle_camera_begin(C3BattleCamera *,const C3BattleCameraProgram *,C3BattleCameraPhase,
                           unsigned owner,unsigned target,const C3BattleCameraActor actors[4],
                           const C3TitleCamera *inherited,char *,size_t);
-/* Separate checked move93/move39/move45 programs/states; use independent cosmetic streams.
+/* Separate checked move33/move93/move39/move45 programs/states; use independent cosmetic streams.
  * Moves39/45 admit only their checked source attack phase, never guessed damage. */
 int c3_battle_camera_begin_move(C3BattleCamera *,const C3BattleCameraProgram *,uint32_t move,
                               C3BattleCameraPhase,unsigned owner,unsigned target,
@@ -75,6 +77,8 @@ int c3_battle_camera_begin_special(C3BattleCamera *,const C3BattleCameraProgram 
                                  const C3TitleCamera *,char *,size_t);
 /* Source body-map[2] (original JObj42/62/53) is followed on source60Hz ticks with source0.2s move.
  * Max3600ticks per call/sequence; overload is explicit and transactional. */
+/* Exact source units (1000 per tick) retain phase handoff fractions. */
+int c3_battle_camera_step_units(C3BattleCamera *,uint64_t source_units,const C3BattleCameraActor[4],char *,size_t);
 int c3_battle_camera_step(C3BattleCamera *,uint32_t milliseconds,
                          const C3BattleCameraActor actors[4],char *,size_t);
 void c3_battle_camera_pause(C3BattleCamera *,int paused);

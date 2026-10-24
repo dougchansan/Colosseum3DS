@@ -15,7 +15,8 @@ static void confusion_cancel(C3BattleStage *s);
 static void tail_cancel(C3BattleStage *s);
 static void growl_cancel(C3BattleStage *s);
 static void stat_down_cancel(C3BattleStage *s);
-static void release(C3BattleStage *s){stat_down_cancel(s);c3_battle_camera_close(&s->attack_down_camera_program);c3_wzx_stat_down_program_close(&s->attack_down_program);free(s->attack_down_bytes);s->attack_down_bytes=NULL;s->attack_down_available=s->attack_down_camera_available=0;c3_battle_camera_close(&s->stat_down_camera_program);c3_wzx_stat_down_program_close(&s->stat_down_program);memset(&s->stat_down,0,sizeof s->stat_down);free(s->stat_down_bytes);s->stat_down_bytes=NULL;s->stat_down_available=s->stat_down_camera_available=0;growl_cancel(s);c3_battle_camera_close(&s->growl_camera_program);c3_wzx_growl_program_close(&s->growl_program);memset(&s->growl,0,sizeof s->growl);free(s->growl_bytes);s->growl_bytes=NULL;s->growl_available=s->growl_camera_available=0;tail_cancel(s);c3_battle_camera_close(&s->tail_camera_program);c3_wzx_tail_whip_program_close(&s->tail_program);memset(&s->tail,0,sizeof s->tail);s->tail_available=s->tail_camera_available=0;confusion_cancel(s);c3_battle_camera_close(&s->confusion_camera_program);s->confusion_camera_available=0;c3_wzx_confusion_sequence_close(&s->confusion_program);free(s->confusion_bytes[0]);s->confusion_bytes[0]=NULL;free(s->confusion_bytes[1]);s->confusion_bytes[1]=NULL;free(s->confusion_damage_particles);s->confusion_damage_particles=NULL;s->confusion_available=0;c3_wzx_reflect_cancel(&s->reflect);c3_wzx_reflect_program_close(&s->reflect_program);free(s->reflect_bytes);s->reflect_bytes=NULL;c3_battle_camera_cancel(&s->source_camera);c3_battle_camera_close(&s->camera_program);for(uint32_t i=s->count;i>0;--i)c3_title_close(&s->models[i-1]);s->count=0;free(s->particle_bytes);s->particle_bytes=NULL;}
+static void tackle_cancel(C3BattleStage *s);
+static void release(C3BattleStage *s){tackle_cancel(s);c3_battle_camera_close(&s->tackle_camera_program);free(s->tackle_bytes);s->tackle_bytes=NULL;s->tackle_available=s->tackle_camera_available=0;stat_down_cancel(s);c3_battle_camera_close(&s->attack_down_camera_program);c3_wzx_stat_down_program_close(&s->attack_down_program);free(s->attack_down_bytes);s->attack_down_bytes=NULL;s->attack_down_available=s->attack_down_camera_available=0;c3_battle_camera_close(&s->stat_down_camera_program);c3_wzx_stat_down_program_close(&s->stat_down_program);memset(&s->stat_down,0,sizeof s->stat_down);free(s->stat_down_bytes);s->stat_down_bytes=NULL;s->stat_down_available=s->stat_down_camera_available=0;growl_cancel(s);c3_battle_camera_close(&s->growl_camera_program);c3_wzx_growl_program_close(&s->growl_program);memset(&s->growl,0,sizeof s->growl);free(s->growl_bytes);s->growl_bytes=NULL;s->growl_available=s->growl_camera_available=0;tail_cancel(s);c3_battle_camera_close(&s->tail_camera_program);c3_wzx_tail_whip_program_close(&s->tail_program);memset(&s->tail,0,sizeof s->tail);s->tail_available=s->tail_camera_available=0;confusion_cancel(s);c3_battle_camera_close(&s->confusion_camera_program);s->confusion_camera_available=0;c3_wzx_confusion_sequence_close(&s->confusion_program);free(s->confusion_bytes[0]);s->confusion_bytes[0]=NULL;free(s->confusion_bytes[1]);s->confusion_bytes[1]=NULL;free(s->confusion_damage_particles);s->confusion_damage_particles=NULL;s->confusion_available=0;c3_wzx_reflect_cancel(&s->reflect);c3_wzx_reflect_program_close(&s->reflect_program);free(s->reflect_bytes);s->reflect_bytes=NULL;c3_battle_camera_cancel(&s->source_camera);c3_battle_camera_close(&s->camera_program);for(uint32_t i=s->count;i>0;--i)c3_title_close(&s->models[i-1]);s->count=0;free(s->particle_bytes);s->particle_bytes=NULL;}
 static int stage_sound(C3BattleStage *s,uint32_t id,char *e,size_t n)
 {
     if(!s->sound_cue)return 1;
@@ -28,6 +29,7 @@ static int stage_sound(C3BattleStage *s,uint32_t id,char *e,size_t n)
 #include "battle_tail_whip_effect.inc"
 #include "battle_growl_effect.inc"
 #include "battle_stat_down_effect.inc"
+#include "battle_tackle_effect.inc"
 int c3_battle_stage_load(C3BattleStage *s,const char *root,const uint16_t hp[4],FILE *trace,char *error,size_t cap)
 {
     unsigned char data[128+128*C3_BATTLE_STAGE_MODELS];char path[512];
@@ -88,7 +90,7 @@ int c3_battle_stage_load(C3BattleStage *s,const char *root,const uint16_t hp[4],
         if(trace){fprintf(trace,"wzx_bite_admitted model=1 floor_color=1 sound_request=85 attack_binding=accepted_local_72_142_165\n");fflush(trace);}
     }else if(errno!=ENOENT){fail(error,cap,"Cannot inspect optional Bite WZX pack.");goto bad;}
     if(!damage_load(s,root,error,cap))goto bad;
-    if(!reflect_load(s,root,error,cap)||!confusion_load(s,root,error,cap)||!confusion_camera_load(s,root,error,cap)||!tail_load(s,root,error,cap)||!growl_load(s,root,error,cap)||!stat_down_load(s,root,error,cap))goto bad;
+    if(!reflect_load(s,root,error,cap)||!confusion_load(s,root,error,cap)||!confusion_camera_load(s,root,error,cap)||!tail_load(s,root,error,cap)||!growl_load(s,root,error,cap)||!stat_down_load(s,root,error,cap)||!tackle_load(s,root,error,cap))goto bad;
     c3_battle_presentation_init(&s->presentation,hp);
     if(!c3_battle_presentation_wait_limit(&s->presentation,20000))goto invalid;
     if(c3_stage_renderer_init(s->draw,s->count,error,cap)!=C3_RENDER_OK)goto bad;
@@ -102,6 +104,7 @@ int c3_battle_stage_load(C3BattleStage *s,const char *root,const uint16_t hp[4],
     if(s->growl_available&&c3_stage_renderer_particle_pack(&s->growl_pack,error,cap)!=C3_RENDER_OK)return 0;
     if(s->attack_down_available&&c3_stage_renderer_particle_pack(&s->attack_down_pack,error,cap)!=C3_RENDER_OK)return 0;
     if(s->stat_down_available&&c3_stage_renderer_particle_pack(&s->stat_down_pack,error,cap)!=C3_RENDER_OK)return 0;
+    if(s->tackle_available&&c3_stage_renderer_particle_pack(&s->tackle_pack,error,cap)!=C3_RENDER_OK)return 0;
     for(uint32_t i=0;i<s->count;++i){
         const float *t=s->transforms[i];C3Title *m=&s->models[i];
         if(s->slots[i]==UINT32_MAX&&m->clip_count==1&&m->clips[0].frame_count==1&&
@@ -118,10 +121,20 @@ static void event(const C3BattlePreviewEvent *e,int finished,void *user)
 {
     C3BattleStage *s=user;
     if(finished){
+        if(e->kind==C3_PREVIEW_EVENT_HP&&s->tackle.active&&e->group==s->tackle_group)c3_battle_presentation_wait(&s->presentation,1);
         if(e->kind==C3_PREVIEW_EVENT_HP&&s->confusion_active&&e->group==s->confusion_group)c3_battle_presentation_wait(&s->presentation,1);
         if(e->kind==C3_PREVIEW_EVENT_HP&&s->damage.active&&e->group==s->bite_group)
             c3_battle_presentation_wait(&s->presentation,1);
         return;
+    }
+    /* A new explicit owner action supersedes a carried Tackle half-rate track. */
+    if(e->kind==C3_PREVIEW_EVENT_MOVE)for(unsigned i=0;i<s->count;++i)if(s->slots[i]==e->actor&&s->owner_motion_end[i]){
+        s->growl_motion[i]=0;s->growl_motion_units[i]=0;s->owner_motion_end[i]=0;
+    }
+    if(e->kind==C3_PREVIEW_EVENT_HP&&s->tackle_hit&&e->group==s->tackle_group){s->presentation.duration_ms=0;return;}
+    if(e->kind==C3_PREVIEW_EVENT_CRITICAL&&s->tackle_hit&&e->group==s->tackle_group){s->presentation.duration_ms=0;return;}
+    if(e->kind==C3_PREVIEW_EVENT_MOVE&&e->move==33&&s->tackle_available&&e->actor>=2&&e->actor<4){
+        if(!tackle_event(s,e,s->error,sizeof s->error)||s->tackle_hit)return;
     }
     if(s->stat_down.active){snprintf(s->error,sizeof s->error,"Overlapping stat-down presentation event.");return;}
     if(e->kind==C3_PREVIEW_EVENT_STATUS&&
@@ -190,7 +203,7 @@ static void event(const C3BattlePreviewEvent *e,int finished,void *user)
     for(uint32_t i=0;i<s->count;++i)if(s->slots[i]==slot||(e->kind==C3_PREVIEW_EVENT_OUTCOME&&s->slots[i]==5)||(e->kind==C3_PREVIEW_EVENT_SEND_OUT&&s->slots[i]<4&&(e->target_mask&(1u<<s->slots[i])))){
         unsigned actor_role=e->kind==C3_PREVIEW_EVENT_OUTCOME&&s->slots[i]==5?(role==7?8:7):role;
         if(s->roles[i][actor_role]==UINT32_MAX){snprintf(s->error,sizeof s->error,"Unsupported source clip: actor %u role %u.",(unsigned)s->slots[i],actor_role);return;}
-        if(!(e->kind==C3_PREVIEW_EVENT_MOVE&&e->move==45&&s->growl_available)){s->growl_motion[i]=0;s->growl_motion_units[i]=0;}
+        if(!(e->kind==C3_PREVIEW_EVENT_MOVE&&e->move==45&&s->growl_available)){s->growl_motion[i]=0;s->growl_motion_units[i]=0;s->owner_motion_end[i]=0;}
         if(s->slots[i]<2){s->stat_down_motion[s->slots[i]]=0;s->stat_down_motion_units[s->slots[i]]=0;}
         s->clips[i]=s->roles[i][actor_role];s->clocks[i]=0;s->fresh[i]=1;
         if(e->kind==C3_PREVIEW_EVENT_SEND_OUT){
@@ -223,6 +236,7 @@ int c3_battle_stage_step(C3BattleStage *s,uint32_t ms,char *error,size_t cap)
     if(s->growl_camera.active)c3_battle_camera_pause(&s->growl_camera,s->presentation.paused);
     if(s->attack_down_camera.active)c3_battle_camera_pause(&s->attack_down_camera,s->presentation.paused);
     if(s->stat_down_camera.active)c3_battle_camera_pause(&s->stat_down_camera,s->presentation.paused);
+    if(s->tackle_camera.active)c3_battle_camera_pause(&s->tackle_camera,s->presentation.paused);
     uint32_t remaining=ms;
     int endpoint=1;
     do {
@@ -251,7 +265,7 @@ int c3_battle_stage_step(C3BattleStage *s,uint32_t ms,char *error,size_t cap)
             }
         }
         else if(!damage_step(s,tick,error,cap))return 0;
-        if(!reflect_step(s,tick,error,cap)||!confusion_step(s,tick,error,cap)||!tail_step(s,tick,error,cap)||!growl_step(s,tick,error,cap)||!stat_down_step(s,tick,error,cap))return 0;
+        if(!reflect_step(s,tick,error,cap)||!confusion_step(s,tick,error,cap)||!tail_step(s,tick,error,cap)||!growl_step(s,tick,error,cap)||!stat_down_step(s,tick,error,cap)||!tackle_step(s,tick,error,cap))return 0;
         if(s->source_camera.active){C3BattleCameraActor actors[4];camera_actors(s,actors);
             if(!c3_battle_camera_step(&s->source_camera,tick,actors,error,cap))return 0;
             s->camera=s->source_camera.camera;
@@ -260,8 +274,10 @@ int c3_battle_stage_step(C3BattleStage *s,uint32_t ms,char *error,size_t cap)
         for(uint32_t i=0;i<s->count;++i){
             if(s->immutable[i]&&s->sampled[i])continue;
             if((s->growl_motion[i]==1&&s->clips[i]!=s->roles[i][2])||
-               (s->growl_motion[i]==2&&s->clips[i]!=s->roles[i][0])){
-                s->growl_motion[i]=0;s->growl_motion_units[i]=0;
+               (s->growl_motion[i]==2&&s->clips[i]!=s->roles[i][0])||
+               (s->growl_motion[i]==3&&s->clips[i]!=s->roles[i][1])||
+               (s->growl_motion[i]==4&&s->clips[i]!=s->roles[i][3])){
+                s->growl_motion[i]=0;s->growl_motion_units[i]=0;s->owner_motion_end[i]=0;
             }
             if(s->slots[i]<2&&s->stat_down_motion[s->slots[i]]&&s->clips[i]!=s->roles[i][0]){
                 s->stat_down_motion[s->slots[i]]=0;s->stat_down_motion_units[s->slots[i]]=0;
@@ -276,11 +292,14 @@ int c3_battle_stage_step(C3BattleStage *s,uint32_t ms,char *error,size_t cap)
             }
             else if(s->growl_available&&i==s->growl_model)s->clocks[i]=s->growl.model_seconds;
             else if(s->growl_motion[i]){
-                if(s->growl.active&&!s->growl.stop_requested&&i==s->growl_owner)s->growl_motion_units[i]=s->growl.units;
+                if(s->tackle.active&&((s->tackle.phase==1&&i==s->tackle_owner&&s->growl_motion[i]==3)||(s->tackle.phase==2&&i==s->tackle_target&&s->growl_motion[i]==4)))s->growl_motion_units[i]=s->tackle.units;
+                else if(s->growl.active&&!s->growl.stop_requested&&i==s->growl_owner)s->growl_motion_units[i]=s->growl.units;
                 else if(!s->fresh[i])s->growl_motion_units[i]+=(uint64_t)tick*60;
-                /* Qualified clip1 ends at183 source frames, rate.5:366ticks. */
-                if(s->growl_motion[i]==1&&s->growl_motion_units[i]>=366000){
-                    s->growl_motion[i]=2;s->growl_motion_units[i]-=366000;s->clips[i]=s->roles[i][0];
+                /* The historical Growl carrier also owns admitted Tackle cast/hit
+                 * callbacks; all use source .5 rate and retain the idle remainder. */
+                uint64_t end=s->growl_motion[i]==1?366000:(uint64_t)s->owner_motion_end[i]*1000;
+                if(s->growl_motion[i]!=2&&end&&s->growl_motion_units[i]>=end){
+                    s->growl_motion[i]=2;s->growl_motion_units[i]-=end;s->clips[i]=s->roles[i][0];
                 }
                 s->clocks[i]=(float)((double)s->growl_motion_units[i]/60000.*.5);
             }
@@ -300,6 +319,8 @@ int c3_battle_stage_step(C3BattleStage *s,uint32_t ms,char *error,size_t cap)
                 s->presentation.events[s->presentation.cursor].group==s->bite_group;
             int active=source_move?(s->bite.active||s->damage_pending||!s->damage.hp_gates):(s->bite.active||s->damage.active);
             active|=s->reflect.active||s->tail.active||s->growl.active||s->stat_down.active;
+            if(s->tackle_hit&&s->presentation.cursor<s->presentation.count&&s->presentation.events[s->presentation.cursor].kind==C3_PREVIEW_EVENT_MOVE&&s->presentation.events[s->presentation.cursor].group==s->tackle_group)active|=s->tackle.active&&(s->tackle.phase!=2||!s->tackle.hp_gates);
+            else active|=s->tackle.active;
             if(s->confusion_hit&&s->presentation.cursor<s->presentation.count&&s->presentation.events[s->presentation.cursor].kind==C3_PREVIEW_EVENT_MOVE&&s->presentation.events[s->presentation.cursor].group==s->confusion_group)active|=s->confusion_pending||!s->confusion_hp_gate;
             else active|=s->confusion_active;
             for(uint32_t i=0;i<s->count;++i){C3Title *m=&s->models[i];
@@ -347,6 +368,10 @@ int c3_battle_stage_step(C3BattleStage *s,uint32_t ms,char *error,size_t cap)
         if(!visible)for(uint32_t j=0;j<m->batch_count;++j)m->pose.materials[j].visible=0;
     }
     if(!c3_stage_renderer_confusion(s->confusion_type12.active?&s->confusion_type12:NULL))return fail(error,cap,"Confusion capture state binding failed.");
+    if(s->particles.bank.profile==C3_PARTICLE_PROFILE_TACKLE_V1){
+        if(!c3_stage_renderer_particles_source_order(&s->particles))return fail(error,cap,"Tackle source-order particle binding failed.");
+        return 1;
+    }
     if(s->particles.bank.profile==C3_PARTICLE_PROFILE_GROWL_V1){
         if(!c3_stage_renderer_particles_app_srt(&s->particles))return fail(error,cap,"Growl AppSRT binding failed.");
         return 1;
@@ -360,4 +385,4 @@ int c3_battle_stage_step(C3BattleStage *s,uint32_t ms,char *error,size_t cap)
     return s->reflect.active?reflect_bind_particles(s,error,cap):damage_bind_particles(s,error,cap);
 }
 int c3_battle_stage_draw(C3BattleStage *s,C3TitleRenderStats *stats,char *error,size_t cap){return c3_stage_renderer_draw(s->draw,s->count,&s->camera,1,stats,error,cap);}
-int c3_battle_stage_close(C3BattleStage *s){stat_down_cancel(s);growl_cancel(s);tail_cancel(s);confusion_cancel(s);c3_wzx_bite_cancel(&s->bite);c3_wzx_damage_cancel(&s->damage);c3_wzx_reflect_cancel(&s->reflect);c3_particle_cancel(&s->particles);if(s->initialized&&!c3_stage_renderer_try_shutdown())return 0;s->initialized=0;release(s);return 1;}
+int c3_battle_stage_close(C3BattleStage *s){tackle_cancel(s);stat_down_cancel(s);growl_cancel(s);tail_cancel(s);confusion_cancel(s);c3_wzx_bite_cancel(&s->bite);c3_wzx_damage_cancel(&s->damage);c3_wzx_reflect_cancel(&s->reflect);c3_particle_cancel(&s->particles);if(s->initialized&&!c3_stage_renderer_try_shutdown())return 0;s->initialized=0;release(s);return 1;}

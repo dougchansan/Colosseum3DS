@@ -22,6 +22,7 @@ static uint32_t particle_binding_textures[C3_STAGE_MAX_PARTICLE_BANKS][32];
 static unsigned particle_binding_count;
 static const C3ParticleSystem *particle_system;
 static C3ParticleSystem *particle_srt_system;
+static C3ParticleSystem *particle_order_system;
 static uint64_t particle_render_frame;
 static TitleGPUVertex *particle_vertices;
 static bool scene_drawn;
@@ -199,8 +200,9 @@ int main(int argc, char **argv)
         assert(particle_vertices&&buffers==((transition&1u)?3u:2u));
         particle_pack=(const C3ParticlePack *)(uintptr_t)1;
         particle_system=(const C3ParticleSystem *)(uintptr_t)2;
+        particle_order_system=(C3ParticleSystem *)(uintptr_t)3;
         assert(c3_stage_renderer_try_shutdown());
-        assert(!hud_vertices&&!particle_vertices&&!particle_pack&&!particle_system);
+        assert(!hud_vertices&&!particle_vertices&&!particle_pack&&!particle_system&&!particle_order_system);
         assert(!targets && !buffers && !images && !scene_count);
         assert(driver_live && program.vertexShader && shader);
         assert(init_calls == 1 && shader_inits == 1 && !fini_calls && !shader_frees);

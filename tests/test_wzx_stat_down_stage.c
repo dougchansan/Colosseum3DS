@@ -20,6 +20,7 @@ int c3_stage_renderer_set_static(size_t i,bool value){(void)value;assert(i<count
 int c3_stage_renderer_set_modulation(size_t i,const uint8_t value[3]){assert(i<counts);enabled[i]=value!=NULL;if(value)memcpy(rgb[i],value,3);else memset(rgb[i],128,3);return 1;}
 int c3_stage_renderer_get_modulation(size_t i,uint8_t value[3],int *on){assert(i<counts);*on=enabled[i];memcpy(value,rgb[i],3);return 1;}
 int c3_stage_renderer_particle_pack(const C3ParticlePack *p,char *e,size_t n){(void)e;(void)n;assert(p&&p->texture_count);++pack_count;return pack_busy?C3_RENDER_BUSY:C3_RENDER_OK;}
+int c3_stage_renderer_particles_source_order(C3ParticleSystem *s){(void)s;return 1;}
 int c3_stage_renderer_particles_app_srt(C3ParticleSystem *s){(void)s;return 1;}
 int c3_stage_renderer_particles(const C3ParticleSystem *s,const float attachment[12]){
  if(!s||(s->bank.profile!=C3_PARTICLE_PROFILE_GREEN_DOWN_V1&&s->bank.profile!=C3_PARTICLE_PROFILE_RED_DOWN_V1))return 1;

@@ -40,7 +40,7 @@ int main(void){
             result=subprocess.run(cc+flags+["-I"+str(ROOT/"include"),"-I"+str(ROOT/"platform/3ds"),str(source),"-o",str(exe)],capture_output=True,text=True)
             self.assertEqual(result.returncode,0,result.stdout+result.stderr)
             self.assertEqual(subprocess.run([str(exe)]).returncode,0)
-    def test_seven_bank_registration_and_checked_app_srt_dispatch(self):
+    def test_eight_bank_registration_and_checked_app_srt_dispatch(self):
         cc=shlex.split(os.environ.get("CC","cc"))
         if not shutil.which(cc[0]):self.skipTest("Host C compiler required")
         implementation=(ROOT/"platform/3ds/particle_renderer.inc").read_text().split("static uint32_t particle_color")[0]
@@ -58,6 +58,7 @@ static int textures[128];
 static int fail(char *e,size_t n,const char*s){if(e&&n)snprintf(e,n,"%s",s);return -1;}
 static void *linearAlloc(size_t n){++allocations;return malloc(n);}
 static int upload_texture(int *t,const C3TitleTexture *s){(void)t;(void)s;++uploads;return 1;}
+int c3_particle_render_indices(C3ParticleSystem *s,uint16_t *order,size_t capacity,size_t *count,char *e,size_t cap){(void)s;(void)order;(void)capacity;(void)e;(void)cap;*count=0;return 1;}
 static const C3Particle *expected_particle;
 static const C3ParticleCamera *expected_camera;
 static C3ParticleQuad *expected_quad;
@@ -81,26 +82,32 @@ int c3_particle_quad_app_srt(C3ParticleSystem *s,const C3Particle *p,const C3Par
  return adapter_result;
 }
 '''+implementation+r'''
-int main(void){(void)particle_quads;(void)particle_texids;char e[192];uint8_t bytes[8]={0};C3ParticlePack packs[8]={0};
- assert(C3_STAGE_MAX_PARTICLE_BANKS==7);
- for(unsigned i=0;i<8;++i){packs[i].bank.bytes=bytes+i;packs[i].texture_count=1;packs[i].textures[0].width=packs[i].textures[0].height=8;}
+int main(void){(void)particle_quads;(void)particle_texids;char e[192];uint8_t bytes[9]={0};C3ParticlePack packs[9]={0};
+ assert(C3_STAGE_MAX_PARTICLE_BANKS==8);
+ for(unsigned i=0;i<9;++i){packs[i].bank.bytes=bytes+i;packs[i].texture_count=1;packs[i].textures[0].width=packs[i].textures[0].height=8;}
  packs[4].bank.profile=C3_PARTICLE_PROFILE_GROWL_V1;
  packs[6].bank.profile=C3_PARTICLE_PROFILE_RED_DOWN_V1;
- for(unsigned i=0;i<7;++i){
+ packs[7].bank.profile=C3_PARTICLE_PROFILE_TACKLE_V1;
+ for(unsigned i=0;i<8;++i){
   assert(c3_stage_renderer_particle_pack(&packs[i],e,sizeof e)==C3_RENDER_OK);
   assert(c3_stage_renderer_particle_pack(&packs[i],e,sizeof e)==C3_RENDER_OK);
  }
- assert(allocations==1&&uploads==7&&texture_count==12&&particle_binding_count==7);
+ assert(allocations==1&&uploads==8&&texture_count==13&&particle_binding_count==8);
  C3ParticlePack alias=packs[0];
  assert(c3_stage_renderer_particle_pack(&alias,e,sizeof e)==C3_RENDER_ERROR);
  assert(strstr(e,"already belong"));
- assert(c3_stage_renderer_particle_pack(&packs[7],e,sizeof e)==C3_RENDER_ERROR);
- assert(allocations==1&&uploads==7&&texture_count==12&&particle_binding_count==7);
+ assert(c3_stage_renderer_particle_pack(&packs[8],e,sizeof e)==C3_RENDER_ERROR);
+ assert(allocations==1&&uploads==8&&texture_count==13&&particle_binding_count==8);
  C3ParticleSystem s={0};float identity[12]={1,0,0,0,0,1,0,0,0,0,1,0};
- for(unsigned i=0;i<7;++i){s.bank=packs[i].bank;
+ for(unsigned i=0;i<8;++i){s.bank=packs[i].bank;
   assert(c3_stage_renderer_particles(&s,identity));assert(particle_pack==&packs[i]&&particle_textures[0]==5+i);
  }
- s.bank=packs[7].bank;assert(!c3_stage_renderer_particles(&s,identity));assert(particle_pack==&packs[6]);
+ s.bank=packs[8].bank;assert(!c3_stage_renderer_particles(&s,identity));assert(particle_pack==&packs[7]);
+ C3ParticleSystem tackle={0};tackle.bank=packs[7].bank;
+ assert(c3_stage_renderer_particles_source_order(&tackle));assert(particle_order_system==&tackle);
+ uint16_t order[1536];size_t order_count;assert(particle_draw_indices(order,&order_count,e,sizeof e));
+ assert(c3_stage_renderer_particles(&tackle,identity));assert(!particle_order_system);assert(!particle_draw_indices(order,&order_count,e,sizeof e));
+ tackle.bank=packs[0].bank;tackle.bank.profile=4;assert(!c3_stage_renderer_particles_source_order(&tackle));
  C3ParticleSystem growl={0},invalid={0};growl.bank=packs[4].bank;
  C3Particle *p=&growl.particles[0];p->active=1;p->size=1;C3ParticleCamera camera={0};C3ParticleQuad q;
  expected_particle=p;expected_camera=&camera;expected_quad=&q;expected_error=e;expected_capacity=sizeof e;expected_attachment=particle_attachment;

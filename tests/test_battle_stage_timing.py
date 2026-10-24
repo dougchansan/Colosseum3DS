@@ -29,8 +29,10 @@ static float confusion_owner_seconds(const C3BattleStage *s){(void)s;return 0;}
 static int confusion_bind_particles(C3BattleStage *s,char *e,size_t n){(void)s;(void)e;(void)n;return 1;}
 int c3_stage_renderer_confusion(const C3ConfusionType12 *s){(void)s;return 1;}
 static int stage_sound(C3BattleStage *s,uint32_t id,char *e,size_t n){return s->sound_cue(++s->cue_serial,id,e,n);}
+static int tackle_step(C3BattleStage *s,uint32_t ms,char *e,size_t n){(void)s;(void)ms;(void)e;(void)n;return 1;}
 static int stat_down_step(C3BattleStage *s,uint32_t ms,char *e,size_t n){(void)s;(void)ms;(void)e;(void)n;return 1;}
 static int growl_step(C3BattleStage *s,uint32_t ms,char *e,size_t n){(void)s;(void)ms;(void)e;(void)n;return 1;}
+int c3_stage_renderer_particles_source_order(C3ParticleSystem *s){(void)s;return 1;}
 int c3_stage_renderer_particles_app_srt(C3ParticleSystem *s){(void)s;return 1;}
 int c3_stage_renderer_particles(const C3ParticleSystem *s,const float a[12]){(void)s;(void)a;return 1;}
 static int tail_step(C3BattleStage *s,uint32_t ms,char *e,size_t n){(void)s;(void)ms;(void)e;(void)n;return 1;}

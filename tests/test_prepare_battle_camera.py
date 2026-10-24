@@ -14,6 +14,28 @@ class CameraPreparationTests(unittest.TestCase):
         return [dict(flags=flags,pattern=index,fov_mask=mask,entry=entry,owner_start=0 if entry==2 else 22) for _,_,_,flags,index,mask,entry in camera.WZX]
     def actors(self):
         return [dict(species=species,selector=-1,minimum=[-3.,0.,-3.],maximum=[3.,10.,3.],timing=[[72,100,160,0],[190,358,0,0]],part=[(42,62,53)[i]]*2,kind=[4,3],tracks=[[[0,0,0],[0,1,0]]]*2) for i,(species,_,_) in enumerate(camera.ACTORS)]
+    def test_tackle_profile_source_tables_and_timing(self):
+        path=Path(os.environ.get('C3_TACKLE_CAMERA',str(ROOT/'private/tackle-camera-v1/tackle_camera.c3c')))
+        if not path.exists():self.skipTest('Private original Tackle camera descriptor required')
+        raw=path.read_bytes();patterns=raw[512:2108]
+        actors=self.actors();actors[2]['timing'][0]=[62,130,240,0];actors[0]['timing'][1]=[170,298,0,0];actors[1]['timing'][1]=[100,176,0,0]
+        b=camera.encode_tackle(actors,patterns)
+        self.assertEqual(b[:4],b'C3KC');self.assertEqual(struct.unpack_from('<I',b,12)[0],33)
+        self.assertEqual(struct.unpack_from('<5I',b,64),(0x78,0xffffffff,0,2,0));self.assertEqual(struct.unpack_from('<5I',b,128),(0x78,0xffffffff,0,8,0))
+        self.assertEqual(struct.unpack_from('<I',b,272)[0],2108)
+        self.assertEqual(b[480:500],hashlib.sha1(b[:480]+bytes(20)+b[500:]).digest())
+        for offset in (0,607,608,1595):
+            changed=bytearray(patterns);changed[offset]^=1
+            with self.assertRaises(ValueError):camera.encode_tackle(actors,changed)
+        for actor,phase,timing in ((2,0,[62,129,240,0]),(0,1,[190,298,0,0]),(1,1,[100,177,0,0])):
+            changed=copy.deepcopy(actors);changed[actor]['timing'][phase]=timing
+            with self.assertRaises(ValueError):camera.encode_tackle(changed,patterns)
+        for entry in (2,8):
+            data=bytearray(160);struct.pack_into('>6I',data,112,entry,3,0x78,2,5,0)
+            self.assertEqual(camera.profile(data,0x78,0xffffffff,0,entry,3)['entry'],entry)
+            data[136]=1
+            with self.assertRaises(ValueError):camera.profile(data,0x78,0xffffffff,0,entry,3)
+
     def test_binary_layout_and_checksum(self):
         b=camera.encode(self.profiles(),self.actors())
         self.assertEqual(len(b),656);self.assertEqual(b[:4],b'C3BC')
@@ -52,7 +74,7 @@ class CameraPreparationTests(unittest.TestCase):
         p=[dict(flags=0x200848,pattern=5,fov_mask=2,entry=1,owner_start=0),
            dict(flags=0x48,pattern=0xffffffff,fov_mask=0,entry=8,owner_start=44)]
         with self.assertRaises(ValueError):camera.encode(p,self.actors(),True,bytes(988))
-        prepared=ROOT/'private/confusion-camera-v1/confusion_camera.c3c'
+        prepared=Path(os.environ.get('C3_CONFUSION_CAMERA',str(ROOT/'private/confusion-camera-v1/confusion_camera.c3c')))
         if not prepared.exists():self.skipTest('Private original camera descriptor required')
         patterns=prepared.read_bytes()[512:1500]
         b=camera.encode(p,self.actors(),True,patterns)

@@ -9,7 +9,7 @@
 #define C3_STAGE_MAX_MODELS 16u
 #define C3_STAGE_MAX_VERTICES 131072u
 #define C3_STAGE_MAX_TEXTURES 128u
-#define C3_STAGE_MAX_PARTICLE_BANKS 7u
+#define C3_STAGE_MAX_PARTICLE_BANKS 8u
 
 /* Pinned SDK steady particle draw uses 114 words; 192 also bounds setup.
  * Leave room for the subsequent HUD/fade and command-list finalization. */
@@ -69,7 +69,7 @@ int c3_stage_renderer_get_modulation(size_t model_index, uint8_t rgb[3], int *en
 /* Upload once before first draw. Borrowed pack/system outlive guarded teardown.
  * Updating the live attachment only copies CPU state; GPU buffers are written
  * after the sole nonblocking FrameBegin completion barrier. */
-/* Register up to four borrowed banks (Bite, Reflect, Confusion attack/damage)
+/* Register up to eight borrowed banks (including qualified move profiles)
  * before first draw. Re-registering the
  * same pack pointer is idempotent. Binding selects by bank.bytes identity. */
 int c3_stage_renderer_particle_pack(const C3ParticlePack *,char *,size_t);
@@ -77,6 +77,9 @@ int c3_stage_renderer_particles(const C3ParticleSystem *,const float attachment[
 /* Explicit source-world Growl adapter. Only AppSRT render caches may change;
  * simulation coordinates, clocks and cosmetic RNG remain independent of draws. */
 int c3_stage_renderer_particles_app_srt(C3ParticleSystem *);
+/* Tackle only: display commits source list sort through explicit mutable
+ * ownership. Does not change clocks, RNG or particle fields. */
+int c3_stage_renderer_particles_source_order(C3ParticleSystem *);
 void c3_stage_renderer_shutdown(void);
 
 /* Application shutdown only, after the scene's guarded teardown completed.

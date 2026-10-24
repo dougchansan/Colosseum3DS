@@ -9,6 +9,7 @@
 #define C3_PARTICLE_PROFILE_GROWL_V1 1u
 #define C3_PARTICLE_PROFILE_GREEN_DOWN_V1 2u
 #define C3_PARTICLE_PROFILE_RED_DOWN_V1 3u
+#define C3_PARTICLE_PROFILE_TACKLE_V1 4u
 #ifndef C3_PARTICLE_MAX_PARTICLES
 /* Measured admitted Reflect closure peak1369; bounded1536 live slots. */
 #define C3_PARTICLE_MAX_PARTICLES 1536u
@@ -81,6 +82,9 @@ typedef struct {
  uint32_t cosmetic_seed;uint64_t cosmetic_draws,ticks,remainder;
  uint32_t emitted,spawned_emitters,peak_particles;
  uint8_t failed,cancelled,position_attachment;
+ /* Tackle only: source head-insertion list; display sorting persists into
+  * subsequent simulation passes, including multiple ticks without display. */
+ uint16_t source_order[C3_PARTICLE_MAX_PARTICLES],source_order_count;
  uint32_t root_emitter_serial;
  uint16_t source_attachment_flags;
  char diagnostic[160];
@@ -110,6 +114,11 @@ int c3_particle_bank_decode(C3ParticleBank *,const void *,size_t,char *,size_t);
  * the admitted generator/bytecode contract. */
 int c3_particle_bank_decode_reachable(C3ParticleBank *,const void *,size_t,
  unsigned source_root,unsigned profile,char *,size_t);
+/* Active draw slots; Tackle uses source static buckets then newest birth.
+ * Other profiles retain ascending native slots. Tackle commits source list
+ * sorting as original display does; subsequent updates traverse this order.
+ * No texture/primitive regroup. */
+int c3_particle_render_indices(C3ParticleSystem *,uint16_t *,size_t,size_t *,char *,size_t);
 int c3_particle_bank_source_slot(const C3ParticleBank *,unsigned source_id,unsigned *slot);
 /* Source-world outputs; C is the inverse-view rotation orthonormalized Z,X.
  * Does not mutate simulation coordinates or bake camera motion into particles. */
@@ -119,8 +128,9 @@ int c3_particle_quad_app_srt(C3ParticleSystem *,const C3Particle *,
  const C3ParticleCamera *,uint64_t render_frame,float native_per_source_unit,
  C3ParticleQuad *,char *,size_t);
 /* begin commits only after validation. Cosmetic RNG is per-system HSD LCG,
- * deliberately separate from combat. Native queue visitation is retained;
- * original HSD list visitation/shared-RNG ordering remains unqualified. */
+ * deliberately separate from combat. Legacy native queue visitation is retained.
+ * Tackle alone preserves the bounded source F0/list visitation; original
+ * global shared-RNG and retail frame parity remain unqualified. */
 int c3_particle_begin(C3ParticleSystem *,const C3ParticleBank *,unsigned generator,
                      uint32_t cosmetic_seed,char *,size_t);
 /* Reflect POSITION adapter: source world units (native world *10), radians.
@@ -153,6 +163,9 @@ int c3_particle_position(C3ParticleSystem *,const float source_world_position[3]
  * time. Catchup >600ticks fails explicitly; elapsed time is never silently lost.
  * Failure latches until cancel/new begin; diagnostics identify generator/PC/op. */
 int c3_particle_step_ticks(C3ParticleSystem *,uint32_t ticks,int paused,char *,size_t);
+/* Exact source clock fractions:1000units per60Hz tick,60units perms.
+ * Retains the same fractional remainder and bounded catchup as step(ms). */
+int c3_particle_step_units(C3ParticleSystem *,uint64_t source_units,int paused,char *,size_t);
 int c3_particle_step(C3ParticleSystem *,uint32_t milliseconds,int paused,char *,size_t);
 void c3_particle_cancel(C3ParticleSystem *);
 int c3_particle_finished(const C3ParticleSystem *);

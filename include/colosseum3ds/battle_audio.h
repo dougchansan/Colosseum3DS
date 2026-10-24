@@ -2,7 +2,7 @@
 #define COLOSSEUM3DS_BATTLE_AUDIO_H
 #include <stddef.h>
 #include <stdint.h>
-#define C3_BATTLE_AUDIO_MAX_CUES 11u
+#define C3_BATTLE_AUDIO_MAX_CUES 13u
 #define C3_BATTLE_AUDIO_MAX_FRAMES 320000u
 #define C3_BATTLE_AUDIO_MAX_BYTES (8u*1024u*1024u)
 typedef struct {

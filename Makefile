@@ -232,3 +232,21 @@ all: build/test_wzx_stat_down
 wzx-stat-down-check: build/test_wzx_stat_down
 	./build/test_wzx_stat_down
 test: wzx-stat-down-check
+
+# Focused Tackle math/admission/order fixtures (optional original-bank arguments).
+build/test_particle_tackle: tests/test_particle_tackle.c src/particle.c src/particle_line.c src/particle_pack.c build/save_codec.c $(HEADERS) | build
+	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_particle_tackle.c src/particle_line.c src/particle_pack.c build/save_codec.c $(LDFLAGS) -lm -o $@
+
+build/test_wzx_tackle: tests/test_wzx_tackle.c src/wzx_tackle.c build/save_codec.c include/colosseum3ds/wzx_tackle.h | build
+	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_wzx_tackle.c src/wzx_tackle.c build/save_codec.c $(LDFLAGS) -lm -o $@
+all: build/test_wzx_tackle
+.PHONY: wzx-tackle-check
+wzx-tackle-check: build/test_wzx_tackle
+	./build/test_wzx_tackle
+test: wzx-tackle-check
+
+all: build/test_particle_tackle
+.PHONY: particle-tackle-check
+particle-tackle-check: build/test_particle_tackle
+	./build/test_particle_tackle
+test: particle-tackle-check

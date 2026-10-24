@@ -23,7 +23,7 @@ class PreparationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'requires --confusion'):
             audio.selected_sounds(tail_whip=True)
         with self.assertRaisesRegex(ValueError, 'Cue count'):
-            audio.encode_pack([(i, b'\0\0') for i in range(12)])
+            audio.encode_pack([(i, b'\0\0') for i in range(14)])
 
     def test_stat_down_explicit_tenth_cue_and_binding(self):
         self.assertEqual(audio.selected_sounds(True, True, True, True),
@@ -94,6 +94,84 @@ class PreparationTests(unittest.TestCase):
         self.assertEqual(len(new[0x19A])//2,50934)
         self.assertEqual(hashlib.sha256(new[0x19A]).hexdigest(),
                          'f8677eec71e71895b72a9983401193f76d90af50da304919ce359567ea16b809')
+
+    def test_tackle_requires_all_prior_flags_and_exact_dispatch(self):
+        prior = audio.selected_sounds(True, True, True, True, True)
+        self.assertEqual(audio.selected_sounds(True, True, True, True, True, True),
+                         prior + (0x4A2, 0xDE))
+        for missing in range(5):
+            flags = [True] * 5
+            flags[missing] = False
+            with self.assertRaisesRegex(ValueError, 'Tackle requires'):
+                audio.selected_sounds(*flags, tackle=True)
+        for sound, fx, macro in ((0x4A2, 0x33F, 0x260), (0xDE, 0x151, 0x62F)):
+            row = bytes.fromhex('8005010a%04x000000000000' % fx)
+            effect = {'macro': macro, 'volume': 127, 'pan': 64, 'key': 60}
+            with self.assertRaisesRegex(ValueError, 'macro body'):
+                audio.verify_tackle_binding(sound, row, effect, {})
+            for field in effect:
+                with self.assertRaisesRegex(ValueError, 'binding'):
+                    audio.verify_tackle_binding(sound, row, {**effect, field: effect[field] + 1}, {})
+            for offset in range(12):
+                altered = bytearray(row); altered[offset] ^= 1
+                with self.assertRaisesRegex(ValueError, 'binding'):
+                    audio.verify_tackle_binding(sound, altered, effect, {})
+            with self.assertRaisesRegex(ValueError, 'extent'):
+                audio.verify_tackle_binding(sound, row[:-1], effect, {})
+        with self.assertRaisesRegex(ValueError, 'Unknown Tackle'):
+            audio.verify_tackle_binding(0x19A, bytes(12), {}, {})
+        code = struct.pack('>6I', 0x230146, 0, 0x6610, 0, 0, 0)
+        for tackle in (False, True):
+            with self.assertRaisesRegex(ValueError, 'reverb'):
+                audio.resolve_layers({0x62F: (0, code)}, 0x62F, tackle=tackle)
+        self.assertEqual(struct.unpack_from('<I', audio.encode_pack([(i, b'\0\0') for i in range(13)]), 12)[0], 13)
+        with self.assertRaisesRegex(ValueError, 'Cue count'):
+            audio.encode_pack([(i, b'\0\0') for i in range(14)])
+
+    def test_private_tackle_preserves_eleven_pcm_and_native_load(self):
+        oldpath = os.environ.get('C3_AUDIO_ATTACK_DOWN_PACK')
+        newpath = os.environ.get('C3_AUDIO_TACKLE_PACK')
+        if not oldpath or not newpath:
+            self.skipTest('Private eleven-cue and Tackle packs required')
+        def payloads(path):
+            data = Path(path).read_bytes(); result = {}
+            for i in range(struct.unpack_from('<I', data, 12)[0]):
+                sound, rate, frames, offset, size, *_ = struct.unpack_from('<8I', data, 64+i*32)
+                self.assertEqual((rate, size), (32000, frames*2))
+                result[sound] = data[offset:offset+size]
+            return result
+        old, new = payloads(oldpath), payloads(newpath)
+        self.assertEqual(len(old), 11)
+        self.assertEqual(tuple(new), audio.selected_sounds(True, True, True, True, True, True))
+        for sound, pcm in old.items():
+            self.assertEqual(new[sound], pcm)
+        import hashlib
+        for sound, frames, digest in (
+                (0x4A2, 12609, '5d2ed07df9300c90489470695ab1cebcaf2043eb1fcf9261888524c11a7b89bf'),
+                (0xDE, 68933, 'fded562149442b48dca093d95be0f664368e5635b879fdad80ac5c5f2ffc7578')):
+            self.assertEqual(len(new[sound]) // 2, frames)
+            self.assertEqual(hashlib.sha256(new[sound]).hexdigest(), digest)
+        cc = shlex.split(os.environ.get('CC', 'cc'))
+        if not shutil.which(cc[0]):
+            self.skipTest('Host C compiler required for actual-pack parse')
+        harness = r'''#include "colosseum3ds/battle_audio.h"
+#include <assert.h>
+#include <stdlib.h>
+#include <string.h>
+int main(int argc,char **argv){C3BattleAudio a={0};char e[192];assert(argc==2);
+assert(c3_battle_audio_load(&a,argv[1],e,sizeof e)&&a.count==13);
+assert(c3_battle_audio_find(&a,0x4A2)&&c3_battle_audio_find(&a,0xDE));
+unsigned char *p=malloc(a.bytes);assert(p);memcpy(p,a.storage,a.bytes);p[12]=14;
+assert(!c3_battle_audio_parse(&a,p,a.bytes,e,sizeof e)&&a.count==13);
+free(p);c3_battle_audio_close(&a);return 0;}'''
+        flags = shlex.split(os.environ.get('CFLAGS', '-std=c11 -O2 -Wall -Wextra -Wpedantic -Werror'))
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Path(tmp); (d/'test.c').write_text(harness)
+            result = subprocess.run([*cc, *flags, '-I'+str(ROOT/'include'), str(d/'test.c'),
+                                     str(ROOT/'src/battle_audio.c'), '-o', str(d/'test')], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
+            result = subprocess.run([str(d/'test'), newpath], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
 
     def test_growl_explicit_ninth_cue_and_source_binding(self):
         self.assertEqual(audio.selected_sounds(True, True, True), audio.selected_sounds(True, True) + (0x210,))
@@ -324,10 +402,10 @@ int main(int argc,char **argv){assert(argc==2);char path[512],error[192];
  unsigned char *copy=malloc(a.bytes);memcpy(copy,a.storage,a.bytes);copy[a.bytes-1]^=1;
  assert(!c3_battle_audio_parse(&a,copy,a.bytes,error,sizeof error));assert(a.count==2);free(copy);c3_battle_audio_close(&a);
  snprintf(path,sizeof path,"%s/max.c3u",argv[1]);
- assert(c3_battle_audio_load(&a,path,error,sizeof error));assert(a.count==11);
+ assert(c3_battle_audio_load(&a,path,error,sizeof error));assert(a.count==13);
  assert(c3_battle_audio_find(&a,411));
- copy=malloc(a.bytes);memcpy(copy,a.storage,a.bytes);copy[12]=12;
- assert(!c3_battle_audio_parse(&a,copy,a.bytes,error,sizeof error));assert(a.count==11);
+ copy=malloc(a.bytes);memcpy(copy,a.storage,a.bytes);copy[12]=14;
+ assert(!c3_battle_audio_parse(&a,copy,a.bytes,error,sizeof error));assert(a.count==13);
  free(copy);c3_battle_audio_close(&a);
  assert(c3_battle_audio_player_open(argv[1],error,sizeof error));assert(started==1&&allocated==2);
  assert(c3_battle_audio_player_done(2,85,error,sizeof error)==-1);
@@ -381,7 +459,7 @@ int main(int argc,char **argv){assert(argc==2);char path[512],error[192];
             d=Path(tmp);(d/'3ds.h').write_text(sdk);(d/'test.c').write_text(harness)
             pcm=struct.pack('<3h',-32768,0,32767)
             (d/'audio.c3u').write_bytes(audio.encode_pack([(85,pcm),(86,pcm)]))
-            (d/'max.c3u').write_bytes(audio.encode_pack([(n,pcm) for n in (*range(1,10),411,410)]))
+            (d/'max.c3u').write_bytes(audio.encode_pack([(n,pcm) for n in (*range(1,10),411,410,0x4A2,0xDE)]))
             flags=shlex.split(os.environ.get('CFLAGS','-std=c11 -O2 -g -Wall -Wextra -Wpedantic -Werror'))
             run=subprocess.run(cc+flags+['-I'+str(d),'-I'+str(ROOT/'include'),'-I'+str(ROOT/'platform/3ds'),str(d/'test.c'),str(ROOT/'src/battle_audio.c'),str(ROOT/'platform/3ds/battle_audio_player.c'),'-o',str(d/'test')],capture_output=True,text=True)
             self.assertEqual(run.returncode,0,run.stdout+run.stderr)

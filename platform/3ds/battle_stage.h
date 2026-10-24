@@ -12,6 +12,7 @@
 #include "colosseum3ds/wzx_tail_whip.h"
 #include "colosseum3ds/wzx_growl.h"
 #include "colosseum3ds/wzx_stat_down.h"
+#include "colosseum3ds/wzx_tackle.h"
 #define C3_BATTLE_STAGE_MODELS 16u
 typedef struct {
     C3Title models[C3_BATTLE_STAGE_MODELS];
@@ -78,8 +79,17 @@ typedef struct {
     uint8_t growl_available, growl_camera_available, growl_particles_started;
     uint8_t growl_teardown_started, growl_keyoff_sent;
     uint32_t growl_audio_wait_ms;
-    uint8_t growl_motion[C3_BATTLE_STAGE_MODELS]; /* 1: remaining clip1, 2: source idle. */
+    uint8_t growl_motion[C3_BATTLE_STAGE_MODELS]; /* Historical name: common half-rate carrier. 1=Growl,2=idle,3=Tackle cast,4=Tackle hit. */
     uint64_t growl_motion_units[C3_BATTLE_STAGE_MODELS];
+    uint32_t owner_motion_end[C3_BATTLE_STAGE_MODELS]; /* Source ticks; Tackle natural end, zero for legacy Growl. */
+    C3WzxTackleProgram tackle_program;
+    C3WzxTackle tackle;
+    C3ParticlePack tackle_pack;
+    uint8_t *tackle_bytes;
+    C3BattleCameraProgram tackle_camera_program;
+    C3BattleCamera tackle_camera;
+    uint32_t tackle_owner,tackle_target,tackle_event,tackle_group,tackle_cues[2];
+    uint8_t tackle_available,tackle_camera_available,tackle_hit,tackle_particles_started,tackle_keyoff[2];
     C3WzxStatDownProgram attack_down_program;
     C3ParticlePack attack_down_pack;
     uint8_t *attack_down_bytes;

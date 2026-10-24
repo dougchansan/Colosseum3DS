@@ -15,6 +15,7 @@ int c3_stage_renderer_set_static(size_t i,bool value){assert(i<counts);static_co
 int c3_stage_renderer_set_modulation(size_t i,const uint8_t rgb[3]){assert(i<counts);enabled[i]=(rgb!=NULL);return 1;}
 int c3_stage_renderer_get_modulation(size_t i,uint8_t rgb[3],int *enabled_out){(void)i;memset(rgb,128,3);*enabled_out=0;return 1;}
 int c3_stage_renderer_particle_pack(const C3ParticlePack *p,char *e,size_t n){(void)e;(void)n;assert(p&&p->texture_count);return C3_RENDER_OK;}
+int c3_stage_renderer_particles_source_order(C3ParticleSystem *s){(void)s;return 1;}
 int c3_stage_renderer_particles_app_srt(C3ParticleSystem *s){(void)s;return 1;}
 int c3_stage_renderer_particles(const C3ParticleSystem *s,const float a[12]){if(s){assert(a);++particles_bound;}return 1;}
 static int sound(uint32_t sequence,uint32_t id,char *e,size_t n){(void)e;(void)n;assert(sequence>last_cue);last_cue=sequence;assert(id==0x220);++reflect_audio;return 1;}

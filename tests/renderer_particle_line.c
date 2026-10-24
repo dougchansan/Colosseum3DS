@@ -112,6 +112,18 @@ int main(void)
  assert(stats.particles==4&&stats.particle_vertices==24&&stats.draw_calls==4&&stats.particle_command_words==gpuCmdBufOffset);
  assert(!viewport_writes);
  assert(gpu_buffer_bytes==C3_PARTICLE_MAX_PARTICLES*6u*sizeof(ParticleLineGPUVertex));
+ /* Tackle draw indices reverse birth order even after native slot reuse.
+  * Keep alternating primitives in the resulting source sequence. */
+ system.bank.profile=C3_PARTICLE_PROFILE_TACKLE_V1;
+ assert(!draw_particles(&camera,&mvp,&stats,e,sizeof e));
+ assert(!c3_stage_renderer_particles_source_order(&system));
+ pack.bank.profile=C3_PARTICLE_PROFILE_TACKLE_V1;system.bank.bytes=pack.bank.bytes;
+ particle_bindings[0]=&pack;particle_binding_count=1;
+ assert(c3_stage_renderer_particles_source_order(&system));draws=line_states=quad_states=0;
+ for(unsigned i=0;i<4;++i){C3Particle *p=&system.particles[i];p->serial=i+1;p->position[0]=-30+20.f*(3-i);p->kind=(i&1u)?0x00400480u:0x40500002u;}
+ assert(draw_particles(&camera,&mvp,&stats,e,sizeof e));assert(draws==4&&quad_states==2&&line_states==2);
+ assert(system.source_order_count==4&&system.source_order[0]==3&&system.source_order[3]==0);
+ system.bank.profile=0;
  /* Actual staged source camera: eye(0,11,8.709400177), target origin, FOV30.
   * Directly construct the independent view/projection matrix in double math. */
  double ey=11,ez=8.709400177001953,len=sqrt(ey*ey+ez*ez),zy=ey/len,zz=ez/len;

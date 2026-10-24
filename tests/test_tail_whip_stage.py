@@ -24,7 +24,7 @@ class TailWhipStageTests(unittest.TestCase):
                    "src/battle_presentation.c", "src/battle_audio.c",
                    "src/wzx_bite.c", "src/wzx_damage.c", "src/wzx_reflect.c",
                    "src/wzx_confusion.c", "src/wzx_confusion_sequence.c",
-                   "src/wzx_tail_whip.c", "src/wzx_growl.c", "src/wzx_stat_down.c", "src/particle.c", "src/particle_pack.c",
+                   "src/wzx_tail_whip.c", "src/wzx_growl.c", "src/wzx_stat_down.c", "src/wzx_tackle.c", "src/particle.c", "src/particle_pack.c",
                    "src/battle_camera.c", "build/save_codec.c"]
         subprocess.run([sys.executable, str(ROOT / "tools/prepare_save_codec.py")],
                        cwd=ROOT, check=True, capture_output=True, text=True)

@@ -30,7 +30,8 @@ int c3_particle_pack_decode(C3ParticlePack *out, const void *data, size_t bytes,
     const uint8_t expected_sha1[20], char *error, size_t capacity);
 /* Explicit qualified profile; original C3PT/GPT1 bytes and root IDs remain.
  * Growl admits its sparse source table. RED/GREEN stat-down each pins its own
- * original source bank SHA-1 in addition to the caller's whole-pack hash. */
+ * original source bank SHA-1 in addition to the caller's whole-pack hash.
+ * Tackle v1 pins original91680-byte root0/8-descriptor F0-only bank. */
 int c3_particle_pack_decode_reachable(C3ParticlePack *,const void *,size_t,
  const uint8_t expected_sha1[20],unsigned profile,char *,size_t);
 const C3ParticlePackTexture *c3_particle_pack_texture(const C3ParticlePack *,

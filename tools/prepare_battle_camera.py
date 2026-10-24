@@ -247,7 +247,70 @@ def prepare_attack_down(disc,parser,output):
 def prepare_stat_down(disc,parser,output):
     return prepare_single_camera(disc,parser,output,0x10029)
 
+def encode_tackle(actors,patterns):
+    """Separate C3KCv1: exact short8 followed by long13, no legacy changes."""
+    if len(patterns)!=1596 or hashlib.sha1(patterns[:608]).hexdigest()!='cbded7a9ed874d8b68a9e20c3fe082d2c75def47' or hashlib.sha1(patterns[608:]).hexdigest()!='176a55770152bab923808f8f20af6a6066b4d794':raise ValueError('Tackle source FOV table drift')
+    if len(actors)!=3 or actors[2]['timing'][0]!=[62,130,240,0] or actors[0]['timing'][1]!=[170,298,0,0] or actors[1]['timing'][1]!=[100,176,0,0]:raise ValueError('Tackle owner camera timing drift')
+    profiles=[dict(flags=f,pattern=i,fov_mask=m,entry=e,owner_start=0 if e==2 else 22) for _,_,_,f,i,m,e in WZX]
+    original=encode(profiles,actors)
+    b=bytearray(original[:512]+patterns+original[512:])
+    struct.pack_into('<4s3I',b,0,b'C3KC',1,len(b),33)
+    for phase in range(2):struct.pack_into('<5I',b,64+phase*64,0x78,0xffffffff,0,2 if phase==0 else 8,0)
+    for i in range(3):
+        for phase in range(2):
+            off=192+96*i+80+8*phase;struct.pack_into('<I',b,off,struct.unpack_from('<I',b,off)[0]+1596)
+    b[480:500]=bytes(20);b[480:500]=hashlib.sha1(b).digest();return bytes(b)
+
+def prepare_tackle(disc,parser,output):
+    import prepare_field_geometry as geometry
+    verify_disc(disc);check_output(output)
+    for name,digest in SOURCE_FILES.items():
+        path=ROOT/'vendor/colosseum'/name
+        if path.is_symlink() or hashlib.sha256(path.read_bytes()).hexdigest()!=digest:raise ValueError('Camera source drift: '+name)
+    dol=Dol((disc/'sys/main.dol').read_bytes());resources=[]
+    roots=[('wzx_taiatari_attack.fsys',0x072e2000,352,'88581c56940803646d4a15b1e83b56b3b9cdf56d22308e870297d55b9da291b4','5754c2ac8e4e3caef0bad6486d7cb6a06f91869daae4e2e336a969fb65318439',2),('wzx_taiatari_damage.fsys',0x03a42000,67008,'181cc398a3dddde92b3b60eccc1b7d904eef2cb2479d9f2c54aad292892974cc','c144e8784d610c38960b67b5dcb4c1776ff25ec0195df0e0b3c4b2ea06951f97',8)]
+    for name,identity,size,digest,member_sha,entry in roots:
+        path=disc/'files'/name
+        if path.is_symlink() or path.stat().st_size!=size or hashlib.sha256(path.read_bytes()).hexdigest()!=digest:raise ValueError('Tackle camera archive drift')
+        data=member(path.read_bytes(),identity)
+        if hashlib.sha256(data).hexdigest()!=member_sha:raise ValueError('Tackle camera member drift')
+        profile(data,0x78,0xffffffff,0,entry,3)
+        resources.append(dict(archive=name,member=identity,archive_sha256=digest,member_sha256=member_sha))
+    for address,value in ((0x8047E348,.5),(0x8047E3C8,.5)):
+        if struct.unpack('>f',dol.read(address,4))[0]!=value:raise ValueError('Tackle source motion rate drift')
+    for address,word in ((0x801D3820,0x80070000),(0x801D382C,0x83A30004),(0x801D3A50,0x80070000),(0x801D3A5C,0x83A30004)):
+        if struct.unpack('>I',dol.read(address,4))[0]!=word:raise ValueError('Tackle source duration instruction drift')
+    geometry.import_parser(parser);actors=[]
+    for species,name,identity in ACTORS:
+        archive=admit(disc/'files'/name);pkx=member(archive,identity)
+        selector=struct.unpack_from('>i',pkx,12)[0]
+        dat,raw,scene,header=load_pkx(archive,name)
+        model=geometry.Model(scene.models[0],raw.models[0],allow_image_swaps=True)
+        idle=header.anim_entries[0].sub_anims[0].anim_index
+        meshes=[geometry.build_mesh(model,i) for i in range(len(model.meshes))]
+        lo,hi=source_bounds(model,meshes,idle)
+        entries=[header.anim_entries[i] for i in (2,8)]
+        # fn801DC5F0 uses WZX header[3]=2 for sequencebyte0x17;
+        # battleCameraStartWaza indexes the owning PKX body_map[2]. Original
+        # JObj IDs are baked into independent immutable source60Hz tracks,
+        # never reinterpreted as C3T envelope indices. GSmodel anim rate=.5.
+        tracks=[]
+        for e in entries:
+            clip=e.sub_anims[0].anim_index;part=e.body_map_bones[2]
+            if not 0<=part<len(model.joints):raise ValueError('Source camera body-map JObj outside model')
+            frames=geometry.sample_sequence(model.ends[clip])
+            tracks.append([list(map(float,model.world(clip,frame)[0][part,:3,3])) for frame in frames])
+        a=dict(clips=[e.sub_anims[0].anim_index for e in entries],motion_types=[e.sub_anims[0].motion_type for e in entries],species=species,selector=selector,minimum=lo,maximum=hi,timing=[[round(t*60) for t in e.timing] for e in entries],part=[e.body_map_bones[2] for e in entries],kind=[e.anim_type for e in entries],archive=name,member=identity,member_sha256=hashlib.sha256(pkx).hexdigest(),idle_clip=idle,tracks=tracks,camera_part_qualification='OriginalJObj body_map[2] sampled at .5animationframe per original60Hz tick')
+        if any(e.sub_anim_count!=1 for e in entries):raise ValueError('Unsupported camera owner multiple subanimations')
+        actors.append(a)
+    if actors[2]['clips'][0]!=4 or [a['clips'][1] for a in actors[:2]]!=[3,2] or any(any(a['motion_types']) for a in actors):raise ValueError('Tackle source clip/start mode drift')
+    patterns=struct.pack('<399I',*struct.unpack('>399I',dol.read(0x80371f60,608)+dol.read(0x803721c0,988)))
+    descriptor=encode_tackle(actors,patterns)
+    output.mkdir(parents=True,exist_ok=False);(output/'tackle_camera.c3c').write_bytes(descriptor)
+    report=dict(source_commit=SOURCE_COMMIT,source_files=SOURCE_FILES,move=33,resources=resources,actors=actors,descriptor_sha256=hashlib.sha256(descriptor).hexdigest(),owner_start=[0,0],motion_choices=[3,0,1,2],raw_flags=0x78,params_flags=0,normalization_shift=0,attack_duration=130,damage_duration={'197':170,'196':100},fov='Dolly mask2; other motions weighted short8 attack / long13 damage, two dynamic segments at implicit0 then timing0/1',source_pattern_addresses=['0x80371f60','0x803721c0'],pattern_sha256=hashlib.sha256(patterns).hexdigest(),scope='Explicit bounded Tackle camera profile; attacker Zig288 entry2 clip4, defender Umbreon197 entry8 clip3 or Espeon196 entry8 clip2; source bodymap2 tracks at0/.5',limitations='Independent cosmetic RNG, no original global RNG or PPC float/frame parity; original hardware visual comparison remains required')
+    (output/'tackle_camera.json').write_text(json.dumps(report,indent=2)+'\n');return report
+
 if __name__=='__main__':
-    p=argparse.ArgumentParser(description=__doc__);p.add_argument('--disc',type=Path,required=True);p.add_argument('--parser',type=Path,required=True);p.add_argument('--output',type=Path,required=True);p.add_argument('--confusion',action='store_true');p.add_argument('--tailwhip',action='store_true');p.add_argument('--growl',action='store_true');p.add_argument('--stat-down',action='store_true');p.add_argument('--attack-down',action='store_true');a=p.parse_args();
-    if sum((a.confusion,a.tailwhip,a.growl,a.stat_down,a.attack_down))>1:p.error('Choose one exact camera profile')
-    print(json.dumps(prepare_attack_down(a.disc,a.parser,a.output) if a.attack_down else prepare_stat_down(a.disc,a.parser,a.output) if a.stat_down else prepare_growl(a.disc,a.parser,a.output) if a.growl else prepare_tailwhip(a.disc,a.parser,a.output) if a.tailwhip else prepare(a.disc,a.parser,a.output,a.confusion),indent=2))
+    p=argparse.ArgumentParser(description=__doc__);p.add_argument('--disc',type=Path,required=True);p.add_argument('--parser',type=Path,required=True);p.add_argument('--output',type=Path,required=True);p.add_argument('--confusion',action='store_true');p.add_argument('--tailwhip',action='store_true');p.add_argument('--growl',action='store_true');p.add_argument('--stat-down',action='store_true');p.add_argument('--attack-down',action='store_true');p.add_argument('--tackle',action='store_true');a=p.parse_args();
+    if sum((a.confusion,a.tailwhip,a.growl,a.stat_down,a.attack_down,a.tackle))>1:p.error('Choose one exact camera profile')
+    print(json.dumps(prepare_tackle(a.disc,a.parser,a.output) if a.tackle else prepare_attack_down(a.disc,a.parser,a.output) if a.attack_down else prepare_stat_down(a.disc,a.parser,a.output) if a.stat_down else prepare_growl(a.disc,a.parser,a.output) if a.growl else prepare_tailwhip(a.disc,a.parser,a.output) if a.tailwhip else prepare(a.disc,a.parser,a.output,a.confusion),indent=2))

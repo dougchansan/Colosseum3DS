@@ -6,6 +6,7 @@ static uint32_t particle_binding_textures[C3_STAGE_MAX_PARTICLE_BANKS][32];
 static unsigned particle_binding_count;
 static const C3ParticleSystem *particle_system;
 static C3ParticleSystem *particle_srt_system;
+static C3ParticleSystem *particle_order_system;
 static uint64_t particle_render_frame;
 static float particle_attachment[12];
 static TitleGPUVertex *particle_vertices;
@@ -51,7 +52,7 @@ int c3_stage_renderer_particles(const C3ParticleSystem *system,const float attac
     if(attachment){for(unsigned i=0;i<12;++i)if(!isfinite(attachment[i]))return 0;
         memcpy(particle_attachment,attachment,sizeof particle_attachment);}
     if(selected)memcpy(particle_textures,particle_binding_textures[binding],sizeof particle_textures);
-    particle_pack=selected;particle_system=system;particle_srt_system=NULL;return 1;
+    particle_pack=selected;particle_system=system;particle_srt_system=NULL;particle_order_system=NULL;return 1;
 }
 int c3_stage_renderer_particles_app_srt(C3ParticleSystem *system)
 {
@@ -63,6 +64,25 @@ int c3_stage_renderer_particles_app_srt(C3ParticleSystem *system)
            particle_bindings[i]->bank.profile==C3_PARTICLE_PROFILE_GROWL_V1)registered=1;
     if(!registered||!c3_stage_renderer_particles(system,world))return 0;
     particle_srt_system=system;return 1;
+}
+int c3_stage_renderer_particles_source_order(C3ParticleSystem *system)
+{
+    static const float world[12]={.1f,0,0,0,0,.1f,0,0,0,0,.1f,0};
+    if(!system||system->bank.profile!=C3_PARTICLE_PROFILE_TACKLE_V1)return 0;
+    int registered=0;
+    for(unsigned i=0;i<particle_binding_count;++i)
+        if(particle_bindings[i]->bank.bytes==system->bank.bytes&&
+           particle_bindings[i]->bank.profile==C3_PARTICLE_PROFILE_TACKLE_V1)registered=1;
+    if(!registered||!c3_stage_renderer_particles(system,world))return 0;
+    particle_order_system=system;return 1;
+}
+static int particle_draw_indices(uint16_t *order,size_t *count,char *error,size_t cap)
+{
+    if(particle_system->bank.profile==C3_PARTICLE_PROFILE_TACKLE_V1){
+        if(particle_order_system!=particle_system){fail(error,cap,"Tackle requires mutable source-order render binding.");return 0;}
+        return c3_particle_render_indices(particle_order_system,order,C3_PARTICLE_MAX_PARTICLES,count,error,cap);
+    }
+    *count=C3_PARTICLE_MAX_PARTICLES;for(unsigned i=0;i<C3_PARTICLE_MAX_PARTICLES;++i)order[i]=(uint16_t)i;return 1;
 }
 static int particle_build_quad(const C3Particle *p,const C3ParticleCamera *camera,
                                C3ParticleQuad *quad,char *error,size_t cap)
@@ -118,7 +138,9 @@ static int draw_particles(const C3TitleCamera *camera,const C3D_Mtx *mvp,
     }
     uint32_t count=0;C3ParticleQuad *quads=particle_quads;
     uint32_t *texids=particle_texids;
-    for(unsigned i=0;i<C3_PARTICLE_MAX_PARTICLES;++i){
+    uint16_t order[C3_PARTICLE_MAX_PARTICLES];size_t order_count=0;
+    if(!particle_draw_indices(order,&order_count,error,cap))return 0;
+    for(size_t visit=0;visit<order_count;++visit){unsigned i=order[visit];
         const C3Particle *p=&particle_system->particles[i];
         int result=particle_build_quad(p,&pc,&quads[count],error,cap);
         if(result<0)return 0;

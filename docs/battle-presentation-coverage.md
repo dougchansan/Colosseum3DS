@@ -56,7 +56,8 @@ establishes a category match, not matched camera/effect-age or retail parity.
 | Confusion | Implemented source-root/camera/composite/particle/audio closure; e996 hardware checkpoint covers both Zigzagoon targets. |
 | Tail Whip | Caster controller/model/camera/selected sound; 5539 hardware B-slot checkpoint and 99d6 original-reference comparison remain separate evidence. Source5b additionally qualifies successful green Defense-down on both player targets. |
 | Growl | Caster model, root-18 sparse-ID/AppSRT particles, floor, camera and selected sound/keyoff; 2e9 hardware A-slot glow/particle execution. Source5519 additionally qualifies red Attack-down on both player targets. |
-| Seven remaining moves | Tackle, Return, Secret Power, Taunt, Snatch, Helping Hand and Struggle have incomplete original presentation; source camera/audio bindings and rendered-actor coverage vary by move. |
+| Tackle | Successful-hit source controller, guarded defender handoff, one-shot particles, mixed POINT/TRAIL rendering, target cameras and selected dry audio are implemented; actual-resource host checks are separate from pending hardware qualification. Miss special57 remains actor-only fallback. |
+| Six remaining moves | Return, Secret Power, Taunt, Snatch, Helping Hand and Struggle have incomplete original presentation; source camera/audio bindings and rendered-actor coverage vary by move. |
 
 The [5b green Defense-down checkpoint](evidence/stat-down-hardware-2026-10-23/README.md)
 adds shared special0x29 particles, actor color, source target cameras and direct
@@ -68,6 +69,13 @@ adds special0x27 particles, actor tint, source target cameras and directSE0x19A
 on both player targets. Both red sequences restore color/camera and finish their
 cues. Original RED visual/audio parity and full encounter presentation remain
 incomplete.
+
+The [Tackle slice](native-wzx-tackle.md) stops the attacker at source tick133,
+starts the successful defender phase and HP gate at0, and waits for the
+admitted defender minimum plus natural particle/audio completion. Its separate
+shape4/source-list particle profile and exact fractional handoff preserve the
+previous move profiles. Hardware and original-reference parity remain separate
+qualifications.
 
 ## Move bindings
 

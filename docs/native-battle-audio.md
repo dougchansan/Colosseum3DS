@@ -290,7 +290,7 @@ is implied. Original successful-target ordering and native stage use are
 separate from this offline audio contract.
 
 C3AU remains version1 with the same layout; this opt-in prepares
-ten cues (the current parser bound is eleven). The active NDSP voice bound remains four. The actual private
+ten cues (the current parser bound is thirteen). The active NDSP voice bound remains four. The actual private
 pack is1,539,692 bytes, SHA-256
 `557550648f3adaa7d31af0aacb52cd0fe4980c47b70c380c4419669dcbcd4d0c`
 (SHA-1 `62de1f554d4f0008ec0c2e5c1a6c8c9aa15a6816`). All nine prior PCM
@@ -323,7 +323,7 @@ selections remain explicit dry metadata; no new synthesis opcode, wet reverb
 or original DSP/keyoff/release-tail qualification is introduced. Source gameplay
 and stage ordering are separate from this preparation.
 
-C3AU version 1/layout is unchanged; the prepared-cue bound is eleven, with
+C3AU version 1/layout is unchanged; the prepared-cue bound is thirteen, with
 four active NDSP voices. The actual private eleven-cue pack is 1,641,592 bytes,
 SHA-256 `ab998e7f705142757a837a220c884a71e770afbb998e2277c48abb6f18d9f3b4`
 (SHA-1 `4790941bb300ccb6901c1f32db7beeeaf0dec74d`). All ten prior PCM
@@ -333,7 +333,49 @@ its dry sum clips 59 frames. The WAV SHA-256 is
 `3cbc4d72835fd340575197070a740e2a65a2579a0a6e1592e3ea63ff76f27621`.
 
 Focused tests cover dependency rejection, dispatch/macro rejection, actual
-ten-to-eleven PCM identity, native eleven-cue load and transactional twelve-cue
+ten-to-eleven PCM identity, native cue-boundary load and transactional overflow
 rejection. Independent preparation with the previous committed converter verifies
 all five older flag combinations produce byte-identical pack output. These are
 host/source checks and do not qualify physical red rendering or audible parity.
+
+
+## Tackle attack/damage opt-in
+
+`--tackle` requires all prior options: `--confusion --tail-whip --growl
+--stat-down --attack-down`. It appends Tackle attack SE `0x4A2` and damage
+SE `0xDE` as cues twelve/thirteen. C3AU stays version 1 with the same layout;
+the prepared-cue bound becomes thirteen, while the active NDSP voice bound
+remains four. All six earlier flag combinations retain byte-identical packs,
+and all eleven earlier PCM payloads remain byte-identical in the new bundle.
+
+```powershell
+python tools/prepare_battle_audio.py --disc G:/gamecube-decomp/disc-extract-dump `
+  --output C:/Colosseum3DS-pr7-captures/tackle-audio-v1 `
+  --confusion --tail-whip --growl --stat-down --attack-down --tackle
+```
+
+Pinned source `51bfe4314a218dfaf9592fc80723c50498d0ee55` maps the exact twelve-byte
+REL sound rows to bank 5: attack FX `0x33F`, macro `0x260`, sample `0x54`;
+damage FX `0x151`, root `0x62F` and children `0x630`–`0x632`, samples
+`0x66`, `0x69`, `0x5D`, `0x55`. Preparation checks every dispatch byte,
+FX macro/volume/pan/key, all five macro hashes, existing bank-member hashes,
+sample archive and source helper pins. Unknown requests, changed rows/macros
+and unsupported controller forms fail closed. Report metadata records source
+attack tick 130 and defender-local damage tick 0; stage scheduling is separate.
+
+Attack's 20% auxiliary controller already belongs to the dry subset. Damage's
+35% controller is admitted only with explicit Tackle opt-in, only for macros
+`0x62F`, `0x630`, `0x631`, and only when their entire source bodies match the
+pinned hashes. Child `0x632` retains its existing 15% dry selection. No wet
+reverb, original DSP/SRC, release-tail, audible or hardware qualification is
+introduced. The damage dry sum clips 2629 frames; attack clips zero.
+
+The actual private thirteen-cue pack is 1,804,740 bytes, SHA-256
+`958c4947b0b450385b438dbf4c9d228ef6555f2fd0382102fced958c27a46096`.
+At 32 kHz, attack has 12609 mono frames (0.39403125 seconds), PCM SHA-256
+`5d2ed07df9300c90489470695ab1cebcaf2043eb1fcf9261888524c11a7b89bf`;
+damage has 68933 frames (2.15415625 seconds), PCM SHA-256
+`fded562149442b48dca093d95be0f664368e5635b879fdad80ac5c5f2ffc7578`.
+Strict and ASan/UBSan host tests cover actual thirteen-cue parsing, transactional
+fourteen-cue rejection, eleven-payload identity and exact new PCM digests.
+These are offline/source and host checks, not original-game audible parity.

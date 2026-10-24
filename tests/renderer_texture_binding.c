@@ -32,6 +32,7 @@ static uint32_t particle_binding_textures[C3_STAGE_MAX_PARTICLE_BANKS][32];
 static unsigned particle_binding_count;
 static const C3ParticleSystem *particle_system;
 static C3ParticleSystem *particle_srt_system;
+static C3ParticleSystem *particle_order_system;
 static uint64_t particle_render_frame;
 static TitleGPUVertex *particle_vertices;
 static bool scene_drawn;

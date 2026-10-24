@@ -1119,7 +1119,7 @@ void c3_title_renderer_shutdown(void)
     if (vertices) { linearFree(vertices); vertices = NULL; }
     if (hud_vertices) { linearFree(hud_vertices); hud_vertices = NULL; }
     if (particle_vertices) { linearFree(particle_vertices); particle_vertices=NULL; }
-    particle_pack=NULL;particle_system=NULL;particle_srt_system=NULL;particle_render_frame=0;
+    particle_pack=NULL;particle_system=NULL;particle_srt_system=NULL;particle_order_system=NULL;particle_render_frame=0;
     memset(particle_bindings,0,sizeof particle_bindings);
     memset(particle_binding_textures,0,sizeof particle_binding_textures);particle_binding_count=0;
     particle_line_shutdown();

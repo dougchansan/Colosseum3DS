@@ -56,7 +56,7 @@ static void draw_bottom(PrintConsole *bottom,const C3BattlePreview *b,const C3Ba
 static int draw_hud(C3BattleStage *s,const C3BattlePreview *b,const C3BattlePreviewMenu *m,char *error,size_t cap)
 {
     C3StageBattleHud hud={0};hud.enabled=1;
-    snprintf(hud.lines[0],sizeof hud.lines[0],"%s",s->damage_available?"DEV: Bite hit FX; other FX/cameras incomplete":s->bite_available?"DEV: Bite attack FX; hit FX incomplete":"DEV: ball/move FX, cameras, audio missing");
+    snprintf(hud.lines[0],sizeof hud.lines[0],"%s",s->tackle_available?"DEV: Bite/Tackle hit FX; other FX incomplete":s->damage_available?"DEV: Bite hit FX; other FX/cameras incomplete":s->bite_available?"DEV: Bite attack FX; hit FX incomplete":"DEV: ball/move FX, cameras, audio missing");
     for(unsigned i=0;i<4;++i){hud.hp[i]=s->presentation.hp[i];hud.maximum_hp[i]=b->mons[i].maximum_hp;}
     const C3BattlePresentation *p=&s->presentation;
     if(p->cursor<p->count&&p->events[p->cursor].kind==C3_PREVIEW_EVENT_HP&&p->duration_ms){
@@ -121,7 +121,7 @@ int c3_battle_preview_scene_run(const C3BattleRequest *request,FILE *trace)
             snprintf(error,sizeof error,"Invalid introduction event batch.");
         c3_n3ds_log_memory(trace,"battle_stage_loaded");
     }
-    if(!error[0]&&(stage->damage_available||stage->reflect_available||stage->confusion_available||stage->tail_available||stage->growl_available||stage->stat_down_available||stage->attack_down_available)){
+    if(!error[0]&&(stage->damage_available||stage->reflect_available||stage->confusion_available||stage->tail_available||stage->growl_available||stage->stat_down_available||stage->attack_down_available||stage->tackle_available)){
         if(c3_battle_audio_player_open(BOOT_ROOT "battle",error,sizeof error)){
             stage->sound_cue=c3_battle_audio_player_cue;
             stage->sound_done=c3_battle_audio_player_done;

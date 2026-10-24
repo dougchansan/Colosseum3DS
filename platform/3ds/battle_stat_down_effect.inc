@@ -121,7 +121,7 @@ static int stat_down_event(C3BattleStage *s,const C3BattlePreviewEvent *ev,char 
     s->stat_down_prior_enabled=(uint8_t)enabled;s->stat_down_color_owned=1;
     s->stat_down_motion[slot]=1;s->stat_down_motion_units[slot]=0;
     s->stat_down_motion_period[slot]=program->owners[slot].minimum;s->stat_down_motion_rate[slot]=program->owner_rate;
-    s->growl_motion[owner]=0;s->growl_motion_units[owner]=0;
+    s->growl_motion[owner]=0;s->growl_motion_units[owner]=0;s->owner_motion_end[owner]=0;
     s->clips[owner]=s->stat_down.owner_clip;s->clocks[owner]=0;s->fresh[owner]=1;
     const float *t=s->transforms[owner];float position[3];stat_down_position(s,owner,program,slot,position);
     c3_particle_cancel(&s->particles);

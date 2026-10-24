@@ -242,6 +242,31 @@ static void red_actual(const char *path)
     CHECK(!c3_battle_camera_tailwhip_decode(&p,raw,(size_t)length,error,sizeof error));CHECK(!memcmp(&p,&before,sizeof p));
     raw[64]=0;memset(raw+480,0,20);uint8_t hash[20];c3_save_codec_sha1(hash,raw,(uint32_t)length);memcpy(raw+480,hash,20);CHECK(!c3_battle_camera_attack_down_decode(&p,raw,(size_t)length,error,sizeof error));CHECK(!memcmp(&p,&before,sizeof p));free(raw);c3_battle_camera_close(&p);
 }
+static void tackle_actual(const char *path)
+{
+    char error[192];C3BattleCameraProgram p={0};CHECK(c3_battle_camera_tackle_load(&p,path,error,sizeof error));CHECK(p.move_id==33&&p.flags[0]==0x78&&p.flags[1]==0x78&&!p.owner_start[1]);
+    C3BattleCamera a,b,old;unsigned motions[2]={0,0},patterns[2]={0,0};
+    for(unsigned phase=0;phase<2;++phase)for(unsigned side=0;side<2;++side)for(unsigned seed=1;seed<20000;seed+=29){
+        unsigned owner=phase?side:2+side,target=phase?2+side:side;
+        c3_battle_camera_init(&a,seed);CHECK(c3_battle_camera_begin_move(&a,&p,33,(C3BattleCameraPhase)phase,owner,target,actors,&base,error,sizeof error));
+        CHECK(a.duration==(phase?(side?100u:170u):130u)&&a.track_delay==0&&a.move_id==33);motions[phase]|=1u<<a.motion;
+        CHECK(a.camera.near_plane==base.near_plane&&a.camera.far_plane==base.far_plane&&a.camera.aspect==base.aspect&&a.fov>=15&&a.fov<=85);
+        if(a.motion){CHECK(a.fov_pattern<(phase?13u:8u)&&a.dynamic_fov);patterns[phase]|=1u<<a.fov_pattern;CHECK(a.fov_finish[0]<=p.actors[phase?side:2].timing[phase][0]&&a.fov_finish[1]<=p.actors[phase?side:2].timing[phase][1]);}else CHECK(!a.dynamic_fov&&a.fov_pattern==UINT32_MAX);
+        b=a;CHECK(c3_battle_camera_step(&a,3400,actors,error,sizeof error));for(unsigned i=0;i<200;++i)CHECK(c3_battle_camera_step(&b,17,actors,error,sizeof error));CHECK(!memcmp(&a,&b,sizeof a));
+        c3_battle_camera_pause(&a,1);old=a;CHECK(c3_battle_camera_step(&a,UINT32_MAX,actors,error,sizeof error));CHECK(!memcmp(&a,&old,sizeof a));c3_battle_camera_cancel(&a);CHECK(!memcmp(&a.camera,&base,sizeof base));
+    }
+    CHECK(motions[0]==15&&motions[1]==15&&patterns[0]==255&&patterns[1]==2047);
+    c3_battle_camera_init(&a,123);CHECK(c3_battle_camera_begin_move(&a,&p,33,C3_BATTLE_CAMERA_DAMAGE,0,2,actors,&base,error,sizeof error));b=a;
+    CHECK(c3_battle_camera_step_units(&a,20,actors,error,sizeof error));CHECK(a.units==20&&a.ticks==0);CHECK(c3_battle_camera_step_units(&a,40,actors,error,sizeof error));CHECK(c3_battle_camera_step(&b,1,actors,error,sizeof error));CHECK(!memcmp(&a,&b,sizeof a));
+    old=a;CHECK(!c3_battle_camera_step_units(&a,UINT64_MAX,actors,error,sizeof error));CHECK(!memcmp(&old,&a,sizeof a));c3_battle_camera_pause(&a,1);old=a;CHECK(c3_battle_camera_step_units(&a,UINT64_MAX,actors,error,sizeof error));CHECK(!memcmp(&old,&a,sizeof a));
+    c3_battle_camera_init(&a,8128);CHECK(c3_battle_camera_begin_move(&a,&p,33,C3_BATTLE_CAMERA_ATTACK,2,0,actors,&base,error,sizeof error));unsigned previous=a.motion,draws=a.random_draws;c3_battle_camera_cancel(&a);CHECK(c3_battle_camera_begin_move(&a,&p,33,C3_BATTLE_CAMERA_DAMAGE,0,2,actors,&base,error,sizeof error));CHECK(a.motion!=previous&&a.random_draws>draws);
+    old=a;CHECK(!c3_battle_camera_begin(&a,&p,C3_BATTLE_CAMERA_ATTACK,2,0,actors,&base,error,sizeof error));CHECK(!memcmp(&old,&a,sizeof a));CHECK(!c3_battle_camera_begin_move(&a,&p,33,C3_BATTLE_CAMERA_ATTACK,0,2,actors,&base,error,sizeof error));CHECK(!memcmp(&old,&a,sizeof a));CHECK(!c3_battle_camera_begin_move(&a,&p,33,C3_BATTLE_CAMERA_DAMAGE,2,0,actors,&base,error,sizeof error));CHECK(!memcmp(&old,&a,sizeof a));CHECK(!c3_battle_camera_begin_move(&a,&p,44,C3_BATTLE_CAMERA_DAMAGE,0,2,actors,&base,error,sizeof error));CHECK(!memcmp(&old,&a,sizeof a));
+    FILE *f=fopen(path,"rb");CHECK(f&&!fseek(f,0,SEEK_END));long length=ftell(f);rewind(f);uint8_t *raw=malloc((size_t)length);CHECK(raw&&fread(raw,1,(size_t)length,f)==(size_t)length);fclose(f);C3BattleCameraProgram before=p;
+    CHECK(!c3_battle_camera_confusion_decode(&p,raw,(size_t)length,error,sizeof error));CHECK(!memcmp(&before,&p,sizeof p));
+    for(unsigned i=0;i<512;++i){raw[i]^=1;CHECK(!c3_battle_camera_tackle_decode(&p,raw,(size_t)length,error,sizeof error));CHECK(!memcmp(&before,&p,sizeof p));raw[i]^=1;}
+    for(unsigned i=0;i<3;++i){unsigned offset=(unsigned[]){512,1120,128+16}[i];raw[offset]^=1;memset(raw+480,0,20);uint8_t hash[20];c3_save_codec_sha1(hash,raw,(uint32_t)length);memcpy(raw+480,hash,20);CHECK(!c3_battle_camera_tackle_decode(&p,raw,(size_t)length,error,sizeof error));CHECK(!memcmp(&before,&p,sizeof p));raw[offset]^=1;}
+    free(raw);c3_battle_camera_close(&p);
+}
 int main(int argc,char **argv)
 {
     C3BattleCameraProgram p=synthetic();source_golden();exercise(&p);confusion_synthetic();C3BattleCameraProgram tail=tail_synthetic();tail_exercise(&tail);C3BattleCameraProgram growl=growl_synthetic();growl_exercise(&growl);C3BattleCameraProgram stat=stat_synthetic();stat_exercise(&stat);C3BattleCameraProgram red=stat;red.move_id=C3_BATTLE_CAMERA_RED_DOWN_PROFILE;red.flags[0]=0x78;stat_exercise(&red);
@@ -259,5 +284,6 @@ int main(int argc,char **argv)
     if(argc>4)growl_actual(argv[4]);
     if(argc>5)stat_actual(argv[5]);
     if(argc>6)red_actual(argv[6]);
+    if(argc>7)tackle_actual(argv[7]);
     printf("camera checks: %u\n",checks);return 0;
 }

@@ -71,7 +71,9 @@ static int draw_particle_mixed(const C3TitleCamera *camera,C3TitleRenderStats *s
   particle_line_vertices=allocated;gpu_buffer_bytes+=C3_PARTICLE_MAX_PARTICLES*6u*sizeof *allocated;
  }
  uint32_t count=0,quad_count=0;
- for(unsigned i=0;i<C3_PARTICLE_MAX_PARTICLES;++i){
+ uint16_t order[C3_PARTICLE_MAX_PARTICLES];size_t order_count=0;
+ if(!particle_draw_indices(order,&order_count,error,cap))return 0;
+ for(size_t visit=0;visit<order_count;++visit){unsigned i=order[visit];
   const C3Particle *p=&particle_system->particles[i];
   if(!(p->kind&0x40000000u)){
    C3ParticleQuad *q=&particle_quads[quad_count];

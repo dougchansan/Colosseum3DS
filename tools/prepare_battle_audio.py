@@ -39,6 +39,15 @@ ATTACK_DOWN_MACROS = {
     0x22B: 'f4fc355ef1ab89ce33fbfcb2ea64ebe49046b85df5a04aac27507629a237796c',
     0x22C: 'd3f0a021de2330873003acd3948dd1e96b432152752baf9d39d97c9fce776d2d',
 }
+TACKLE_ATTACK_MACROS = {
+    0x260: 'd2e5c99ababd0bdd371631f94dc17e541a75c9d4a5a05c19b364317326e73073',
+}
+TACKLE_DAMAGE_MACROS = {
+    0x62F: 'b3330c4d03c8249fbbaedbabe8769dcba6713e0728a264f690483b87741bafc8',
+    0x630: 'ee59d50d1eff1c346ed919851f70a9a7d18a27939408bcb024fe0540fb20eae1',
+    0x631: '9b190eff2eca5d2d9871ae6bd900e290982db58cf11194c13c88a0390ed72f3d',
+    0x632: 'ef49dde8168aa7792864055bc7689f37029346502ed84f4604f5e5e42efe2666',
+}
 STAT_DOWN_MACROS = {
     0x22D: '9324fb625f92837f931b288df0d6a21c7b09cc9ccc1f5d95f8d47052613a9817',
     0x22E: '8f3dc09159456177ff2c2c6b4778ad6c70c60b72ffc2b88e1c4bd5b52610900a',
@@ -167,7 +176,7 @@ def decode_adpcm(data, frames, coefficients):
     raise ValueError('Truncated ADPCM')
 
 
-def resolve_layers(table, macro, *, key=60, volume=127, start_ms=0, depth=0, stack=()):
+def resolve_layers(table, macro, *, key=60, volume=127, start_ms=0, depth=0, stack=(), tackle=False):
     """Selected reviewed battle macros; stop sample-end waits, preserve child starts.
 
     Priority/age and zero reverb-controller selection are recorded, with no
@@ -189,9 +198,11 @@ def resolve_layers(table, macro, *, key=60, volume=127, start_ms=0, depth=0, sta
             if a & 0xFF00 or b != 0xFF320000:
                 raise ValueError('Unqualified child macro setup')
             layers += resolve_layers(table, a >> 16, key=key, volume=volume,
-                                     start_ms=start_ms, depth=depth + 1, stack=stack + (macro,))
+                                     start_ms=start_ms, depth=depth + 1, stack=stack + (macro,), tackle=tackle)
         elif op == 0x46:
-            if a not in (0x0F0146, 0x140146, 0x190146, 0x1E0146) or b:
+            tackle_aux = (tackle and a == 0x230146 and macro in (0x62F, 0x630, 0x631)
+                          and hashlib.sha256(code).hexdigest() == TACKLE_DAMAGE_MACROS[macro])
+            if (a not in (0x0F0146, 0x140146, 0x190146, 0x1E0146) and not tackle_aux) or b:
                 raise ValueError('Unqualified reverb controller')
             reverb = {'controller': 1, 'scale_percent': a >> 16,
                       'combine': 0, 'dry_only': True}
@@ -368,7 +379,7 @@ def checksum(data):
 
 
 def encode_pack(cues):
-    if not 1 <= len(cues) <= 11:
+    if not 1 <= len(cues) <= 13:
         raise ValueError('Cue count exceeds bound')
     rows, payload = bytearray(), bytearray()
     offset = 64 + len(cues) * 32
@@ -383,7 +394,9 @@ def encode_pack(cues):
     return header + bytes(32) + body
 
 
-def selected_sounds(confusion=False, tail_whip=False, growl=False, stat_down=False, attack_down=False):
+def selected_sounds(confusion=False, tail_whip=False, growl=False, stat_down=False, attack_down=False, tackle=False):
+    if tackle and not (confusion and tail_whip and growl and stat_down and attack_down):
+        raise ValueError('Tackle requires --confusion --tail-whip --growl --stat-down --attack-down to extend the eleven-cue bundle')
     if attack_down and not (confusion and tail_whip and growl and stat_down):
         raise ValueError('Attack down requires --confusion --tail-whip --growl --stat-down to extend the ten-cue bundle')
     if stat_down and not (confusion and tail_whip and growl):
@@ -393,7 +406,7 @@ def selected_sounds(confusion=False, tail_whip=False, growl=False, stat_down=Fal
     if tail_whip and not confusion:
         raise ValueError('Tail Whip requires --confusion to extend the seven-cue bundle')
     sounds = (0x85, 0x86, 0x220, 0x443, 0xE9, 0x472, 0x473) if confusion else (0x85, 0x86, 0x220)
-    return sounds + ((0x1DB,) if tail_whip else ()) + ((0x210,) if growl else ()) + ((0x19B,) if stat_down else ()) + ((0x19A,) if attack_down else ())
+    return sounds + ((0x1DB,) if tail_whip else ()) + ((0x210,) if growl else ()) + ((0x19B,) if stat_down else ()) + ((0x19A,) if attack_down else ()) + ((0x4A2, 0xDE) if tackle else ())
 
 
 def verify_tail_whip_binding(row, effect, table):
@@ -456,8 +469,27 @@ def verify_attack_down_binding(row, effect, table):
     return records
 
 
-def prepare(disc, output, confusion=False, tail_whip=False, growl=False, stat_down=False, attack_down=False):
-    sounds = selected_sounds(confusion, tail_whip, growl, stat_down, attack_down)
+def verify_tackle_binding(sound, row, effect, table):
+    if sound not in (0x4A2, 0xDE):
+        raise ValueError('Unknown Tackle sound request')
+    if len(row) != 12:
+        raise ValueError('Tackle sound record extent differs from admitted source')
+    fx, root, bodies = ((0x33F, 0x260, TACKLE_ATTACK_MACROS) if sound == 0x4A2
+                        else (0x151, 0x62F, TACKLE_DAMAGE_MACROS))
+    expected_row = bytes.fromhex('8005010a%04x000000000000' % fx)
+    if bytes(row) != expected_row or (effect['macro'], effect['volume'], effect['pan'], effect['key']) != (root, 127, 64, 60):
+        raise ValueError('Tackle sound/FX/macro binding differs from admitted source')
+    records = []
+    for macro, expected in bodies.items():
+        if macro not in table or hashlib.sha256(table[macro][1]).hexdigest() != expected:
+            raise ValueError('Tackle macro body differs from admitted source')
+        records.append({'macro': macro, 'pool_offset': table[macro][0],
+                        'bytes': len(table[macro][1]), 'sha256': expected})
+    return records
+
+
+def prepare(disc, output, confusion=False, tail_whip=False, growl=False, stat_down=False, attack_down=False, tackle=False):
+    sounds = selected_sounds(confusion, tail_whip, growl, stat_down, attack_down, tackle)
     disc = verify_disc(disc)
     root = Path(__file__).resolve().parents[1]
     for name, digest in {**SOURCE_FILES, **(GROWL_STOP_SOURCE if growl else {})}.items():
@@ -504,6 +536,13 @@ def prepare(disc, output, confusion=False, tail_whip=False, growl=False, stat_do
         if identity not in fx:
             raise ValueError('Missing mapped FX ID')
         effect = fx[identity]
+        if sound in (0x4A2, 0xDE):
+            report.setdefault('tackle_bindings', []).append({
+                'sound_id': sound, 'fx_id': identity, 'root_macro': effect['macro'],
+                'sound_start_tick': 130 if sound == 0x4A2 else 0,
+                'phase': 'attack' if sound == 0x4A2 else 'damage',
+                'macros': verify_tackle_binding(sound, row, effect, macro_table),
+                'auxiliary_selection': 'Source auxiliary selections retained as dry metadata; no wet mix, original DSP or release-tail parity.'})
         if sound == 0x1DB:
             report['tail_whip_binding'] = {'sound_id': sound, 'fx_id': identity,
                 'root_macro': effect['macro'], 'macros': verify_tail_whip_binding(row, effect, macro_table)}
@@ -523,7 +562,7 @@ def prepare(disc, output, confusion=False, tail_whip=False, growl=False, stat_do
                 'stop_tick': 230,
                 'stop_semantics': 'wazaSequenceApplyStop -> wazaSequenceEntryStop case5 -> fn_80166B18 -> fn_80167070(id,1) -> fn_801669E4(id,0,0) -> _sndStopSE -> sndFXKeyOff',
                 'native_stop_limit': 'Immediate dry PCM buffer clear adapts source key-off; original release-envelope/tail timing is unqualified. STOPPED is not full PCM finished.'}
-        layers = resolve_layers(macro_table, effect['macro'], key=effect['key'], volume=effect['volume'])
+        layers = resolve_layers(macro_table, effect['macro'], key=effect['key'], volume=effect['volume'], tackle=tackle)
         pcm, clipped = render_layers(layers, sdir, samples, sine)
         cues.append((sound, pcm))
         report['cues'].append({'sound_id': sound, 'sound_table_offset': 0x13FE08 + sound * 12,
@@ -550,6 +589,7 @@ if __name__ == '__main__':
     parser.add_argument('--growl', action='store_true', help='Extend --confusion --tail-whip with admitted Growl request 0x210')
     parser.add_argument('--stat-down', action='store_true', help='Extend --confusion --tail-whip --growl with green Defense-down special29 request0x19B')
     parser.add_argument('--attack-down', action='store_true', help='Extend --stat-down and all prior options with red Attack-down special27 request0x19A')
+    parser.add_argument('--tackle', action='store_true', help='Extend --attack-down and all prior options with Tackle attack0x4A2 and damage0xDE')
     args = parser.parse_args()
-    report = prepare(args.disc, args.output, args.confusion, args.tail_whip, args.growl, args.stat_down, args.attack_down)
+    report = prepare(args.disc, args.output, args.confusion, args.tail_whip, args.growl, args.stat_down, args.attack_down, args.tackle)
     print('Prepared source-derived dry SFX: ' + ', '.join('%04x' % x['sound_id'] for x in report['cues']))
