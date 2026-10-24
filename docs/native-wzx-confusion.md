@@ -7,11 +7,15 @@ capture and indirect lookup, and the POINT+TRAIL particle adapter. This is a
 nonpersistent preview. It does not execute combat effects, award a result, or
 advance the waiting encounter-10 story request.
 
-There is **no physical acceptance evidence for this implementation**. Build
-`749708b3bd33`'s [hardware checkpoint](evidence/reflect-bite-hardware-2026-10-23/README.md)
-qualifies its bounded Bite/Reflect preview route and lifecycle only; Confusion
-in that binary used the explicitly incomplete fallback. Later source fixes,
-including attachment corrections, must retain their own qualification.
+Normal build `e9968de76e97` has a [physical execution checkpoint](evidence/confusion-hardware-2026-10-23/README.md):
+Confusion completes against both Zigzagoon, with all five damage emitters and
+actual NDSP completion gates. The route includes Bite, sequential Reflect,
+WIN, field return, re-entry/cancel and clean exit with NTR continuously active.
+Executable/assets are read back and hash-verified; both live-body guards and
+the saved GCI remain unchanged. This qualifies bounded execution and lifecycle,
+not retail visual/audio fidelity or full-speed performance. The earlier
+`749708b3bd33` [checkpoint](evidence/reflect-bite-hardware-2026-10-23/README.md)
+used the explicitly incomplete Confusion fallback and remains separately scoped.
 
 ## Admitted source and files
 
@@ -49,8 +53,9 @@ The recorded `private/confusion-sequence-v5` outputs are:
 | `confusion_damage.c3p` | 160672 | `9570f60e0793e8ebc194c8f6cc07b16338dcbe4c225ab47a8980a2c94703aeef` |
 
 The same four byte identities are staged in `private/confusion-integration-v1`.
-Those paths are preparation/host-fixture evidence, not an installed console
-bundle or a rendering acceptance claim. Original archives and prepared assets
+Those preparation/host-fixture paths alone are not deployment evidence. The
+e996 hardware checkpoint separately verifies these installed byte identities,
+the C3CC camera and seven-cue audio pack. Original archives and prepared assets
 remain private.
 
 ## Source clocks, roots and attachment
@@ -168,6 +173,8 @@ explicitly incomplete. Preparation does not deploy assets or touch saves.
 Host fixtures exercise production descriptor/stage/renderer paths, moving source
 parts, event crossing, overlapping roots, cancellation and frame ownership.
 Corrected attachment/lifetime and elapsed-time partition regressions remain
-separate from GPU and physical acceptance. Fresh source/reference comparison,
-actual PICA raster/filtering and audible playback evidence are still required.
+separate from raster and audiovisual parity. Actual e996 hardware visibly
+renders the ring, POINT/trail particles and mixed target burst. Its reference
+comparison scores 82/revise: synchronized camera/pose/effect-age comparison,
+actual PICA/GX raster/filtering parity and audible fidelity remain required.
 Other encounter moves retain their separately documented incomplete coverage.

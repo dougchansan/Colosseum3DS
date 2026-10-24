@@ -1,0 +1,469 @@
+{
+  "source_commit": "e9968de76e9785577f891bd43ef5d43b7464076a",
+  "source_tree": "a143345472fcff278d7ef502140c2dc9ccac542b",
+  "build": {
+    "commit": "e9968de76e9785577f891bd43ef5d43b7464076a",
+    "tree": "a143345472fcff278d7ef502140c2dc9ccac542b",
+    "build_id": "e9968de76e97",
+    "toolchain": "devkitpro/devkitarm@sha256:116afba8df8453961de2936ffab20dd441edf4d682856c1ec8b0e53d7ed0bbf5",
+    "strict": true,
+    "files": [
+      {
+        "file": "Colosseum3DS-battle-preview-probe.3dsx",
+        "bytes": 499424,
+        "sha256": "d45287aec41b81beeb337dee6751bbc83ca0b4537dec283c3806a0109cc6fb35"
+      },
+      {
+        "file": "Colosseum3DS.3dsx",
+        "bytes": 533508,
+        "sha256": "7b52974dfebcedb96443afed17f0d796ee0c5dbe0f3446c9d16adffea2d34567"
+      },
+      {
+        "file": "Colosseum3DS.smdh",
+        "bytes": 14016,
+        "sha256": "f3fad3feb7b42caab0a647bb392050bf72e4507593cded5a16819cc1c68e5a55"
+      }
+    ]
+  },
+  "ci_run": 40063078573,
+  "hardware_readback": [
+    {
+      "file": "Colosseum3DS.3dsx",
+      "bytes": 533508,
+      "sha256": "7b52974dfebcedb96443afed17f0d796ee0c5dbe0f3446c9d16adffea2d34567"
+    },
+    {
+      "file": "Colosseum3DS.smdh",
+      "bytes": 14016,
+      "sha256": "f3fad3feb7b42caab0a647bb392050bf72e4507593cded5a16819cc1c68e5a55"
+    },
+    {
+      "file": "boot-trace.log",
+      "bytes": 652782,
+      "sha256": "a5a26c71afe2713f250ac18de99ddf12ca0f8f411ad4dabe978fd98fdcb77afd"
+    },
+    {
+      "file": "saves/pokemon_colosseum.gci",
+      "bytes": 393280,
+      "sha256": "7e1cb3159756293bf938fd922fe45e82448d1b667f6833a48da351af3cbd0f23"
+    },
+    {
+      "file": "saves/pokemon_colosseum.gci.bak",
+      "absent": true
+    },
+    {
+      "file": "boot/battle/bite.c3w",
+      "bytes": 256,
+      "sha256": "d09f9616086beae627464d594be18397fa0e1bf3f73e478bb7d291fb3040c1d9"
+    },
+    {
+      "file": "boot/battle/bite_attack.c3t",
+      "bytes": 189680,
+      "sha256": "d15ec7e3fac067bcee2b8a82eb3ed280f75f09893afd9c9e41f1187a2e78cb74"
+    },
+    {
+      "file": "boot/battle/bite_damage.c3w",
+      "bytes": 256,
+      "sha256": "ecf7be4b638f467b896bef17d07eba1394d76c044046e485a25e9f324ccc962e"
+    },
+    {
+      "file": "boot/battle/bite_damage.c3t",
+      "bytes": 627512,
+      "sha256": "f49562d04ec2117e61f22c9c9c23a2b775cf15474b77069dcb2e91474927752c"
+    },
+    {
+      "file": "boot/battle/bite_damage.c3p",
+      "bytes": 308480,
+      "sha256": "9fe84012d54bba173a53dc9fc4eaf9aee782ba390e21e03a46d4aa651564e45d"
+    },
+    {
+      "file": "boot/battle/bite_camera.c3c",
+      "bytes": 18368,
+      "sha256": "93f105aef2ec3644f71d66eb24a3b05640fe91893b9012aff5179d829b0e0b35"
+    },
+    {
+      "file": "boot/battle/audio.c3u",
+      "bytes": 1130144,
+      "sha256": "61d83d60dd2ab6d7a2291b7f067e7a680a806e5aa5cba0b83f2b9b417649de7d"
+    },
+    {
+      "file": "boot/battle/reflect.c3w",
+      "bytes": 288,
+      "sha256": "d7540d79983505e3b0d342352d5d9b19fe8d620f25ab1f2a4256e5b8ff2fc1c8"
+    },
+    {
+      "file": "boot/battle/reflect.c3t",
+      "bytes": 176344,
+      "sha256": "58dac5ec1dff0f46699a2f3ceb32eb15be3f5657935f76605dd37f3451332bdc"
+    },
+    {
+      "file": "boot/battle/reflect.c3p",
+      "bytes": 462944,
+      "sha256": "a397faff5a7ee5acb1b31b37ec63ef50aaf8ca81394c249f079ef313e3e36a5b"
+    },
+    {
+      "file": "boot/battle/reflect_parts.c3r",
+      "bytes": 3728,
+      "sha256": "e6b6c61a0036ea9a1220dccf28ac4cfdf49470469bb8bca9704d867fa67e2906"
+    }
+  ],
+  "confusion_asset_readback": [
+    {
+      "file": "confusion_sequence.c3s",
+      "bytes": 13048,
+      "sha256": "a2bd7564e9b1a04343cc6002782dd71bf26bf4a19de3bea70c491d20fe8c2f8f",
+      "postrun_verified": true
+    },
+    {
+      "file": "confusion_type12.c3f",
+      "bytes": 16640,
+      "sha256": "21a0ebb2cb2b06decd1b69ac365f83e0c375b616529f8ec0929a5812d02b6e4b",
+      "postrun_verified": true
+    },
+    {
+      "file": "confusion_attack.c3p",
+      "bytes": 414688,
+      "sha256": "c4fb9eab25cf99ed5814e34eb6ab7873204de336afd1975bc7ef1536a500d4bb",
+      "postrun_verified": true
+    },
+    {
+      "file": "confusion_damage.c3p",
+      "bytes": 160672,
+      "sha256": "9570f60e0793e8ebc194c8f6cc07b16338dcbe4c225ab47a8980a2c94703aeef",
+      "postrun_verified": true
+    },
+    {
+      "file": "confusion_camera.c3c",
+      "bytes": 22524,
+      "sha256": "6818a7908bc9ca4f392b6815681af191e9046fb35b7f44e71b57bb633d19a6a2",
+      "postrun_verified": true
+    },
+    {
+      "file": "audio.c3u",
+      "bytes": 1130144,
+      "sha256": "61d83d60dd2ab6d7a2291b7f067e7a680a806e5aa5cba0b83f2b9b417649de7d",
+      "postrun_verified": true
+    }
+  ],
+  "recording": {
+    "view_only": true,
+    "input_packets_sent": 0,
+    "tcp_commands_sent": 0,
+    "host": "192.168.50.154",
+    "bind": "192.168.50.47",
+    "frames": 9000,
+    "encoded_fps": 10,
+    "wall_seconds": 900.0160000000033,
+    "first_frame_wall_seconds": 0.06300000002374873,
+    "stale_samples": 1,
+    "decode_errors": 0,
+    "encoder_exit": 0,
+    "silent": true,
+    "scope": "Continuous actual NTR screens sampled at10fps; repeated frames and freshness retained in frames.jsonl; no audio stream",
+    "sha256": "8f532f9c8c5c713bb859aa687171e435b2ca1d904c6915333a97ea475b721982"
+  },
+  "hardware_excerpt": {
+    "start_encoded_second": 265,
+    "duration_seconds": 200,
+    "silent": true
+  },
+  "selected_images": [
+    {
+      "file": "confusion-ring.png",
+      "original_sample": 2925,
+      "frame": 2925,
+      "wall_seconds": 292.56300000002375,
+      "utc": "2026-10-24T05:27:44.644887+00:00",
+      "screens": {
+        "bottom": {
+          "frame_id": 12,
+          "counter": 4747,
+          "received_utc": "2026-10-24T05:27:44.601818+00:00"
+        },
+        "top": {
+          "frame_id": 13,
+          "counter": 4746,
+          "received_utc": "2026-10-24T05:27:44.636194+00:00"
+        }
+      },
+      "ages": {
+        "top": 0.01600000000325963,
+        "bottom": 0.0470000000204891
+      },
+      "fresh": true
+    },
+    {
+      "file": "confusion-points.png",
+      "original_sample": 2960,
+      "frame": 2960,
+      "wall_seconds": 296.06300000002375,
+      "utc": "2026-10-24T05:27:48.155850+00:00",
+      "screens": {
+        "bottom": {
+          "frame_id": 71,
+          "counter": 4806,
+          "received_utc": "2026-10-24T05:27:48.094728+00:00"
+        },
+        "top": {
+          "frame_id": 72,
+          "counter": 4805,
+          "received_utc": "2026-10-24T05:27:48.126974+00:00"
+        }
+      },
+      "ages": {
+        "top": 0.01600000000325963,
+        "bottom": 0.0470000000204891
+      },
+      "fresh": true
+    },
+    {
+      "file": "confusion-burst.png",
+      "original_sample": 2964,
+      "frame": 2964,
+      "wall_seconds": 296.46899999998277,
+      "utc": "2026-10-24T05:27:48.550550+00:00",
+      "screens": {
+        "bottom": {
+          "frame_id": 78,
+          "counter": 4813,
+          "received_utc": "2026-10-24T05:27:48.495596+00:00"
+        },
+        "top": {
+          "frame_id": 79,
+          "counter": 4812,
+          "received_utc": "2026-10-24T05:27:48.530903+00:00"
+        }
+      },
+      "ages": {
+        "top": 0.01600000000325963,
+        "bottom": 0.061999999976251274
+      },
+      "fresh": true
+    },
+    {
+      "file": "reflect.png",
+      "original_sample": 4180,
+      "frame": 4180,
+      "wall_seconds": 418.06300000002375,
+      "utc": "2026-10-24T05:29:50.148976+00:00",
+      "screens": {
+        "bottom": {
+          "frame_id": 107,
+          "counter": 6890,
+          "received_utc": "2026-10-24T05:29:50.098539+00:00"
+        },
+        "top": {
+          "frame_id": 108,
+          "counter": 6889,
+          "received_utc": "2026-10-24T05:29:50.133805+00:00"
+        }
+      },
+      "ages": {
+        "top": 0.01600000000325963,
+        "bottom": 0.0470000000204891
+      },
+      "fresh": true
+    },
+    {
+      "file": "preview-win.png",
+      "original_sample": 4300,
+      "frame": 4300,
+      "wall_seconds": 430.06300000002375,
+      "utc": "2026-10-24T05:30:02.150605+00:00",
+      "screens": {
+        "bottom": {
+          "frame_id": 60,
+          "counter": 7099,
+          "received_utc": "2026-10-24T05:30:02.116058+00:00"
+        },
+        "top": {
+          "frame_id": 60,
+          "counter": 7097,
+          "received_utc": "2026-10-24T05:30:02.072150+00:00"
+        }
+      },
+      "ages": {
+        "top": 0.07800000003771856,
+        "bottom": 0.031000000017229468
+      },
+      "fresh": true
+    },
+    {
+      "file": "field-return.png",
+      "original_sample": 5340,
+      "frame": 5340,
+      "wall_seconds": 534.0630000000237,
+      "utc": "2026-10-24T05:31:46.156953+00:00",
+      "screens": {
+        "bottom": {
+          "frame_id": 2,
+          "counter": 8833,
+          "received_utc": "2026-10-24T05:31:46.118575+00:00"
+        },
+        "top": {
+          "frame_id": 2,
+          "counter": 8831,
+          "received_utc": "2026-10-24T05:31:46.096416+00:00"
+        }
+      },
+      "ages": {
+        "top": 0.0470000000204891,
+        "bottom": 0.031000000017229468
+      },
+      "fresh": true
+    },
+    {
+      "file": "clean-exit.png",
+      "original_sample": 8530,
+      "frame": 8530,
+      "wall_seconds": 853.0630000000237,
+      "utc": "2026-10-24T05:37:05.147815+00:00",
+      "screens": {
+        "bottom": {
+          "frame_id": 46,
+          "counter": 13996,
+          "received_utc": "2026-10-24T05:37:05.087719+00:00"
+        },
+        "top": {
+          "frame_id": 47,
+          "counter": 13995,
+          "received_utc": "2026-10-24T05:37:05.129900+00:00"
+        }
+      },
+      "ages": {
+        "top": 0.01600000000325963,
+        "bottom": 0.06300000002374873
+      },
+      "fresh": true
+    },
+    {
+      "file": "confusion-target-a-ring.png",
+      "original_sample": 7780,
+      "frame": 7780,
+      "wall_seconds": 778.0630000000237,
+      "utc": "2026-10-24T05:35:50.149895+00:00",
+      "screens": {
+        "bottom": {
+          "frame_id": 50,
+          "counter": 12720,
+          "received_utc": "2026-10-24T05:35:50.109822+00:00"
+        },
+        "top": {
+          "frame_id": 51,
+          "counter": 12719,
+          "received_utc": "2026-10-24T05:35:50.134236+00:00"
+        }
+      },
+      "ages": {
+        "top": 0.01600000000325963,
+        "bottom": 0.031000000017229468
+      },
+      "fresh": true
+    }
+  ],
+  "visual_verdict": {
+    "score": 82,
+    "verdict": "revise",
+    "category_match": true,
+    "differences": [
+      "Native frame2925 shows a bright circular ring and captured-scene distortion, but the reference actor pose, camera framing and ring phase are not synchronized.",
+      "Native ring and distorted actor edges are visibly coarser at 3DS capture resolution; the ring fills more of the unobstructed scene area.",
+      "Development HP bars and text overlay obscure scene coverage that remains visible in the retail reference."
+    ],
+    "suggestions": [
+      "Compare synchronized source-phase frames using matched camera and effect age before changing scale or timing.",
+      "Inspect the same ring phase as a crop without rescaling to separate 3DS resolution from sampler differences.",
+      "Retain this as actual-hardware execution evidence; do not label it retail visual parity."
+    ],
+    "reasoning": "Actual hardware clearly executes the intended white-ring distortion and target particle burst. Different phase, camera and presentation prevent a retail-fidelity acceptance score."
+  },
+  "retail_visual_parity": false,
+  "media": [
+    {
+      "file": "clean-exit.png",
+      "bytes": 132083,
+      "sha256": "09a8fb2807bec47d62f51cdd2a80a4c233d97e4115e12ee902895629bd261fe6"
+    },
+    {
+      "file": "confusion-burst.png",
+      "bytes": 120546,
+      "sha256": "73a471194e4e188b523057ffc0abd055dd88ce75bad45bc2e2b131cd55990f62"
+    },
+    {
+      "file": "confusion-points.png",
+      "bytes": 97651,
+      "sha256": "35087a7882fdb5c8bd06e6ce304e9f0f26c40bd5b24fefc7aa6dc3e2aa1fe1d8"
+    },
+    {
+      "file": "confusion-ring.png",
+      "bytes": 103927,
+      "sha256": "948e726f190a857ada40a8e5b1573e49b00302c32e743f361feb7d77d72d3263"
+    },
+    {
+      "file": "confusion-target-a-ring.png",
+      "bytes": 91517,
+      "sha256": "2e0a6e0bfd656ec5158d3acb7384f60cf56c0756e96655b03e20add89311153e"
+    },
+    {
+      "file": "emulator-confusion-diagnostic-silent.mp4",
+      "bytes": 692452,
+      "sha256": "2222ccc7421703676bb74ca48f65c08cba45c2efe259f1b20a71ce3b5dc8a9b8"
+    },
+    {
+      "file": "field-return.png",
+      "bytes": 105373,
+      "sha256": "4e4e391d9b4f76049957f70316348de5c4f8445435957d38c80cfa12efec4e71"
+    },
+    {
+      "file": "hardware-confusion-reflect-win-silent.mp4",
+      "bytes": 2341775,
+      "sha256": "ed2b891dcec284ae5b330cdb7e6c99e5f6175193ca1675b9912d4c10a6dfae18"
+    },
+    {
+      "file": "original-confusion-ring.png",
+      "bytes": 447572,
+      "sha256": "bc657b68591f6f8c509e79a0d5125eff7678c9a1b41da42f866036c9a5bc2e6e"
+    },
+    {
+      "file": "preview-win.png",
+      "bytes": 116565,
+      "sha256": "090c51e51918197d6bfde019f96a2e9386655ff90e79d70116a52f8f2c602584"
+    },
+    {
+      "file": "reflect.png",
+      "bytes": 78612,
+      "sha256": "9cd07a450baf03c59ece59abedfff52986d5fa4f842b3dfaf55f8a6dfe9beafe"
+    }
+  ],
+  "original_reference": {
+    "platform": "Official Dolphin2603a retail-reference output, not native3DS",
+    "source_frame": 4700,
+    "source_disc_sha256": "f278e568b5c2dafb153ec932edc95051146cecf5ebc1d3843d71745cd0c1861e",
+    "dolphin_revision": "5e7cc91d8c9a43ca189b288937f65c9763af9c22",
+    "dolphin_executable_sha256": "5e076628b977603dcde9ddef5eedf10b5a9ce0b6208bd4e6dfa9039cdebf3433",
+    "pixels": [
+      640,
+      512
+    ],
+    "sample_aspect": "16:15",
+    "phase_camera_synchronized": false
+  },
+  "emulator": {
+    "source_probe_sha256": "d45287aec41b81beeb337dee6751bbc83ca0b4537dec283c3806a0109cc6fb35",
+    "core_sha256": "1a5b14b4449be449533c36a869da6f09a0f5baf735815d1ab5eb4b8aede63c3e",
+    "modified_core": true,
+    "baseline_restored": true,
+    "renderer": "OpenGL/llvmpipe",
+    "frontend_frames": 2501,
+    "exit_code": 124,
+    "completed": false,
+    "confusion_phases_completed": [
+      0,
+      1
+    ],
+    "full_preview_qualified": false,
+    "audible_fidelity_qualified": false,
+    "performance_qualified": false,
+    "trace_sha256": "29beba58c64afbb697c05b9e2a4aad6367d55c7386dd41ede554675e132dc8bb"
+  }
+}

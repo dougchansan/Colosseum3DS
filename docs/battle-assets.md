@@ -27,7 +27,10 @@ The arena includes three models, one camera, five lights, and no fog.
 The battle-floor record's introduction WZX, BGM, and environmental sound
 IDs are all zero. Encounter record byte12 supplies the nonzero music override
 `0x447`, selected first by `fightEncountGetBgmSndDataId` (0x8020DD44).
-The encounter wipe ID is9. Audio decoding is not implemented by this exporter.
+The encounter wipe ID is9. This scene exporter does not decode audio. Separate
+[battle audio preparation](native-battle-audio.md) now supplies selected Bite,
+Reflect and Confusion effect cues; encounter music and a full MusyX runtime
+remain separate work.
 
 Species records use internal IDs. Zigzagoon is 288 here; its National Pokédex
 number is not a valid substitute. `PokemonData.pkxDataId` at byte `0x2C`
@@ -46,8 +49,10 @@ indices, timing fields, body-part maps, and particle callbacks. Joint clip
 indices remain unchanged in the packs. PKX entry zero selects idle: Umbreon
 clip 0, Espeon clip 1, Zigzagoon clip 0. Other entry semantics and move-effect
 dispatch must be qualified against the source before runtime role binding.
-Partial blinking and particle playback are not implied by preserving their
-records. The two Zigzagoon runtime instances must own independent poses and
+Partial blinking and arbitrary PKX particle callbacks are not implied by
+preserving their records. Selected WZX GPT1 playback now comes through the
+separate [bounded particle path](native-battle-particles.md), not through this
+model export alone. The two Zigzagoon runtime instances must own independent poses and
 clocks while sharing the one prepared asset.
 
 Trainer record byte0x10 selects sequence IDs1 (Wes) and38 (Willie).
@@ -96,13 +101,54 @@ and `fightSideGetFightTrainerGridParam` derive the original positions and
 yaw from floor5 side IDs2/1. In converted units: Wes(-5.6875,0,0),
 Willie(5.6875,0,0), Umbreon(-3.5,0,-2.625), Espeon(-3.5,0,2.625),
 Zigzagoon0(3.5,0,2.625), Zigzagoon1(3.5,0,-2.625); player yaw+pi/2,
-opponent yaw-pi/2, scale1. Sequence kind-1 gives the Pok�mon distance factor
+opponent yaw-pi/2, scale1. Sequence kind-1 gives the Pokémon distance factor
 0.875. The descriptor now resolves the source PKX entries below to each actor's
 authored joint clip. Entry numbers and clip numbers are distinct.
 
-Still unsupported here: battle camera sequences, move effects and particles,
-HUD/font resources, audio decoding, and complete WZX runtime dispatch. The generated packs alone do not
-qualify original attacks, send-outs, support effects, or hardware rendering.
+The generated scene packs alone do not qualify original attacks, send-outs,
+support effects or hardware rendering. Separate bounded preparation/runtime
+paths now execute Bite, Reflect and Confusion model/particle/effect/audio
+dependencies and selected Bite/Confusion procedural cameras. Their resource
+contracts and acceptance limits remain distinct from this base scene export.
+Original HUD/font resources, battle shadows, complete ball/light send-outs,
+trainer commands, encounter music and general WZX dispatch remain unsupported
+or incomplete. The remaining nine admitted move presentations are not covered
+by the three implemented slices; see [the coverage table](battle-presentation-coverage.md).
+
+## Optional matched presentation packs
+
+Install optional effects alongside `scene.c3v` in the private `boot/battle`
+directory, preserving their generated names and preparation manifests. Retain
+existing field/title/scene assets. Present invalid dependencies fail admission;
+an absent optional effect means explicitly incomplete actor-only presentation,
+not successful original effect execution.
+
+| Slice | Separate dependencies and contract |
+| --- | --- |
+| Bite | Attack/damage model and timeline packs, damage GPT1, selected camera and cues `0x85/0x86`; [Bite contract](native-wzx-bite.md) |
+| Reflect | Model/timeline, source-part tracks, GPT1 and cue `0x220`; [Reflect contract](native-wzx-reflect.md) |
+| Confusion | `confusion_sequence.c3s` (`C3CS`, all 15 nodes/source-part tracks), `confusion_type12.c3f` (`C3CF`, type12 profiles/I8 mask), two GPT1 packs, `confusion_camera.c3c` (`C3CC`, move-93 camera/FOV/track delay), and four additional cues; [Confusion contract](native-wzx-confusion.md) |
+
+For Confusion, prepare into new private directories:
+
+```powershell
+python tools/prepare_wzx_confusion.py --disc $disc --parser $parser --output $confusion
+python tools/prepare_battle_camera.py --disc $disc --parser $parser --confusion --output $confusionCamera
+python tools/prepare_battle_audio.py --disc $disc --confusion --output $audio
+```
+
+The complete audio pack contains seven selected game requests across all three
+slices. Its dry offline rendering and SRC/vibrato/sweep/mixer/reverb limitations
+remain explicit. C3CS/C3CF checksums bind their matched particle/mask contracts;
+C3CC retains independent source camera tables rather than treating the authored
+arena camera as the battle sequence. The native capture adapts source 640×480 to
+512×256, so prepared descriptors and successful draws do not establish original
+GX/PICA raster/filtering parity or performance acceptance.
+
+Build `749708b3bd33` has a [bounded physical Bite/Reflect checkpoint](evidence/reflect-bite-hardware-2026-10-23/README.md).
+Its Confusion presentation was the incomplete fallback. That checkpoint does
+not qualify the current Confusion implementation or later corrections. Current
+source/host/emulator coverage must not be relabeled as fresh physical acceptance.
 
 
 ## Qualified pose dispatch and integrity manifest
@@ -137,5 +183,7 @@ No default-variant override matches exist for encounter PKX IDs196/197/288
 among the twelve admitted moves in the original `lbl_80373750` ranges for
 kinds1/2/3. Nonzero variants remain outside this qualification. The per-move
 archive/member hashes and parsed root kinds appear in the integrity manifest.
-These pose mappings do not qualify original WZX effects, particles, camera
-sequences, support visuals, or audio playback.
+These pose mappings alone do not qualify original WZX effects, particles, camera
+sequences, support visuals or audio playback. The separate bounded Bite,
+Reflect and Confusion implementations qualify only their documented resource
+and execution slices; the other moves and full retail presentation remain open.

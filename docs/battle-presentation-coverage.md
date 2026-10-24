@@ -1,15 +1,27 @@
 # Encounter-10 presentation coverage and source closure
 
+The [e996 hardware checkpoint](evidence/confusion-hardware-2026-10-23/README.md)
+adds actual Confusion execution against both Zigzagoon, complete source-root
+and NDSP gates, unchanged state/save guards and clean exit with NTR active.
+Its sampled CPU timings and 82/revise visual comparison leave performance and
+retail parity unaccepted.
+
 This is a source trace, not evidence of complete encounter presentation.
 The optional [Bite slice](native-wzx-bite.md) executes its admitted attack and
 defender model, floor, GPT1, sound and camera bindings. Reflect executes its
 sequential caster/ally model, live attachment, floor, particles and sound bindings.
+The [Confusion slice](native-wzx-confusion.md) now implements its checked
+15-node attack/damage contract, source part tracks, floor, overlapping GPT1
+roots, capture/indirect composite, mixed POINT+TRAIL primitives and selected
+audio. Its separate `C3CC` camera descriptor supplies move-93 procedural
+motion/FOV bindings, including the defender's 44-tick source-track delay.
 Build `749708b3bd33` completed both effects, a preview WIN, return, re-entry/cancel
 and clean exit on hardware with NTR active on October 23, 2026 (HST). Its trace
 and byte-identical preview guards qualify that bounded run; they do not establish
 retail visual parity, performance acceptance or complete encounter coverage.
-Confusion capture, indirect sampling, particle primitives and sequencing remain
-under integration. Other moves retain explicitly incomplete presentation.
+That hardware build used Confusion's incomplete fallback, not the current
+implementation. Current Confusion code and host/emulator evidence do not extend
+the 749 hardware acceptance. Other moves retain explicitly incomplete presentation.
 
 Bindings below were read from the admitted GC6E01 revision-0 common REL
 (SHA-1 `e816761813900aa0fd4f87d012b3b2a19d2f003e`) and DOL
@@ -59,9 +71,14 @@ Zero means no default root for that kind, not absence of all visual behavior.
 For all twelve moves, combat is supported by the experimental preview coordinator;
 typed announcement, HP, status, miss, critical and faint events are available.
 Complete encounter-wide WZX, camera and sound coverage remains unsupported.
-Bite and Reflect have the bounded execution described above; other entries in
-this table are source bindings, not assertions of rendered execution. No per-move
-camera or SE ID is asserted without parsing its selected sequence.
+Bite, Reflect and Confusion have the bounded execution described above; the
+other nine entries remain source bindings, not assertions of rendered effect
+execution: Secret Power, Taunt, Snatch, Return, Helping Hand, Tackle, Growl,
+Tail Whip and Struggle. Original send-outs/ball and light effects, trainer
+commands, HUD/font assets and battle shadows also remain incomplete. The native
+preview overlay is not the original HUD. No per-move camera or SE ID is asserted
+without parsing its selected sequence, and no complete retail visual or
+performance acceptance follows from the implemented slices.
 
 The original normal dispatcher `fight_waza.c::fightWazaWzxTypeFuncNormal`
 (`0x80211040`) calls `fightOutPokemonLoadWazaEffect` and
@@ -81,17 +98,26 @@ and camera payloads. A model importer alone does not execute that data.
 2 model, 3 particle, 4 effect and 5 sound. Particle start allocates through
 `fn_801190DC` and uses original attachment/position/scale/rotation helpers
 `fn_80118F04`, `fn_80118DE0`, and `fn_80118E8C`. Preserving PKX particle
-callbacks is not PDT particle decoding/playback. The native preparation path
-has no qualified PDT/effect interpreter; embedded members, generator scripts,
-materials, blend modes and lifetimes must be decoded and bounded before use.
+callbacks alone is not particle decoding/playback. The native path now has a
+bounded [GPT1 interpreter](native-battle-particles.md), checked bank/texture
+registry, overlapping root emitters and the admitted quad/POINT+TRAIL adapters.
+Bite, Reflect and Confusion execute their selected retained programs; unknown
+reached instructions and unsupported raster profiles fail explicitly. This is
+not a general PDT/WZX effect engine: other embedded members, scripts, materials,
+blend modes and lifetimes still require their own decoding and execution gates.
 
 Sound entry kind 5 calls `fn_80166AB8(resourceId,0,0)` or starts the
 `fn_80165668` thread according to flags. Each selected script must therefore
 be parsed to extract its SE dependencies, then resolved through the original
 sound-bank mapping. The vendored MusyX `runtime/seq.c`, `synthmacros.c`,
 `synthdata.c`, `synth_vsamples.c` and hardware layer are available references,
-not a native 3DS sound runtime. No qualified offline conversion of the required
-sequence/macros/sample banks is currently connected to these events.
+not a native 3DS MusyX runtime. A bounded [offline audio conversion](native-battle-audio.md)
+and NDSP player are now connected to the admitted events: Bite `0x85/0x86`,
+Reflect `0x220`, and Confusion `0x443/0xE9/0x472/0x473`. These seven requests use
+real admitted macros/samples with checked cue identities and buffer lifetime.
+Dry mixing, linear SRC, source vibrato/sweep timing and original DSP/mixer/reverb
+precision limits remain explicit; neither cue telemetry nor a silent recording
+establishes audible retail fidelity. Encounter music `0x447` remains separate.
 
 `wazaSequenceCamera.c` owns the original camera path. Its pattern selector
 `wazaSequenceCameraGetPattern__Fbi` (`0x801D2B4C`) uses the eight-entry
@@ -100,11 +126,22 @@ fallback random selector. Authored arena cameras are a separate resource.
 Any native cosmetic random selection must use an explicitly separate RNG;
 calling the original helper against combat RNG would invalidate consumption.
 
-The next concrete effect gate is to parse and hash the table-selected WZX roots
-and their embedded model/particle/camera/SE payloads, then implement the required entry handlers
-through the existing private preparer/native renderer. Keep unknown handlers
-as explicit unsupported errors. Do not treat fixed timeline durations or an
-attack clip alone as successful original effect execution.
+The bounded Bite camera and Confusion `C3CC` paths now retain their selected
+original pattern tables, body-map POSITION bindings and owner-clock delays.
+Confusion's checked WZX `C3CS`, type12/mask `C3CF`, camera `C3CC`, two particle
+packs and seven-cue audio are optional additions to the base scene, not evidence
+that arbitrary move cameras/effects are supported. A present inconsistent pack
+fails; absence must remain explicitly incomplete presentation. Preserve matched
+descriptors and dependencies rather than installing one pack in isolation.
+
+For the remaining nine moves, the next gate is still to parse and hash their
+table-selected WZX roots and embedded model/particle/camera/SE payloads, then
+implement their required entry handlers through the private preparer/native
+renderer. For the current three slices, source-reference comparison, physical
+GPU/audio acceptance and measured performance retain their own exact build and
+asset identities. Keep unknown handlers as explicit unsupported errors. Do not
+treat fixed timeline durations or an attack clip alone as successful original
+effect execution.
 
 ## Verification
 
@@ -118,5 +155,10 @@ combat. Both strict and ASan/UBSan runs pass. The independent timeline suite
 passes strict C11 warnings and AddressSanitizer/UndefinedBehaviorSanitizer,
 covering pause, exactly-once consumption, HP-before-faint visibility, replay
 rejection, step-size independence and a bounded unresolved-resource wait.
-These checks qualify the event boundary, not the unimplemented original effects
-or hardware presentation.
+These checks qualify the event boundary, not every original effect or hardware
+presentation. Production Confusion fixtures separately cover 15-node admission,
+owner rate, all five overlapping damage roots, live/frozen POSITION semantics,
+capture pass classification, indirect sampling, POINT+TRAIL handling and sound
+dependencies. Their bounded source/host coverage and precision limits are
+recorded in [the Confusion contract](native-wzx-confusion.md); they do not qualify
+the remaining nine moves, original HUD/shadows, full send-outs or retail performance.

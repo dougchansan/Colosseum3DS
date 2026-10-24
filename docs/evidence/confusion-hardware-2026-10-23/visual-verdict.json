@@ -1,0 +1,16 @@
+{
+  "score": 82,
+  "verdict": "revise",
+  "category_match": true,
+  "differences": [
+    "Native frame2925 shows a bright circular ring and captured-scene distortion, but the reference actor pose, camera framing and ring phase are not synchronized.",
+    "Native ring and distorted actor edges are visibly coarser at 3DS capture resolution; the ring fills more of the unobstructed scene area.",
+    "Development HP bars and text overlay obscure scene coverage that remains visible in the retail reference."
+  ],
+  "suggestions": [
+    "Compare synchronized source-phase frames using matched camera and effect age before changing scale or timing.",
+    "Inspect the same ring phase as a crop without rescaling to separate 3DS resolution from sampler differences.",
+    "Retain this as actual-hardware execution evidence; do not label it retail visual parity."
+  ],
+  "reasoning": "Actual hardware clearly executes the intended white-ring distortion and target particle burst. Different phase, camera and presentation prevent a retail-fidelity acceptance score."
+}
