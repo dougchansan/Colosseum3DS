@@ -55,10 +55,15 @@ static int draw_particle_mixed(const C3TitleCamera *camera,C3TitleRenderStats *s
  if(!camera_matrices(camera,&clip,&view,false)){fail(error,cap,"Invalid POINT+TRAIL camera.");return 0;}
  for(unsigned i=0;i<4;++i){C3D_FVec v=Mtx_MultiplyFVec4(&clip,FVec4_New(i==0,i==1,i==2,i==3));pc.clip[i]=v.x;pc.clip[4+i]=v.y;pc.clip[8+i]=v.z;pc.clip[12+i]=v.w;
   if(i<3){C3D_FVec basis=Mtx_MultiplyFVec3(&view,FVec3_New(i==0,i==1,i==2));pc.right[i]=basis.x;pc.up[i]=basis.y;}}
- /* Source battle viewport is 640x480 (battle_range_candidate_801ED780.c).
-  * Source raster widths scale to the native unrotated 400x240 viewport. */
- const C3ParticleLineRaster raster={{400.f/640,240.f/480},-1,0};
- const float viewport[2]={400,240};
+ /* Match the main pass's authored-aspect viewport exactly. The viewport is
+  * already bound by the sole frame owner; changing it here would shift both
+  * line and polygon centers relative to the rendered actors. */
+ unsigned display_width=400,display_height=240;
+ if(camera->aspect<400.f/240)display_width=(unsigned)(240.f*camera->aspect+.5f);
+ else display_height=(unsigned)(400.f/camera->aspect+.5f);
+ /* Source battle viewport is 640x480 (battle_range_candidate_801ED780.c). */
+ const C3ParticleLineRaster raster={{(float)display_width/640,(float)display_height/480},-1,0};
+ const float viewport[2]={(float)display_width,(float)display_height};
  if(!particle_line_init(error,cap))return 0;
  if(!particle_line_vertices){
   ParticleLineGPUVertex *allocated=linearAlloc(C3_PARTICLE_MAX_PARTICLES*6u*sizeof *allocated);
@@ -117,7 +122,7 @@ static int draw_particle_mixed(const C3TitleCamera *camera,C3TitleRenderStats *s
  C3D_AttrInfo *a=C3D_GetAttrInfo();AttrInfo_Init(a);
  AttrInfo_AddLoader(a,0,GPU_FLOAT,4);AttrInfo_AddLoader(a,1,GPU_FLOAT,2);AttrInfo_AddLoader(a,2,GPU_FLOAT,4);
  C3D_BufInfo *b=C3D_GetBufInfo();BufInfo_Init(b);BufInfo_Add(b,particle_line_vertices,sizeof *particle_line_vertices,3,0x210);
- C3D_CullFace(GPU_CULL_NONE);C3D_SetViewport(0,0,240,400);
+ C3D_CullFace(GPU_CULL_NONE);
  for(uint32_t i=0;i<count;++i){const ParticleLineMaterial *m=&particle_line_materials[i];
   if(!m->is_line){particle_quad_material(&particle_quads[m->quad_index],m->texture);C3D_DrawArrays(GPU_TRIANGLES,i*6,6);continue;}
   for(unsigned j=0;j<6;++j)C3D_TexEnvInit(C3D_GetTexEnv(j));
