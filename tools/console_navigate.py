@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
 """Navigate calibrated console states using fresh receive-only NTR video.
 
-Requires an already active UDP8001 stream and private bottom-screen templates.
-No TCP8000 connection is opened. Unknown/ambiguous states stop navigation.
+Requires private calibrated bottom-screen templates. By default receives an
+already active UDP8001 stream; --live-dir reads an existing recorder publication
+without opening a video socket. No TCP8000 connection is opened.
+Unknown/ambiguous states cannot authorize navigation.
 """
 import argparse
+import datetime
+import errno
+import os
 from functools import lru_cache
 import io
 import json
@@ -99,6 +104,78 @@ class Frames:
         self.closed.set()
         self.thread.join(timeout=0.3)
         self.udp.close()
+
+
+
+def _publication_sharing_error(exc):
+    winerror = getattr(exc, 'winerror', None)
+    return winerror in (5, 32) or (os.name == 'nt' and winerror is None
+                                  and exc.errno == errno.EACCES)
+
+
+class PublishedFrames:
+    """Read coherent live PNG/metadata files; owns no sockets or cached frames."""
+    def __init__(self, live):
+        self.live = Path(live)
+        self.error = None
+
+    def snapshot(self):
+        try:
+            for _ in range(12):
+                metadata_path = self.live / 'frames.json'
+                png_path = self.live / 'both.png'
+                try:
+                    first = metadata_path.read_bytes()
+                    metadata_stamp = metadata_path.stat().st_mtime_ns
+                    png_stamp = png_path.stat().st_mtime_ns
+                    payload = png_path.read_bytes()
+                    second = metadata_path.read_bytes()
+                    final_png_stamp = png_path.stat().st_mtime_ns
+                except OSError as exc:
+                    # Windows atomic publisher replacement can briefly deny a
+                    # read/stat; CRT may expose only errno13 on Windows. Retry within
+                    # the existing 12-attempt budget; never reuse cached frames.
+                    if not _publication_sharing_error(exc):
+                        raise
+                    time.sleep(.01)
+                    continue
+                # Publisher replaces PNG before replacing metadata. Do not use
+                # a PNG known to be newer than its metadata publication.
+                if first != second or png_stamp != final_png_stamp or png_stamp > metadata_stamp:
+                    time.sleep(.01)
+                    continue
+                data = json.loads(second)
+                wall = datetime.datetime.now(datetime.timezone.utc).timestamp()
+                monotonic = time.monotonic()
+                counters, latest = {}, {}
+                with Image.open(io.BytesIO(payload)) as raw:
+                    if raw.format != 'PNG' or raw.size != (400, 480):
+                        raise ValueError('Live combined image must be a 400x480 PNG')
+                    both = raw.convert('RGB')
+                for screen, box in (('top', (0, 0, 400, 240)), ('bottom', (40, 240, 360, 480))):
+                    item = data[screen]
+                    stamp = datetime.datetime.fromisoformat(item['received_utc'])
+                    if stamp.tzinfo is None:
+                        raise ValueError('Live receive timestamp requires a timezone')
+                    age = wall - stamp.timestamp()
+                    if not 0 <= age <= 1:
+                        raise RuntimeError('Live ' + screen + ' frame stale or from the future')
+                    counter, frame_id = item['counter'], item['frame_id']
+                    if not isinstance(counter, int) or isinstance(counter, bool) or counter < 1:
+                        raise ValueError('Invalid live frame counter')
+                    if not isinstance(frame_id, int) or isinstance(frame_id, bool) or not 0 <= frame_id <= 255:
+                        raise ValueError('Invalid live frame id')
+                    counters[screen] = counter
+                    latest[screen] = (both.crop(box), monotonic - age, frame_id)
+                self.error = None
+                return counters, latest
+            raise RuntimeError('Live publication kept racing; no coherent snapshot')
+        except (OSError, ValueError, RuntimeError, KeyError, TypeError) as exc:
+            self.error = str(exc) or type(exc).__name__
+            raise RuntimeError(self.error) from exc
+
+    def close(self):
+        pass
 
 
 def ftp_ready(host, bind):
@@ -221,6 +298,8 @@ def main(argv=None):
     parser.add_argument('--config', required=True, type=Path)
     parser.add_argument('--target', required=True)
     parser.add_argument('--output', required=True, type=Path)
+    parser.add_argument('--live-dir', type=Path,
+                        help='Read existing recorder frames.json/both.png; open no video receiver')
     args = parser.parse_args(argv)
     config = json.loads(args.config.read_text())
     if args.target not in config['states'] or args.target not in config['routes']:
@@ -228,7 +307,8 @@ def main(argv=None):
     args.output.mkdir(parents=True, exist_ok=False)
     frames = None
     try:
-        frames = Frames(config['host'], config['bind'])
+        frames = (PublishedFrames(args.live_dir) if args.live_dir is not None
+                  else Frames(config['host'], config['bind']))
         report = navigate(config, args.config.parent, args.target, frames, args.output,
                           lambda buttons, duration, evidence: luma_input.send_action(
                               config['host'], buttons, duration, evidence, config['bind']),
