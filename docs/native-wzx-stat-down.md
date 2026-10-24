@@ -148,3 +148,18 @@ partitioned time, audio/error/pause cleanup and GPU-busy cancellation. These
 checks do not establish physical rendering, original target sorting, shared
 RNG, original sound release-tail fidelity or complete Tail Whip/Growl coverage.
 Red Attack-down special0x27 remains unsupported.
+
+## Physical green Defense-down checkpoint
+
+The [2026-10-23 normal-source 5b checkpoint](evidence/stat-down-hardware-2026-10-23/README.md)
+shows Tail Whip B followed by green/cyan streaks and green actor modulation on
+Umbreon and Espeon, then visible return to each actor's normal color. It also
+records Growl A, WIN, field return, reentry/cancel and HBL/FTPD exit, with renderer
+recovery overlays disclosed. The independent trace audit records target 0/1 completion at 118000/180000 units,
+each 369 emitted/232 peak particles and 1772 cosmetic draws, audio FINISHED and
+color/camera restoration. Both preview guards/save bytes are unchanged.
+Modulo-idle continuity is source/host-qualified rather than directly
+measured per-actor hardware clocks. Original Defense-down comparison is 84/revise
+(category match), with camera/phase/RNG/aspect mismatch; there is no verified
+original Growl reference, audible proof or retail-performance acceptance. Red
+Attack-down and seven remaining move presentations remain unsupported.
