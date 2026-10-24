@@ -101,6 +101,7 @@ int c3_battle_preview_scene_run(const C3BattleRequest *request,FILE *trace)
     C3BattlePreview *battle=calloc(1,sizeof *battle);C3BattleInitTables init;C3BattlePreviewTables tables;
     C3BattlePreviewMenu menu;C3N3dsInput input={0};char error[192]={0};int result=0,dirty=1;
     C3BattleStage *stage=calloc(1,sizeof *stage);
+    int failure_logged=0;
     PrintConsole scratch={0};PrintConsole *bottom=consoleSelect(&scratch);consoleSelect(bottom);
     int released=0;uint64_t previous_time=c3_n3ds_active_time_us();
     c3_battle_preview_menu_init(&menu);
@@ -138,7 +139,10 @@ int c3_battle_preview_scene_run(const C3BattleRequest *request,FILE *trace)
         uint64_t now=c3_n3ds_active_time_us();uint64_t delta=(now-previous_time)/1000u;previous_time+=delta*1000u;
         uint32_t ms=delta>UINT32_MAX?UINT32_MAX:(uint32_t)delta;
         if(!input.held)released=1;
-        if(error[0]){if(released&&(input.pressed&(C3_PAD_B|C3_PAD_X)))break;}
+        if(error[0]){
+            if(trace&&!failure_logged){fprintf(trace,"preview_runtime_failed error=%s\n",error);fflush(trace);failure_logged=1;}
+            if(released&&(input.pressed&(C3_PAD_B|C3_PAD_X)))break;
+        }
         else{
             uint64_t sample_start=c3_n3ds_time_us();
             if(!c3_battle_stage_step(stage,ms,error,sizeof error))dirty=1;
@@ -186,10 +190,13 @@ int c3_battle_preview_scene_run(const C3BattleRequest *request,FILE *trace)
                         (unsigned long)stats.vertices_prepared,(unsigned long)stats.cached_models,
                         (unsigned long)stats.command_words,(unsigned long)stats.particle_command_words,(unsigned long)stats.command_capacity_words);
                     c3_n3ds_log_memory(trace,"battle_render");fflush(trace);metric_time=now;
+                    uint32_t particle_peak=stage->particles.peak_particles;
+                    if(stage->confusion_damage_particles&&stage->confusion_damage_particles->peak_particles>particle_peak)
+                        particle_peak=stage->confusion_damage_particles->peak_particles;
                     fprintf(trace,"battle_frame sample_clock_cpu_us=%llu sample_clock_peak_us=%llu full_cpu_frame_us=%llu full_cpu_peak_us=%llu interval_frames=%u particles=%lu particle_vertices=%lu particle_live_peak=%lu\n",
                         (unsigned long long)sample_cpu_us,(unsigned long long)sample_cpu_peak_us,
                         (unsigned long long)full_frame_us,(unsigned long long)full_frame_peak_us,interval_frames,
-                        (unsigned long)stats.particles,(unsigned long)stats.particle_vertices,(unsigned long)stage->particles.peak_particles);
+                        (unsigned long)stats.particles,(unsigned long)stats.particle_vertices,(unsigned long)particle_peak);
                     sample_cpu_peak_us=full_frame_peak_us=0;interval_frames=0;
                     c3_battle_audio_player_trace(trace,"battle_render");
                 }

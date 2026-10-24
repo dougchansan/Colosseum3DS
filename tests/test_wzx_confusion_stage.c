@@ -17,8 +17,9 @@ int c3_stage_renderer_set_modulation(size_t i,const uint8_t rgb[3]){assert(i<cou
 int c3_stage_renderer_particle_pack(const C3ParticlePack *p,char *e,size_t n){(void)e;(void)n;assert(p&&p->texture_count);return C3_RENDER_OK;}
 int c3_stage_renderer_particles(const C3ParticleSystem *s,const float a[12]){if(s){assert(a);++particles_bound;}return 1;}
 static unsigned cues[4];
-static int sound(uint32_t serial,uint32_t id,char *e,size_t n){(void)e;(void)n;assert(serial>last_cue);last_cue=serial;unsigned i=id==0x443?0:id==0xE9?1:id==0x472?2:3;assert(id==0x443||id==0xE9||id==0x472||id==0x473);++cues[i];++reflect_audio;return 1;}
-static int done(uint32_t serial,uint32_t id,char *e,size_t n){(void)e;(void)n;(void)id;assert(serial&&serial<=last_cue);return !audio_hold;}
+static uint32_t emitted_sound[128];
+static int sound(uint32_t serial,uint32_t id,char *e,size_t n){(void)e;(void)n;assert(serial>last_cue);last_cue=serial;assert(serial<128);emitted_sound[serial]=id;unsigned i=id==0x443?0:id==0xE9?1:id==0x472?2:3;assert(id==0x443||id==0xE9||id==0x472||id==0x473);++cues[i];++reflect_audio;return 1;}
+static int done(uint32_t serial,uint32_t id,char *e,size_t n){assert(serial&&serial<=last_cue);if(emitted_sound[serial]!=id){snprintf(e,n,"Audio completion cue identity unknown: serial%u emitted%u requested%u",serial,emitted_sound[serial],id);fprintf(stderr,"%s\n",e);return -1;}return !audio_hold;}
 bool c3_stage_renderer_try_shutdown(void){return !busy;}
 int c3_stage_renderer_draw(const C3Title *const *m,size_t n,const C3TitleCamera *c,float f,C3TitleRenderStats *st,char *e,size_t z){(void)m;(void)n;(void)c;(void)f;(void)st;(void)e;(void)z;return 0;}
 
@@ -60,18 +61,18 @@ static void partitions(C3BattleStage *base)
  free(reference);last_cue=0;reflect_audio=0;memset(cues,0,sizeof cues);
 }
 int main(int argc,char **argv){assert(argc>=2&&argc<=5);C3BattleStage *s=calloc(1,sizeof *s);assert(s);char e[192];uint16_t hp[4]={80,75,50,50};
- if(!c3_battle_stage_load(s,argv[1],hp,stdout,e,sizeof e)){puts(e);return 1;}assert(s->confusion_available&&s->confusion_camera_available);s->sound_cue=sound;s->sound_done=done;follow(s);partitions(s);
+ if(!c3_battle_stage_load(s,argv[1],hp,stdout,e,sizeof e)){puts(e);return 1;}assert(s->confusion_available);s->sound_cue=sound;s->sound_done=done;follow(s);partitions(s);
  C3TitleCamera inherited=s->camera;C3BattleCamera bite_before=s->source_camera;
  for(unsigned target=2;target<4;++target){submit(s,target,1);unsigned before=reflect_audio;audio_hold=1;assert(c3_battle_stage_step(s,0,e,sizeof e));assert(s->confusion_active&&!s->confusion_particles_started);
- assert(s->confusion_camera.active&&s->confusion_camera.owner==1&&s->confusion_camera.target==target&&s->confusion_camera.units==0&&s->confusion_camera.track_delay==0);assert(!memcmp(s->confusion_camera.origin,s->transforms[s->confusion_owner],3*sizeof(float)));assert(s->confusion_camera.motion==2||s->confusion_camera.motion==3);if(s->confusion_camera.motion==3)assert(s->confusion_camera.yaw_start==s->confusion_camera.yaw_end);
+ if(s->confusion_camera_available){assert(s->confusion_camera.active&&s->confusion_camera.owner==1&&s->confusion_camera.target==target&&s->confusion_camera.units==0&&s->confusion_camera.track_delay==0);assert(!memcmp(s->confusion_camera.origin,s->transforms[s->confusion_owner],3*sizeof(float)));assert(s->confusion_camera.motion==2||s->confusion_camera.motion==3);if(s->confusion_camera.motion==3)assert(s->confusion_camera.yaw_start==s->confusion_camera.yaw_end);}
  C3BattleCamera paused_camera=s->confusion_camera;
- uint64_t units=s->confusion_units;s->presentation.paused=1;assert(c3_battle_stage_step(s,4000,e,sizeof e)&&units==s->confusion_units);paused_camera.paused=1;assert(!memcmp(&paused_camera,&s->confusion_camera,sizeof paused_camera));s->presentation.paused=0;
+ uint64_t units=s->confusion_units;s->presentation.paused=1;assert(c3_battle_stage_step(s,4000,e,sizeof e)&&units==s->confusion_units);if(s->confusion_camera_available){paused_camera.paused=1;assert(!memcmp(&paused_camera,&s->confusion_camera,sizeof paused_camera));}s->presentation.paused=0;
  for(unsigned i=0;i<300;++i){if(!c3_battle_stage_step(s,17,e,sizeof e)){puts(e);assert(0);}}
  assert(s->confusion_active&&!s->confusion_phase&&reflect_audio==before+1&&s->presentation.hp[target]==50);audio_hold=0;
  unsigned roots=0,type12=0,hp_gate=0;
  for(unsigned i=0;i<1000&&s->presentation.cursor<s->presentation.count;++i){if(!c3_battle_stage_step(s,17,e,sizeof e)){puts(e);assert(0);}
   type12+=s->confusion_type12.active;hp_gate+=s->confusion_hp_gate;
-  if(s->confusion_phase){assert(s->confusion_camera.active||!s->confusion_active);if(s->confusion_camera.active){assert(s->confusion_camera.owner==target&&s->confusion_camera.target==1&&s->confusion_camera.units==s->confusion_units&&s->confusion_camera.track_delay==44);assert(s->confusion_camera.dynamic_fov&&isfinite(s->camera.fov_y_degrees)&&s->camera.fov_y_degrees>=15&&s->camera.fov_y_degrees<=85);assert(!memcmp(s->confusion_camera.origin,s->transforms[s->confusion_target],3*sizeof(float)));}unsigned count=0;for(unsigned j=0;j<5;++j)count+=s->confusion_roots[j]!=0;if(count>roots)roots=count;
+  if(s->confusion_phase){if(s->confusion_camera_available)assert(s->confusion_camera.active||!s->confusion_active);if(s->confusion_camera.active){assert(s->confusion_camera.owner==target&&s->confusion_camera.target==1&&s->confusion_camera.units==s->confusion_units&&s->confusion_camera.track_delay==44);assert(s->confusion_camera.dynamic_fov&&isfinite(s->camera.fov_y_degrees)&&s->camera.fov_y_degrees>=15&&s->camera.fov_y_degrees<=85);assert(!memcmp(s->confusion_camera.origin,s->transforms[s->confusion_target],3*sizeof(float)));}unsigned count=0;for(unsigned j=0;j<5;++j)count+=s->confusion_roots[j]!=0;if(count>roots)roots=count;
    if(s->confusion_units<44000)assert(s->presentation.hp[target]==50);
   }
   for(unsigned j=0;j<s->count;++j)if(enabled[j])assert(s->slots[j]==UINT32_MAX);
@@ -79,7 +80,7 @@ int main(int argc,char **argv){assert(argc>=2&&argc<=5);C3BattleStage *s=calloc(
  assert(roots==5&&type12&&hp_gate&&!s->confusion_active&&s->presentation.cursor==s->presentation.count);assert(reflect_audio==before+4&&s->confusion_damage_particles->emitted==738&&s->confusion_damage_particles->cosmetic_draws==3302);assert(!s->presentation.visible[target]);assert(!s->confusion_camera.active&&!memcmp(&s->camera,&inherited,sizeof inherited));assert(!memcmp(&s->source_camera,&bite_before,sizeof bite_before));
  }
  submit(s,2,0);unsigned before=reflect_audio;for(unsigned i=0;i<300;++i){if(!c3_battle_stage_step(s,17,e,sizeof e)){puts(e);assert(0);}}assert(!s->confusion_active&&!s->confusion_hit&&reflect_audio==before+1);
- submit(s,2,1);assert(c3_battle_stage_step(s,17,e,sizeof e));busy=1;assert(!c3_battle_stage_close(s)&&!s->confusion_active&&s->confusion_program.bytes&&!s->confusion_camera.active&&s->confusion_camera_program.samples&&!memcmp(&s->camera,&inherited,sizeof inherited));busy=0;assert(c3_battle_stage_close(s)&&!s->confusion_program.bytes);free(s);
+ submit(s,2,1);assert(c3_battle_stage_step(s,17,e,sizeof e));busy=1;assert(!c3_battle_stage_close(s)&&!s->confusion_active&&s->confusion_program.bytes&&!s->confusion_camera.active&&(!s->confusion_camera_available||s->confusion_camera_program.samples)&&!memcmp(&s->camera,&inherited,sizeof inherited));busy=0;assert(c3_battle_stage_close(s)&&!s->confusion_program.bytes);free(s);
  if(argc>=3){C3BattleStage *bad=calloc(1,sizeof *bad);assert(bad);assert(!c3_battle_stage_load(bad,argv[2],hp,NULL,e,sizeof e));assert(!bad->confusion_bytes[0]&&!bad->confusion_bytes[1]&&!bad->confusion_damage_particles);assert(c3_battle_stage_close(bad)&&c3_battle_stage_close(bad));free(bad);}
  if(argc>=4){C3BattleStage *bad=calloc(1,sizeof *bad);assert(bad);assert(!c3_battle_stage_load(bad,argv[3],hp,NULL,e,sizeof e));assert(c3_battle_stage_close(bad)&&c3_battle_stage_close(bad));free(bad);}
  if(argc>=5){C3BattleStage *optional=calloc(1,sizeof *optional);assert(optional);assert(c3_battle_stage_load(optional,argv[4],hp,NULL,e,sizeof e)&&optional->confusion_available&&!optional->confusion_camera_available);assert(c3_battle_stage_close(optional));free(optional);}

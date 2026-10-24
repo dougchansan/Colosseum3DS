@@ -38,7 +38,8 @@ def application_failures(log):
     """The app can return an error while the emulator keeps producing frames."""
     lines = [line for line in log.splitlines()
              if re.match(r"(?:boot|field)_end result=-\d+(?:\s|$)", line)
-             or line.startswith("game_save status=failed ")]
+             or line.startswith("game_save status=failed ")
+             or line.startswith("preview_runtime_failed ")]
     return {"count": len(lines), "lines": lines[:32], "truncated": len(lines) > 32}
 
 def digest(path):

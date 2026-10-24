@@ -171,7 +171,10 @@ static int confusion_step(C3BattleStage *s,uint32_t ms,char *e,size_t n)
             if(s->trace){fprintf(s->trace,"wzx_confusion_particle phase=%u key=%lu tick=%lu units=%llu root=%lu flags=%04lx attachment=%s owner=%lu part=%u center=%.6f,%.6f,%.6f handle=%lu\n",phase,(unsigned long)q->key,(unsigned long)q->start,(unsigned long long)s->confusion_units,(unsigned long)q->resource[0],(unsigned long)q->resource[1],phase?"follow":"one_shot",(unsigned long)s->slots[owner],phase?53u:62u,(double)(pos[0]*.1f),(double)(pos[1]*.1f),(double)(pos[2]*.1f),(unsigned long)handle);fflush(s->trace);}
         }else if(q->kind==4&&q->resource[0]==12){float pos[3];if(!confusion_position(s,1,pos,e,n)||!c3_confusion_type12_begin(&s->confusion_type12,&s->confusion_mask.phase[phase],s->slots[owner],phase?1:s->slots[s->confusion_target],q->phase?53:62,pos,e,n))return 0;
             if(s->trace){fprintf(s->trace,"wzx_confusion_type12 phase=%u key=%lu tick=%lu units=%llu owner=%lu part=%u attachment=one_shot center=%.6f,%.6f,%.6f\n",phase,(unsigned long)q->key,(unsigned long)q->start,(unsigned long long)s->confusion_units,(unsigned long)s->slots[owner],phase?53u:62u,(double)pos[0],(double)pos[1],(double)pos[2]);fflush(s->trace);}
-        }else if(q->kind==5){unsigned index=0;while(index<4&&s->confusion_cues[index])++index;
+        }else if(q->kind==5){unsigned index=0;
+            /* Cue IDs increase in crossed-time order; slots identify source
+             * nodes. Damage node order differs from launch order (472 before E9). */
+            for(unsigned j=0;j<i;++j)if(s->confusion_program.nodes[j].phase==phase&&s->confusion_program.nodes[j].kind==5)++index;
             if(index==4||s->cue_serial==UINT32_MAX)return fail(e,n,"Confusion audio cue identity exhausted.");
             uint32_t cue=++s->cue_serial;if(!s->sound_cue(cue,q->resource[0],e,n))return 0;s->confusion_cues[index]=cue;
             if(s->trace){fprintf(s->trace,"wzx_confusion_sound phase=%u key=%lu tick=%lu sound=%lu cue=%lu event=%lu\n",phase,(unsigned long)q->key,(unsigned long)q->start,(unsigned long)q->resource[0],(unsigned long)cue,(unsigned long)s->confusion_event);fflush(s->trace);}
