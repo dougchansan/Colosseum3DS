@@ -3,7 +3,10 @@
 The optional native path executes the admitted encounter-10 Tail Whip model,
 yaw controller, center-null attachment, procedural camera and selected dry sound.
 Host fixtures qualify decoding and stage coordination, including both Zigzagoon.
-Physical execution and retail audiovisual parity remain unqualified. No game
+Normal build `5539f43fa3a6` has a [physical checkpoint](evidence/tail-whip-hardware-2026-10-23/README.md):
+Tail Whip on B, source sound completion, WIN, return/re-entry/cancel and clean
+exit with NTR active. Save and live-body guards are unchanged. Retail
+audiovisual parity and full-speed performance remain unqualified. No game
 bytes belong in Git. Existing actor/arena packs are reused.
 
 `tools/prepare_wzx_tail_whip.py` checks the GC6E01 disc, parser and source pins

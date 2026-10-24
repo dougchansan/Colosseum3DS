@@ -30,8 +30,10 @@ Bindings below were read from the admitted GC6E01 revision-0 common REL
 
 The optional [Tail Whip path](native-wzx-tail-whip.md) additionally implements
 the admitted Zigzagoon controller/model, center-null attachment, source camera
-and selected dry sound. Its decoding/stage fixtures pass; it is not covered by
-the e996 hardware checkpoint. Tackle, Growl, Return, Secret Power, Taunt, Snatch,
+and selected dry sound. Its decoding/stage fixtures pass. A separate
+[5539 hardware checkpoint](evidence/tail-whip-hardware-2026-10-23/README.md)
+qualifies Tail Whip on B, WIN, lifecycle and state preservation; the earlier
+e996 checkpoint does not cover it. Tackle, Growl, Return, Secret Power, Taunt, Snatch,
 Helping Hand and Struggle retain incomplete original-effect presentation.
 
 ## Move bindings
