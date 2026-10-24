@@ -330,7 +330,9 @@ int c3_battle_stage_step(C3BattleStage *s,uint32_t ms,char *error,size_t cap)
                 if(s->tail_available&&i==s->tail_model)continue;
                 if(s->reflect_available&&i==s->reflect_model)continue;
                 if(s->bite_available&&i==s->bite_model)continue;
-                if(s->damage_available&&(i==s->damage_model||(s->damage_hit&&i==s->damage_owner)))continue;
+                /* A committed hit marker survives the effect; only an active damage
+                 * sequence owns this actor clock. Later FAINT must await its clip. */
+                if(s->damage_available&&(i==s->damage_model||(s->damage.active&&i==s->damage_owner)))continue;
                 if(s->clips[i]!=s->roles[i][0]&&s->clocks[i]*m->fps<(float)m->clips[s->clips[i]].frame_count)active=1;
             }
             if(!active)c3_battle_presentation_wait(&s->presentation,0);

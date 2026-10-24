@@ -131,3 +131,21 @@ stage may keep advancing its empty particle clock while waiting for the owner
 minimum. Display mutates source order, so this is not a whole-pool attribute or
 pixel parity claim across display cadences. Actual visible POINT and quad
 geometry and texture poses are checked through production geometry kernels.
+
+
+### Sequential preview lifecycle regression
+
+A completed Bite leaves its committed-hit marker available for matching later
+HP events. That marker must not exempt the former damage owner from a later
+FAINT animation wait. The generic stage now delegates that owner clock only
+while the damage resource is active; after it finishes, the authored faint
+clip remains the barrier before the model becomes hidden and its source owner
+is treated as released.
+
+The actual-resource regression submits Bite with lethal HP, FAINT, Confusion
+against the survivor, and then the surviving Zigzagoon's Tackle in one
+continuous committed event batch. It exercises either defeated enemy slot,
+checks the real faint clip completed before hiding, and then reaches Tackle
+ResetExcept without manually supplying a completed-faint pose. The exact
+previous stage implementation fails the new faint-completion assertion; the
+corrected stage passes. This keeps the narrow released-owner predicate intact.
