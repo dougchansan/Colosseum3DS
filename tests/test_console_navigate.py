@@ -160,6 +160,38 @@ class NavigationTests(unittest.TestCase):
             self.assertEqual(report['status'], 'failed')
             dispatch.assert_not_called()
 
+    def test_calibrated_a_point_two_is_narrow_and_other_hold_limits_remain(self):
+        frames = FakeFrames()
+        self.config['routes']['model']['ftpd'] = {'action': 'A', 'duration': .2,
+                                                  'expected': ['model']}
+        def action(buttons, duration, evidence):
+            self.assertEqual((buttons, duration), (('A',), .2))
+            frames.color = 'blue'
+            return {'status': 'sent'}
+        report = nav.navigate(self.config, self.root, 'model', frames,
+                              self.output, action, Mock())
+        self.assertEqual(report['status'], 'passed')
+        for button in nav.ACTIONS:
+            if button == 'A':
+                continue
+            with self.subTest(button=button, duration=.2):
+                self.config['routes']['model']['ftpd'] = {
+                    'action': button, 'duration': .2, 'expected': ['model']}
+                send = Mock()
+                report = nav.navigate(self.config, self.root, 'model', FakeFrames(),
+                                      self.output, send, Mock())
+                self.assertEqual(report['status'], 'failed')
+                send.assert_not_called()
+        for button, duration in [('A', .4), ('HOME', .4), ('LEFT', .4), ('A', .3)]:
+            with self.subTest(button=button, duration=duration):
+                self.config['routes']['model']['ftpd'] = {
+                    'action': button, 'duration': duration, 'expected': ['model']}
+                send = Mock()
+                report = nav.navigate(self.config, self.root, 'model', FakeFrames(),
+                                      self.output, send, Mock())
+                self.assertEqual(report['status'], 'failed')
+                send.assert_not_called()
+
     def test_ftpd_requires_handshake_in_addition_to_new_frames(self):
         self.states['ftpd']['ftp_ready'] = True
         self.states['ftpd']['settle_seconds'] = 0

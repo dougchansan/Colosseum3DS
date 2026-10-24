@@ -244,7 +244,9 @@ def navigate(config, root, target, frames, output, dispatch, readiness):
             if not edge or edge['action'] not in ACTIONS:
                 raise ValueError('No allowed calibrated route from ' + state)
             duration = edge.get('duration', 0.15)
-            if duration not in (0.1, 0.15, 0.4) or (duration == 0.4 and edge['action'] != 'DOWN'):
+            if (duration not in (0.1, 0.15, 0.2, 0.4) or
+                    (duration == 0.2 and edge['action'] != 'A') or
+                    (duration == 0.4 and edge['action'] != 'DOWN')):
                 raise ValueError('Unsupported action duration')
             expected = edge['expected']
             if not expected or any(name not in config['states'] for name in expected):

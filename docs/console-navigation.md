@@ -15,7 +15,11 @@ python tools/console_navigate.py --config navigation.json --target target-state 
 
 By default, `Frames` owns a UDP8001 receiver for an already active NTR stream.
 It does not send a TCP8000 video-start command. Its receiver, classification,
-route limits and action durations are unchanged.
+route limits are unchanged. The admitted holds are0.1/0.15 seconds for existing
+actions,0.4 seconds only for DOWN, and0.2 seconds only for A. The narrow A0.2
+addition comes from the actual nine-action Willie dialogue calibration used on
+5b hardware; it does not admit0.2-second directional/HOME actions or a general
+hold range.
 
 When an existing recorder already owns the video receiver, reuse its publication:
 
@@ -37,7 +41,7 @@ Both sources implement `snapshot()`, `error` and `close()`. The existing
 unique match, and a subsequent counter rise after the candidate snapshot. Existing
 state settling, 12-second transition waits, 90-second overall limit and 13-state
 iteration bound are preserved. This option does not admit private longer or
-move-specific routes, different key holds, or arbitrary resume points.
+move-specific routes, uncalibrated key holds, or arbitrary resume points.
 
 ## Publication contract
 
