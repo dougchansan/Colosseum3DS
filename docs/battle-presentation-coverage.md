@@ -28,6 +28,12 @@ Bindings below were read from the admitted GC6E01 revision-0 common REL
 (SHA-1 `870e8b9693ca780782d80f22a6a4572d8ba9458f`). Source contract:
 `51bfe4314a218dfaf9592fc80723c50498d0ee55`.
 
+The optional [Tail Whip path](native-wzx-tail-whip.md) additionally implements
+the admitted Zigzagoon controller/model, center-null attachment, source camera
+and selected dry sound. Its decoding/stage fixtures pass; it is not covered by
+the e996 hardware checkpoint. Tackle, Growl, Return, Secret Power, Taunt, Snatch,
+Helping Hand and Struggle retain incomplete original-effect presentation.
+
 ## Move bindings
 
 Move rows start at REL file offset `0x184C + 0x11C7C4`, stride 56.

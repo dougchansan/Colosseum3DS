@@ -26,6 +26,10 @@ RATE = 32000
 MAX_FRAMES = RATE * 10
 SINE_TABLE_ADDRESS = 0x80369D20
 SINE_TABLE_SHA256 = 'aeab0f3fd8f52860e77db653864b644271098f6a827d303674502861f55824b3'
+TAIL_WHIP_MACROS = {
+    0x402: '9116a23659a4d0e46a9efa1972118cb3dd8c8a8f73697a236e4bee43f1e3c4af',
+    0x401: '1284da98a5ab921666c3a3132abe5d8053a8fc816eb52123ad779f097245018c',
+}
 SOURCE_FILES = {
     'src/musyx/runtime/synthmacros.c': '0b45497b7761c23f52c6a0c0567258b5c5876d3c85c850c8ddbfb6c53d6c43c6',
     'src/musyx/runtime/synth.c': '43991b47e4c75dbc387708b2308085b0716c41d4e1a11da8b965c16bbdc8f473',
@@ -147,7 +151,7 @@ def decode_adpcm(data, frames, coefficients):
 
 
 def resolve_layers(table, macro, *, key=60, volume=127, start_ms=0, depth=0, stack=()):
-    """Reached Bite macros only; stop sample-end waits, preserve child starts.
+    """Selected reviewed battle macros; stop sample-end waits, preserve child starts.
 
     Priority/age and zero reverb-controller selection are recorded, with no
     audible synthesis side effect in this dry conversion. No unknown no-ops.
@@ -362,7 +366,30 @@ def encode_pack(cues):
     return header + bytes(32) + body
 
 
-def prepare(disc, output, confusion=False):
+def selected_sounds(confusion=False, tail_whip=False):
+    if tail_whip and not confusion:
+        raise ValueError('Tail Whip requires --confusion to extend the seven-cue bundle')
+    sounds = (0x85, 0x86, 0x220, 0x443, 0xE9, 0x472, 0x473) if confusion else (0x85, 0x86, 0x220)
+    return sounds + ((0x1DB,) if tail_whip else ())
+
+
+def verify_tail_whip_binding(row, effect, table):
+    if len(row) != 12:
+        raise ValueError('Tail Whip sound record extent differs from admitted source')
+    if (row[0], row[1], be16(row, 4), effect['macro'], effect['volume'], effect['pan'], effect['key']) != \
+            (0x80, 5, 0x24E, 0x402, 127, 64, 60):
+        raise ValueError('Tail Whip sound/FX/macro binding differs from admitted source')
+    records = []
+    for macro, expected in TAIL_WHIP_MACROS.items():
+        if macro not in table or hashlib.sha256(table[macro][1]).hexdigest() != expected:
+            raise ValueError('Tail Whip macro body differs from admitted source')
+        records.append({'macro': macro, 'pool_offset': table[macro][0],
+                        'bytes': len(table[macro][1]), 'sha256': expected})
+    return records
+
+
+def prepare(disc, output, confusion=False, tail_whip=False):
+    sounds = selected_sounds(confusion, tail_whip)
     disc = verify_disc(disc)
     root = Path(__file__).resolve().parents[1]
     for name, digest in SOURCE_FILES.items():
@@ -401,7 +428,7 @@ def prepare(disc, output, confusion=False):
     if confusion:
         report['vibrato_sine_table'] = {'dol_address': SINE_TABLE_ADDRESS, 'bytes': 2048,
                                       'sha256': SINE_TABLE_SHA256, 'entries': 1024}
-    for sound in ((0x85, 0x86, 0x220, 0x443, 0xE9, 0x472, 0x473) if confusion else (0x85, 0x86, 0x220)):
+    for sound in sounds:
         row = extent(rel, 0x13FE08 + sound * 12, 12)
         if row[0] != 0x80 or row[1] != 5:
             raise ValueError('Sound request no longer resolves to battle bank5')
@@ -409,6 +436,9 @@ def prepare(disc, output, confusion=False):
         if identity not in fx:
             raise ValueError('Missing mapped FX ID')
         effect = fx[identity]
+        if sound == 0x1DB:
+            report['tail_whip_binding'] = {'sound_id': sound, 'fx_id': identity,
+                'root_macro': effect['macro'], 'macros': verify_tail_whip_binding(row, effect, macro_table)}
         layers = resolve_layers(macro_table, effect['macro'], key=effect['key'], volume=effect['volume'])
         pcm, clipped = render_layers(layers, sdir, samples, sine)
         cues.append((sound, pcm))
@@ -432,6 +462,7 @@ if __name__ == '__main__':
     parser.add_argument('--disc', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--confusion', action='store_true', help='Include the four source Confusion requests; fail closed on unsupported macro branches')
+    parser.add_argument('--tail-whip', action='store_true', help='Extend --confusion with admitted Tail Whip request 0x1DB; defaults stay unchanged')
     args = parser.parse_args()
-    report = prepare(args.disc, args.output, args.confusion)
+    report = prepare(args.disc, args.output, args.confusion, args.tail_whip)
     print('Prepared source-derived dry SFX: ' + ', '.join('%04x' % x['sound_id'] for x in report['cues']))

@@ -9,6 +9,7 @@
 #include "colosseum3ds/wzx_confusion_sequence.h"
 #include "colosseum3ds/wzx_confusion.h"
 #include "colosseum3ds/battle_camera.h"
+#include "colosseum3ds/wzx_tail_whip.h"
 #define C3_BATTLE_STAGE_MODELS 16u
 typedef struct {
     C3Title models[C3_BATTLE_STAGE_MODELS];
@@ -59,6 +60,12 @@ typedef struct {
     uint8_t confusion_available, confusion_active, confusion_phase;
     uint8_t confusion_pending, confusion_hit, confusion_hp_gate;
     uint8_t confusion_particles_started, confusion_floor_enabled, confusion_floor_rgb[3];
+    C3WzxTailWhipProgram tail_program;
+    C3WzxTailWhip tail;
+    C3BattleCameraProgram tail_camera_program;
+    C3BattleCamera tail_camera;
+    uint32_t tail_model, tail_owner, tail_cue, tail_event;
+    uint8_t tail_available, tail_camera_available;
     int (*sound_done)(uint32_t,uint32_t,char *,size_t);
     int (*sound_cue)(uint32_t,uint32_t,char *,size_t);
     char error[192];

@@ -135,3 +135,60 @@ The three-cue pack SHA-256 is
 The original85/86 PCM and WAV hashes above remain unchanged. Reflect sound is
 prepared/playable through the same cue API; Reflect sequence integration and
 physical audible acceptance remain separate gates.
+
+## Optional Tail Whip eighth cue
+
+Tail Whip remains an explicit extension: `--tail-whip` requires `--confusion`
+and appends game request `0x1DB` to the seven-cue bundle. Running without either
+option still prepares the existing three Bite/Reflect cues; `--confusion`
+alone still prepares its existing seven cues. Neither default silently changes.
+
+The admitted Tail Whip attack root is `wzx_shippowofuru_attack.fsys`, group
+`0x3A9`, member `0x07332000`. Its kind-5 sound node key 3 is at member offset
+`0x21EC0`, payload `0x21F30`, source words `[0x1DB,3,0]`, normalized start 0 and
+flags 1. This identifies the request, not a fabricated audio or owner-lifetime
+gate. The WZX owner minimum and sound completion remain separate runtime work.
+
+The original common REL sound row at data `0x13FE08 + 0x1DB*12` selects bank 5,
+FX `0x24E`, root macro `0x402`. The converter checks that numeric binding,
+centered FX pan/key/volume and the full admitted macro-body hashes before
+rendering:
+
+| Macro | Pool entry offset | Body bytes | Body SHA-256 |
+| --- | ---: | ---: | --- |
+| `0x402` root | 123104 | 80 | `9116a23659a4d0e46a9efa1972118cb3dd8c8a8f73697a236e4bee43f1e3c4af` |
+| `0x401` child | 123192 | 72 | `1284da98a5ab921666c3a3132abe5d8053a8fc816eb52123ad779f097245018c` |
+
+The root starts the child immediately. Child `0x401` uses source sample `0x59`,
+key 40, volume 127 and vibrato of two keys plus 15 cents over 250 ms. Root
+`0x402` uses source sample `0x7B`, key 53 and volume 114. Both begin at 0 ms.
+The reached closure uses the existing child/controller/key/sample/wait/vibrato
+subset; no new opcode or synthetic waveform was introduced. Sample-end waits
+bound this dry conversion; it is not execution of the complete MusyX voice
+and post-sample macro lifecycle. Unsupported source drift still fails closed.
+
+```powershell
+python tools/prepare_battle_audio.py --disc G:/gamecube-decomp/disc-extract-dump --confusion --tail-whip --output C:/Colosseum3DS-pr7-captures/tail-whip-audio-new
+```
+
+Actual private preparation at `tail-whip-audio-v1` produced `audio.c3u`,
+1,314,734 bytes, SHA-256
+`28fbba0bccf95ae04c9fe76339a10cb73def4f17d24f48ac3a38b770d736a960`
+and SHA-1 `b7c2e0ffc4c5c5e5c616d682f0f36801223abad1`.
+All seven prior cue PCM payloads are byte-identical to the admitted seven-cue
+baseline; adding a descriptor changes pack offsets/checksum, not those samples.
+
+Tail Whip is 92,279 mono frames at 32,000 Hz (2.88371875 seconds), PCM SHA-256
+`40a877ee45ee811fc1f8f383bc32679a2f36c3f0078860e1db0c0361b4d2924d`;
+`sound_01db.wav` SHA-256 is
+`5490b576217db83bd3ead74487a6bc701d5049b846cd06c33d56897259dbdb36`.
+The dry summed output clips 1,083 frames. Original mixer gain/envelopes, DSP
+SRC/pitch-table precision, within-job vibrato phase, reverb and retail audible
+fidelity remain unqualified. These byte identities prove preparation, not
+native Tail Whip integration, audible playback or hardware acceptance.
+
+Synthetic tests cover opt-in selection, unchanged defaults, the eight-cue
+bound and rejection of altered mapping/macro bodies. Optional private-pack
+regressions use `C3_AUDIO_BASELINE_PACK` and `C3_AUDIO_TAIL_WHIP_PACK` to compare
+all seven old payloads and the actual new PCM digest; without originals those
+checks skip explicitly.

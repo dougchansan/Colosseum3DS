@@ -187,3 +187,7 @@ These pose mappings alone do not qualify original WZX effects, particles, camera
 sequences, support visuals or audio playback. The separate bounded Bite,
 Reflect and Confusion implementations qualify only their documented resource
 and execution slices; the other moves and full retail presentation remain open.
+
+The optional [Tail Whip contract](native-wzx-tail-whip.md) reuses these actor and
+arena packs and adds checked controller/model/camera resources plus selected
+sound 0x1DB. Host fixture coverage is separate from physical acceptance.

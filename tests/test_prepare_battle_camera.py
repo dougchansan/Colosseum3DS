@@ -1,6 +1,7 @@
 """Synthetic camera profile/bounds preparation checks; no original asset bytes."""
 import copy
 import hashlib
+import os
 from pathlib import Path
 import struct
 import sys
@@ -61,6 +62,31 @@ class CameraPreparationTests(unittest.TestCase):
         self.assertEqual(b[480:500],hashlib.sha1(b[:480]+bytes(20)+b[500:]).digest())
         changed=bytearray(patterns);changed[0]^=1
         with self.assertRaises(ValueError):camera.encode(p,self.actors(),True,changed)
+
+    def test_tailwhip_header_and_missing_exact_short_table_fail_closed(self):
+        b=bytearray(160);struct.pack_into('>6I',b,112,0,4,0x78,2,5,0)
+        self.assertEqual(camera.profile(b,0x78,0xffffffff,0,0,4)['entry'],0)
+        for offset in (112,116,120,124,128,132,136,159):
+            changed=bytearray(b);changed[offset]^=1
+            with self.subTest(offset=offset):
+                with self.assertRaises(ValueError):camera.profile(changed,0x78,0xffffffff,0,0,4)
+        with self.assertRaises(ValueError):camera.encode_tailwhip([],bytes(608))
+
+    def test_tailwhip_checked_pack_and_negative_bindings(self):
+        path=Path(os.environ.get('C3_TAILWHIP_CAMERA',str(ROOT/'private/tailwhip-camera-v1/tailwhip_camera.c3c')))
+        if not path.exists():self.skipTest('Private TailWhip camera descriptor required')
+        patterns=path.read_bytes()[512:1120]
+        actors=[dict(species=species,selector=-1,minimum=[-3.,0.,-3.],maximum=[3.,10.,3.],timing=[(118,180,98)[i],0,0,0],part=(42,62,53)[i],kind=2,track=[[.1,.2,.3],[.3,.2,.1]]) for i,(species,_,_) in enumerate(camera.ACTORS)]
+        b=camera.encode_tailwhip(actors,patterns)
+        self.assertEqual(b[:4],b'C3TC');self.assertEqual(struct.unpack_from('<I',b,12)[0],39);self.assertEqual(struct.unpack_from('<I',b,24)[0],1);self.assertEqual(b[512:1120],patterns)
+        self.assertEqual(struct.unpack_from('<5I',b,64),(0x78,0xffffffff,0,0,0));self.assertEqual(b[128:192],bytes(64))
+        self.assertEqual(b[480:500],hashlib.sha1(b[:480]+bytes(20)+b[500:]).digest())
+        for key,value in [('selector',0),('species',25),('part',1),('kind',4),('timing',[98,1,0,0]),('track',[[float('nan'),0,0]])]:
+            changed=copy.deepcopy(actors);changed[0][key]=value
+            with self.subTest(key=key):
+                with self.assertRaises(ValueError):camera.encode_tailwhip(changed,patterns)
+        changed=bytearray(patterns);changed[0]^=1
+        with self.assertRaises(ValueError):camera.encode_tailwhip(actors,changed)
 
     def test_source_files_match_exact_pinned_functions(self):
         for name,digest in camera.SOURCE_FILES.items():

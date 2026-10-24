@@ -126,9 +126,56 @@ static void confusion_exercise(const char *path)
     CHECK(!c3_battle_camera_confusion_decode(&p,raw,(size_t)size,error,sizeof error));CHECK(!memcmp(&p,&previous,sizeof p));free(raw);
     c3_battle_camera_close(&p);
 }
+static uint32_t tail_word(uint32_t *s){uint32_t x=*s;x^=x<<13;x^=x>>17;x^=x<<5;return *s=x;}
+static float tail_unit(uint32_t *s){return (float)(tail_word(s)>>8)*(1.f/16777216.f);}
+static C3BattleCameraProgram tail_synthetic(void)
+{
+    static float tracks[6][3]={{.2f,.3f,.1f},{.1f,.4f,.2f},{.2f,.3f,.1f},{.1f,.4f,.2f},{.2f,.3f,.1f},{.1f,.4f,.2f}};
+    C3BattleCameraProgram p=synthetic();p.move_id=39;p.samples=tracks;p.sample_count=6;p.flags[0]=0x78;p.pattern[0]=UINT32_MAX;p.fov_mask[0]=p.entry[0]=p.owner_start[0]=0;p.flags[1]=p.pattern[1]=p.fov_mask[1]=p.entry[1]=p.owner_start[1]=0;
+    for(unsigned i=0;i<3;++i){C3BattleCameraBinding *a=&p.actors[i];memset(a->timing,0,sizeof a->timing);a->timing[0][0]=98;a->animation_kind[0]=2;a->animation_kind[1]=a->part[1]=a->track_count[1]=0;a->track_offset[0]=i*2;a->track_count[0]=2;a->track_offset[1]=i*2+2;}
+    for(unsigned i=0;i<8;++i){float weight=(float[]){.2f,.25f,.2f,.1f,.05f,.05f,.05f,.1f}[i];memcpy(&p.patterns[i][0],&weight,4);p.patterns[i][7]=(unsigned[]){6,4,1,1,1,2,4,1}[i];}
+    return p;
+}
+static void tail_exercise(const C3BattleCameraProgram *p)
+{
+    unsigned motions=0,patterns=0,shortened=0;char error[192];C3BattleCamera a,b,old;
+    for(uint32_t seed=1;seed<=20000;seed+=13){c3_battle_camera_init(&a,seed);CHECK(c3_battle_camera_begin_move(&a,p,39,C3_BATTLE_CAMERA_ATTACK,2,0,actors,&base,error,sizeof error));
+        CHECK(a.motion<4&&a.duration==p->actors[2].timing[0][0]&&!a.dynamic_fov&&a.track_delay==0);motions|=1u<<a.motion;CHECK(a.fov>=15&&a.fov<=85);CHECK(a.camera.near_plane==base.near_plane&&a.camera.far_plane==base.far_plane&&a.camera.aspect==base.aspect);
+        if(a.motion==0){CHECK(a.fov_pattern==UINT32_MAX&&a.motion_duration>=a.duration/2&&a.motion_duration<=a.duration);shortened+=a.motion_duration<a.duration;}
+        else{CHECK(a.fov_pattern<8);patterns|=1u<<a.fov_pattern;}
+        b=a;CHECK(c3_battle_camera_step(&a,1700,actors,error,sizeof error));for(unsigned i=0;i<100;++i)CHECK(c3_battle_camera_step(&b,17,actors,error,sizeof error));CHECK(!memcmp(&a,&b,sizeof a));
+        c3_battle_camera_pause(&a,1);old=a;CHECK(c3_battle_camera_step(&a,UINT32_MAX,actors,error,sizeof error));CHECK(!memcmp(&a,&old,sizeof a));c3_battle_camera_cancel(&a);CHECK(!memcmp(&a.camera,&base,sizeof base));
+    }
+    CHECK(motions==15&&patterns==255&&shortened);
+    for(unsigned bin=0;bin<4;++bin){uint32_t seed=1;float draw;for(;;++seed){uint32_t rng=seed;draw=tail_unit(&rng);if(draw>bin*.25f&&draw<(bin+1)*.25f)break;}
+        c3_battle_camera_init(&a,seed);a.previous_motion=(uint32_t[]){3,0,1,2}[bin];CHECK(c3_battle_camera_begin_move(&a,p,39,C3_BATTLE_CAMERA_ATTACK,2,0,actors,&base,error,sizeof error));CHECK((a.motion!=(uint32_t[]){3,0,1,2}[bin]));if(bin<3)CHECK((a.motion==(uint32_t[]){0,1,2}[bin]));
+    }
+    uint32_t seed=1;for(;;++seed){uint32_t rng=seed;float draw=tail_unit(&rng);if(draw>.5f&&draw<.75f)break;}
+    c3_battle_camera_init(&a,seed);CHECK(c3_battle_camera_begin_move(&a,p,39,C3_BATTLE_CAMERA_ATTACK,2,0,actors,&base,error,sizeof error));CHECK(a.motion==1);uint32_t rng=seed;(void)tail_unit(&rng);float offset=25+10*tail_unit(&rng),height=1+9*tail_unit(&rng),distance=20+30*tail_unit(&rng);
+    CHECK(fabsf(a.camera.eye[0]-actors[2].position[0]-1)<1e-6f&&fabsf(a.camera.eye[1]-height*.1f)<1e-6f&&fabsf(a.camera.eye[2]-actors[2].position[2]-distance*.1f)<1e-6f);
+    CHECK(fabsf(a.eye_to[0]-(10+offset)*.1f)<1e-6f);
+    C3BattleCameraActor changed[4];memcpy(changed,actors,sizeof changed);changed[2].yaw=1.1f;c3_battle_camera_init(&b,seed);CHECK(c3_battle_camera_begin_move(&b,p,39,C3_BATTLE_CAMERA_ATTACK,2,0,changed,&base,error,sizeof error));CHECK(!memcmp(a.camera.eye,b.camera.eye,sizeof a.camera.eye));CHECK(memcmp(a.camera.target,b.camera.target,sizeof a.camera.target));
+    /* Independent source call-order oracle for a real Dolly seed. Integer
+     * helper consumes two16bit draws, and randomDelay shortens motion now. */
+    uint32_t dolly_seed=1;for(;;++dolly_seed){uint32_t state=dolly_seed;float r=tail_unit(&state);if(r>.25f&&r<.5f)break;}
+    c3_battle_camera_init(&b,dolly_seed);CHECK(c3_battle_camera_begin_move(&b,p,39,C3_BATTLE_CAMERA_ATTACK,2,0,actors,&base,error,sizeof error));CHECK(b.motion==0);rng=dolly_seed;(void)tail_unit(&rng);int alternate=tail_unit(&rng)<=.7f;float chance=tail_unit(&rng),threshold0=alternate?.3f:.5f,threshold1=alternate?.65f:.75f;uint32_t effective=p->actors[2].timing[0][0];unsigned expected_draws=8;
+    if(chance>=threshold0){uint32_t first=tail_word(&rng)&65535,second=tail_word(&rng)&65535,draw=((second<<16)|first)%effective;expected_draws+=2;if(chance<threshold1)effective=draw<effective/2?effective/2:draw;else effective-=draw>effective/2?effective/2:draw;}
+    float near=20+32.5f*tail_unit(&rng),far=20+32.5f*tail_unit(&rng);if((alternate&&near<far)||(!alternate&&near>far)){float swap=near;near=far;far=swap;}
+    float lo=p->actors[2].minimum[1],hi=p->actors[2].maximum[1];if(lo<6){lo=6;if(hi<6)hi=9;}if(hi>20){hi=20;if(lo>20)lo=16;}height=lo+(hi-lo)*tail_unit(&rng);float r=tail_unit(&rng),rotation=actors[2].yaw-.31415927f-(1.0995574f-.31415927f)*r;float mix=tail_unit(&rng);
+    CHECK(b.motion_duration==effective&&b.random_draws==expected_draws&&b.rng==rng);CHECK(fabsf(b.eye_from[0]-sinf(rotation)*near*.1f)<1e-6f&&fabsf(b.eye_to[2]-cosf(rotation)*far*.1f)<1e-6f);
+    float length=0;for(unsigned k=0;k<3;++k){float d=p->actors[2].maximum[k]-p->actors[2].minimum[k];length+=d*d;}float size=.57735026f*sqrtf(length)*1.1f,span=fmaxf(.75f*size,(p->actors[2].maximum[1]-p->actors[2].minimum[1])*1.1f),radius=sqrtf(near*near+height*height);float lower=fminf(85,fmaxf(15,57.29578f*2*atan2f(.5f*span,radius))),upper=fminf(85,fmaxf(15,57.29578f*2*atan2f(2*span,radius)));CHECK(fabsf(b.fov-(lower+(upper-lower)*(.35f+.25f*mix)))<1e-5f);
+    old=a;C3BattleCameraProgram invalid=*p;invalid.flags[0]^=1;CHECK(!c3_battle_camera_begin_move(&a,&invalid,39,C3_BATTLE_CAMERA_ATTACK,2,0,actors,&base,error,sizeof error));CHECK(!memcmp(&old,&a,sizeof a));CHECK(!c3_battle_camera_begin_move(&a,p,39,C3_BATTLE_CAMERA_DAMAGE,2,0,actors,&base,error,sizeof error));CHECK(!memcmp(&old,&a,sizeof a));
+}
+static void tail_actual(const char *path)
+{
+    C3BattleCameraProgram p={0};char error[192];CHECK(c3_battle_camera_tailwhip_load(&p,path,error,sizeof error));tail_exercise(&p);
+    FILE *f=fopen(path,"rb");CHECK(f);CHECK(!fseek(f,0,SEEK_END));long size=ftell(f);rewind(f);uint8_t *raw=malloc((size_t)size);CHECK(raw&&fread(raw,1,(size_t)size,f)==(size_t)size);fclose(f);C3BattleCameraProgram previous=p;
+    CHECK(!c3_battle_camera_decode(&p,raw,(size_t)size,error,sizeof error));CHECK(!memcmp(&p,&previous,sizeof p));CHECK(!c3_battle_camera_confusion_decode(&p,raw,(size_t)size,error,sizeof error));CHECK(!memcmp(&p,&previous,sizeof p));
+    raw[64]^=1;memset(raw+480,0,20);uint8_t hash[20];c3_save_codec_sha1(hash,raw,(uint32_t)size);memcpy(raw+480,hash,20);CHECK(!c3_battle_camera_tailwhip_decode(&p,raw,(size_t)size,error,sizeof error));CHECK(!memcmp(&p,&previous,sizeof p));free(raw);c3_battle_camera_close(&p);
+}
 int main(int argc,char **argv)
 {
-    C3BattleCameraProgram p=synthetic();source_golden();exercise(&p);confusion_synthetic();
+    C3BattleCameraProgram p=synthetic();source_golden();exercise(&p);confusion_synthetic();C3BattleCameraProgram tail=tail_synthetic();tail_exercise(&tail);
     if(argc>1){char error[192];CHECK(c3_battle_camera_load(&p,argv[1],error,sizeof error));exercise(&p);
         FILE *f=fopen(argv[1],"rb");CHECK(f!=NULL);CHECK(!fseek(f,0,SEEK_END));long length=ftell(f);CHECK(length>=512&&length<=(long)C3_BATTLE_CAMERA_MAX_BYTES);rewind(f);
         uint8_t *bytes=malloc((size_t)length),*mut=malloc((size_t)length);CHECK(bytes&&mut);CHECK(fread(bytes,1,(size_t)length,f)==(size_t)length);fclose(f);
@@ -139,5 +186,6 @@ int main(int argc,char **argv)
 
     }
     if(argc>2)confusion_exercise(argv[2]);
+    if(argc>3)tail_actual(argv[3]);
     printf("camera checks: %u\n",checks);return 0;
 }

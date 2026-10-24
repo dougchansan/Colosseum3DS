@@ -192,3 +192,11 @@ all: build/test_wzx_reflect
 wzx-reflect-check: build/test_wzx_reflect
 	./build/test_wzx_reflect
 test: wzx-reflect-check
+
+build/test_wzx_tail_whip: tests/test_wzx_tail_whip.c src/wzx_tail_whip.c build/save_codec.c include/colosseum3ds/wzx_tail_whip.h | build
+	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_wzx_tail_whip.c src/wzx_tail_whip.c build/save_codec.c $(LDFLAGS) -lm -o $@
+all: build/test_wzx_tail_whip
+.PHONY: wzx-tail-whip-check
+wzx-tail-whip-check: build/test_wzx_tail_whip
+	./build/test_wzx_tail_whip
+test: wzx-tail-whip-check

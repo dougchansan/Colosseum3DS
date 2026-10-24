@@ -10,7 +10,8 @@ static uint32_t word(const unsigned char *p){return (uint32_t)p[0]|(uint32_t)p[1
 static float real(const unsigned char *p){uint32_t u=word(p);float f;memcpy(&f,&u,4);return f;}
 static int fail(char *e,size_t n,const char *s){if(e&&n)snprintf(e,n,"%s",s);return 0;}
 static void confusion_cancel(C3BattleStage *s);
-static void release(C3BattleStage *s){confusion_cancel(s);c3_battle_camera_close(&s->confusion_camera_program);s->confusion_camera_available=0;c3_wzx_confusion_sequence_close(&s->confusion_program);free(s->confusion_bytes[0]);s->confusion_bytes[0]=NULL;free(s->confusion_bytes[1]);s->confusion_bytes[1]=NULL;free(s->confusion_damage_particles);s->confusion_damage_particles=NULL;s->confusion_available=0;c3_wzx_reflect_cancel(&s->reflect);c3_wzx_reflect_program_close(&s->reflect_program);free(s->reflect_bytes);s->reflect_bytes=NULL;c3_battle_camera_cancel(&s->source_camera);c3_battle_camera_close(&s->camera_program);for(uint32_t i=s->count;i>0;--i)c3_title_close(&s->models[i-1]);s->count=0;free(s->particle_bytes);s->particle_bytes=NULL;}
+static void tail_cancel(C3BattleStage *s);
+static void release(C3BattleStage *s){tail_cancel(s);c3_battle_camera_close(&s->tail_camera_program);c3_wzx_tail_whip_program_close(&s->tail_program);memset(&s->tail,0,sizeof s->tail);s->tail_available=s->tail_camera_available=0;confusion_cancel(s);c3_battle_camera_close(&s->confusion_camera_program);s->confusion_camera_available=0;c3_wzx_confusion_sequence_close(&s->confusion_program);free(s->confusion_bytes[0]);s->confusion_bytes[0]=NULL;free(s->confusion_bytes[1]);s->confusion_bytes[1]=NULL;free(s->confusion_damage_particles);s->confusion_damage_particles=NULL;s->confusion_available=0;c3_wzx_reflect_cancel(&s->reflect);c3_wzx_reflect_program_close(&s->reflect_program);free(s->reflect_bytes);s->reflect_bytes=NULL;c3_battle_camera_cancel(&s->source_camera);c3_battle_camera_close(&s->camera_program);for(uint32_t i=s->count;i>0;--i)c3_title_close(&s->models[i-1]);s->count=0;free(s->particle_bytes);s->particle_bytes=NULL;}
 static int stage_sound(C3BattleStage *s,uint32_t id,char *e,size_t n)
 {
     if(!s->sound_cue)return 1;
@@ -20,6 +21,7 @@ static int stage_sound(C3BattleStage *s,uint32_t id,char *e,size_t n)
 #include "battle_damage_effect.inc"
 #include "battle_reflect_effect.inc"
 #include "battle_wzx_confusion.inc"
+#include "battle_tail_whip_effect.inc"
 int c3_battle_stage_load(C3BattleStage *s,const char *root,const uint16_t hp[4],FILE *trace,char *error,size_t cap)
 {
     unsigned char data[128+128*C3_BATTLE_STAGE_MODELS];char path[512];
@@ -80,7 +82,7 @@ int c3_battle_stage_load(C3BattleStage *s,const char *root,const uint16_t hp[4],
         if(trace){fprintf(trace,"wzx_bite_admitted model=1 floor_color=1 sound_request=85 attack_binding=accepted_local_72_142_165\n");fflush(trace);}
     }else if(errno!=ENOENT){fail(error,cap,"Cannot inspect optional Bite WZX pack.");goto bad;}
     if(!damage_load(s,root,error,cap))goto bad;
-    if(!reflect_load(s,root,error,cap)||!confusion_load(s,root,error,cap)||!confusion_camera_load(s,root,error,cap))goto bad;
+    if(!reflect_load(s,root,error,cap)||!confusion_load(s,root,error,cap)||!confusion_camera_load(s,root,error,cap)||!tail_load(s,root,error,cap))goto bad;
     c3_battle_presentation_init(&s->presentation,hp);
     if(!c3_battle_presentation_wait_limit(&s->presentation,20000))goto invalid;
     if(c3_stage_renderer_init(s->draw,s->count,error,cap)!=C3_RENDER_OK)goto bad;
@@ -121,6 +123,9 @@ static void event(const C3BattlePreviewEvent *e,int finished,void *user)
     if(e->kind==C3_PREVIEW_EVENT_CRITICAL&&s->confusion_hit&&e->group==s->confusion_group){s->presentation.duration_ms=0;return;}
     if(e->kind==C3_PREVIEW_EVENT_MOVE&&e->move==93&&e->actor==1&&s->confusion_available){
         if(!confusion_event(s,e,s->error,sizeof s->error))return;
+    }
+    if(e->kind==C3_PREVIEW_EVENT_MOVE&&e->move==39&&e->actor>=2&&e->actor<4&&s->tail_available){
+        if(!tail_event(s,e,s->error,sizeof s->error))return;
     }
     unsigned role=0,slot=e->actor;
     switch(e->kind){case C3_PREVIEW_EVENT_SEND_OUT:role=5;break;
@@ -192,6 +197,7 @@ int c3_battle_stage_step(C3BattleStage *s,uint32_t ms,char *error,size_t cap)
      * sampled only after the event/clock timeline reaches its final state. */
     if(ms>4000)return fail(error,cap,"Battle timeline overload: step exceeds 4000 ms.");
     if(s->confusion_camera.active)c3_battle_camera_pause(&s->confusion_camera,s->presentation.paused);
+    if(s->tail_camera.active)c3_battle_camera_pause(&s->tail_camera,s->presentation.paused);
     uint32_t remaining=ms;
     int endpoint=1;
     do {
@@ -220,7 +226,7 @@ int c3_battle_stage_step(C3BattleStage *s,uint32_t ms,char *error,size_t cap)
             }
         }
         else if(!damage_step(s,tick,error,cap))return 0;
-        if(!reflect_step(s,tick,error,cap)||!confusion_step(s,tick,error,cap))return 0;
+        if(!reflect_step(s,tick,error,cap)||!confusion_step(s,tick,error,cap)||!tail_step(s,tick,error,cap))return 0;
         if(s->source_camera.active){C3BattleCameraActor actors[4];camera_actors(s,actors);
             if(!c3_battle_camera_step(&s->source_camera,tick,actors,error,cap))return 0;
             s->camera=s->source_camera.camera;
@@ -229,6 +235,8 @@ int c3_battle_stage_step(C3BattleStage *s,uint32_t ms,char *error,size_t cap)
         for(uint32_t i=0;i<s->count;++i){
             if(s->immutable[i]&&s->sampled[i])continue;
             if(s->confusion_active&&i==(s->confusion_phase?s->confusion_target:s->confusion_owner))s->clocks[i]=confusion_owner_seconds(s);
+            else if(s->tail_available&&i==s->tail_model)s->clocks[i]=s->tail.effect_seconds;
+            else if(s->tail.active&&i==s->tail_owner)s->clocks[i]=s->tail.owner_seconds;
             else if(s->reflect_available&&i==s->reflect_model)s->clocks[i]=s->reflect.model_seconds;
             else if(s->reflect.active&&i==s->reflect_owner)s->clocks[i]=s->reflect.owner_seconds;
             else if(s->bite_available&&i==s->bite_model)s->clocks[i]=s->bite.model_seconds;
@@ -242,11 +250,12 @@ int c3_battle_stage_step(C3BattleStage *s,uint32_t ms,char *error,size_t cap)
                 s->presentation.events[s->presentation.cursor].kind==C3_PREVIEW_EVENT_MOVE&&
                 s->presentation.events[s->presentation.cursor].group==s->bite_group;
             int active=source_move?(s->bite.active||s->damage_pending||!s->damage.hp_gates):(s->bite.active||s->damage.active);
-            active|=s->reflect.active;
+            active|=s->reflect.active||s->tail.active;
             if(s->confusion_hit&&s->presentation.cursor<s->presentation.count&&s->presentation.events[s->presentation.cursor].kind==C3_PREVIEW_EVENT_MOVE&&s->presentation.events[s->presentation.cursor].group==s->confusion_group)active|=s->confusion_pending||!s->confusion_hp_gate;
             else active|=s->confusion_active;
             for(uint32_t i=0;i<s->count;++i){C3Title *m=&s->models[i];
                 if(s->confusion_active&&(i==s->confusion_owner||i==s->confusion_target))continue;
+                if(s->tail_available&&i==s->tail_model)continue;
                 if(s->reflect_available&&i==s->reflect_model)continue;
                 if(s->bite_available&&i==s->bite_model)continue;
                 if(s->damage_available&&(i==s->damage_model||(s->damage_hit&&i==s->damage_owner)))continue;
@@ -278,7 +287,7 @@ int c3_battle_stage_step(C3BattleStage *s,uint32_t ms,char *error,size_t cap)
         int damage_effect=s->damage_available&&i==s->damage_model;
         if(!c3_title_animate(m,s->clips[i],s->clocks[i]))return fail(error,cap,"Battle clip sampling failed.");
         float *t=s->transforms[i],co=cosf(t[3]),si=sinf(t[3]);
-        int visible=(s->reflect_available&&i==s->reflect_model)?s->reflect.model_visible:effect?s->bite.model_visible:damage_effect?s->damage.model_visible:(s->slots[i]>=4||s->presentation.visible[s->slots[i]]);
+        int visible=(s->tail_available&&i==s->tail_model)?s->tail.effect_visible:(s->reflect_available&&i==s->reflect_model)?s->reflect.model_visible:effect?s->bite.model_visible:damage_effect?s->damage.model_visible:(s->slots[i]>=4||s->presentation.visible[s->slots[i]]);
         int identity=t[0]==0&&t[1]==0&&t[2]==0&&t[3]==0&&t[4]==1;
         if(!identity)for(uint32_t v=0;v<m->vertex_count;++v){C3TitleDrawVertex *d=&m->draw_vertices[v];float x=d->pos[0]*t[4],z=d->pos[2]*t[4],nx=d->normal[0],nz=d->normal[2];
             d->pos[0]=co*x+si*z+t[0];d->pos[1]=d->pos[1]*t[4]+t[1];d->pos[2]=-si*x+co*z+t[2];d->normal[0]=co*nx+si*nz;d->normal[2]=-si*nx+co*nz;
@@ -291,4 +300,4 @@ int c3_battle_stage_step(C3BattleStage *s,uint32_t ms,char *error,size_t cap)
     return s->reflect.active?reflect_bind_particles(s,error,cap):damage_bind_particles(s,error,cap);
 }
 int c3_battle_stage_draw(C3BattleStage *s,C3TitleRenderStats *stats,char *error,size_t cap){return c3_stage_renderer_draw(s->draw,s->count,&s->camera,1,stats,error,cap);}
-int c3_battle_stage_close(C3BattleStage *s){confusion_cancel(s);c3_wzx_bite_cancel(&s->bite);c3_wzx_damage_cancel(&s->damage);c3_wzx_reflect_cancel(&s->reflect);c3_particle_cancel(&s->particles);if(s->initialized&&!c3_stage_renderer_try_shutdown())return 0;s->initialized=0;release(s);return 1;}
+int c3_battle_stage_close(C3BattleStage *s){tail_cancel(s);confusion_cancel(s);c3_wzx_bite_cancel(&s->bite);c3_wzx_damage_cancel(&s->damage);c3_wzx_reflect_cancel(&s->reflect);c3_particle_cancel(&s->particles);if(s->initialized&&!c3_stage_renderer_try_shutdown())return 0;s->initialized=0;release(s);return 1;}

@@ -15,6 +15,31 @@ import prepare_battle_audio as audio
 
 
 class PreparationTests(unittest.TestCase):
+    def test_tail_whip_is_an_explicit_eighth_cue(self):
+        self.assertEqual(audio.selected_sounds(), (0x85, 0x86, 0x220))
+        seven = audio.selected_sounds(confusion=True)
+        self.assertEqual(seven, (0x85, 0x86, 0x220, 0x443, 0xE9, 0x472, 0x473))
+        self.assertEqual(audio.selected_sounds(True, True), seven + (0x1DB,))
+        with self.assertRaisesRegex(ValueError, 'requires --confusion'):
+            audio.selected_sounds(tail_whip=True)
+        with self.assertRaisesRegex(ValueError, 'Cue count'):
+            audio.encode_pack([(i, b'\0\0') for i in range(9)])
+
+    def test_tail_whip_binding_and_macro_drift_fail_closed(self):
+        # Synthetic record assembled from the reviewed numeric dispatch fields.
+        row = bytearray(12); row[0:2] = bytes((0x80, 5)); struct.pack_into('>H', row, 4, 0x24E)
+        effect = {'macro': 0x402, 'volume': 127, 'pan': 64, 'key': 60}
+        for field, wrong in (('macro', 0x401), ('volume', 126), ('pan', 63), ('key', 59)):
+            with self.subTest(field=field), self.assertRaisesRegex(ValueError, 'binding'):
+                audio.verify_tail_whip_binding(row, {**effect, field: wrong}, {})
+        with self.assertRaisesRegex(ValueError, 'macro body'):
+            audio.verify_tail_whip_binding(row, effect, {0x402: (8, bytes(8)), 0x401: (24, bytes(8))})
+        with self.assertRaisesRegex(ValueError, 'extent'):
+            audio.verify_tail_whip_binding(row[:-1], effect, {})
+        row[1] = 4
+        with self.assertRaisesRegex(ValueError, 'binding'):
+            audio.verify_tail_whip_binding(row, effect, {})
+
     def test_adpcm_signed_nibbles_history_and_clipping(self):
         self.assertEqual(audio.decode_adpcm(bytes([0, 0x17]) + bytes(6), 2, [0] * 16), [1, 7])
         self.assertEqual(audio.decode_adpcm(bytes([0, 0x8f]) + bytes(6), 2, [0] * 16), [-8, -1])
@@ -83,7 +108,7 @@ class PreparationTests(unittest.TestCase):
                 audio.resolve_layers({1: (0, code((a,b), (0,0)))}, 1)
 
     def test_private_prepared_baseline_pcm_identity(self):
-        pack = ROOT / 'private/battle-audio-confusion-v2/audio.c3u'
+        pack = Path(os.environ.get('C3_AUDIO_BASELINE_PACK', ROOT / 'private/battle-audio-confusion-v2/audio.c3u'))
         if not pack.exists(): self.skipTest('Private original-asset pack required')
         import hashlib
         expected = {0x85: 'a0d7e31534970d1c99113bffe1c5e37d06ef3939f4782116fa35ea1f429ae87c',
@@ -97,6 +122,29 @@ class PreparationTests(unittest.TestCase):
             if sound in expected:
                 self.assertEqual(hashlib.sha256(data[offset:offset+size]).hexdigest(), expected.pop(sound))
         self.assertFalse(expected)
+
+    def test_private_tail_whip_and_all_seven_baseline_pcm_payloads(self):
+        baseline = os.environ.get('C3_AUDIO_BASELINE_PACK')
+        extended = os.environ.get('C3_AUDIO_TAIL_WHIP_PACK')
+        if not baseline or not extended:
+            self.skipTest('Private baseline and Tail Whip packs required')
+        import hashlib
+        def payloads(path):
+            data = Path(path).read_bytes()
+            result = {}
+            for i in range(struct.unpack_from('<I', data, 12)[0]):
+                sound, rate, frames, offset, size, *_ = struct.unpack_from('<8I', data, 64+i*32)
+                self.assertEqual((rate, size), (32000, frames*2))
+                result[sound] = data[offset:offset+size]
+            return result
+        old, new = payloads(baseline), payloads(extended)
+        self.assertEqual(tuple(new), audio.selected_sounds(True, True))
+        self.assertEqual(len(old), 7)
+        for sound, pcm in old.items():
+            self.assertEqual(new[sound], pcm)
+        self.assertEqual(len(new[0x1DB]) // 2, 92279)
+        self.assertEqual(hashlib.sha256(new[0x1DB]).hexdigest(),
+                         '40a877ee45ee811fc1f8f383bc32679a2f36c3f0078860e1db0c0361b4d2924d')
 
     def test_unknown_sample_and_pack_limits(self):
         with self.assertRaises(ValueError): audio.sample_record(bytes.fromhex('ffff')+bytes(30), 85)
