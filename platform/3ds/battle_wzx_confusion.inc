@@ -1,8 +1,13 @@
 /* Full source Confusion entries. One attack system reuses the stage's shared
  * pool; the damage pool appends all five roots without resetting RNG/time. */
 #include "colosseum3ds/battle_audio.h"
+static void confusion_camera_restore(C3BattleStage *s)
+{
+    if(s->confusion_camera.active){c3_battle_camera_cancel(&s->confusion_camera);s->camera=s->confusion_camera.camera;}
+}
 static void confusion_cancel(C3BattleStage *s)
 {
+    confusion_camera_restore(s);
     s->confusion_active=s->confusion_pending=s->confusion_floor_enabled=0;
     c3_confusion_type12_cancel(&s->confusion_type12);
     if(s->confusion_damage_particles)c3_particle_cancel(s->confusion_damage_particles);
@@ -17,6 +22,28 @@ static int confusion_file(const char *path,uint8_t **out,size_t *bytes,char *e,s
     if(fclose(f))ok=0;
     if(!ok){free(b);return fail(e,n,"Cannot read bounded Confusion dependency.");}
     *out=b;*bytes=(size_t)length;return 1;
+}
+static int confusion_camera_load(C3BattleStage *s,const char *root,char *e,size_t n)
+{
+    char path[512];if(snprintf(path,sizeof path,"%s/confusion_camera.c3c",root)>=(int)sizeof path)return fail(e,n,"Confusion camera path too long.");
+    errno=0;FILE *f=fopen(path,"rb");
+    if(!f){if(errno!=ENOENT)return fail(e,n,"Cannot inspect Confusion camera descriptor.");
+        if(s->trace){fprintf(s->trace,"wzx_confusion_camera available=0 scope=explicitly_incomplete\n");fflush(s->trace);}return 1;
+    }
+    if(fclose(f)||!c3_battle_camera_confusion_load(&s->confusion_camera_program,path,e,n))return 0;
+    c3_battle_camera_init(&s->confusion_camera,0x434f4341u);s->confusion_camera_available=1;
+    if(s->trace){fprintf(s->trace,"wzx_confusion_camera available=1 move=93 cosmetic_rng=separate damage_track_delay=44\n");fflush(s->trace);}
+    return 1;
+}
+static int confusion_camera_begin(C3BattleStage *s,unsigned phase,char *e,size_t n)
+{
+    if(!s->confusion_camera_available)return 1;
+    confusion_camera_restore(s);C3BattleCameraActor actors[4];camera_actors(s,actors);
+    unsigned owner=phase?s->slots[s->confusion_target]:1,target=phase?1:s->slots[s->confusion_target];
+    if(!c3_battle_camera_begin_move(&s->confusion_camera,&s->confusion_camera_program,93,(C3BattleCameraPhase)phase,owner,target,actors,&s->camera,e,n))return 0;
+    s->camera=s->confusion_camera.camera;
+    if(s->trace){fprintf(s->trace,"wzx_confusion_camera_begin phase=%u owner=%u target=%u units=%llu delay=%lu motion=%lu fov_pattern=%lu draws=%lu\n",phase,owner,target,(unsigned long long)s->confusion_camera.units,(unsigned long)s->confusion_camera.track_delay,(unsigned long)s->confusion_camera.motion,(unsigned long)s->confusion_camera.fov_pattern,(unsigned long)s->confusion_camera.random_draws);fflush(s->trace);}
+    return 1;
 }
 static int confusion_load(C3BattleStage *s,const char *root,char *e,size_t n)
 {
@@ -72,6 +99,7 @@ static int confusion_phase_begin(C3BattleStage *s,unsigned phase,char *e,size_t 
     if(s->clips[owner]==UINT32_MAX)return fail(e,n,"Missing Confusion source owner motion.");
     s->fresh[owner]=1;s->confusion_floor_enabled=0;
     c3_confusion_type12_cancel(&s->confusion_type12);
+    if(!confusion_camera_begin(s,phase,e,n))return 0;
     if(s->trace){fprintf(s->trace,"wzx_confusion_phase event=%lu phase=%u owner=%lu\n",(unsigned long)s->confusion_event,phase,(unsigned long)s->slots[owner]);fflush(s->trace);}
     /* New phase source0 settles at this endpoint before any elapsed tick. */
     return confusion_step(s,0,e,n);
@@ -113,6 +141,10 @@ static int confusion_step(C3BattleStage *s,uint32_t ms,char *e,size_t n)
     if(!s->confusion_active)return 1;
     if(s->confusion_units+(uint64_t)ms*60>3600000)return fail(e,n,"Confusion source clock overload.");
     s->confusion_units+=(uint64_t)ms*60;
+    if(s->confusion_camera.active){C3BattleCameraActor actors[4];camera_actors(s,actors);
+        if(!c3_battle_camera_step(&s->confusion_camera,ms,actors,e,n))return 0;
+        s->camera=s->confusion_camera.camera;
+    }
     unsigned phase=s->confusion_phase,owner=phase?s->confusion_target:s->confusion_owner;
     C3ParticleSystem *particles=phase?s->confusion_damage_particles:&s->particles;
     if(s->confusion_particles_started){
@@ -159,6 +191,7 @@ static int confusion_step(C3BattleStage *s,uint32_t ms,char *e,size_t n)
     }}
     if(!audio_done||s->confusion_type12.active||!s->confusion_particles_started||!c3_particle_finished(particles)||s->confusion_floor_enabled)return 1;
     if(s->trace){fprintf(s->trace,"wzx_confusion_complete phase=%u units=%llu emitted=%lu peak=%lu cosmetic_draws=%llu audio_done=1 cues=%lu,%lu,%lu,%lu\n",phase,(unsigned long long)s->confusion_units,(unsigned long)particles->emitted,(unsigned long)particles->peak_particles,(unsigned long long)particles->cosmetic_draws,(unsigned long)s->confusion_cues[0],(unsigned long)s->confusion_cues[1],(unsigned long)s->confusion_cues[2],(unsigned long)s->confusion_cues[3]);fflush(s->trace);}
+    confusion_camera_restore(s);
     s->clips[owner]=s->roles[owner][0];s->clocks[owner]=0;s->fresh[owner]=1;
     if(!phase&&s->confusion_pending){s->confusion_pending=0;return confusion_phase_begin(s,1,e,n);}
     s->confusion_active=0;return 1;

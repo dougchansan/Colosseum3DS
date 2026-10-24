@@ -123,6 +123,20 @@ Confusion damage without interpreting a missing texture/bank as success.
 
 ## Audio and preparation
 
+The optional `confusion_camera.c3c` adds the original procedural attack and
+defender cameras. Both original headers have zero external camera resources;
+this is not a fabricated camera DAT. The separate C3CC contract retains the
+13-entry long FOV table, weighted selection and dynamic FOV segments. Attack
+uses the Espeon motion part; damage uses the Zigzagoon part with normalized
+44-tick motion delay. A separate cosmetic stream preserves accepted Bite RNG.
+Pause retains time and cancellation restores the inherited view. An absent
+camera pack is explicitly incomplete; a present invalid pack fails closed.
+
+The checked private camera descriptor is 22,524 bytes, SHA-256
+`6818a7908bc9ca4f392b6815681af191e9046fb35b7f44e71b57bb633d19a6a2`.
+Its source fixtures do not establish original shared-RNG, PPC floating-point or
+rendered visual parity. Bite's existing camera descriptor remains byte-identical.
+
 The complete local bundle needs seven selected game requests: Bite `0x85/0x86`,
 Reflect `0x220`, and Confusion `0x443/0xE9/0x472/0x473`. The Confusion requests
 map to bank-5 FX `0x306/0x15C/0x321/0x322`. They are decoded from admitted source
@@ -142,6 +156,7 @@ are retained as dry metadata; no reverb tail is rendered. See also
 ```powershell
 python tools/prepare_wzx_confusion.py --disc G:/gamecube-decomp/disc-extract-dump --parser G:/Colosseum3DS-story-hardware/vendor/hsd-importer --output private/confusion-new
 python tools/prepare_battle_audio.py --disc G:/gamecube-decomp/disc-extract-dump --confusion --output private/battle-audio-confusion-new
+python tools/prepare_battle_camera.py --disc G:/gamecube-decomp/disc-extract-dump --parser G:/Colosseum3DS-story-hardware/vendor/hsd-importer --confusion --output private/confusion-camera-new
 ```
 
 Every output directory must be new. Keep manifests with the private outputs.

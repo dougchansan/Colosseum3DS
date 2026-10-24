@@ -43,6 +43,9 @@ typedef struct {
     uint32_t cue_serial, reflect_cue;
     unsigned reflect_alive, reflect_index;
     uint8_t reflect_available, reflect_particles;
+    C3BattleCameraProgram confusion_camera_program;
+    C3BattleCamera confusion_camera;
+    uint8_t confusion_camera_available;
     C3WzxConfusionSequenceProgram confusion_program;
     C3WzxConfusionProgram confusion_mask;
     C3ConfusionType12 confusion_type12;

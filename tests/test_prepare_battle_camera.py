@@ -41,6 +41,27 @@ class CameraPreparationTests(unittest.TestCase):
                 with self.subTest(offset=offset):
                     with self.assertRaises(ValueError):camera.profile(changed,flags,index,mask,entry)
             with self.assertRaises(ValueError):camera.profile(b[:159],flags,index,mask,entry)
+    def test_confusion_profile_and_exact_pattern_admission(self):
+        for entry,count,flags in [(1,6,0x200848),(8,11,0x48)]:
+            b=bytearray(160);struct.pack_into('>6I',b,112,entry,count,flags,2,5,0)
+            self.assertEqual(camera.profile(b,flags,5,2,entry,count)['entry'],entry)
+            for offset in (116,120,124,128,132,136):
+                changed=bytearray(b);changed[offset]^=1
+                with self.assertRaises(ValueError):camera.profile(changed,flags,5,2,entry,count)
+        p=[dict(flags=0x200848,pattern=5,fov_mask=2,entry=1,owner_start=0),
+           dict(flags=0x48,pattern=0xffffffff,fov_mask=0,entry=8,owner_start=44)]
+        with self.assertRaises(ValueError):camera.encode(p,self.actors(),True,bytes(988))
+        prepared=ROOT/'private/confusion-camera-v1/confusion_camera.c3c'
+        if not prepared.exists():self.skipTest('Private original camera descriptor required')
+        patterns=prepared.read_bytes()[512:1500]
+        b=camera.encode(p,self.actors(),True,patterns)
+        self.assertEqual(b[:4],b'C3CC');self.assertEqual(struct.unpack_from('<I',b,12)[0],93)
+        self.assertEqual(struct.unpack_from('<I',b,192+80)[0],1500)
+        self.assertEqual(b[512:1500],patterns)
+        self.assertEqual(b[480:500],hashlib.sha1(b[:480]+bytes(20)+b[500:]).digest())
+        changed=bytearray(patterns);changed[0]^=1
+        with self.assertRaises(ValueError):camera.encode(p,self.actors(),True,changed)
+
     def test_source_files_match_exact_pinned_functions(self):
         for name,digest in camera.SOURCE_FILES.items():
             self.assertEqual(hashlib.sha256((ROOT/'vendor/colosseum'/name).read_bytes()).hexdigest(),digest)

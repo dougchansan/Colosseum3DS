@@ -45,36 +45,42 @@ static void follow(C3BattleStage *base)
 static void partitions(C3BattleStage *base)
 {
  const unsigned chunks[]={1,17,100,1000,4000};C3ParticleSystem *reference=malloc(sizeof *reference);assert(reference);
- uint64_t units=0;float center[3]={0};uint32_t seen=0;
+ uint64_t units=0;float center[3]={0};uint32_t seen=0;C3BattleCamera expected_camera={0};C3TitleCamera inherited=base->camera;
  for(unsigned variant=0;variant<5;++variant){C3BattleStage *s=malloc(sizeof *s);assert(s);*s=*base;s->trace=NULL;s->confusion_damage_particles=calloc(1,sizeof *s->confusion_damage_particles);assert(s->confusion_damage_particles);s->sound_cue=sound;s->sound_done=done;last_cue=0;reflect_audio=0;memset(cues,0,sizeof cues);
   submit(s,2,1);assert(c3_battle_stage_step(s,0,s->error,sizeof s->error));
   unsigned elapsed=0;while(elapsed<4000){unsigned amount=chunks[variant];if(amount>4000-elapsed)amount=4000-elapsed;assert(c3_battle_stage_step(s,amount,s->error,sizeof s->error));elapsed+=amount;}
   assert(s->confusion_phase==1&&s->confusion_hp_gate);
-  if(!variant){*reference=*s->confusion_damage_particles;units=s->confusion_units;seen=s->confusion_seen;memcpy(center,s->confusion_type12.center,sizeof center);}
-  else{assert(s->confusion_units==units&&s->confusion_seen==seen);if(memcmp(reference,s->confusion_damage_particles,sizeof *reference)){const unsigned char *a=(const unsigned char *)reference,*b=(const unsigned char *)s->confusion_damage_particles;for(size_t off=0;off<sizeof *reference;++off)if(a[off]!=b[off]){fprintf(stderr,"partition%u units%llu firstdiff%zu %u/%u ticks%llu/%llu remainder%llu/%llu emitted%u/%u\n",variant,(unsigned long long)s->confusion_units,off,a[off],b[off],(unsigned long long)reference->ticks,(unsigned long long)s->confusion_damage_particles->ticks,(unsigned long long)reference->remainder,(unsigned long long)s->confusion_damage_particles->remainder,reference->emitted,s->confusion_damage_particles->emitted);break;}assert(0);}assert(!memcmp(center,s->confusion_type12.center,sizeof center));}
+  if(!variant){*reference=*s->confusion_damage_particles;units=s->confusion_units;seen=s->confusion_seen;memcpy(center,s->confusion_type12.center,sizeof center);expected_camera=s->confusion_camera;}
+  else{assert(s->confusion_units==units&&s->confusion_seen==seen);if(memcmp(reference,s->confusion_damage_particles,sizeof *reference)){const unsigned char *a=(const unsigned char *)reference,*b=(const unsigned char *)s->confusion_damage_particles;for(size_t off=0;off<sizeof *reference;++off)if(a[off]!=b[off]){fprintf(stderr,"partition%u units%llu firstdiff%zu %u/%u ticks%llu/%llu remainder%llu/%llu emitted%u/%u\n",variant,(unsigned long long)s->confusion_units,off,a[off],b[off],(unsigned long long)reference->ticks,(unsigned long long)s->confusion_damage_particles->ticks,(unsigned long long)reference->remainder,(unsigned long long)s->confusion_damage_particles->remainder,reference->emitted,s->confusion_damage_particles->emitted);break;}assert(0);}assert(!memcmp(center,s->confusion_type12.center,sizeof center));assert(!memcmp(&expected_camera,&s->confusion_camera,sizeof expected_camera));}
   while(elapsed<10000){unsigned amount=chunks[variant];if(amount>10000-elapsed)amount=10000-elapsed;assert(c3_battle_stage_step(s,amount,s->error,sizeof s->error));elapsed+=amount;}
+  assert(!s->confusion_camera.active&&!memcmp(&s->camera,&inherited,sizeof inherited));
   assert(!s->confusion_active&&s->confusion_units==402000&&s->confusion_damage_particles->emitted==738&&s->confusion_damage_particles->cosmetic_draws==3302);
   free(s->confusion_damage_particles);free(s);
  }
  free(reference);last_cue=0;reflect_audio=0;memset(cues,0,sizeof cues);
 }
-int main(int argc,char **argv){assert(argc==2||argc==3);C3BattleStage *s=calloc(1,sizeof *s);assert(s);char e[192];uint16_t hp[4]={80,75,50,50};
- if(!c3_battle_stage_load(s,argv[1],hp,stdout,e,sizeof e)){puts(e);return 1;}assert(s->confusion_available);s->sound_cue=sound;s->sound_done=done;follow(s);partitions(s);
+int main(int argc,char **argv){assert(argc>=2&&argc<=5);C3BattleStage *s=calloc(1,sizeof *s);assert(s);char e[192];uint16_t hp[4]={80,75,50,50};
+ if(!c3_battle_stage_load(s,argv[1],hp,stdout,e,sizeof e)){puts(e);return 1;}assert(s->confusion_available&&s->confusion_camera_available);s->sound_cue=sound;s->sound_done=done;follow(s);partitions(s);
+ C3TitleCamera inherited=s->camera;C3BattleCamera bite_before=s->source_camera;
  for(unsigned target=2;target<4;++target){submit(s,target,1);unsigned before=reflect_audio;audio_hold=1;assert(c3_battle_stage_step(s,0,e,sizeof e));assert(s->confusion_active&&!s->confusion_particles_started);
- uint64_t units=s->confusion_units;s->presentation.paused=1;assert(c3_battle_stage_step(s,4000,e,sizeof e)&&units==s->confusion_units);s->presentation.paused=0;
+ assert(s->confusion_camera.active&&s->confusion_camera.owner==1&&s->confusion_camera.target==target&&s->confusion_camera.units==0&&s->confusion_camera.track_delay==0);assert(!memcmp(s->confusion_camera.origin,s->transforms[s->confusion_owner],3*sizeof(float)));assert(s->confusion_camera.motion==2||s->confusion_camera.motion==3);if(s->confusion_camera.motion==3)assert(s->confusion_camera.yaw_start==s->confusion_camera.yaw_end);
+ C3BattleCamera paused_camera=s->confusion_camera;
+ uint64_t units=s->confusion_units;s->presentation.paused=1;assert(c3_battle_stage_step(s,4000,e,sizeof e)&&units==s->confusion_units);paused_camera.paused=1;assert(!memcmp(&paused_camera,&s->confusion_camera,sizeof paused_camera));s->presentation.paused=0;
  for(unsigned i=0;i<300;++i){if(!c3_battle_stage_step(s,17,e,sizeof e)){puts(e);assert(0);}}
  assert(s->confusion_active&&!s->confusion_phase&&reflect_audio==before+1&&s->presentation.hp[target]==50);audio_hold=0;
  unsigned roots=0,type12=0,hp_gate=0;
  for(unsigned i=0;i<1000&&s->presentation.cursor<s->presentation.count;++i){if(!c3_battle_stage_step(s,17,e,sizeof e)){puts(e);assert(0);}
   type12+=s->confusion_type12.active;hp_gate+=s->confusion_hp_gate;
-  if(s->confusion_phase){unsigned count=0;for(unsigned j=0;j<5;++j)count+=s->confusion_roots[j]!=0;if(count>roots)roots=count;
+  if(s->confusion_phase){assert(s->confusion_camera.active||!s->confusion_active);if(s->confusion_camera.active){assert(s->confusion_camera.owner==target&&s->confusion_camera.target==1&&s->confusion_camera.units==s->confusion_units&&s->confusion_camera.track_delay==44);assert(s->confusion_camera.dynamic_fov&&isfinite(s->camera.fov_y_degrees)&&s->camera.fov_y_degrees>=15&&s->camera.fov_y_degrees<=85);assert(!memcmp(s->confusion_camera.origin,s->transforms[s->confusion_target],3*sizeof(float)));}unsigned count=0;for(unsigned j=0;j<5;++j)count+=s->confusion_roots[j]!=0;if(count>roots)roots=count;
    if(s->confusion_units<44000)assert(s->presentation.hp[target]==50);
   }
   for(unsigned j=0;j<s->count;++j)if(enabled[j])assert(s->slots[j]==UINT32_MAX);
  }
- assert(roots==5&&type12&&hp_gate&&!s->confusion_active&&s->presentation.cursor==s->presentation.count);assert(reflect_audio==before+4&&s->confusion_damage_particles->emitted==738&&s->confusion_damage_particles->cosmetic_draws==3302);assert(!s->presentation.visible[target]);
+ assert(roots==5&&type12&&hp_gate&&!s->confusion_active&&s->presentation.cursor==s->presentation.count);assert(reflect_audio==before+4&&s->confusion_damage_particles->emitted==738&&s->confusion_damage_particles->cosmetic_draws==3302);assert(!s->presentation.visible[target]);assert(!s->confusion_camera.active&&!memcmp(&s->camera,&inherited,sizeof inherited));assert(!memcmp(&s->source_camera,&bite_before,sizeof bite_before));
  }
  submit(s,2,0);unsigned before=reflect_audio;for(unsigned i=0;i<300;++i){if(!c3_battle_stage_step(s,17,e,sizeof e)){puts(e);assert(0);}}assert(!s->confusion_active&&!s->confusion_hit&&reflect_audio==before+1);
- submit(s,2,1);assert(c3_battle_stage_step(s,17,e,sizeof e));busy=1;assert(!c3_battle_stage_close(s)&&!s->confusion_active&&s->confusion_program.bytes);busy=0;assert(c3_battle_stage_close(s)&&!s->confusion_program.bytes);free(s);
- if(argc==3){C3BattleStage *bad=calloc(1,sizeof *bad);assert(bad);assert(!c3_battle_stage_load(bad,argv[2],hp,NULL,e,sizeof e));assert(!bad->confusion_bytes[0]&&!bad->confusion_bytes[1]&&!bad->confusion_damage_particles);assert(c3_battle_stage_close(bad)&&c3_battle_stage_close(bad));free(bad);}
- puts("Actual Confusion stage contract passed");return 0;}
+ submit(s,2,1);assert(c3_battle_stage_step(s,17,e,sizeof e));busy=1;assert(!c3_battle_stage_close(s)&&!s->confusion_active&&s->confusion_program.bytes&&!s->confusion_camera.active&&s->confusion_camera_program.samples&&!memcmp(&s->camera,&inherited,sizeof inherited));busy=0;assert(c3_battle_stage_close(s)&&!s->confusion_program.bytes);free(s);
+ if(argc>=3){C3BattleStage *bad=calloc(1,sizeof *bad);assert(bad);assert(!c3_battle_stage_load(bad,argv[2],hp,NULL,e,sizeof e));assert(!bad->confusion_bytes[0]&&!bad->confusion_bytes[1]&&!bad->confusion_damage_particles);assert(c3_battle_stage_close(bad)&&c3_battle_stage_close(bad));free(bad);}
+ if(argc>=4){C3BattleStage *bad=calloc(1,sizeof *bad);assert(bad);assert(!c3_battle_stage_load(bad,argv[3],hp,NULL,e,sizeof e));assert(c3_battle_stage_close(bad)&&c3_battle_stage_close(bad));free(bad);}
+ if(argc>=5){C3BattleStage *optional=calloc(1,sizeof *optional);assert(optional);assert(c3_battle_stage_load(optional,argv[4],hp,NULL,e,sizeof e)&&optional->confusion_available&&!optional->confusion_camera_available);assert(c3_battle_stage_close(optional));free(optional);}
+ puts("Actual Confusion stage/camera contract passed");return 0;}

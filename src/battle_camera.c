@@ -10,7 +10,9 @@ static int fail(char *e,size_t n,const char *s){if(e&&n)snprintf(e,n,"%s",s);ret
 static int valid(const C3BattleCameraProgram *p)
 {
     static const uint32_t species[3]={197,196,288};
-    if(!p||!p->samples||!p->sample_count||p->sample_count>6*C3_BATTLE_CAMERA_MAX_TRACK_FRAMES||p->flags[0]!=0x201048||p->flags[1]!=0x200848||p->pattern[0]!=6||p->pattern[1]!=5||p->fov_mask[0]!=4||p->fov_mask[1]!=2||p->entry[0]!=2||p->entry[1]!=8||p->owner_start[0]!=0||p->owner_start[1]!=22)return 0;
+    if(!p||!p->samples||!p->sample_count||p->sample_count>6*C3_BATTLE_CAMERA_MAX_TRACK_FRAMES)return 0;
+    if(p->move_id==93){if(p->flags[0]!=0x200848||p->flags[1]!=0x48||p->pattern[0]!=5||p->pattern[1]!=UINT32_MAX||p->fov_mask[0]!=2||p->fov_mask[1]||p->entry[0]!=1||p->entry[1]!=8||p->owner_start[0]||p->owner_start[1]!=44)return 0;}
+    else if(p->move_id||p->flags[0]!=0x201048||p->flags[1]!=0x200848||p->pattern[0]!=6||p->pattern[1]!=5||p->fov_mask[0]!=4||p->fov_mask[1]!=2||p->entry[0]!=2||p->entry[1]!=8||p->owner_start[0]!=0||p->owner_start[1]!=22)return 0;
     for(unsigned i=0;i<3;++i){const C3BattleCameraBinding *a=&p->actors[i];
         if(a->species!=species[i]||a->scale_selector!=-1||a->animation_kind[0]!=4||a->animation_kind[1]!=3||a->part[0]!=(uint32_t[]){42,62,53}[i]||a->part[1]!=(uint32_t[]){42,62,53}[i])return 0;
         for(unsigned k=0;k<3;++k)if(!isfinite(a->minimum[k])||!isfinite(a->maximum[k])||a->minimum[k]>a->maximum[k]||fabsf(a->minimum[k])>10000||fabsf(a->maximum[k])>10000)return 0;
@@ -22,41 +24,50 @@ static int valid(const C3BattleCameraProgram *p)
     for(uint32_t i=0;i<p->sample_count;++i)for(unsigned k=0;k<3;++k)if(!isfinite(p->samples[i][k])||fabsf(p->samples[i][k])>1000)return 0;
     return 1;
 }
-int c3_battle_camera_decode(C3BattleCameraProgram *out,const void *data,size_t bytes,char *e,size_t n)
+static int decode_program(C3BattleCameraProgram *out,const void *data,size_t bytes,char *e,size_t n,int confusion)
 {
-    const uint8_t *b=data;C3BattleCameraProgram p={0};uint8_t digest[20];
+    const uint8_t *b=data;C3BattleCameraProgram p={0};uint8_t digest[20];uint32_t base=confusion?1500u:512u;p.move_id=confusion?93u:0;
     static const uint8_t pin[20]={0x51,0xbf,0xe4,0x31,0x4a,0x21,0x8d,0xfa,0xf9,0x59,0x2f,0xc8,0x07,0x23,0xc5,0x04,0x98,0xd0,0xee,0x55};
-    if(!out||!b||bytes<512||bytes>C3_BATTLE_CAMERA_MAX_BYTES||memcmp(b,"C3BC",4)||u32(b+4)!=3||u32(b+8)!=bytes||u32(b+12)!=44||u32(b+16)!=60||u32(b+20)!=3||u32(b+24)!=2||memcmp(b+32,pin,20))return fail(e,n,"Unsupported source Bite camera descriptor.");
-    uint32_t total=u32(b+28);if(!total||total>6*C3_BATTLE_CAMERA_MAX_TRACK_FRAMES||bytes!=512u+12u*total)return fail(e,n,"Source camera track bounds.");
+    if(!out||!b||bytes<base||bytes>C3_BATTLE_CAMERA_MAX_BYTES||memcmp(b,confusion?"C3CC":"C3BC",4)||u32(b+4)!=(confusion?1u:3u)||u32(b+8)!=bytes||u32(b+12)!=(confusion?93u:44u)||u32(b+16)!=60||u32(b+20)!=3||u32(b+24)!=2||memcmp(b+32,pin,20))return fail(e,n,"Unsupported source Bite camera descriptor.");
+    uint32_t total=u32(b+28);if(!total||total>6*C3_BATTLE_CAMERA_MAX_TRACK_FRAMES||bytes!=base+12u*total)return fail(e,n,"Source camera track bounds.");
     for(unsigned k=52;k<64;++k)if(b[k])return fail(e,n,"Unknown camera header extension.");
     for(unsigned phase=0;phase<2;++phase){const uint8_t *r=b+64+phase*64;p.flags[phase]=u32(r);p.pattern[phase]=u32(r+4);p.fov_mask[phase]=u32(r+8);p.entry[phase]=u32(r+12);p.owner_start[phase]=u32(r+16);for(unsigned k=20;k<64;++k)if(r[k])return fail(e,n,"Unknown camera profile extension.");}
     for(unsigned i=0;i<3;++i){const uint8_t *r=b+192+96*i;C3BattleCameraBinding *a=&p.actors[i];a->species=u32(r);a->scale_selector=(int32_t)u32(r+4);
         for(unsigned k=0;k<3;++k){a->minimum[k]=f32(r+8+4*k);a->maximum[k]=f32(r+20+4*k);}
         for(unsigned phase=0;phase<2;++phase){for(unsigned k=0;k<4;++k)a->timing[phase][k]=u32(r+32+phase*16+k*4);a->part[phase]=u32(r+64+phase*4);a->animation_kind[phase]=u32(r+72+phase*4);}
-        for(unsigned phase=0;phase<2;++phase){uint32_t offset=u32(r+80+phase*8);if(offset<512||(offset-512)%12)return fail(e,n,"Camera part track alignment.");a->track_offset[phase]=(offset-512)/12;a->track_count[phase]=u32(r+84+phase*8);}
+        for(unsigned phase=0;phase<2;++phase){uint32_t offset=u32(r+80+phase*8);if(offset<base||(offset-base)%12)return fail(e,n,"Camera part track alignment.");a->track_offset[phase]=(offset-base)/12;a->track_count[phase]=u32(r+84+phase*8);}
     }
     for(unsigned k=500;k<512;++k)if(b[k])return fail(e,n,"Unknown camera checksum extension.");
     uint8_t *checked=malloc(bytes);if(!checked)return fail(e,n,"Camera checksum allocation failed.");
     memcpy(checked,b,bytes);memset(checked+480,0,20);c3_save_codec_sha1(digest,checked,bytes);free(checked);
     if(memcmp(digest,b+480,20))return fail(e,n,"Camera descriptor checksum mismatch.");
+    if(confusion){
+        static const uint8_t expected[20]={0x17,0x6a,0x55,0x77,0x01,0x52,0xba,0xb9,0x23,0x80,0x8f,0x8f,0x20,0xaf,0x6a,0x60,0x66,0xb4,0xd7,0x94};
+        c3_save_codec_sha1(digest,b+512,988);if(memcmp(digest,expected,20))return fail(e,n,"Confusion source FOV table drift.");
+        for(unsigned i=0;i<13;++i)for(unsigned j=0;j<19;++j)p.patterns[i][j]=u32(b+512+76*i+4*j);
+    }
     p.samples=malloc(total*sizeof *p.samples);if(!p.samples)return fail(e,n,"Camera part track allocation failed.");p.sample_count=total;p.owned=1;
-    for(uint32_t i=0;i<total;++i)for(unsigned k=0;k<3;++k)p.samples[i][k]=f32(b+512+12*i+4*k);
+    for(uint32_t i=0;i<total;++i)for(unsigned k=0;k<3;++k)p.samples[i][k]=f32(b+base+12*i+4*k);
     uint32_t cursor=0;for(unsigned i=0;i<3;++i)for(unsigned phase=0;phase<2;++phase){if(p.actors[i].track_offset[phase]!=cursor){free(p.samples);return fail(e,n,"Camera part tracks must be contiguous.");}cursor+=p.actors[i].track_count[phase];}
     if(cursor!=total||!valid(&p)){free(p.samples);return fail(e,n,"Unsupported source camera flags, bounds, timing or body-map part.");}
     c3_battle_camera_close(out);*out=p;if(e&&n)e[0]=0;return 1;
 }
+int c3_battle_camera_decode(C3BattleCameraProgram *p,const void *b,size_t z,char *e,size_t n){return decode_program(p,b,z,e,n,0);}
+int c3_battle_camera_confusion_decode(C3BattleCameraProgram *p,const void *b,size_t z,char *e,size_t n){return decode_program(p,b,z,e,n,1);}
 void c3_battle_camera_close(C3BattleCameraProgram *p){if(p){if(p->owned)free(p->samples);memset(p,0,sizeof *p);}}
 
-int c3_battle_camera_load(C3BattleCameraProgram *out,const char *path,char *e,size_t n)
+static int load_program(C3BattleCameraProgram *out,const char *path,char *e,size_t n,int confusion)
 {
     if(!out||!path)return fail(e,n,"Missing camera path.");
     FILE *f=fopen(path,"rb");if(!f)return fail(e,n,"Cannot open source camera descriptor.");
     uint8_t *bytes=malloc(C3_BATTLE_CAMERA_MAX_BYTES);if(!bytes){fclose(f);return fail(e,n,"Camera file allocation failed.");}
     size_t count=fread(bytes,1,C3_BATTLE_CAMERA_MAX_BYTES,f);int extra=fgetc(f),io=ferror(f);if(fclose(f))io=1;
     if(io||count<512||extra!=EOF){free(bytes);return fail(e,n,"Invalid camera descriptor length.");}
-    int ok=c3_battle_camera_decode(out,bytes,count,e,n);free(bytes);return ok;
+    int ok=decode_program(out,bytes,count,e,n,confusion);free(bytes);return ok;
 }
 
+int c3_battle_camera_load(C3BattleCameraProgram *p,const char *f,char *e,size_t n){return load_program(p,f,e,n,0);}
+int c3_battle_camera_confusion_load(C3BattleCameraProgram *p,const char *f,char *e,size_t n){return load_program(p,f,e,n,1);}
 void c3_battle_camera_init(C3BattleCamera *s,uint32_t seed){if(s){memset(s,0,sizeof *s);s->rng=seed?seed:1;s->previous_motion=UINT32_MAX;}}
 static float random_unit(C3BattleCamera *s){uint32_t x=s->rng;x^=x<<13;x^=x>>17;x^=x<<5;s->rng=x;++s->random_draws;return (float)(x>>8)*(1.0f/16777216.0f);}
 static int actors_valid(const C3BattleCameraActor a[4])
@@ -74,7 +85,46 @@ static void sample(C3BattleCamera *s)
     for(unsigned k=0;k<3;++k)s->camera.target[k]=s->origin[k]+s->view[k];
     s->camera.roll=0;s->camera.fov_y_degrees=s->fov;
 }
-int c3_battle_camera_begin(C3BattleCamera *s,const C3BattleCameraProgram *p,C3BattleCameraPhase phase,unsigned owner,unsigned target,const C3BattleCameraActor actors[4],const C3TitleCamera *base,char *e,size_t n)
+static float pattern_float(uint32_t v){float f;memcpy(&f,&v,4);return f;}
+static int fov_mix(uint32_t flags,float *lo,float *hi){
+    if(!flags||flags>7)return 0;
+    *lo=0;*hi=1;int first=0,second=0;
+    if(flags&1){*lo=0;*hi=.2f;first=1;}
+    if(flags&2){if(!first)*lo=.35f;*hi=.6f;second=1;}
+    if(flags&4){if(!second)*lo=.75f;*hi=1;}
+    return 1;
+}
+static int confusion_fov(C3BattleCamera *s,const C3BattleCameraProgram *p,const C3BattleCameraBinding *a,float low,float high,char *e,size_t n){
+    float choice=random_unit(s),end=0;unsigned selected=13;
+    for(unsigned i=0;i<13;++i){float weight=pattern_float(p->patterns[i][0]);if(!isfinite(weight)||weight<0||weight>1)return fail(e,n,"Invalid Confusion FOV weight.");end+=weight;if(choice<end){selected=i;break;}}
+    if(selected==13)return fail(e,n,"Unqualified Confusion FOV fallback.");
+    const uint32_t *row=p->patterns[selected];float lo,hi;
+    if(!fov_mix(row[7],&lo,&hi))return fail(e,n,"Unsupported Confusion initial FOV mask.");
+    float current=low+(high-low)*(lo+(hi-lo)*random_unit(s));
+    s->fov=current;s->fov_pattern=selected;s->dynamic_fov=1;
+    uint32_t previous=0;
+    for(unsigned i=0;i<2;++i){const uint32_t *r=row+1+9*i;uint32_t next=a->timing[1][i];
+        s->fov_begin[i]=previous;s->fov_finish[i]=next;s->fov_start[i]=s->fov_end[i]=current;
+        if(next<previous)return fail(e,n,"Invalid Confusion FOV gate order.");
+        if(previous!=next&&(r[0]==3||r[0]==4)){
+            uint32_t duration=next-previous,mode=r[1],cap;float random=random_unit(s);
+            if(mode==5)cap=random<pattern_float(r[2])?12:45;
+            else if(mode==12)cap=random<pattern_float(r[4])?45:duration;
+            else if(mode==13)cap=random<pattern_float(r[2])?12:random<pattern_float(r[4])?45:duration;
+            else return fail(e,n,"Unsupported Confusion source duration mode.");
+            if(duration>cap)duration=cap;
+            if(!fov_mix(r[7],&lo,&hi))return fail(e,n,"Unsupported Confusion FOV mask.");
+            float fov=low+(high-low)*(lo+(hi-lo)*random_unit(s));
+            if(r[8]==2)s->fov_begin[i]=next-duration;
+            else if(r[8]==1)s->fov_finish[i]=previous+duration;
+            else return fail(e,n,"Unsupported Confusion FOV timing mode.");
+            s->fov_end[i]=fov;current=fov;
+        }else if(r[0]>4)return fail(e,n,"Unsupported Confusion FOV mode.");
+        previous=next;
+    }
+    return 1;
+}
+static int begin_program(C3BattleCamera *s,const C3BattleCameraProgram *p,C3BattleCameraPhase phase,unsigned owner,unsigned target,const C3BattleCameraActor actors[4],const C3TitleCamera *base,char *e,size_t n)
 {
     if(!s||!s->rng||!valid(p)||(phase!=C3_BATTLE_CAMERA_ATTACK&&phase!=C3_BATTLE_CAMERA_DAMAGE)||owner>=4||target>=4||owner==target||!actors_valid(actors)||!base)return fail(e,n,"Invalid checked camera owner, target or source profile.");
     for(unsigned k=0;k<3;++k)if(!isfinite(base->eye[k])||!isfinite(base->target[k]))return fail(e,n,"Nonfinite inherited camera.");
@@ -91,12 +141,13 @@ int c3_battle_camera_begin(C3BattleCamera *s,const C3BattleCameraProgram *p,C3Ba
     unsigned duration_index=phase==C3_BATTLE_CAMERA_ATTACK?1:0;
     next.duration=a->timing[phase][duration_index];
     if(!next.duration)next.duration=a->timing[phase][duration_index+1];
-    float distance_min=(phase==C3_BATTLE_CAMERA_ATTACK?50:35)*.875f,distance_max=(phase==C3_BATTLE_CAMERA_ATTACK?60:50)*.875f;if(distance_min<20)distance_min=20;if(distance_min>48)distance_min=48;if(distance_max<40)distance_max=40;if(distance_max>60)distance_max=60;
-    float upper=phase==C3_BATTLE_CAMERA_ATTACK?20:11;
+    int confusion=p->move_id==93;
+    float distance_min=(confusion?(phase==C3_BATTLE_CAMERA_ATTACK?35:20):(phase==C3_BATTLE_CAMERA_ATTACK?50:35))*.875f,distance_max=(confusion?(phase==C3_BATTLE_CAMERA_ATTACK?50:60):(phase==C3_BATTLE_CAMERA_ATTACK?60:50))*.875f;if(distance_min<20)distance_min=20;if(distance_min>48)distance_min=48;if(distance_max<40)distance_max=40;if(distance_max>60)distance_max=60;
+    float upper=confusion?(phase==C3_BATTLE_CAMERA_ATTACK?11:20):(phase==C3_BATTLE_CAMERA_ATTACK?20:11);
     float low=a->minimum[1],high=a->maximum[1];if(low<6){low=6;if(high<6)high=9;}if(high>upper){high=upper;if(low>upper)low=.8f*upper;}
     next.distance=(distance_min+(distance_max-distance_min)*random_unit(&next))*.1f;
     next.height=(low+(high-low)*random_unit(&next))*.1f;
-    float rot0=.31415927f,rot1=.62831855f;
+    float rot0=.31415927f,rot1=confusion&&phase==C3_BATTLE_CAMERA_DAMAGE?1.0995574f:.62831855f;
     next.yaw_start=actors[owner].source_facing<0?actors[owner].yaw-rot0-(rot1-rot0)*random_unit(&next):actors[owner].yaw+rot0+(rot1-rot0)*random_unit(&next);
     next.yaw_end=next.yaw_start;
     if(next.motion==2){next.yaw_end=actors[owner].source_facing<0?actors[owner].yaw-rot0-(rot1-rot0)*random_unit(&next):actors[owner].yaw+rot0+(rot1-rot0)*random_unit(&next);if(next.yaw_start>next.yaw_end){float swap=next.yaw_start;next.yaw_start=next.yaw_end;next.yaw_end=swap;}}
@@ -104,11 +155,23 @@ int c3_battle_camera_begin(C3BattleCamera *s,const C3BattleCameraProgram *p,C3Ba
     float size=.57735026f*sqrtf(length)*1.1f,height=(a->maximum[1]-a->minimum[1])*1.1f,span=fmaxf(.75f*size,height);
     float radius=sqrtf(next.distance*next.distance+next.height*next.height)*10;
     float fov_low=fminf(85,fmaxf(15,57.29578f*2*atan2f(.5f*span,radius))),fov_high=fminf(85,fmaxf(15,57.29578f*2*atan2f(2*span,radius)));
-    float mix=p->fov_mask[phase]==4?.75f+.25f*random_unit(&next):.35f+.25f*random_unit(&next);
+    if(confusion&&phase==C3_BATTLE_CAMERA_ATTACK)(void)random_unit(&next); /* GetPattern always consumes its initial random draw, even a forced entry. */
+    float mix=confusion&&phase==C3_BATTLE_CAMERA_DAMAGE?0:p->fov_mask[phase]==4?.75f+.25f*random_unit(&next):.35f+.25f*random_unit(&next);
     next.track=(const float (*)[3])(p->samples+a->track_offset[phase]);next.track_count=a->track_count[phase];next.track_delay=p->owner_start[phase];
     float co=cosf(actors[owner].yaw),si=sinf(actors[owner].yaw);
     next.view[0]=co*next.track[0][0]+si*next.track[0][2];next.view[1]=next.track[0][1];next.view[2]=-si*next.track[0][0]+co*next.track[0][2];
-    next.fov=fov_low+(fov_high-fov_low)*mix;sample(&next);*s=next;if(e&&n)e[0]=0;return 1;
+    next.dynamic_fov=0;next.fov=fov_low+(fov_high-fov_low)*mix;
+    if(confusion&&phase==C3_BATTLE_CAMERA_DAMAGE&&!confusion_fov(&next,p,a,fov_low,fov_high,e,n))return 0;
+    sample(&next);*s=next;if(e&&n)e[0]=0;return 1;
+}
+int c3_battle_camera_begin(C3BattleCamera *s,const C3BattleCameraProgram *p,C3BattleCameraPhase phase,unsigned owner,unsigned target,const C3BattleCameraActor a[4],const C3TitleCamera *b,char *e,size_t n){
+    if(!p||p->move_id)return fail(e,n,"Legacy Bite camera requires its original program.");
+    return begin_program(s,p,phase,owner,target,a,b,e,n);
+}
+int c3_battle_camera_begin_move(C3BattleCamera *s,const C3BattleCameraProgram *p,uint32_t move,C3BattleCameraPhase phase,unsigned owner,unsigned target,const C3BattleCameraActor a[4],const C3TitleCamera *b,char *e,size_t n){
+    if(move==44)return c3_battle_camera_begin(s,p,phase,owner,target,a,b,e,n);
+    if(move!=93||!p||p->move_id!=93)return fail(e,n,"Unqualified camera move/program.");
+    return begin_program(s,p,phase,owner,target,a,b,e,n);
 }
 int c3_battle_camera_step(C3BattleCamera *s,uint32_t ms,const C3BattleCameraActor actors[4],char *e,size_t n)
 {
@@ -124,7 +187,13 @@ int c3_battle_camera_step(C3BattleCamera *s,uint32_t ms,const C3BattleCameraActo
         float target[3]={co*local[0]+si*local[2],local[1],-si*local[0]+co*local[2]};
         for(unsigned k=0;k<3;++k)result.view[k]+=(target[k]-result.view[k])/12.0f;
     }
-    result.units=next;sample(&result);*s=result;if(e&&n)e[0]=0;return 1;
+    result.units=next;
+    if(result.dynamic_fov){for(unsigned i=0;i<2;++i){
+        if(result.ticks<=result.fov_begin[i]){result.fov=result.fov_start[i];break;}
+        if(result.ticks<=result.fov_finish[i]){float t=(float)(result.ticks-result.fov_begin[i])/(float)(result.fov_finish[i]-result.fov_begin[i]);result.fov=result.fov_start[i]+(result.fov_end[i]-result.fov_start[i])*t;break;}
+        result.fov=result.fov_end[i];
+    }}
+    sample(&result);*s=result;if(e&&n)e[0]=0;return 1;
 }
 void c3_battle_camera_pause(C3BattleCamera *s,int paused){if(s)s->paused=(uint8_t)(paused!=0);}
 void c3_battle_camera_cancel(C3BattleCamera *s){if(s){s->active=0;s->camera=s->restored;s->track=NULL;s->track_count=0;}}

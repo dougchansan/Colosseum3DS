@@ -10,7 +10,7 @@ static uint32_t word(const unsigned char *p){return (uint32_t)p[0]|(uint32_t)p[1
 static float real(const unsigned char *p){uint32_t u=word(p);float f;memcpy(&f,&u,4);return f;}
 static int fail(char *e,size_t n,const char *s){if(e&&n)snprintf(e,n,"%s",s);return 0;}
 static void confusion_cancel(C3BattleStage *s);
-static void release(C3BattleStage *s){confusion_cancel(s);c3_wzx_confusion_sequence_close(&s->confusion_program);free(s->confusion_bytes[0]);s->confusion_bytes[0]=NULL;free(s->confusion_bytes[1]);s->confusion_bytes[1]=NULL;free(s->confusion_damage_particles);s->confusion_damage_particles=NULL;s->confusion_available=0;c3_wzx_reflect_cancel(&s->reflect);c3_wzx_reflect_program_close(&s->reflect_program);free(s->reflect_bytes);s->reflect_bytes=NULL;c3_battle_camera_cancel(&s->source_camera);c3_battle_camera_close(&s->camera_program);for(uint32_t i=s->count;i>0;--i)c3_title_close(&s->models[i-1]);s->count=0;free(s->particle_bytes);s->particle_bytes=NULL;}
+static void release(C3BattleStage *s){confusion_cancel(s);c3_battle_camera_close(&s->confusion_camera_program);s->confusion_camera_available=0;c3_wzx_confusion_sequence_close(&s->confusion_program);free(s->confusion_bytes[0]);s->confusion_bytes[0]=NULL;free(s->confusion_bytes[1]);s->confusion_bytes[1]=NULL;free(s->confusion_damage_particles);s->confusion_damage_particles=NULL;s->confusion_available=0;c3_wzx_reflect_cancel(&s->reflect);c3_wzx_reflect_program_close(&s->reflect_program);free(s->reflect_bytes);s->reflect_bytes=NULL;c3_battle_camera_cancel(&s->source_camera);c3_battle_camera_close(&s->camera_program);for(uint32_t i=s->count;i>0;--i)c3_title_close(&s->models[i-1]);s->count=0;free(s->particle_bytes);s->particle_bytes=NULL;}
 static int stage_sound(C3BattleStage *s,uint32_t id,char *e,size_t n)
 {
     if(!s->sound_cue)return 1;
@@ -80,7 +80,7 @@ int c3_battle_stage_load(C3BattleStage *s,const char *root,const uint16_t hp[4],
         if(trace){fprintf(trace,"wzx_bite_admitted model=1 floor_color=1 sound_request=85 attack_binding=accepted_local_72_142_165\n");fflush(trace);}
     }else if(errno!=ENOENT){fail(error,cap,"Cannot inspect optional Bite WZX pack.");goto bad;}
     if(!damage_load(s,root,error,cap))goto bad;
-    if(!reflect_load(s,root,error,cap)||!confusion_load(s,root,error,cap))goto bad;
+    if(!reflect_load(s,root,error,cap)||!confusion_load(s,root,error,cap)||!confusion_camera_load(s,root,error,cap))goto bad;
     c3_battle_presentation_init(&s->presentation,hp);
     if(!c3_battle_presentation_wait_limit(&s->presentation,20000))goto invalid;
     if(c3_stage_renderer_init(s->draw,s->count,error,cap)!=C3_RENDER_OK)goto bad;
@@ -191,6 +191,7 @@ int c3_battle_stage_step(C3BattleStage *s,uint32_t ms,char *error,size_t cap)
     /* Retain every elapsed millisecond while bounding catch-up work. Geometry is
      * sampled only after the event/clock timeline reaches its final state. */
     if(ms>4000)return fail(error,cap,"Battle timeline overload: step exceeds 4000 ms.");
+    if(s->confusion_camera.active)c3_battle_camera_pause(&s->confusion_camera,s->presentation.paused);
     uint32_t remaining=ms;
     int endpoint=1;
     do {

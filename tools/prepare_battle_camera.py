@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prepare source Bite procedural camera profiles and original actor bounds.
+"""Prepare source Bite/Confusion procedural camera profiles and original actor bounds.
 
 No original bytes are distributed. The camera code samples the retail procedural
 branches; it does not invent a camera DAT when WZX group/member fields are zero.
@@ -30,18 +30,23 @@ SOURCE_FILES={
 WZX=(('wzx_kamituku_attack.fsys',0x034B2000,'0cb9912dcbe7c4626d63789a34cfe1a36e869a0878454b8cde878434814216f7',0x201048,6,4,2),
      ('wzx_kamituku_damage.fsys',0x04E32000,'4ed0fd1739bb6fcb2caac0c49e4a53db1e0d39680cfd1495653e146a8aacd9ed',0x200848,5,2,8))
 ACTORS=((197,'pkx_blacky.fsys',0x03381E00),(196,'pkx_eifie.fsys',0x03B71E00),(288,'pkx_ziguzaguma.fsys',0x04C51E00))
-def profile(data,flags,pattern,mask,entry):
+def profile(data,flags,pattern,mask,entry,node_count=5):
     if len(data)<160 or len(data)>1024*1024:raise ValueError('Truncated/oversized camera WZX')
-    kind,version,actual,target_class,unknown,target_part=struct.unpack_from('>6I',data,112)
-    if (kind,version,actual,target_class,unknown,target_part)!=(entry,5,flags,2,5,0):raise ValueError('Unsupported Bite camera WZX profile')
+    kind,count,actual,target_class,unknown,target_part=struct.unpack_from('>6I',data,112)
+    if (kind,count,actual,target_class,unknown,target_part)!=(entry,node_count,flags,2,5,0):raise ValueError('Unsupported Bite camera WZX profile')
     if any(data[136:160]):raise ValueError('Unexpected external camera bank/track; resolve explicitly')
     return dict(flags=flags,pattern=pattern,fov_mask=mask,entry=entry,target_body_map_index=2,owner_start=0 if entry==2 else 22)
-def encode(profiles,actors):
+def encode(profiles,actors,confusion=False,patterns=None):
     if len(profiles)!=2 or len(actors)!=3:raise ValueError('Camera descriptor count bound')
-    b=bytearray(512);struct.pack_into('<4s6I',b,0,b'C3BC',3,512,44,60,3,2);b[32:52]=bytes.fromhex(SOURCE_COMMIT)
+    base=1500 if confusion else 512
+    b=bytearray(base);struct.pack_into('<4s6I',b,0,b'C3BC',3,512,44,60,3,2);b[32:52]=bytes.fromhex(SOURCE_COMMIT)
+    if confusion:
+        struct.pack_into('<4s2I',b,0,b'C3CC',1,base);struct.pack_into('<I',b,12,93)
+        if patterns is None or len(patterns)!=988 or hashlib.sha1(patterns).hexdigest()!='176a55770152bab923808f8f20af6a6066b4d794':raise ValueError('Confusion pattern table extent')
+        b[512:1500]=patterns
     for i,p in enumerate(profiles):
-        if (p['flags'],p['pattern'],p['fov_mask'],p['entry'])!=((0x201048,6,4,2),(0x200848,5,2,8))[i]:raise ValueError('Unsupported procedural camera profile')
-        if p['owner_start']!=(0,22)[i]:raise ValueError('Unqualified camera owner animation normalization')
+        if (p['flags'],p['pattern'],p['fov_mask'],p['entry'])!=(((0x200848,5,2,1),(0x48,0xffffffff,0,8)) if confusion else ((0x201048,6,4,2),(0x200848,5,2,8)))[i]:raise ValueError('Unsupported procedural camera profile')
+        if p['owner_start']!=((0,44) if confusion else (0,22))[i]:raise ValueError('Unqualified camera owner animation normalization')
         struct.pack_into('<5I',b,64+i*64,p['flags'],p['pattern'],p['fov_mask'],p['entry'],p['owner_start'])
     for i,a in enumerate(actors):
         if a['species']!=ACTORS[i][0] or a['selector']!=-1:raise ValueError('Unknown source camera size selector')
@@ -63,7 +68,7 @@ def encode(profiles,actors):
             struct.pack_into('<2I',b,192+96*i+80+phase*8,len(b),len(track))
             for point in track:b.extend(struct.pack('<3f',*point))
             count+=len(track)
-    struct.pack_into('<2I',b,8,len(b),44);struct.pack_into('<I',b,28,count)
+    struct.pack_into('<2I',b,8,len(b),93 if confusion else 44);struct.pack_into('<I',b,28,count)
     b[480:500]=hashlib.sha1(b).digest();return bytes(b)
 def source_bounds(model,meshes,clip):
     """GSmodelRecalculateBound / _modelBoundVertex: expand transformed vertices at frame0.
@@ -81,7 +86,7 @@ def source_bounds(model,meshes,clip):
     points=np.asarray(points)
     if not len(points) or not np.isfinite(points).all():raise ValueError('Invalid original camera bound vertices')
     return list(map(float,points.min(axis=0))),list(map(float,points.max(axis=0)))
-def prepare(disc,parser,output):
+def prepare(disc,parser,output,confusion=False):
     import prepare_field_geometry as geometry
     verify_disc(disc);check_output(output)
     for name,digest in SOURCE_FILES.items():
@@ -91,20 +96,25 @@ def prepare(disc,parser,output):
     dol=Dol((disc/'sys/main.dol').read_bytes());profiles=[];resources=[];damage_data=None
     for address in (0x8047E348,0x8047E3C8):
         if struct.unpack('>f',dol.read(address,4))[0]!=.5:raise ValueError('Unqualified source owner motion rate')
-    for name,identity,digest,flags,index,mask,entry in WZX:
+    roots=WZX
+    if confusion:
+        roots=(('wzx_nenriki_attack.fsys',0x07532000,'c4c0c0c2a678a891ed71b92aa2212977a1e24adb985bc6a5c155fe2184b9f8bb',0x200848,5,2,1),('wzx_nenriki_damage.fsys',0x05292000,'a1a0a4114c68a1b4c92d7952fb8bed60503b041f8eee85f033ef32f64d696d04',0x48,0xffffffff,0,8))
+    for name,identity,digest,flags,index,mask,entry in roots:
         path=disc/'files'/name
         expected=(25632,'3a5a0667e61bed6508a0bff68cec95316a08804288b82f80a1761c7afa4ce193') if entry==2 else (117856,'9626a36b5b609302940e8c74a147d0e590fd0b08c06726999a0489ce98dc41ef')
+        if confusion:expected=(72832,'ce7df34845f8cc5520242dec14538ee2c1c662e9b4217cc1002393eff3c0885d') if entry==1 else (72960,'b4bc2e6b2c5332cf2afc7a8cbfa26d86f9b37b69625be4d0de2143c64b1c3920')
         if path.is_symlink() or path.stat().st_size!=expected[0]:raise ValueError('Unsafe camera WZX archive')
         archive=path.read_bytes()
         if hashlib.sha256(archive).hexdigest()!=expected[1]:raise ValueError('Camera WZX archive hash mismatch')
         data=member(archive,identity);actual=hashlib.sha256(data).hexdigest()
         if digest and actual!=digest:raise ValueError('Camera WZX member hash mismatch')
-        p=profile(data,flags,index,mask,entry)
+        p=profile(data,flags,index,mask,entry,(6 if entry==1 else 11) if confusion else 5)
+        if confusion:p['owner_start']=0 if entry==1 else 44
         if entry==8:damage_data=data
         # GetPattern uses short8entry table; flags0x40/0x80 select5/6.
-        table=dol.read(0x80371F60+index*76,76);words=struct.unpack('>19I',table)
-        if words[1]!=1 or words[7]!=mask or any(words[k] for k in range(2,19) if k!=7):raise ValueError('Source Bite FOV pattern changed')
-        profiles.append(p);resources.append(dict(archive=name,member=identity,member_sha256=actual,source_pattern_address=hex(0x80371F60+index*76),pattern_sha256=hashlib.sha256(table).hexdigest()))
+        table=dol.read(0x803721C0 if index==0xffffffff else 0x80371F60+index*76,988 if index==0xffffffff else 76);words=struct.unpack('>19I',table[:76])
+        if index!=0xffffffff and (words[1]!=1 or words[7]!=mask or any(words[k] for k in range(2,19) if k!=7)):raise ValueError('Source Bite FOV pattern changed')
+        profiles.append(p);resources.append(dict(archive=name,member=identity,member_sha256=actual,source_pattern_address=hex(0x803721C0 if index==0xffffffff else 0x80371F60+index*76),pattern_sha256=hashlib.sha256(table).hexdigest()))
     actors=[]
     for species,name,identity in ACTORS:
         archive=admit(disc/'files'/name);pkx=member(archive,identity)
@@ -114,7 +124,7 @@ def prepare(disc,parser,output):
         idle=header.anim_entries[0].sub_anims[0].anim_index
         meshes=[geometry.build_mesh(model,i) for i in range(len(model.meshes))]
         lo,hi=source_bounds(model,meshes,idle)
-        entries=[header.anim_entries[i] for i in (2,8)]
+        entries=[header.anim_entries[i] for i in ((1,8) if confusion else (2,8))]
         # fn801DC5F0 uses WZX header[3]=2 for sequencebyte0x17;
         # battleCameraStartWaza indexes the owning PKX body_map[2]. Original
         # JObj IDs are baked into independent immutable source60Hz tracks,
@@ -128,18 +138,27 @@ def prepare(disc,parser,output):
         a=dict(species=species,selector=selector,minimum=lo,maximum=hi,timing=[[round(t*60) for t in e.timing] for e in entries],part=[e.body_map_bones[2] for e in entries],kind=[e.anim_type for e in entries],archive=name,member=identity,member_sha256=hashlib.sha256(pkx).hexdigest(),idle_clip=idle,tracks=tracks,camera_part_qualification='OriginalJObj body_map[2] sampled at .5animationframe per original60Hz tick')
         if any(e.sub_anim_count!=1 for e in entries):raise ValueError('Unsupported camera owner multiple subanimations')
         actors.append(a)
-    from prepare_wzx_damage import parse as parse_damage, qualify_timeline
-    instruction_profile=qualify_timeline(dol)
-    defender=actors[2]['timing'][1]
-    damage_profile,_,_=parse_damage(damage_data,[0,*defender[:2]])
-    if damage_profile['owner_start']!=22:raise ValueError('Damage camera actor normalization changed')
-    profiles[1]['owner_start']=damage_profile['owner_start']
+    instruction_profile={}
+    if not confusion:
+        from prepare_wzx_damage import parse as parse_damage, qualify_timeline
+        instruction_profile=qualify_timeline(dol)
+        defender=actors[2]['timing'][1]
+        damage_profile,_,_=parse_damage(damage_data,[0,*defender[:2]])
+        if damage_profile['owner_start']!=22:raise ValueError('Damage camera actor normalization changed')
+        profiles[1]['owner_start']=damage_profile['owner_start']
     # The camera DoPosition duration itself is not the WZX normalized owner end:
     # DOL0x801D3820/3A50 loads count, shifts2, loads+4 (or+8 fallback).
     for address,word in ((0x801D3820,0x80070000),(0x801D382C,0x83A30004),(0x801D3A50,0x80070000),(0x801D3A5C,0x83A30004)):
         if struct.unpack('>I',dol.read(address,4))[0]!=word:raise ValueError('Source camera duration instruction changed')
-    descriptor=encode(profiles,actors);output.mkdir(parents=True,exist_ok=False);(output/'bite_camera.c3c').write_bytes(descriptor)
+    patterns=None
+    if confusion:
+        raw_patterns=dol.read(0x803721C0,988)
+        patterns=struct.pack('<247I',*struct.unpack('>247I',raw_patterns))
+    descriptor=encode(profiles,actors,confusion,patterns);output.mkdir(parents=True,exist_ok=False);(output/('confusion_camera.c3c' if confusion else 'bite_camera.c3c')).write_bytes(descriptor)
     report=dict(source_commit=SOURCE_COMMIT,source_files=SOURCE_FILES,resources=resources,actors=actors,descriptor_sha256=hashlib.sha256(descriptor).hexdigest(),normalization=instruction_profile,owner_start=[0,22],scope='Source procedural Bite attack/damage motion2/3 and short-pattern5/6 FOV; separate cosmetic stream, not original shared RNG parity',projection='Retain original inherited near/far/aspect; source computed FOV; native unit conversion0.1',timing='Source60ticks; action duration timing1, damage timing0; owneranimationactive1 shift0; target-offset move0.2seconds; damage actortrack holds tick0..22 then(.5frame/tick), camera motion duration stays190ticks forZig (DOLcount3+4)',camera_target='fn801DC5F0 header[3]2 ->body_map[2] ->originalJObj42/62/53; independent source .5frame/tick localtracks',limitations='Default variant0 only; NumPy/native scalar arithmetic is not PPC bit parity; original shared cosmetic RNG differs; source visual comparison remains required')
-    (output/'bite_camera.json').write_text(json.dumps(report,indent=2)+'\n');return report
+
+    if confusion:
+        report.update(move=93,owner_start=[0,44],scope='Original procedural Confusion motion2/3, attack short5 FOV and defender weighted long13 FOV with two source segments',timing='Source60ticks; ownerentry1/8; camera duration timing1/action and timing0/hit; defender actor track delayed44ticks; FOV uses implicitzero then timing0/1',pattern_address='0x803721C0',pattern_sha256=hashlib.sha256(raw_patterns).hexdigest())
+    (output/('confusion_camera.json' if confusion else 'bite_camera.json')).write_text(json.dumps(report,indent=2)+'\n');return report
 if __name__=='__main__':
-    p=argparse.ArgumentParser(description=__doc__);p.add_argument('--disc',type=Path,required=True);p.add_argument('--parser',type=Path,required=True);p.add_argument('--output',type=Path,required=True);a=p.parse_args();print(json.dumps(prepare(a.disc,a.parser,a.output),indent=2))
+    p=argparse.ArgumentParser(description=__doc__);p.add_argument('--disc',type=Path,required=True);p.add_argument('--parser',type=Path,required=True);p.add_argument('--output',type=Path,required=True);p.add_argument('--confusion',action='store_true');a=p.parse_args();print(json.dumps(prepare(a.disc,a.parser,a.output,a.confusion),indent=2))
