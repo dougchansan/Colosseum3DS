@@ -7,6 +7,7 @@
 #define C3_PARTICLE_MAX_EMITTERS 16u
 #define C3_PARTICLE_MAX_APP_SRT 16u
 #define C3_PARTICLE_PROFILE_GROWL_V1 1u
+#define C3_PARTICLE_PROFILE_GREEN_DOWN_V1 2u
 #ifndef C3_PARTICLE_MAX_PARTICLES
 /* Measured admitted Reflect closure peak1369; bounded1536 live slots. */
 #define C3_PARTICLE_MAX_PARTICLES 1536u
@@ -102,8 +103,10 @@ typedef struct {
 int c3_particle_quad(const C3Particle *,const float attachment[12],
                      const C3ParticleCamera *,C3ParticleQuad *,char *,size_t);
 int c3_particle_bank_decode(C3ParticleBank *,const void *,size_t,char *,size_t);
-/* Explicit Growl v1: source root18, original113 descriptors, decoded closure
- * {18,93,111,112}. Raw bytes/IDs remain unchanged; unsupported state ops fail. */
+/* Explicit Growl v1 root18/113 source descriptors, or Green-down v1 root0/3
+ * dense descriptors. Original IDs/bytes remain unchanged. Green source hash
+ * authentication is enforced by the opt-in pack decoder; raw decode checks
+ * the admitted generator/bytecode contract. */
 int c3_particle_bank_decode_reachable(C3ParticleBank *,const void *,size_t,
  unsigned source_root,unsigned profile,char *,size_t);
 int c3_particle_bank_source_slot(const C3ParticleBank *,unsigned source_id,unsigned *slot);

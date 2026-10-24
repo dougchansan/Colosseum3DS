@@ -90,3 +90,32 @@ BC/CC/TC packs and existing decoders reject GC. Camera-only tests cover selectio
 bins, RNG draw counts, bounds, source duration, pause, cancellation, partition
 invariance and rejection without mutation. Hardware Growl rendering and stage
 integration are separate work; this section claims neither.
+
+## GREEN stat-down special0x29
+
+GREEN down is special `0x29` (decimal41), not a move ID. The dedicated C3SC v1
+loader and `c3_battle_camera_begin_special` admit only that special, affected
+Umbreon0/Espeon1 and triggering opponent2/3. Existing move entry points and other
+special codes reject it. Only two actor records exist; Zigzagoon is not a target
+binding in this pack.
+
+The original `wzx_greendown_status.fsys` member0B6F2000 header is
+`[0,4,0,2,5,0]` with no external camera. Target-class2 selects idle body-map2:
+source part42 for Umbreon and62 for Espeon. Their source idle durations118/180
+and complete119/181-sample tracks are checked explicitly. Native geometry remains
+in the existing source-to-native .1 unit basis.
+
+Source SequenceCopy inserts a runtime track at8C/90, DD100 writes normalization0,
+and both original idle subanimations have motion_type0. MotionStart therefore
+uses DF070, which resets authored frame0 and rate.5; the preserve-idle-phase
+DEF0C path does not apply. The camera starts at source0, follows the idle track
+at .5 authored frames per source60Hz tick, and loops at its original endpoint.
+
+Raw flags0 select CountSheep's all-four fallback in source order3,0,1,2. Derived
+flags0 retain the standard source distance/height/yaw bounds, weighted short8
+initial FOV, and direct middle-mask Dolly FOV. The numeric source branches fit
+the existing qualified single-phase camera helper, but the API/profile namespace
+is separate: this is not a Tail Whip move alias. Each special camera must retain
+its own cosmetic stream; original shared RNG and outer target overlap/order
+parity remain unqualified. Caller cancellation restores the inherited camera.
+No stat-down stage, particle, audio or hardware implementation is claimed here.

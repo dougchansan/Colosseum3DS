@@ -42,7 +42,7 @@ int c3_particle_bank_decode(C3ParticleBank *b,const void *p,size_t n,char *e,siz
 {return decode_bank(b,p,n,0,e,cap);}
 int c3_particle_bank_source_slot(const C3ParticleBank *b,unsigned id,unsigned *slot)
 {
- if(!b||!slot||b->generator_count>C3_PARTICLE_MAX_GENERATORS||(b->profile&&b->profile!=C3_PARTICLE_PROFILE_GROWL_V1))return 0;
+ if(!b||!slot||b->generator_count>C3_PARTICLE_MAX_GENERATORS||(b->profile&&b->profile!=C3_PARTICLE_PROFILE_GROWL_V1&&b->profile!=C3_PARTICLE_PROFILE_GREEN_DOWN_V1))return 0;
  for(unsigned i=0;i<b->generator_count;++i)if((b->profile?b->source_ids[i]:i)==id){*slot=i;return 1;}
  return 0;
 }
@@ -66,9 +66,47 @@ static int growl_program(const C3ParticleBank *b,unsigned slot)
  }
  return ended;
 }
+static int green_program(const C3ParticleBank *b,unsigned slot)
+{
+ const C3ParticleGenerator *g=&b->generators[slot];const uint8_t *p=b->bytes+g->script_offset;size_t at=0;unsigned offsets=0;
+ if(!slot){static const uint8_t root[]={0xf0,0,1,7,0xf0,0,2,7,0xff};return g->script_bytes>=sizeof root&&!memcmp(p,root,sizeof root);}
+ while(at<g->script_bytes){unsigned op=p[at++],extra=0;
+  if(op==0xff)return offsets==1;
+  if(op<0x80){if(op&32)extra++;if(op&64)extra++;}
+  else if(op==0xad||op==0xb1)extra=0;
+  else if(op==0x8f){if(g->script_bytes-at<12||f32(p+at)!=0||f32(p+at+4)!=22||f32(p+at+8)!=0)return 0;++offsets;extra=12;}
+  else if(op==0xa0||op==0xac||op==0xcf||op==0xdf){if(at>=g->script_bytes)return 0;extra=1+((p[at]&128)?1:0)+(op==0xac?8:4);}
+  else if(op==0xa3||op==0xe8)extra=4;
+  else if(op==0xbd)extra=8;
+  else if(op==0xbc)extra=2;
+  else return 0;
+  if(extra>g->script_bytes-at)return 0;
+  at+=extra;
+ }
+ return 0;
+}
+static int green_bank(C3ParticleBank *b)
+{
+ if(b->generator_count!=3||b->texture_group_count!=2||b->texture_frames[0]!=1||b->texture_frames[1]!=2)return 0;
+ const float parameters[3][12]={{0,0,0,0,0,0,0,-1,1,0,2*PI,0},
+  {0,0,0,1,0,-10,-PI/2,-8,1,-2*PI,2*PI,0},
+  {0,0,0,1,0,-8,PI/2,-4,1,-2*PI,2*PI,0}};
+ const uint16_t life[3][2]={{1,1000},{32,16},{28,26}};
+ for(unsigned i=0;i<3;++i){const C3ParticleGenerator *g=&b->generators[i];
+  if(g->type!=(i?7:0)||g->tex_group!=(i==2?1:0)||g->gen_life!=life[i][0]||g->life!=life[i][1]||g->kind!=(i?0x08400000u:0x09000000u)||b->refs[i]!=i||!green_program(b,i))return 0;
+  float actual[12]={g->grav,g->fric,g->velocity[0],g->velocity[1],g->velocity[2],g->radius,g->angle,g->rate,g->size,g->param[0],g->param[1],g->param[2]};
+  for(unsigned j=0;j<12;++j)if(actual[j]!=parameters[i][j])return 0;
+ }
+ b->profile=C3_PARTICLE_PROFILE_GREEN_DOWN_V1;return 1;
+}
 int c3_particle_bank_decode_reachable(C3ParticleBank *out,const void *p,size_t n,unsigned root,unsigned profile,char *e,size_t cap)
 {
- if(!out||!p||overlap(out,sizeof *out,p,n)||root!=18||profile!=C3_PARTICLE_PROFILE_GROWL_V1)return error(e,cap,"Unsupported reachable particle profile/root/ownership.");
+ if(!out||!p||overlap(out,sizeof *out,p,n))return error(e,cap,"Unsupported reachable particle profile/root/ownership.");
+ if(profile==C3_PARTICLE_PROFILE_GREEN_DOWN_V1){C3ParticleBank b;
+  if(root||n!=1644||!decode_bank(&b,p,n,0,e,cap)||!green_bank(&b))return error(e,cap,"Unqualified Green-down source bank/root/program.");
+  *out=b;if(e&&cap)e[0]=0;return 1;
+ }
+ if(root!=18||profile!=C3_PARTICLE_PROFILE_GROWL_V1)return error(e,cap,"Unsupported reachable particle profile/root/ownership.");
  C3ParticleBank b;if(!decode_bank(&b,p,n,1,e,cap))return 0;
  static const uint32_t kinds[4]={0x09000000u,0x09420100u,0x09420000u,0x09400001u};
  for(unsigned i=0;i<4;++i)if(b.generators[i].type!=(i==3?8:0)||b.generators[i].tex_group!=((i==1||i==3)?1:0)||b.generators[i].kind!=kinds[i]||!growl_program(&b,i))return error(e,cap,"Unqualified Growl generator/AppSRT program.");
@@ -111,11 +149,13 @@ static int reference_slot(const C3ParticleBank *b,unsigned reference,unsigned *s
  * height/radius scaling. Snapshots survive native emitter-slot reuse. */
 static void yaw_rotate(float yaw,float v[3])
 {float x=v[0],z=v[2],c=cosf(yaw),sn=sinf(yaw);v[0]=c*x+sn*z;v[2]=-sn*x+c*z;}
+static int emission_shape(const C3ParticleBank *b,const C3ParticleGenerator *g)
+{return g->type==0||g->type==1||g->type==2||g->type==8||(b->profile==C3_PARTICLE_PROFILE_GREEN_DOWN_V1&&g->type==7);}
 static int emitter(C3ParticleSystem *s,unsigned g,unsigned depth,const float pos[3],unsigned flags)
 {
  if(g>=s->bank.generator_count||depth>C3_PARTICLE_MAX_DEPTH)return fault(s,g,0,0xF0,"reference/nesting bound");
  const C3ParticleGenerator *d=&s->bank.generators[g];
- if((d->type!=0&&d->type!=1&&d->type!=2&&d->type!=8)||d->rate>C3_PARTICLE_MAX_PARTICLES||d->rate< -(float)C3_PARTICLE_MAX_PARTICLES||((d->kind&0x30000)&&!(s->bank.profile==C3_PARTICLE_PROFILE_GROWL_V1&&(d->kind&0x30000)==0x20000)))return fault(s,g,0,0,"unsupported generator shape/camera basis/rate");
+ if(!emission_shape(&s->bank,d)||d->rate>C3_PARTICLE_MAX_PARTICLES||d->rate< -(float)C3_PARTICLE_MAX_PARTICLES||((d->kind&0x30000)&&!(s->bank.profile==C3_PARTICLE_PROFILE_GROWL_V1&&(d->kind&0x30000)==0x20000)))return fault(s,g,0,0,"unsupported generator shape/camera basis/rate");
 
  for(unsigned i=0;i<C3_PARTICLE_MAX_EMITTERS;++i)if(!s->emitters[i].active){
   C3ParticleEmitter *v=&s->emitters[i];memset(v,0,sizeof *v);v->active=1;v->generator=(uint16_t)g;v->depth=(uint8_t)depth;v->life=d->gen_life;v->kind=d->kind;
@@ -194,6 +234,12 @@ static int interpret(C3ParticleSystem *s,C3Particle *p)
     for(unsigned c=0;c<4;++c)if(op&(1u<<c)){if(!byte(s,p,&v))return 0;p->color_target[k][c]=(uint8_t)v;}
     if(!t)memcpy(p->color_base[k],p->color_target[k],4);
     color(p,k);t=0;
+   }else if(op==0x8f&&s->bank.profile==C3_PARTICLE_PROFILE_GREEN_DOWN_V1){
+    float offset[3];for(unsigned j=0;j<3;++j)if(!scalar(s,p,&offset[j]))return 0;
+    /* psApplyOffsetLocalRotation: A1 does not set bit8, so the admitted
+     * [0,22,0] offset is unscaled. Keep the source gate explicit. */
+    if(p->source_flags&8){if(!(p->source_flags&0x10))for(unsigned j=0;j<3;++j)offset[j]*=p->attachment_scale;yaw_rotate(p->attachment_yaw,offset);}
+    for(unsigned j=0;j<3;++j)p->position[j]+=offset[j];
    }else if((op&0xf8)==0x98){
     if((op&7)!=7)return fault(s,p->generator,pc,op,"source partial-vector uninitialized operands refused");
     for(unsigned j=0;j<3;++j){float value;if(!scalar(s,p,&value))return 0;p->velocity[j]+=value;}
@@ -289,8 +335,11 @@ static int emit(C3ParticleSystem *s,unsigned index,float angle_step,float *cur_a
    float radius=g->radius<0?1:rnd(s),dist=g->radius<0?-g->radius:radius*g->radius;
    float min=g->param[0],max=g->param[1];if(min==0&&max==0)max=2*PI;
    float angle;if(g->angle<0){*cur_angle+=angle_step;angle=*cur_angle;}else angle=(max-min)*rnd(s)+min;
-   float local[3]={dist*cosf(angle),dist*sinf(angle),0};rotate(g->velocity,local);for(unsigned j=0;j<3;++j)p->position[j]+=local[j];
+   /* Shape7 keeps a uniform radial fraction and consumes the height RNG even
+    * for the audited zero-height disc. Its cone angle is independent of radius. */
+   float local[3]={dist*cosf(angle),dist*sinf(angle),g->type==7?rnd(s)*g->param[2]:0};rotate(g->velocity,local);for(unsigned j=0;j<3;++j)p->position[j]+=local[j];
    float speed=sqrtf(g->velocity[0]*g->velocity[0]+g->velocity[1]*g->velocity[1]+g->velocity[2]*g->velocity[2]),cone=fabsf(g->angle)*(s->position_attachment?radius:1);
+   if(g->type==7)cone=g->angle<0?PI/2-g->angle:PI/2+g->angle;
    float v[3]={speed*sinf(cone)*cosf(angle),speed*sinf(cone)*sinf(angle),speed*cosf(cone)};rotate(g->velocity,v);memcpy(p->velocity,v,sizeof v);
   }
   if(s->position_attachment&&g->type!=2&&!p->app_srt_handle){
@@ -315,7 +364,7 @@ static int tick(C3ParticleSystem *s)
  for(;;){int any=0;for(unsigned i=0;i<C3_PARTICLE_MAX_EMITTERS;++i){C3ParticleEmitter *e=&s->emitters[i];if(!e->active||visited[i]==e->serial)continue;any=1;visited[i]=e->serial;
    if(++passes>C3_PARTICLE_MAX_EMITTERS*(C3_PARTICLE_MAX_DEPTH+1))return fault(s,e->generator,0,0,"per-tick emitter work bound");
    const C3ParticleGenerator *g=&s->bank.generators[e->generator];float rate=e->deferred?0:g->rate;e->count+=rate<0?-rate:rate*rnd(s);
-   float step=0,angle=0;if(g->angle<0&&e->count>=1){if(g->type==0){float min=g->param[0],max=g->param[1];if(s->position_attachment){min*=e->radius_scale;max*=e->radius_scale;}if(min==0&&max==0)max=2*PI;step=(max-min)/(int)e->count;angle=step*rnd(s)+min;}else if(g->type==2){step=2*PI/(int)e->count;angle=step*rnd(s);}}
+   float step=0,angle=0;if(g->angle<0&&e->count>=1){if(g->type==0||g->type==7){float min=g->param[0],max=g->param[1];if(s->position_attachment){min*=e->radius_scale;max*=e->radius_scale;}if(min==0&&max==0)max=2*PI;step=(max-min)/(int)e->count;angle=step*rnd(s)+min;}else if(g->type==2){step=2*PI/(int)e->count;angle=step*rnd(s);}}
    unsigned emitted=0;while(e->count>=1){if(++emitted>C3_PARTICLE_MAX_PARTICLES)return fault(s,e->generator,0,0,"emission budget exceeded");if(!emit(s,i,step,&angle))return 0;e->count-=1;}
    if(e->life&&!--e->life){
     if(!s->bank.profile)e->active=0;
@@ -332,12 +381,12 @@ static int tick(C3ParticleSystem *s)
 }
 int c3_particle_begin(C3ParticleSystem *out,const C3ParticleBank *bank,unsigned gen,uint32_t seed,char *e,size_t cap)
 {
- if(!out||!bank||!bank->bytes||(!bank->profile&&gen>=bank->generator_count)||(bank->profile&&gen!=18)||overlap(out,sizeof *out,bank->bytes,bank->length))return error(e,cap,"Invalid particle begin arguments.");
+ if(!out||!bank||!bank->bytes||(!bank->profile&&gen>=bank->generator_count)||(bank->profile&&gen!=(bank->profile==C3_PARTICLE_PROFILE_GROWL_V1?18u:0u))||overlap(out,sizeof *out,bank->bytes,bank->length))return error(e,cap,"Invalid particle begin arguments.");
  /* Avoid a large temporary on the 3DS stack; validate before clearing output. */
  C3ParticleBank validated;if(bank->profile){if(!c3_particle_bank_decode_reachable(&validated,bank->bytes,bank->length,gen,bank->profile,e,cap))return 0;if(!c3_particle_bank_source_slot(&validated,gen,&gen))return error(e,cap,"Missing source root.");}
  else if(!c3_particle_bank_decode(&validated,bank->bytes,bank->length,e,cap))return 0;
  const C3ParticleGenerator *g=&validated.generators[gen];
- if((g->type!=0&&g->type!=1&&g->type!=2&&g->type!=8)||g->rate>C3_PARTICLE_MAX_PARTICLES||g->rate< -(float)C3_PARTICLE_MAX_PARTICLES||g->kind&0x30000)return error(e,cap,"Unsupported particle root emission shape/rate.");
+ if(!emission_shape(&validated,g)||g->rate>C3_PARTICLE_MAX_PARTICLES||g->rate< -(float)C3_PARTICLE_MAX_PARTICLES||g->kind&0x30000)return error(e,cap,"Unsupported particle root emission shape/rate.");
  memset(out,0,sizeof *out);out->bank=validated;out->cosmetic_seed=seed;float zero[3]={0,0,0};
  if(!emitter(out,gen,0,zero,8))return error(e,cap,out->diagnostic);
  if(e&&cap)e[0]=0;
@@ -347,6 +396,7 @@ static int valid_position(const float v[3])
 {return v&&isfinite(v[0])&&isfinite(v[1])&&isfinite(v[2])&&fabsf(v[0])<=1000000&&fabsf(v[1])<=1000000&&fabsf(v[2])<=1000000;}
 int c3_particle_position(C3ParticleSystem *s,const float pos[3],char *e,size_t cap)
 {
+ if(s&&s->bank.profile==C3_PARTICLE_PROFILE_GREEN_DOWN_V1)return error(e,cap,"Green-down POSITION is a one-shot snapshot.");
  if(!s||!s->position_attachment||s->failed||!valid_position(pos))return error(e,cap,"Invalid POSITION particle attachment.");
  if(!s->cancelled)for(unsigned i=0;i<C3_PARTICLE_MAX_EMITTERS;++i)if(s->emitters[i].serial==s->root_emitter_serial)memcpy(s->emitters[i].position,pos,sizeof s->emitters[i].position);
  if(e&&cap)e[0]=0;
@@ -354,18 +404,20 @@ int c3_particle_position(C3ParticleSystem *s,const float pos[3],char *e,size_t c
 }
 int c3_particle_begin_position_flags(C3ParticleSystem *s,const C3ParticleBank *bank,unsigned gen,uint32_t seed,const float pos[3],float yaw,float scale,float radius_scale,uint16_t flags,char *e,size_t cap)
 {
- if(flags!=1&&flags!=0x10a1&&flags!=0x18a9)return error(e,cap,"Unsupported source POSITION attachment profile.");
- if(bank&&bank->profile&&flags!=0x10a1)return error(e,cap,"Qualified Growl POSITION requires source flags0x10A1.");
+ if(flags!=1&&flags!=0x10a1&&flags!=0x18a9&&!(bank&&bank->profile==C3_PARTICLE_PROFILE_GREEN_DOWN_V1&&flags==0xa1))return error(e,cap,"Unsupported source POSITION attachment profile.");
+ if(bank&&bank->profile==C3_PARTICLE_PROFILE_GROWL_V1&&flags!=0x10a1)return error(e,cap,"Qualified Growl POSITION requires source flags0x10A1.");
+ if(bank&&bank->profile==C3_PARTICLE_PROFILE_GREEN_DOWN_V1&&flags!=0xa1)return error(e,cap,"Qualified Green-down POSITION requires source flags0xA1.");
  if(!valid_position(pos)||!isfinite(yaw)||fabsf(yaw)>1000000||!isfinite(scale)||scale<=0||scale>1000||!isfinite(radius_scale)||radius_scale<=0||radius_scale>1000)return error(e,cap,"Invalid POSITION particle start transform.");
  float position[3];memcpy(position,pos,sizeof position);
  if(!c3_particle_begin(s,bank,gen,seed,e,cap))return 0;
  s->position_attachment=1;s->source_attachment_flags=flags;s->root_emitter_serial=s->emitters[0].serial;
  s->emitters[0].attachment_yaw=yaw;s->emitters[0].attachment_scale=scale;s->emitters[0].radius_scale=(flags&0x20)?radius_scale:1;s->emitters[0].source_flags=flags;
+ if(s->bank.profile==C3_PARTICLE_PROFILE_GREEN_DOWN_V1){memcpy(s->emitters[0].position,position,sizeof position);if(e&&cap)e[0]=0;return 1;}
  return c3_particle_position(s,position,e,cap);
 }
 int c3_particle_append_position_flags(C3ParticleSystem *s,const C3ParticleBank *bank,unsigned gen,const float pos[3],float yaw,float scale,float radius_scale,uint16_t flags,uint32_t *handle,char *e,size_t cap)
 {
- if(bank&&bank->profile)return error(e,cap,"Qualified Growl profile admits a single source root only.");
+ if(bank&&bank->profile)return error(e,cap,"Qualified particle profile admits a single source root only.");
  if(!s||!s->position_attachment||s->failed||s->cancelled||!bank||bank->bytes!=s->bank.bytes||bank->length!=s->bank.length||gen>=s->bank.generator_count||!handle)return error(e,cap,"Invalid POSITION append system/bank/root.");
  if((flags!=1&&flags!=0x10a1&&flags!=0x18a9)||!valid_position(pos)||!isfinite(yaw)||fabsf(yaw)>1000000||!isfinite(scale)||scale<=0||scale>1000||!isfinite(radius_scale)||radius_scale<=0||radius_scale>1000)return error(e,cap,"Invalid POSITION append transform/profile.");
  const C3ParticleGenerator *g=&s->bank.generators[gen];
@@ -380,6 +432,7 @@ int c3_particle_append_position_flags(C3ParticleSystem *s,const C3ParticleBank *
 }
 int c3_particle_position_root(C3ParticleSystem *s,uint32_t handle,const float pos[3],char *e,size_t cap)
 {
+ if(s&&s->bank.profile==C3_PARTICLE_PROFILE_GREEN_DOWN_V1)return error(e,cap,"Green-down POSITION is a one-shot snapshot.");
  if(!s||!s->position_attachment||s->failed||s->cancelled||!handle||!valid_position(pos))return error(e,cap,"Invalid POSITION root handle/position.");
  for(unsigned i=0;i<C3_PARTICLE_MAX_EMITTERS;++i)if(s->emitters[i].serial==handle&&s->emitters[i].depth==0){memmove(s->emitters[i].position,pos,sizeof s->emitters[i].position);if(e&&cap)e[0]=0;return 1;}
  return error(e,cap,"Expired or non-root POSITION handle.");

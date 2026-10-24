@@ -109,6 +109,22 @@ class CameraPreparationTests(unittest.TestCase):
         count=struct.unpack_from('>I',owner)[0];duration=struct.unpack_from('>I',owner,count*4+4)[0]
         self.assertEqual(duration,244)
 
+    def test_green_special_camera_namespace_and_target_bindings(self):
+        raw=bytearray(160);struct.pack_into('>6I',raw,112,0,4,0,2,5,0)
+        self.assertEqual(camera.profile(raw,0,0xffffffff,0,0,4)['entry'],0)
+        for offset in (112,116,120,124,128,132,136,159):
+            bad=bytearray(raw);bad[offset]^=1
+            with self.assertRaises(ValueError):camera.profile(bad,0,0xffffffff,0,0,4)
+        path=Path(os.environ.get('C3_STAT_DOWN_CAMERA',str(ROOT/'private/stat-down-camera-v1/stat_down_camera.c3c')))
+        if not path.exists():self.skipTest('Private GREEN special camera descriptor required')
+        patterns=path.read_bytes()[512:1120]
+        actors=[dict(species=species,selector=-1,minimum=[-3.,0.,-3.],maximum=[3.,10.,3.],timing=[(118,180)[i],0,0,0],part=(42,62)[i],kind=2,track=[[0,.2,.1]]*(119,181)[i]) for i,(species,_,_) in enumerate(camera.ACTORS[:2])]
+        b=camera.encode_stat_down(actors,patterns);self.assertEqual(b[:4],b'C3SC');self.assertEqual(struct.unpack_from('<I',b,12)[0],0x29);self.assertEqual(struct.unpack_from('<I',b,20)[0],2);self.assertEqual(struct.unpack_from('<5I',b,64),(0,0xffffffff,0,0,0));self.assertEqual(b[384:480],bytes(96));self.assertEqual(b[480:500],hashlib.sha1(b[:480]+bytes(20)+b[500:]).digest())
+        for key,value in [('species',288),('part',53),('kind',4),('timing',[118,1,0,0])]:
+            bad=copy.deepcopy(actors);bad[0][key]=value
+            with self.assertRaises(ValueError):camera.encode_stat_down(bad,patterns)
+        with self.assertRaises(ValueError):camera.encode_tailwhip(actors,patterns)
+
     def test_source_files_match_exact_pinned_functions(self):
         for name,digest in camera.SOURCE_FILES.items():
             self.assertEqual(hashlib.sha256((ROOT/'vendor/colosseum'/name).read_bytes()).hexdigest(),digest)

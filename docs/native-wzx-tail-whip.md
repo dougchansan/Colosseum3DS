@@ -26,7 +26,7 @@ tick zero, without a negative-start normalization:
 | --- | --- |
 | 1 / `0xA0` | Model DAT `0x140`, 683 bytes; two joints, no mesh; clip ends at authored frame 31. Owner follows controller joint 1 continuously, taking position and rotation, with scale retained. |
 | 2 / `0x400` | Model DAT `0x4A0`, 137,747 bytes; six joints, two meshes, one material; clip ends at frame 45. Selector 16 requests a newly created owner bound-center null, then position-only attachment. |
-| 3 / `0x21EC0` | Sound request `0x1DB`, payload flags 3. The admitted common REL maps it to battle-bank FX `0x24E`, macro `0x402`. Selected dry audio is prepared separately. |
+| 3 / `0x21EC0` | Sound request `0x1DB`, payload selector 3 and runtime flags 0 (direct SE). The admitted common REL maps it to battle-bank FX `0x24E`, macro `0x402`. Selected dry audio is prepared separately. |
 
 `_wazaSequenceModelEntryStart` (`0x801D91EC`) interprets node 1's payload
 `[0,0,0,0,1,1,1,683]`. `GSmodelAttachToGSpart` (`0x800E4AC0`) sets attachment

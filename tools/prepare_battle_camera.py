@@ -17,6 +17,8 @@ from prepare_outskirt import member
 from prepare_model import check_output
 ROOT=Path(__file__).resolve().parents[1]
 SOURCE_FILES={
+'src/game/wazaSequenceEntry.c':'6500a4db7253ce776686b86d470a6f9587cfa3db10cf9fcfb9cca50328d0855f',
+'src/game/gs_range_801DE698.c':'e4594cc503d7dd0c4acd06b5df8aa216d04c10ea3698b6e20285cf5f50e2b69d',
 'src/game/gs_math_range_800E09E8.c': 'f1b57465550055f817be359aef3e56fca930f06cda9eae883b875899adccc498',
 'src/game/wazaSequence.c': '975afb18f19c6da6f7132fe3772d8ab3ab9546f528d8381073b59e614459444d',
 'src/game/gs_range_exact_801DF160.c': 'c3bba97a3efe2cefcc79ab2db7a0c5d3a98b313d52c9237ba137ec85c97e9370',
@@ -162,11 +164,11 @@ def prepare(disc,parser,output,confusion=False):
         report.update(move=93,owner_start=[0,44],scope='Original procedural Confusion motion2/3, attack short5 FOV and defender weighted long13 FOV with two source segments',timing='Source60ticks; ownerentry1/8; camera duration timing1/action and timing0/hit; defender actor track delayed44ticks; FOV uses implicitzero then timing0/1',pattern_address='0x803721C0',pattern_sha256=hashlib.sha256(raw_patterns).hexdigest())
     (output/('confusion_camera.json' if confusion else 'bite_camera.json')).write_text(json.dumps(report,indent=2)+'\n');return report
 def encode_single_camera(actors,patterns,move):
-    if move not in (39,45):raise ValueError("Unqualified single-phase camera move")
-    growl=move==45
-    if len(actors)!=3 or len(patterns)!=608 or hashlib.sha1(patterns).hexdigest()!='cbded7a9ed874d8b68a9e20c3fe082d2c75def47':raise ValueError('Unqualified TailWhip short8 camera table')
-    b=bytearray(1120);struct.pack_into('<4s6I',b,0,b'C3GC' if growl else b'C3TC',1,1120,move,60,3,1);b[32:52]=bytes.fromhex(SOURCE_COMMIT)
-    struct.pack_into('<5I',b,64,0x200858 if growl else 0x78,5 if growl else 0xffffffff,2 if growl else 0,1 if growl else 0,0);b[512:1120]=patterns
+    if move not in (39,45,0x10029):raise ValueError("Unqualified single-phase camera move")
+    growl=move==45;stat=move==0x10029
+    if len(actors)!=(2 if stat else 3) or len(patterns)!=608 or hashlib.sha1(patterns).hexdigest()!='cbded7a9ed874d8b68a9e20c3fe082d2c75def47':raise ValueError('Unqualified TailWhip short8 camera table')
+    b=bytearray(1120);struct.pack_into('<4s6I',b,0,b'C3SC' if stat else b'C3GC' if growl else b'C3TC',1,1120,0x29 if stat else move,60,2 if stat else 3,1);b[32:52]=bytes.fromhex(SOURCE_COMMIT)
+    struct.pack_into('<5I',b,64,0x200858 if growl else 0 if stat else 0x78,5 if growl else 0xffffffff,2 if growl else 0,1 if growl else 0,0);b[512:1120]=patterns
     count=0
     for i,a in enumerate(actors):
         if a['species']!=ACTORS[i][0] or a['selector']!=-1 or a['kind']!=(4 if growl else 2) or a['part']!=(42,62,53)[i]:raise ValueError('Unsupported TailWhip camera actor binding')
@@ -174,6 +176,7 @@ def encode_single_camera(actors,patterns,move):
         if len(timing)!=4 or not 1<=timing[0]<=1800 or (not growl and any(timing[1:])) or (growl and (not timing[0]<=timing[1]<=timing[2]<=1800 or timing[3])):raise ValueError('Unqualified TailWhip idle camera timing')
         if len(lo)!=3 or len(hi)!=3 or not all(math.isfinite(v) and abs(v)<10000 for v in lo+hi) or any(x>y for x,y in zip(lo,hi)) or lo==hi:raise ValueError('Invalid TailWhip source bounds')
         if not 1<=len(track)<=1025 or any(len(v)!=3 or not all(math.isfinite(x) and abs(x)<1000 for x in v) for v in track):raise ValueError('Invalid TailWhip source part track')
+        if stat and (timing!=[(118,180)[i],0,0,0] or len(track)!=(119,181)[i]):raise ValueError('Unqualified GREEN target idle duration/sample count')
         off=192+96*i;struct.pack_into('<Ii6f',b,off,a['species'],-1,*lo,*hi);struct.pack_into('<4I',b,off+32,*timing);struct.pack_into('<I',b,off+64,a['part']);struct.pack_into('<I',b,off+72,a['kind'])
         struct.pack_into('<2I',b,off+80,len(b),len(track))
         for point in track:b.extend(struct.pack('<3f',*point))
@@ -186,26 +189,30 @@ def encode_tailwhip(actors,patterns):
 def encode_growl(actors,patterns):
     return encode_single_camera(actors,patterns,45)
 
+def encode_stat_down(actors,patterns):
+    return encode_single_camera(actors,patterns,0x10029)
+
 def prepare_single_camera(disc,parser,output,move):
-    if move not in (39,45):raise ValueError("Unqualified single-phase camera preparation")
-    growl=move==45
+    if move not in (39,45,0x10029):raise ValueError("Unqualified single-phase camera preparation")
+    growl=move==45;stat=move==0x10029
     import prepare_field_geometry as geometry
     verify_disc(disc);check_output(output)
     for name,digest in SOURCE_FILES.items():
         path=ROOT/'vendor/colosseum'/name
         if path.is_symlink() or hashlib.sha256(path.read_bytes()).hexdigest()!=digest:raise ValueError('Camera source drift: '+name)
-    path=disc/'files'/('wzx_nakigoe_attack.fsys' if growl else 'wzx_shippowofuru_attack.fsys')
-    archive_size=248960 if growl else 51616
-    archive_sha='3f171e90d3725c2e9172f980ee0e5ae234ce00dbf9e6ab4cf251df676ae63af8' if growl else '821c575cf7a6c12d67238f80fb139e7d810052ed721aaefabab3350f08255ea1'
-    wzx_identity=0x07352000 if growl else 0x07332000
-    member_sha='85862ce50519fc694b179761e5038bab74f4bb2ce9c15b7102a0b0937ef8f82e' if growl else 'f3dabf6dfd082f2c10f333dcc1afed34f1ea54c454e850f04fe8429a0f6030dc'
+    path=disc/'files'/('wzx_greendown_status.fsys' if stat else 'wzx_nakigoe_attack.fsys' if growl else 'wzx_shippowofuru_attack.fsys')
+    archive_size=1376 if stat else 248960 if growl else 51616
+    archive_sha='8947e10d57f4d17f426debe1ddb713c8856cf889f3d7cf6c5a8ced0e1b602dd8' if stat else '3f171e90d3725c2e9172f980ee0e5ae234ce00dbf9e6ab4cf251df676ae63af8' if growl else '821c575cf7a6c12d67238f80fb139e7d810052ed721aaefabab3350f08255ea1'
+    wzx_identity=0x0B6F2000 if stat else 0x07352000 if growl else 0x07332000
+    member_sha='5e08695ee116a4a5aaded4deef4fd1af71e5f4178992e187610a7e92a63e7c1e' if stat else '85862ce50519fc694b179761e5038bab74f4bb2ce9c15b7102a0b0937ef8f82e' if growl else 'f3dabf6dfd082f2c10f333dcc1afed34f1ea54c454e850f04fe8429a0f6030dc'
     if path.is_symlink() or path.stat().st_size!=archive_size or hashlib.sha256(path.read_bytes()).hexdigest()!=archive_sha:raise ValueError('TailWhip camera source archive drift')
     original=member(path.read_bytes(),wzx_identity)
     if hashlib.sha256(original).hexdigest()!=member_sha:raise ValueError('TailWhip member drift')
-    profile(original,0x200858 if growl else 0x78,5 if growl else 0xffffffff,2 if growl else 0,1 if growl else 0,6 if growl else 4)
+    profile(original,0x200858 if growl else 0 if stat else 0x78,5 if growl else 0xffffffff,2 if growl else 0,1 if growl else 0,6 if growl else 4)
     geometry.import_parser(parser);actors=[]
-    for species,name,identity in ACTORS:
+    for species,name,identity in (ACTORS[:2] if stat else ACTORS):
         archive=admit(disc/'files'/name);dat,raw,scene,header=load_pkx(archive,name);model=geometry.Model(scene.models[0],raw.models[0],allow_image_swaps=True);entry=header.anim_entries[1 if growl else 0]
+        if stat and (entry.sub_anim_count!=1 or entry.sub_anims[0].motion_type!=0):raise ValueError('Stat-down requires direct idle frame0 reset')
         if entry.sub_anim_count!=1:raise ValueError('Unsupported TailWhip idle subanimations')
         clip=entry.sub_anims[0].anim_index;part=entry.body_map_bones[2];meshes=[geometry.build_mesh(model,i) for i in range(len(model.meshes))];lo,hi=source_bounds(model,meshes,header.anim_entries[0].sub_anims[0].anim_index)
         track=[list(map(float,model.world(clip,frame)[0][part,:3,3])) for frame in geometry.sample_sequence(model.ends[clip])]
@@ -214,12 +221,15 @@ def prepare_single_camera(disc,parser,output,move):
     for address in (0x8047E348,0x8047E3C8):
         if struct.unpack('>f',dol.read(address,4))[0]!=.5:raise ValueError('Source single-phase owner rate drift')
     raw_patterns=dol.read(0x80371F60,608);patterns=struct.pack('<152I',*struct.unpack('>152I',raw_patterns));packed=encode_single_camera(actors,patterns,move)
-    output.mkdir(parents=True,exist_ok=False);(output/('growl_camera.c3c' if growl else 'tailwhip_camera.c3c')).write_bytes(packed)
-    report=dict(move=move,source_commit=SOURCE_COMMIT,source_files=SOURCE_FILES,archive=path.name,member=wzx_identity,member_sha256=hashlib.sha256(original).hexdigest(),header=[1,6,0x200858,2,5,0] if growl else [0,4,0x78,2,5,0],actors=actors,descriptor_sha256=hashlib.sha256(packed).hexdigest(),short_table_address='0x80371F60',short_table_sha256=hashlib.sha256(raw_patterns).hexdigest(),scope='Checked TailWhip camera only: four source motion choices, idle owner entry0, short8 initial FOV; no stage integration or hardware qualification',owner_transform='Origin captured at start; target worldPart-currentOwnerRoot followed at0.2s with current source yaw; translation world X ignores owner yaw',rng='Separate native cosmetic stream; bounded source helper consumes two16bit draws; no original shared RNG parity',motion_selection='Bits3/4/5/6 select3/0/1/2 with ordered fallthrough previous-motion exclusion',duration='Idle count2: implicit point0=0 then fallback timing0; no doubled trainer shift for admitted Pokemon',fov='Motion0 static middle mask2; motions1/2/3 weighted short8 initial flags, count2 returns before segment interpolation',limitations=['PPC floating-point bit parity not claimed','Controller must supply actual current owner yaw for source part look-at','Root translation cancels in relative target offset; source camera origin stays captured while offset move is renewed each frame','No retail or native hardware visual acceptance yet'])
+    output.mkdir(parents=True,exist_ok=False);(output/('stat_down_camera.c3c' if stat else 'growl_camera.c3c' if growl else 'tailwhip_camera.c3c')).write_bytes(packed)
+    report=dict(move=move,source_commit=SOURCE_COMMIT,source_files=SOURCE_FILES,archive=path.name,member=wzx_identity,member_sha256=hashlib.sha256(original).hexdigest(),header=[1,6,0x200858,2,5,0] if growl else [0,4,0 if stat else 0x78,2,5,0],actors=actors,descriptor_sha256=hashlib.sha256(packed).hexdigest(),short_table_address='0x80371F60',short_table_sha256=hashlib.sha256(raw_patterns).hexdigest(),scope='Checked TailWhip camera only: four source motion choices, idle owner entry0, short8 initial FOV; no stage integration or hardware qualification',owner_transform='Origin captured at start; target worldPart-currentOwnerRoot followed at0.2s with current source yaw; translation world X ignores owner yaw',rng='Separate native cosmetic stream; bounded source helper consumes two16bit draws; no original shared RNG parity',motion_selection='Bits3/4/5/6 select3/0/1/2 with ordered fallthrough previous-motion exclusion',duration='Idle count2: implicit point0=0 then fallback timing0; no doubled trainer shift for admitted Pokemon',fov='Motion0 static middle mask2; motions1/2/3 weighted short8 initial flags, count2 returns before segment interpolation',limitations=['PPC floating-point bit parity not claimed','Controller must supply actual current owner yaw for source part look-at','Root translation cancels in relative target offset; source camera origin stays captured while offset move is renewed each frame','No retail or native hardware visual acceptance yet'])
     if growl:
         report.update(scope='Checked Growl45 camera only; source3/0/2 motions, fixed short5 mask2, no stage/hardware claim',motion_selection='Raw200858 bits3/4/6 =>ordered3/0/2; bit5 translation absent',duration='Kind4: runtimecount*4+4=offset20 =>timing1 (Zig244), no ownerstart shift',fov='Dolly directly usesmask2; orbit/still consumeGetPattern draw andforce shortrow5/mask2, both sourceFOVsegments hold',owner_entry=1,owner_rate=.5,owner_start=0,owner_start_frame=0,owner_transform='Captured owner root; current entry1 bodymap2 local track follows current source yaw; no translation camera mode',zig_raw_timing=[0,*actors[2]['timing'][:3]],zig_camera_duration=actors[2]['timing'][1])
         if report['zig_raw_timing']!=[0,130,244,366] or report['zig_camera_duration']!=244:raise ValueError('Growl Zig source duration drift')
-    (output/('growl_camera.json' if growl else 'tailwhip_camera.json')).write_text(json.dumps(report,indent=2)+'\n');return report
+    if stat:
+        report.pop('move');report.update(profile_kind='special',special=0x29,special_hex='0x29',scope='GREEN0x29 camera-only checked affected actors0/1, no stage/hardware claim',owner_entry=0,owner_start=0,owner_start_frame=0,owner_rate=.5,targets=[0,1],duration='Idle count2 implicit0 then timing0 fallback:118Umbreon/180Espeon',motion_selection='Rawflags0 =>CountSheep0 fallback enables ordered3/0/1/2',fov='Derivedflags0, Dollydirectmask2; othermotions weightedshort8 initialonly',target_part='WZX targetclass2 ->ownerentry0 body_map2 ->42Umbreon/62Espeon',idle_reset='Sequencecopy inserts runtimekind1/value0 at8C/90, originalmotion_type0 at94 and animindex0/1 at98. DD100 sets90normalization0; MotionStart takesDF070 frame0/rate.5, notDEF0C preserveidle.')
+        if [a['timing'] for a in actors]!=[[118,0,0,0],[180,0,0,0]]:raise ValueError('Stat-down idle timing drift')
+    (output/('stat_down_camera.json' if stat else 'growl_camera.json' if growl else 'tailwhip_camera.json')).write_text(json.dumps(report,indent=2)+'\n');return report
 
 def prepare_tailwhip(disc,parser,output):
     return prepare_single_camera(disc,parser,output,39)
@@ -227,7 +237,10 @@ def prepare_tailwhip(disc,parser,output):
 def prepare_growl(disc,parser,output):
     return prepare_single_camera(disc,parser,output,45)
 
+def prepare_stat_down(disc,parser,output):
+    return prepare_single_camera(disc,parser,output,0x10029)
+
 if __name__=='__main__':
-    p=argparse.ArgumentParser(description=__doc__);p.add_argument('--disc',type=Path,required=True);p.add_argument('--parser',type=Path,required=True);p.add_argument('--output',type=Path,required=True);p.add_argument('--confusion',action='store_true');p.add_argument('--tailwhip',action='store_true');p.add_argument('--growl',action='store_true');a=p.parse_args();
-    if sum((a.confusion,a.tailwhip,a.growl))>1:p.error('Choose one exact camera profile')
-    print(json.dumps(prepare_growl(a.disc,a.parser,a.output) if a.growl else prepare_tailwhip(a.disc,a.parser,a.output) if a.tailwhip else prepare(a.disc,a.parser,a.output,a.confusion),indent=2))
+    p=argparse.ArgumentParser(description=__doc__);p.add_argument('--disc',type=Path,required=True);p.add_argument('--parser',type=Path,required=True);p.add_argument('--output',type=Path,required=True);p.add_argument('--confusion',action='store_true');p.add_argument('--tailwhip',action='store_true');p.add_argument('--growl',action='store_true');p.add_argument('--stat-down',action='store_true');a=p.parse_args();
+    if sum((a.confusion,a.tailwhip,a.growl,a.stat_down))>1:p.error('Choose one exact camera profile')
+    print(json.dumps(prepare_stat_down(a.disc,a.parser,a.output) if a.stat_down else prepare_growl(a.disc,a.parser,a.output) if a.growl else prepare_tailwhip(a.disc,a.parser,a.output) if a.tailwhip else prepare(a.disc,a.parser,a.output,a.confusion),indent=2))

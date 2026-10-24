@@ -35,6 +35,10 @@ GROWL_MACROS = {
     0x39B: 'b618be0dc1cca7e0dfda3af7416a581704a575ce01a96216e37ceaa11660244a',
     0x39A: '09650cfb359f118fbe20acf59e749510997cbc514e0b1f40cd2ca39e1568019f',
 }
+STAT_DOWN_MACROS = {
+    0x22D: '9324fb625f92837f931b288df0d6a21c7b09cc9ccc1f5d95f8d47052613a9817',
+    0x22E: '8f3dc09159456177ff2c2c6b4778ad6c70c60b72ffc2b88e1c4bd5b52610900a',
+}
 GROWL_STOP_SOURCE = {
     'src/game/wazaSequence.c': '975afb18f19c6da6f7132fe3772d8ab3ab9546f528d8381073b59e614459444d',
     'src/game/wazaSequenceEntry.c': '6500a4db7253ce776686b86d470a6f9587cfa3db10cf9fcfb9cca50328d0855f',
@@ -183,7 +187,7 @@ def resolve_layers(table, macro, *, key=60, volume=127, start_ms=0, depth=0, sta
             layers += resolve_layers(table, a >> 16, key=key, volume=volume,
                                      start_ms=start_ms, depth=depth + 1, stack=stack + (macro,))
         elif op == 0x46:
-            if a not in (0x0F0146, 0x140146, 0x1E0146) or b:
+            if a not in (0x0F0146, 0x140146, 0x190146, 0x1E0146) or b:
                 raise ValueError('Unqualified reverb controller')
             reverb = {'controller': 1, 'scale_percent': a >> 16,
                       'combine': 0, 'dry_only': True}
@@ -360,7 +364,7 @@ def checksum(data):
 
 
 def encode_pack(cues):
-    if not 1 <= len(cues) <= 9:
+    if not 1 <= len(cues) <= 10:
         raise ValueError('Cue count exceeds bound')
     rows, payload = bytearray(), bytearray()
     offset = 64 + len(cues) * 32
@@ -375,13 +379,15 @@ def encode_pack(cues):
     return header + bytes(32) + body
 
 
-def selected_sounds(confusion=False, tail_whip=False, growl=False):
+def selected_sounds(confusion=False, tail_whip=False, growl=False, stat_down=False):
+    if stat_down and not (confusion and tail_whip and growl):
+        raise ValueError('Stat down requires --confusion --tail-whip --growl to extend the nine-cue bundle')
     if growl and not (confusion and tail_whip):
         raise ValueError('Growl requires --confusion --tail-whip to extend the eight-cue bundle')
     if tail_whip and not confusion:
         raise ValueError('Tail Whip requires --confusion to extend the seven-cue bundle')
     sounds = (0x85, 0x86, 0x220, 0x443, 0xE9, 0x472, 0x473) if confusion else (0x85, 0x86, 0x220)
-    return sounds + ((0x1DB,) if tail_whip else ()) + ((0x210,) if growl else ())
+    return sounds + ((0x1DB,) if tail_whip else ()) + ((0x210,) if growl else ()) + ((0x19B,) if stat_down else ())
 
 
 def verify_tail_whip_binding(row, effect, table):
@@ -414,8 +420,23 @@ def verify_growl_binding(row, effect, table):
     return records
 
 
-def prepare(disc, output, confusion=False, tail_whip=False, growl=False):
-    sounds = selected_sounds(confusion, tail_whip, growl)
+def verify_stat_down_binding(row, effect, table):
+    if len(row) != 12:
+        raise ValueError('Stat down sound record extent differs from admitted source')
+    if (row[0], row[1], be16(row, 4), effect['macro'], effect['volume'], effect['pan'], effect['key']) != \
+            (0x80, 5, 0x20E, 0x22D, 127, 64, 60):
+        raise ValueError('Stat down sound/FX/macro binding differs from admitted source')
+    records = []
+    for macro, expected in STAT_DOWN_MACROS.items():
+        if macro not in table or hashlib.sha256(table[macro][1]).hexdigest() != expected:
+            raise ValueError('Stat down macro body differs from admitted source')
+        records.append({'macro': macro, 'pool_offset': table[macro][0],
+                        'bytes': len(table[macro][1]), 'sha256': expected})
+    return records
+
+
+def prepare(disc, output, confusion=False, tail_whip=False, growl=False, stat_down=False):
+    sounds = selected_sounds(confusion, tail_whip, growl, stat_down)
     disc = verify_disc(disc)
     root = Path(__file__).resolve().parents[1]
     for name, digest in {**SOURCE_FILES, **(GROWL_STOP_SOURCE if growl else {})}.items():
@@ -465,6 +486,10 @@ def prepare(disc, output, confusion=False, tail_whip=False, growl=False):
         if sound == 0x1DB:
             report['tail_whip_binding'] = {'sound_id': sound, 'fx_id': identity,
                 'root_macro': effect['macro'], 'macros': verify_tail_whip_binding(row, effect, macro_table)}
+        if sound == 0x19B:
+            report['stat_down_binding'] = {'sound_id': sound, 'special_id': 0x29, 'fx_id': identity,
+                'root_macro': effect['macro'], 'macros': verify_stat_down_binding(row, effect, macro_table),
+                'auxiliary_selection': 'Source root25percent and child15percent auxiliary reverb retained as dry metadata; no wet mix or release-tail parity.'}
         if sound == 0x210:
             report['growl_binding'] = {'sound_id': sound, 'fx_id': identity,
                 'root_macro': effect['macro'], 'macros': verify_growl_binding(row, effect, macro_table),
@@ -498,6 +523,7 @@ if __name__ == '__main__':
     parser.add_argument('--confusion', action='store_true', help='Include the four source Confusion requests; fail closed on unsupported macro branches')
     parser.add_argument('--tail-whip', action='store_true', help='Extend --confusion with admitted Tail Whip request 0x1DB; defaults stay unchanged')
     parser.add_argument('--growl', action='store_true', help='Extend --confusion --tail-whip with admitted Growl request 0x210')
+    parser.add_argument('--stat-down', action='store_true', help='Extend --confusion --tail-whip --growl with green Defense-down special29 request0x19B; red0x19A remains unsupported')
     args = parser.parse_args()
-    report = prepare(args.disc, args.output, args.confusion, args.tail_whip, args.growl)
+    report = prepare(args.disc, args.output, args.confusion, args.tail_whip, args.growl, args.stat_down)
     print('Prepared source-derived dry SFX: ' + ', '.join('%04x' % x['sound_id'] for x in report['cues']))

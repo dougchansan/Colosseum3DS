@@ -209,6 +209,14 @@ particle-app-srt-check: build/test_particle_app_srt
 	./build/test_particle_app_srt
 test: particle-app-srt-check
 
+build/test_particle_green_down: tests/test_particle_green_down.c src/particle.c src/particle_pack.c build/save_codec.c include/colosseum3ds/particle.h include/colosseum3ds/particle_pack.h | build
+	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_particle_green_down.c src/particle.c src/particle_pack.c build/save_codec.c $(LDFLAGS) -lm -o $@
+all: build/test_particle_green_down
+.PHONY: particle-green-down-check
+particle-green-down-check: build/test_particle_green_down
+	./build/test_particle_green_down
+test: particle-green-down-check
+
 build/test_wzx_growl: tests/test_wzx_growl.c src/wzx_growl.c build/save_codec.c include/colosseum3ds/wzx_growl.h | build
 	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_wzx_growl.c src/wzx_growl.c build/save_codec.c $(LDFLAGS) -lm -o $@
 all: build/test_wzx_growl
@@ -216,3 +224,11 @@ all: build/test_wzx_growl
 wzx-growl-check: build/test_wzx_growl
 	./build/test_wzx_growl
 test: wzx-growl-check
+
+build/test_wzx_stat_down: tests/test_wzx_stat_down.c src/wzx_stat_down.c build/save_codec.c include/colosseum3ds/wzx_stat_down.h | build
+	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_wzx_stat_down.c src/wzx_stat_down.c build/save_codec.c $(LDFLAGS) -lm -o $@
+all: build/test_wzx_stat_down
+.PHONY: wzx-stat-down-check
+wzx-stat-down-check: build/test_wzx_stat_down
+	./build/test_wzx_stat_down
+test: wzx-stat-down-check

@@ -399,6 +399,14 @@ int c3_stage_renderer_set_modulation(size_t model, const uint8_t rgb[3])
     if(rgb)memcpy(model_modulation[model],rgb,3);
     return 1;
 }
+int c3_stage_renderer_get_modulation(size_t model, uint8_t rgb[3], int *enabled)
+{
+    if(model>=scene_count||!rgb||!enabled)return 0;
+    *enabled=model_modulation[model][3]!=0;
+    if(*enabled)memcpy(rgb,model_modulation[model],3);
+    else memset(rgb,128,3);
+    return 1;
+}
 
 static float attenuation(const C3TitleLight *light, float distance)
 {

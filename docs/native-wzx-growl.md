@@ -49,7 +49,7 @@ Zigzagoon owner is entry 1, clip 1, authored end 183, with raw timing points
 | --- | ---: | --- |
 | Model 1 / `0xA0` | 130 | One-shot position attachment to owner body-map 1, original joint 58; owner base yaw/class scale 0.75 remain. Model clip ends at authored frame 39. |
 | Particle 2 / `0xFEA0` | 130 | Root 18, mode `0x10A1`, flags 3; one-shot position attachment to linked effect-model original part 9. |
-| Sound 3 / `0x69400` | 130 | SE `0x210`, flags 3; selected sound preparation is separate. |
+| Sound 3 / `0x69400` | 130 | SE `0x210`, payload selector 3/runtime flags 0; selected sound preparation is separate. |
 | Control 4 / `0x6947C` | 130 | Control 0, delay 100, mode 3; crosses its stop threshold at 230. |
 | Floor 5 / `0x694F8` | 90 | Duration 120; source segments 20/50/50, neutral `0x80808080` to `0x802D2D2D`, hold, return to neutral. |
 
@@ -85,8 +85,11 @@ deferred-reference behavior therefore does not establish surviving Growl
 particles after this complete WZX teardown. Do not change the isolated API's
 semantics to simulate family teardown implicitly.
 
-Sound stop is different: entry stop clears the shared sound thread handle and
-calls `fn_80166B18`, then `fn_80167070(id,1)`, `fn_801669E4` and `_sndStopSE`.
+Sound payload word 1 is selector 3, so the loader takes runtime flags from
+word 2 (zero). This uses direct `fn_80166AB8` playback and running statuses
+2/3, not a shared sound thread. Entry stop does not clear the thread handle
+for this profile; it calls `fn_80166B18`, then `fn_80167070(id,1)`,
+`fn_801669E4` and `_sndStopSE`.
 The latter calls `sndFXKeyOff` and releases wrapper work. That is an original
 keyoff signal, not evidence of instantaneous PCM silence. Original DSP release
 tail and scheduler phase remain unqualified by the dry backend.

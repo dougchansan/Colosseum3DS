@@ -9,20 +9,25 @@ static float f32(const uint8_t *p){uint32_t u=u32(p);float f;memcpy(&f,&u,4);ret
 static int fail(char *e,size_t n,const char *s){if(e&&n)snprintf(e,n,"%s",s);return 0;}
 static int valid_single_camera(const C3BattleCameraProgram *p)
 {
-    int growl=p&&p->move_id==45;
-    if(!p||(p->move_id!=39&&!growl)||!p->samples||!p->sample_count||p->sample_count>3*C3_BATTLE_CAMERA_MAX_TRACK_FRAMES||p->flags[0]!=(growl?0x200858u:0x78u)||p->pattern[0]!=(growl?5u:UINT32_MAX)||p->fov_mask[0]!=(growl?2u:0u)||p->entry[0]!=(growl?1u:0u)||p->owner_start[0]||p->flags[1]||p->pattern[1]||p->fov_mask[1]||p->entry[1]||p->owner_start[1])return 0;
-    for(unsigned i=0;i<3;++i){const C3BattleCameraBinding *a=&p->actors[i];
+    int growl=p&&p->move_id==45,stat=p&&p->move_id==C3_BATTLE_CAMERA_GREEN_DOWN_PROFILE;
+    if(!p||(p->move_id!=39&&!growl&&!stat)||!p->samples||!p->sample_count||p->sample_count>(stat?2u:3u)*C3_BATTLE_CAMERA_MAX_TRACK_FRAMES||p->flags[0]!=(growl?0x200858u:stat?0u:0x78u)||p->pattern[0]!=(growl?5u:UINT32_MAX)||p->fov_mask[0]!=(growl?2u:0u)||p->entry[0]!=(growl?1u:0u)||p->owner_start[0]||p->flags[1]||p->pattern[1]||p->fov_mask[1]||p->entry[1]||p->owner_start[1])return 0;
+    for(unsigned i=0;i<(stat?2u:3u);++i){const C3BattleCameraBinding *a=&p->actors[i];
         if(a->species!=(uint32_t[]){197,196,288}[i]||a->scale_selector!=-1||a->animation_kind[0]!=(growl?4u:2u)||a->part[0]!=(uint32_t[]){42,62,53}[i]||!a->timing[0][0]||a->timing[0][0]>1800||!a->track_count[0]||a->track_count[0]>1025||a->track_offset[0]>p->sample_count||a->track_count[0]>p->sample_count-a->track_offset[0]||a->track_count[1]||a->part[1]||a->animation_kind[1])return 0;
         for(unsigned k=0;k<4;++k)if((!growl&&k&&a->timing[0][k])||a->timing[0][k]>1800||a->timing[1][k])return 0;
+        if(stat&&(a->timing[0][0]!=(i?180u:118u)||a->track_count[0]!=(i?181u:119u)))return 0;
         if(growl&&(!a->timing[0][1]||a->timing[0][0]>a->timing[0][1]||a->timing[0][1]>a->timing[0][2]||a->timing[0][3]))return 0;
         float size=0;for(unsigned k=0;k<3;++k){if(!isfinite(a->minimum[k])||!isfinite(a->maximum[k])||fabsf(a->minimum[k])>10000||fabsf(a->maximum[k])>10000||a->minimum[k]>a->maximum[k])return 0;float d=a->maximum[k]-a->minimum[k];size+=d*d;}if(size<=0)return 0;
+    }
+    if(stat){const C3BattleCameraBinding *a=&p->actors[2];if(a->species||a->scale_selector)return 0;
+        for(unsigned k=0;k<3;++k)if(a->minimum[k]!=0||a->maximum[k]!=0)return 0;
+        for(unsigned phase=0;phase<2;++phase){if(a->part[phase]||a->animation_kind[phase]||a->track_count[phase]||a->track_offset[phase])return 0;for(unsigned k=0;k<4;++k)if(a->timing[phase][k])return 0;}
     }
     for(uint32_t i=0;i<p->sample_count;++i)for(unsigned k=0;k<3;++k)if(!isfinite(p->samples[i][k])||fabsf(p->samples[i][k])>1000)return 0;
     return 1;
 }
 static int valid(const C3BattleCameraProgram *p)
 {
-    if(p&&(p->move_id==39||p->move_id==45))return valid_single_camera(p);
+    if(p&&(p->move_id==39||p->move_id==45||p->move_id==C3_BATTLE_CAMERA_GREEN_DOWN_PROFILE))return valid_single_camera(p);
     static const uint32_t species[3]={197,196,288};
     if(!p||!p->samples||!p->sample_count||p->sample_count>6*C3_BATTLE_CAMERA_MAX_TRACK_FRAMES)return 0;
     if(p->move_id==93){if(p->flags[0]!=0x200848||p->flags[1]!=0x48||p->pattern[0]!=5||p->pattern[1]!=UINT32_MAX||p->fov_mask[0]!=2||p->fov_mask[1]||p->entry[0]!=1||p->entry[1]!=8||p->owner_start[0]||p->owner_start[1]!=44)return 0;}
@@ -40,17 +45,18 @@ static int valid(const C3BattleCameraProgram *p)
 }
 static int decode_program(C3BattleCameraProgram *out,const void *data,size_t bytes,char *e,size_t n,int confusion)
 {
-    const uint8_t *b=data;C3BattleCameraProgram p={0};uint8_t digest[20];uint32_t base=confusion>=2?1120u:confusion?1500u:512u;p.move_id=confusion==3?45u:confusion==2?39u:confusion?93u:0;
+    const uint8_t *b=data;C3BattleCameraProgram p={0};uint8_t digest[20];uint32_t base=confusion>=2?1120u:confusion?1500u:512u;p.move_id=confusion==4?C3_BATTLE_CAMERA_GREEN_DOWN_PROFILE:confusion==3?45u:confusion==2?39u:confusion?93u:0;
     static const uint8_t pin[20]={0x51,0xbf,0xe4,0x31,0x4a,0x21,0x8d,0xfa,0xf9,0x59,0x2f,0xc8,0x07,0x23,0xc5,0x04,0x98,0xd0,0xee,0x55};
-    if(!out||!b||bytes<base||bytes>C3_BATTLE_CAMERA_MAX_BYTES||memcmp(b,confusion==3?"C3GC":confusion==2?"C3TC":confusion?"C3CC":"C3BC",4)||u32(b+4)!=(confusion?1u:3u)||u32(b+8)!=bytes||u32(b+12)!=(confusion==3?45u:confusion==2?39u:confusion?93u:44u)||u32(b+16)!=60||u32(b+20)!=3||u32(b+24)!=(confusion>=2?1u:2u)||memcmp(b+32,pin,20))return fail(e,n,"Unsupported source Bite camera descriptor.");
+    if(!out||!b||bytes<base||bytes>C3_BATTLE_CAMERA_MAX_BYTES||memcmp(b,confusion==4?"C3SC":confusion==3?"C3GC":confusion==2?"C3TC":confusion?"C3CC":"C3BC",4)||u32(b+4)!=(confusion?1u:3u)||u32(b+8)!=bytes||u32(b+12)!=(confusion==4?0x29u:confusion==3?45u:confusion==2?39u:confusion?93u:44u)||u32(b+16)!=60||u32(b+20)!=(confusion==4?2u:3u)||u32(b+24)!=(confusion>=2?1u:2u)||memcmp(b+32,pin,20))return fail(e,n,"Unsupported source Bite camera descriptor.");
     uint32_t total=u32(b+28);if(!total||total>6*C3_BATTLE_CAMERA_MAX_TRACK_FRAMES||bytes!=base+12u*total)return fail(e,n,"Source camera track bounds.");
     for(unsigned k=52;k<64;++k)if(b[k])return fail(e,n,"Unknown camera header extension.");
     for(unsigned phase=0;phase<2;++phase){const uint8_t *r=b+64+phase*64;p.flags[phase]=u32(r);p.pattern[phase]=u32(r+4);p.fov_mask[phase]=u32(r+8);p.entry[phase]=u32(r+12);p.owner_start[phase]=u32(r+16);for(unsigned k=20;k<64;++k)if(r[k])return fail(e,n,"Unknown camera profile extension.");}
-    for(unsigned i=0;i<3;++i){const uint8_t *r=b+192+96*i;C3BattleCameraBinding *a=&p.actors[i];a->species=u32(r);a->scale_selector=(int32_t)u32(r+4);
+    for(unsigned i=0;i<(confusion==4?2u:3u);++i){const uint8_t *r=b+192+96*i;C3BattleCameraBinding *a=&p.actors[i];a->species=u32(r);a->scale_selector=(int32_t)u32(r+4);
         for(unsigned k=0;k<3;++k){a->minimum[k]=f32(r+8+4*k);a->maximum[k]=f32(r+20+4*k);}
         for(unsigned phase=0;phase<2;++phase){for(unsigned k=0;k<4;++k)a->timing[phase][k]=u32(r+32+phase*16+k*4);a->part[phase]=u32(r+64+phase*4);a->animation_kind[phase]=u32(r+72+phase*4);}
         for(unsigned phase=0;phase<2;++phase){uint32_t offset=u32(r+80+phase*8);if(offset<base||(offset-base)%12)return fail(e,n,"Camera part track alignment.");a->track_offset[phase]=(offset-base)/12;a->track_count[phase]=u32(r+84+phase*8);}
     }
+    if(confusion==4)for(unsigned k=384;k<480;++k)if(b[k])return fail(e,n,"Unknown stat-down actor binding.");
     for(unsigned k=500;k<512;++k)if(b[k])return fail(e,n,"Unknown camera checksum extension.");
     uint8_t *checked=malloc(bytes);if(!checked)return fail(e,n,"Camera checksum allocation failed.");
     memcpy(checked,b,bytes);memset(checked+480,0,20);c3_save_codec_sha1(digest,checked,bytes);free(checked);
@@ -66,7 +72,7 @@ static int decode_program(C3BattleCameraProgram *out,const void *data,size_t byt
     }
     p.samples=malloc(total*sizeof *p.samples);if(!p.samples)return fail(e,n,"Camera part track allocation failed.");p.sample_count=total;p.owned=1;
     for(uint32_t i=0;i<total;++i)for(unsigned k=0;k<3;++k)p.samples[i][k]=f32(b+base+12*i+4*k);
-    uint32_t cursor=0;for(unsigned i=0;i<3;++i)for(unsigned phase=0;phase<2;++phase){if(p.actors[i].track_offset[phase]!=cursor){free(p.samples);return fail(e,n,"Camera part tracks must be contiguous.");}cursor+=p.actors[i].track_count[phase];}
+    uint32_t cursor=0;for(unsigned i=0;i<(confusion==4?2u:3u);++i)for(unsigned phase=0;phase<2;++phase){if(p.actors[i].track_offset[phase]!=cursor){free(p.samples);return fail(e,n,"Camera part tracks must be contiguous.");}cursor+=p.actors[i].track_count[phase];}
     if(cursor!=total||!valid(&p)){free(p.samples);return fail(e,n,"Unsupported source camera flags, bounds, timing or body-map part.");}
     c3_battle_camera_close(out);*out=p;if(e&&n)e[0]=0;return 1;
 }
@@ -74,6 +80,7 @@ int c3_battle_camera_decode(C3BattleCameraProgram *p,const void *b,size_t z,char
 int c3_battle_camera_confusion_decode(C3BattleCameraProgram *p,const void *b,size_t z,char *e,size_t n){return decode_program(p,b,z,e,n,1);}
 int c3_battle_camera_tailwhip_decode(C3BattleCameraProgram *p,const void *b,size_t z,char *e,size_t n){return decode_program(p,b,z,e,n,2);}
 int c3_battle_camera_growl_decode(C3BattleCameraProgram *p,const void *b,size_t z,char *e,size_t n){return decode_program(p,b,z,e,n,3);}
+int c3_battle_camera_stat_down_decode(C3BattleCameraProgram *p,const void *b,size_t z,char *e,size_t n){return decode_program(p,b,z,e,n,4);}
 void c3_battle_camera_close(C3BattleCameraProgram *p){if(p){if(p->owned)free(p->samples);memset(p,0,sizeof *p);}}
 
 static int load_program(C3BattleCameraProgram *out,const char *path,char *e,size_t n,int confusion)
@@ -90,6 +97,7 @@ int c3_battle_camera_load(C3BattleCameraProgram *p,const char *f,char *e,size_t 
 int c3_battle_camera_confusion_load(C3BattleCameraProgram *p,const char *f,char *e,size_t n){return load_program(p,f,e,n,1);}
 int c3_battle_camera_tailwhip_load(C3BattleCameraProgram *p,const char *f,char *e,size_t n){return load_program(p,f,e,n,2);}
 int c3_battle_camera_growl_load(C3BattleCameraProgram *p,const char *f,char *e,size_t n){return load_program(p,f,e,n,3);}
+int c3_battle_camera_stat_down_load(C3BattleCameraProgram *p,const char *f,char *e,size_t n){return load_program(p,f,e,n,4);}
 void c3_battle_camera_init(C3BattleCamera *s,uint32_t seed){if(s){memset(s,0,sizeof *s);s->rng=seed?seed:1;s->previous_motion=UINT32_MAX;}}
 static uint32_t random_word(C3BattleCamera *s){uint32_t x=s->rng;x^=x<<13;x^=x>>17;x^=x<<5;s->rng=x;++s->random_draws;return x;}
 static float random_unit(C3BattleCamera *s){return (float)(random_word(s)>>8)*(1.0f/16777216.0f);}
@@ -104,7 +112,7 @@ static void sample(C3BattleCamera *s)
 {
     float t=s->duration?fminf(1,(float)s->ticks/(float)s->duration):1;
     float yaw=s->yaw_start+(s->yaw_end-s->yaw_start)*t;
-    if((s->move_id==39||s->move_id==45)&&(s->motion==0||s->motion==1)){
+    if((s->move_id==39||s->move_id==45||s->move_id==C3_BATTLE_CAMERA_GREEN_DOWN_PROFILE)&&(s->motion==0||s->motion==1)){
         float t=s->motion_duration?fminf(1,(float)s->ticks/s->motion_duration):1;s->camera=s->restored;
         for(unsigned k=0;k<3;++k){s->camera.eye[k]=s->origin[k]+s->eye_from[k]+(s->eye_to[k]-s->eye_from[k])*t;s->camera.target[k]=s->origin[k]+s->view[k];}
         s->camera.roll=0;s->camera.fov_y_degrees=s->fov;return;
@@ -251,6 +259,11 @@ int c3_battle_camera_begin_move(C3BattleCamera *s,const C3BattleCameraProgram *p
     if(move!=93||!p||p->move_id!=93)return fail(e,n,"Unqualified camera move/program.");
     return begin_program(s,p,phase,owner,target,a,b,e,n);
 }
+int c3_battle_camera_begin_special(C3BattleCamera *s,const C3BattleCameraProgram *p,uint32_t special,unsigned affected,unsigned opponent,const C3BattleCameraActor a[4],const C3TitleCamera *b,char *e,size_t n)
+{
+    if(special!=0x29||!p||p->move_id!=C3_BATTLE_CAMERA_GREEN_DOWN_PROFILE||affected>=2||opponent<2||opponent>=4)return fail(e,n,"Unqualified stat-down camera special or target.");
+    return begin_single_camera(s,p,C3_BATTLE_CAMERA_ATTACK,affected,opponent,a,b,e,n);
+}
 int c3_battle_camera_step(C3BattleCamera *s,uint32_t ms,const C3BattleCameraActor actors[4],char *e,size_t n)
 {
     if(!s||!actors_valid(actors)||s->owner>=4||s->target>=4)return fail(e,n,"Invalid active camera actor handles.");
@@ -260,7 +273,7 @@ int c3_battle_camera_step(C3BattleCamera *s,uint32_t ms,const C3BattleCameraActo
     C3BattleCamera result=*s;uint32_t ticks=(uint32_t)(next/1000);
     while(result.ticks<ticks){++result.ticks;
         uint32_t age=result.ticks>result.track_delay?result.ticks-result.track_delay:0;
-        uint32_t frame=result.move_id==39&&result.track_count>1?age%(result.track_count-1):age<result.track_count?age:result.track_count-1;
+        uint32_t frame=(result.move_id==39||result.move_id==C3_BATTLE_CAMERA_GREEN_DOWN_PROFILE)&&result.track_count>1?age%(result.track_count-1):age<result.track_count?age:result.track_count-1;
         const float *local=result.track[frame];float co=cosf(actors[result.owner].yaw),si=sinf(actors[result.owner].yaw);
         float target[3]={co*local[0]+si*local[2],local[1],-si*local[0]+co*local[2]};
         for(unsigned k=0;k<3;++k)result.view[k]+=(target[k]-result.view[k])/12.0f;

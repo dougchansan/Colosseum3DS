@@ -216,14 +216,18 @@ auxiliary-controller selection as metadata. Existing bounded child/wait/sample
 handling renders this closure; no new opcode or reverb synthesis is introduced.
 
 The original Growl sound node is at member `0x69400`, key 3, linked to model key
-1. Its node flag is 1; payload `[0x210,3,0]` has sound-resource flags 3. It starts
+1. Its node flag is 1; payload `[0x210,3,0]` selects format 3. The loader
+reads runtime flags from its final word, zero, so playback uses direct SE, not
+a shared sound thread. It starts
 at normalized tick 130. Control node `0x6947C` carries `[0,100,3]`, also starting
 at 130; its stop threshold is 230. The source owner minimum is a separate gate.
 Do not replace source stopping with a wait for the entire decoded wave.
 
 `wazaSequenceApplyStop` calls `wazaSequenceEntryStop` with immediate mode for
-each entry. Kind 5 clears the sound-thread global when sound-resource flag bit 0 is set and
-calls `fn_80166B18`. The reached chain continues through `fn_80167070(id,1)`,
+each entry. Kind 5 conditionally clears the sound-thread global only when
+runtime flag bit 0 is set (it is clear here), then unconditionally calls
+`fn_80166B18`. Direct-SE running status uses `wazaEntrySoundRunning` statuses
+2/3; raw payload selector 3 is not the runtime flag word. The reached chain continues through `fn_80167070(id,1)`,
 `fn_801669E4(id,0,0)`, `_sndStopSE` and `sndFXKeyOff(handle)`. This proves
 **source key-off**, not an instantaneous retail PCM cut or a qualified release
 envelope. The selected dry backend clears the exact cue's NDSP buffer at a
@@ -262,3 +266,39 @@ synthetic nine-cue pack. Optional original-pack tests use `C3_AUDIO_GROWL_PACK`
 with the eight-cue fixture to verify all retained PCM and Growl's digest.
 These are host/source preparation checks, not stage integration or physical
 audible acceptance. Existing dry SRC/mixer/vibrato/reverb limits still apply.
+
+## Green Defense-down opt-in
+
+`--stat-down` requires `--confusion --tail-whip --growl` and appends only
+green Defense-down special `0x29`, SE `0x19B`, as cue ten. Existing three-,
+seven-, eight- and nine-cue commands retain their prior selections. Red
+Attack-down special `0x27` / SE `0x19A` remains outside this admission.
+
+```powershell
+python tools/prepare_battle_audio.py --disc G:/gamecube-decomp/disc-extract-dump `
+  --output C:/Colosseum3DS-pr7-captures/stat-down-audio-v1 `
+  --confusion --tail-whip --growl --stat-down
+```
+
+The pinned common REL sound row resolves bank5 FX `0x20E`, root macro `0x22D`
+and child `0x22E`, using samples `0x56` and `0x59`. Preparation checks both
+macro hashes and exact dispatch fields before rendering. The child uses the
+existing signed pitch sweep (count100, frequency -200, source low-job15ms).
+The newly admitted root25% auxiliary selection and child15% selection are
+retained as dry metadata; no wet reverb or original DSP/release-tail parity
+is implied. Original successful-target ordering and native stage use are
+separate from this offline audio contract.
+
+C3AU remains version1 with the same layout; the parser/preparer bound is now
+ten prepared cues. The active NDSP voice bound remains four. The actual private
+pack is1,539,692 bytes, SHA-256
+`557550648f3adaa7d31af0aacb52cd0fe4980c47b70c380c4419669dcbcd4d0c`
+(SHA-1 `62de1f554d4f0008ec0c2e5c1a6c8c9aa15a6816`). All nine prior PCM
+payloads remain byte-identical. SE19B is51,876 mono frames at32kHz
+(1.621125 seconds), PCM SHA-256
+`7de486d78f4fb5f6c3987657e2ffb731089b2d248cd7697ab8b653d4b89f3cf9`.
+The dry summed output clips142 frames; no source mixer-gain parity is claimed.
+Tests cover opt-in dependencies, exact dispatch/macro rejection,25% auxiliary
+admission/unknown rejection, native ten-cue acceptance/eleven-cue transactional
+rejection, and actual nine-to-ten PCM identity. No hardware test follows from
+this preparation.

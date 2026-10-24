@@ -10,6 +10,42 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 
 class WzxModulationTests(unittest.TestCase):
+    def test_owner_color_snapshot_restores_enabled_and_disabled_state(self):
+        cc = shlex.split(os.environ.get("CC", "cc"))
+        if not shutil.which(cc[0]):
+            self.skipTest("Host C compiler required")
+        text = (ROOT/"platform/3ds/title_renderer.c").read_text()
+        body = text[text.index("int c3_stage_renderer_set_modulation("):text.index("static float attenuation(")]
+        harness = r'''#include <assert.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <string.h>
+static unsigned scene_count=2;
+static uint8_t model_modulation[2][4];
+'''+body+r'''
+int main(void){uint8_t prior[3],tint[3]={40,128,40},original[3]={73,81,99};int enabled=-1;
+assert(c3_stage_renderer_get_modulation(0,prior,&enabled)&&!enabled);
+assert(prior[0]==128&&prior[1]==128&&prior[2]==128);
+assert(c3_stage_renderer_set_modulation(0,tint));
+assert(c3_stage_renderer_set_modulation(0,enabled?prior:NULL));assert(!model_modulation[0][3]);
+assert(c3_stage_renderer_set_modulation(1,original));
+assert(c3_stage_renderer_get_modulation(1,prior,&enabled)&&enabled&&!memcmp(prior,original,3));
+assert(c3_stage_renderer_set_modulation(1,tint));
+assert(c3_stage_renderer_set_modulation(1,enabled?prior:NULL));
+assert(model_modulation[1][3]&&!memcmp(model_modulation[1],original,3));
+uint8_t saved[3];memcpy(saved,prior,3);enabled=9;
+assert(!c3_stage_renderer_get_modulation(2,prior,&enabled)&&enabled==9&&!memcmp(prior,saved,3));
+assert(!c3_stage_renderer_get_modulation(0,NULL,&enabled));
+assert(!c3_stage_renderer_get_modulation(0,prior,NULL));return 0;}
+'''
+        with tempfile.TemporaryDirectory() as tmp:
+            d=Path(tmp);(d/"test.c").write_text(harness)
+            flags=shlex.split(os.environ.get("CFLAGS","-std=c11 -O2 -Wall -Wextra -Wpedantic -Werror"))
+            run=subprocess.run(cc+flags+[str(d/"test.c"),"-o",str(d/"test")],capture_output=True,text=True)
+            self.assertEqual(run.returncode,0,run.stdout+run.stderr)
+            run=subprocess.run([str(d/"test")],capture_output=True,text=True)
+            self.assertEqual(run.returncode,0,run.stdout+run.stderr)
+
     def test_source_multiply_two_preserves_alpha_and_disabled_state(self):
         cc = shlex.split(os.environ.get("CC", "cc"))
         if not shutil.which(cc[0]):

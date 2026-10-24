@@ -11,6 +11,7 @@
 #include "colosseum3ds/battle_camera.h"
 #include "colosseum3ds/wzx_tail_whip.h"
 #include "colosseum3ds/wzx_growl.h"
+#include "colosseum3ds/wzx_stat_down.h"
 #define C3_BATTLE_STAGE_MODELS 16u
 typedef struct {
     C3Title models[C3_BATTLE_STAGE_MODELS];
@@ -79,6 +80,18 @@ typedef struct {
     uint32_t growl_audio_wait_ms;
     uint8_t growl_motion[C3_BATTLE_STAGE_MODELS]; /* 1: remaining clip1, 2: source idle. */
     uint64_t growl_motion_units[C3_BATTLE_STAGE_MODELS];
+    C3WzxStatDownProgram stat_down_program;
+    C3WzxStatDown stat_down;
+    C3ParticlePack stat_down_pack;
+    uint8_t *stat_down_bytes;
+    C3BattleCameraProgram stat_down_camera_program;
+    C3BattleCamera stat_down_camera;
+    uint32_t stat_down_owner, stat_down_event, stat_down_cue;
+    uint8_t stat_down_available, stat_down_camera_available;
+    uint8_t stat_down_prior_enabled, stat_down_color_owned, stat_down_motion[2];
+    uint64_t stat_down_motion_units[2];
+    uint8_t stat_down_teardown_started, stat_down_keyoff_sent;
+    uint32_t stat_down_audio_wait_ms;
     int (*sound_done)(uint32_t,uint32_t,char *,size_t);
     int (*sound_cue)(uint32_t,uint32_t,char *,size_t);
     int (*sound_status)(uint32_t,uint32_t,char *,size_t);

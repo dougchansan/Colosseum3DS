@@ -9,7 +9,7 @@
 #define C3_STAGE_MAX_MODELS 16u
 #define C3_STAGE_MAX_VERTICES 131072u
 #define C3_STAGE_MAX_TEXTURES 128u
-#define C3_STAGE_MAX_PARTICLE_BANKS 5u
+#define C3_STAGE_MAX_PARTICLE_BANKS 6u
 
 /* Pinned SDK steady particle draw uses 114 words; 192 also bounds setup.
  * Leave room for the subsequent HUD/fade and command-list finalization. */
@@ -64,6 +64,8 @@ int c3_stage_renderer_set_static(size_t model_index, bool enabled);
 /* Source GSmaterial RGB modulation is 2*color*previous, not an opaque overlay.
  * NULL disables. Render-side only, no asset/animation mutation. */
 int c3_stage_renderer_set_modulation(size_t model_index, const uint8_t rgb[3]);
+/* Snapshot exact enabled state before a source owner-color sequence. */
+int c3_stage_renderer_get_modulation(size_t model_index, uint8_t rgb[3], int *enabled);
 /* Upload once before first draw. Borrowed pack/system outlive guarded teardown.
  * Updating the live attachment only copies CPU state; GPU buffers are written
  * after the sole nonblocking FrameBegin completion barrier. */
