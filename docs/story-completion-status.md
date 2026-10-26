@@ -16,6 +16,15 @@ battle preview is nonpersistent and cannot advance the story.
   final seeds and draw counts match. See [the exact qualification scope](battle-rules-oracle.md).
 - The side-aware win predicate has source tests only; original trainer/target
   identity resolution and full battle entry/turn/post-processing remain open.
+- The temporary [pre-catch Pokemon constructor](battle-pokemon.md) now executes
+  the pinned initialization, learned-move, personality and stat closure with
+  staged 312-byte backing and RNG. Host and ARM checks pass. Shadow/cache and
+  control-string names remain unsupported; independent original constructor
+  comparison, parent catch/party creation and live battle integration remain open.
+- A bounded [original-game observation client](battle-entry-oracle.md) verifies
+  source instruction pins, callers, returns, private object snapshots and the
+  independent save-attest pointer. Transport tests are synthetic; they do not
+  establish a successful original-game constructor capture.
 - The [source index](story-source-index.md) inventories 196 lifecycle rows,
   594 events, 607 name rows, 1,835 TOC archives, 176 banks, 2,310 function slots,
   19,086 native sites and83 relocated lifecycle callbacks. It retains 163

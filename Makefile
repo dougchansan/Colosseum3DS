@@ -339,3 +339,17 @@ battle-rules-check: build/test_battle_rules
 battle-rules-original-check: build/libbattle_rules.so docs/battle-rules-original-vectors.json
 	python3 tools/qualification/check_battle_rules_oracle.py --library build/libbattle_rules.so
 test: battle-rules-check battle-rules-original-check
+
+BATTLE_POKEMON_UPSTREAM = $(addprefix vendor/colosseum/,$(shell python3 -c "import json; print(' '.join(f['path'] for f in json.load(open('config/battle-pokemon-source-files.json'))['files']))"))
+build/battle_pokemon_original.inc: tools/prepare_battle_pokemon.py config/battle-pokemon-source-files.json source-lock.json $(BATTLE_POKEMON_UPSTREAM) | build
+	python3 tools/prepare_battle_pokemon.py
+
+BATTLE_POKEMON_SOURCES = src/battle_pokemon.c src/battle_rng.c
+build/test_battle_pokemon: tests/test_battle_pokemon.c $(BATTLE_POKEMON_SOURCES) $(HEADERS) build/battle_pokemon_original.inc build/battle_rng_source.h | build
+	$(CC) $(CPPFLAGS) -Ibuild $(CFLAGS) tests/test_battle_pokemon.c $(BATTLE_POKEMON_SOURCES) $(LDFLAGS) -o $@
+
+all: build/test_battle_pokemon
+.PHONY: battle-pokemon-check
+battle-pokemon-check: build/test_battle_pokemon
+	./build/test_battle_pokemon
+test: battle-pokemon-check
