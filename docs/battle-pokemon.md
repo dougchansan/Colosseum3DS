@@ -65,7 +65,68 @@ after partial execution, missing data, overflow, unsupported Shadow or overlap.
 `tests/test_prepare_battle_pokemon.py` checks source tampering, manifest repinning,
 CRLF normalization and the extracted closure's boundary transformations.
 
-These synthetic checks do not independently qualify the whole constructor
-against the original executable. Original entry/return differential fixtures
-with the initial 312 bytes, RNG seed, real trainer ID, attest and table/message
-context are required before claiming that qualification.
+## Original-game differential: ordinary Willie calls
+
+`tools/qualification/check_battle_pokemon_oracle.py` replayed two actual original
+entry/return observations for roster IDs 238 and 239. Both **complete 312-byte
+results** match the native constructor, including the real initial stack-backed
+padding and tail. Both final RNG seeds match. This qualifies these two ordinary
+temporary pre-catch constructor cases; it does not qualify Shadow construction,
+full party creation, FightPokemon, a turn, or battle results.
+
+The checker validates entry `801F9F78`, caller `801F9E38`, return `801F9E3C`, the
+original linked branch instruction, roster `r3`, opponent trainer ID `r5`, matched
+stack pointers, full object address/extents, and the independent RNG and attest
+observations. Attest comes from the captured dereference of global `8047ADB8`,
+offset zero; it is not read from the constructor output. Each native call starts
+with the captured entry backing and entry RNG, never a blank buffer or values
+copied from the expected result.
+
+| Roster | Entry seed | Return seed | Draws | Fit attempts | Matched bytes |
+| --- | --- | --- | --- | --- | --- |
+| 238 | `38CD1D69` | `008D26D2` | 147 | 71 | 312 |
+| 239 | `008D26D2` | `471708E9` | 237 | 116 | 312 |
+
+Draw counts have two independent checks: bounded distance along the known HSD
+stream, and the original source call pattern of five initial draws plus two per
+personality attempt. The latter applies the roster sex/nature constraints and
+nonrare filter using the actual captured opponent trainer ID. The native draw
+counter must equal that independently established count.
+
+The private original inputs are pinned DOL SHA-1
+`870e8b9693ca780782d80f22a6a4572d8ba9458f` (3,779,808 bytes) and common REL SHA-1
+`e816761813900aa0fd4f87d012b3b2a19d2f003e` (1,369,520 bytes). Source table locations
+are independently resolved from their original owners, not from observed results:
+
+| Canonical input | File offset | Extent |
+| --- | --- | --- |
+| REL roster 238 / 239 | `A4888` / `A48D8` | 80 bytes each |
+| REL species 288 | `1371D0` | 284 bytes |
+| REL moves | `11E010` | 358 × 56 bytes |
+| REL natures | `122E60` | 25 × 40 bytes |
+| REL nature rates | `13FC7C` | 8 × 2 bytes |
+| DOL growth 0 | `35B940` | 101 × 4 bytes |
+| REL message `4EF` | `5EA06` | 20 bytes |
+
+The checker also validates the original table counts and the corpus' species,
+level, nickname and non-Shadow identity. Its accepted scope is deliberately these
+two Willie calls. Original table bytes, message bytes, backing bytes and capture
+JSON remain private. The emitted summary contains identities, hashes and numeric
+comparison results only. The successful run used observation SHA-256
+`d719ad266750b1f86d2c83ccd8121d7ecec3572a058a8bd34c3180d12066d607` and native
+library SHA-256 `b9ed539749b68ea5bc0b6f6ff186ec6da377ec99924ca15e121828fe779fa769`.
+The [numeric replay summary](battle-pokemon-original-check.json) records the
+subsequent successful replay after adding the reusable initializer. It contains
+no original backing, message or table bytes.
+
+To rerun with an existing native shared library and private inputs:
+
+```text
+python3 tools/qualification/check_battle_pokemon_oracle.py --private-root /private/GC6E01 --capture-dir /private/probe --library build/libbattle_pokemon.so
+```
+
+`tests/test_battle_pokemon_oracle.py` uses public synthetic data to verify input
+provenance and context rejection, independent input forwarding, message lifetime,
+last-byte mismatch detection, final seed/draw-count mismatch detection, and
+rejection before native execution when the observed seed contradicts the source
+call pattern. Those tests contain no original table or Pokemon backing bytes.

@@ -31,6 +31,7 @@ static u8 c3p_src_pokemonGetLevelFromExp(u8*);
 
 static u8 move_pp(u16 id)
 {
+    if(!id&&!context.data)return 0;
     if (id>=context.data->move_count) { context.error=1; return 0; }
     return context.data->moves[(size_t)id*56+1];
 }
@@ -194,7 +195,7 @@ static void c3p_src_pokemonSetStatus(u8 *p,u32 id,u32 selector,u32 index,uintptr
     if((selector>=0x8d&&selector<=0x92)||selector==0x99||selector==0xc7){v=(u16)v;if(v>255)v=255;}
     if(selector>=0x93&&selector<=0x98){v=(u16)v;if(v>31)v=31;}
     if(selector==0x83){v=(u16)v;u16 max=read16(p+0x8c);if(v>max)v=max;}
-    if(selector==0xb7&&!context.data->species[0x33])v=0;
+    if(selector==0xb7&&context.data&&!context.data->species[0x33])v=0;
     if(selector==0xc5&&(s32)v>=0x639c)v=0x639c;
     if(width==4)write32(p+offset,v);else if(width==2)write16(p+offset,v);else p[offset]=(u8)v;
 }
@@ -238,6 +239,20 @@ int c3_battle_pokemon_create_pre_catch(u8 backing[C3_BATTLE_POKEMON_BYTES],
     if(ok)ok=c3p_src_fightTrainerCreateFightTrainerPokemonDataIdToPokemon(request->roster_id,staged,request->opponent_trainer_id);
     ok=ok&&!context.error;
     if(ok){memcpy(backing,staged,312);*rng=context.rng;}
+    memset(&context,0,sizeof(context));
+    atomic_flag_clear_explicit(&in_use,memory_order_release);
+    return ok;
+}
+
+int c3_battle_pokemon_init(u8 backing[C3_BATTLE_POKEMON_BYTES])
+{
+    if(!backing || atomic_flag_test_and_set_explicit(&in_use,memory_order_acquire))return 0;
+    u8 staged[C3_BATTLE_POKEMON_BYTES];
+    memcpy(staged,backing,sizeof(staged));
+    memset(&context,0,sizeof(context));
+    c3p_src_pokemonInit(staged);
+    int ok=!context.error;
+    if(ok)memcpy(backing,staged,sizeof(staged));
     memset(&context,0,sizeof(context));
     atomic_flag_clear_explicit(&in_use,memory_order_release);
     return ok;

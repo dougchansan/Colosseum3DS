@@ -24,6 +24,13 @@ MAX_READ = 4096
 MAX_PACKET = 16384
 RNG_POINTER = 0x80478C94
 ATTEST_POINTER = 0x8047ADB8
+HERO_SIZE = 0xB18
+SAVED_HERO_OFFSET = 0x70
+TRAINER_SELECTOR = 0x80478960
+REPLACEMENT_NAME_POINTER = 0x8047A670
+REPLACEMENT_NAME_SIZE = 22
+PARENT_SCRATCH_ARGUMENT = 0x801F9E34
+PARENT_SCRATCH_OFFSET = -0x148
 SOURCE_SHA256 = 'dbc772fd356f490cab2a6d8ed6ec77cbcd35f647d01e0b0b06542cbd750abae1'
 CANDIDATES = {
     'opponentTrainerCreate': 0x801F9CBC,
@@ -34,6 +41,7 @@ CANDIDATES = {
     'oneTurnPost': 0x8020BBA4,
     'resultSetter': 0x801F3984,
     'partyCopyback': 0x801F86C0,
+    'fightPokemonCreate': 0x80206AEC,
 }
 SPECIAL_REGISTERS = {'pc': 64, 'cr': 66, 'lr': 67, 'ctr': 68, 'xer': 69}
 
@@ -313,6 +321,37 @@ def validate_source(path):
     return digest
 
 
+def object_size(candidate, obj):
+    size = number(obj['size'])
+    if obj['register'] not in [f'r{i}' for i in range(32)]:
+        raise ProbeError('invalid object register')
+    if candidate == 'fightPokemonCreate':
+        if (obj['name'], obj['register'], size) not in (
+                ('fight_pokemon', 'r3', 340), ('pokemon', 'r4', 312)):
+            raise ProbeError('fightPokemonCreate admits only fight_pokemon/r3/340 and pokemon/r4/312')
+    elif obj['name'] == 'fight_pokemon':
+        raise ProbeError('fight_pokemon object is reserved for fightPokemonCreate/r3/340')
+    elif obj['name'] == 'hero':
+        if candidate != 'opponentTrainerCreate' or obj['register'] != 'r5' or size != HERO_SIZE:
+            raise ProbeError('hero snapshot requires opponentTrainerCreate/r5/exact 0xB18 bytes')
+    elif size != 312:
+        raise ProbeError('only 312-byte Pokemon or the exact admitted parent hero snapshot allowed')
+    return size
+
+
+def validate_parent_scratch_source(dol):
+    # D-form fields cover the entire instruction: no unchecked opcode bits.
+    for address, fields in ((CANDIDATES['opponentTrainerCreate'], (37, 1, 1, -0x150)),
+                            (PARENT_SCRATCH_ARGUMENT, (14, 4, 1, 8))):
+        word = int.from_bytes(dol.word(address), 'big')
+        immediate = word & 0xFFFF
+        if immediate & 0x8000:
+            immediate -= 0x10000
+        actual = word >> 26, (word >> 21) & 31, (word >> 16) & 31, immediate
+        if actual != fields:
+            raise ProbeError('parent scratch source instructions differ from reviewed frame/argument semantics')
+
+
 def validate_plan(plan, dol):
     if not isinstance(plan, dict) or set(plan) - {'schema', 'probes', 'max_stops', 'max_seconds'}:
         raise ProbeError('invalid plan keys')
@@ -331,6 +370,8 @@ def validate_plan(plan, dol):
             raise ProbeError('unknown candidate or return flag')
         entry = CANDIDATES[name]
         dol.word(entry)
+        if name == 'opponentTrainerCreate':
+            validate_parent_scratch_source(dol)
         callers = item.get('caller_addresses', [])
         if not isinstance(callers, list) or len(callers) > 16:
             raise ProbeError('invalid caller list')
@@ -345,15 +386,15 @@ def validate_plan(plan, dol):
         objects = item.get('objects', [])
         if not isinstance(objects, list) or len(objects) > 8:
             raise ProbeError('invalid object list')
+        normalized_objects = []
         for obj in objects:
             if not isinstance(obj, dict) or set(obj) != {'name', 'register', 'size'}:
                 raise ProbeError('invalid object keys')
             if not isinstance(obj['name'], str) or not re.fullmatch(r'[a-zA-Z][a-zA-Z0-9_]{0,47}', obj['name']):
                 raise ProbeError('invalid object name')
-            if obj['register'] not in [f'r{i}' for i in range(32)] or number(obj['size']) != 312:
-                raise ProbeError('only register-derived 312-byte Pokemon objects admitted')
+            normalized_objects.append(dict(obj, size=object_size(name, obj)))
         result.append({'name': name, 'entry': entry, 'capture_return': capture_return,
-                       'callers': callers, 'objects': objects})
+                       'callers': callers, 'objects': normalized_objects})
     if sum(1 + int(item['capture_return']) for item in result) > stops:
         raise ProbeError('requested stops exceed plan cap')
     return result, stops, seconds
@@ -366,19 +407,50 @@ def snapshot(client, registers, objects, candidate=None):
     rows = []
     for obj in objects:
         address = obj['address']
-        mem1(address, 312)
+        size = object_size(candidate, obj)
+        mem1(address, size)
         rows.append({'name': obj['name'], 'register': obj['register'], 'address': f'0x{address:08x}',
-                     'size': 312, 'data_hex': client.read_memory(address, 312).hex()})
+                     'size': size, 'data_hex': client.read_memory(address, size).hex()})
     result = {'registers': {key: f'0x{value:08x}' for key, value in registers.items()},
               'rng': {'pointer_address': f'0x{RNG_POINTER:08x}', 'seed_address': f'0x{pointer:08x}',
                       'seed': f'0x{seed:08x}'}, 'objects': rows}
-    if candidate == 'postHeroPreRoster':
+    if candidate in ('postHeroPreRoster', 'opponentTrainerCreate'):
         # Independently sourced savedata status pointer, never inferred from Pokemon output.
         attest_pointer = int.from_bytes(client.read_memory(ATTEST_POINTER, 4), 'big')
         mem1(attest_pointer, 4)
         result['attest'] = {'pointer_address': f'0x{ATTEST_POINTER:08x}',
                             'pointee_address': f'0x{attest_pointer:08x}', 'offset': 0,
                             'data_hex': client.read_memory(attest_pointer, 4).hex()}
+    return result
+
+
+def parent_entry_inputs(client, registers, savedata_base):
+    """Fixed original-source inputs; evaluate the name condition using entry r3 only."""
+    mem1(savedata_base, 4)
+    stack = mem1(registers['r1'], 4)
+    if stack % 8:
+        raise ProbeError('parent entry stack is not 8-byte ABI aligned')
+    scratch = mem1(stack + PARENT_SCRATCH_OFFSET, 312)
+    saved_hero = mem1(savedata_base + SAVED_HERO_OFFSET, HERO_SIZE)
+    scratch_bytes = client.read_memory(scratch, 312)
+    saved_bytes = client.read_memory(saved_hero, HERO_SIZE)
+    selector = int.from_bytes(client.read_memory(TRAINER_SELECTOR, 4), 'big')
+    result = {
+        'pokemon_scratch': {'entry_stack': f'0x{stack:08x}', 'offset': PARENT_SCRATCH_OFFSET,
+                            'address': f'0x{scratch:08x}', 'size': 312, 'data_hex': scratch_bytes.hex()},
+        'saved_hero': {'savedata_base': f'0x{savedata_base:08x}', 'offset': SAVED_HERO_OFFSET,
+                       'address': f'0x{saved_hero:08x}', 'size': HERO_SIZE, 'data_hex': saved_bytes.hex()},
+        'trainer_selector': {'address': f'0x{TRAINER_SELECTOR:08x}', 'value': f'0x{selector:08x}'},
+        'entry_trainer_id': f'0x{registers["r3"]:08x}',
+        'replacement_name': {'applies': registers['r3'] == selector},
+    }
+    if registers['r3'] == selector:
+        pointer = int.from_bytes(client.read_memory(REPLACEMENT_NAME_POINTER, 4), 'big')
+        mem1(pointer, REPLACEMENT_NAME_SIZE)
+        result['replacement_name'].update({
+            'pointer_address': f'0x{REPLACEMENT_NAME_POINTER:08x}', 'address': f'0x{pointer:08x}',
+            'size': REPLACEMENT_NAME_SIZE, 'data_hex': client.read_memory(pointer, REPLACEMENT_NAME_SIZE).hex(),
+        })
     return result
 
 
@@ -399,6 +471,7 @@ def observe(client, dol, probes, max_stops):
     records = []
     stops = 0
     for index, probe in enumerate(probes):
+        parent_scratch_address = None
         entry = probe['entry']
         breakpoint(client, dol, entry, True)
         client.request('c')
@@ -409,11 +482,18 @@ def observe(client, dol, probes, max_stops):
         if registers['pc'] != entry:
             raise ProbeError('unexpected stop PC; candidate not observed')
         dol.verify(client, entry)
-        objects = [dict(obj, address=mem1(registers[obj['register']], 312)) for obj in probe['objects']]
+        objects = [dict(obj, address=mem1(registers[obj['register']], object_size(probe['name'], obj)))
+                   for obj in probe['objects']]
         record = {'capture_id': f'{index:02d}-{probe["name"]}',
                   'candidate': probe['name'], 'boundary_status': 'candidate_until_caller_context_validated',
                   'entry_address': f'0x{entry:08x}',
                   'entry': snapshot(client, registers, objects, probe['name'])}
+        if probe['name'] == 'opponentTrainerCreate':
+            dol.verify(client, PARENT_SCRATCH_ARGUMENT)
+            savedata_base = int(record['entry']['attest']['pointee_address'], 16)
+            record['entry']['parent_entry_inputs'] = parent_entry_inputs(client, registers, savedata_base)
+            parent_scratch_address = mem1(
+                int(record['entry']['parent_entry_inputs']['pokemon_scratch']['address'], 16), 312)
         breakpoint(client, dol, entry, False)
         if probe['capture_return']:
             return_address = registers['lr']
@@ -432,6 +512,18 @@ def observe(client, dol, probes, max_stops):
                 raise ProbeError('unexpected return PC/stack; return context unproven')
             record['caller_address'] = f'0x{caller:08x}'
             record['return'] = snapshot(client, returned, objects, probe['name'])
+            if probe['name'] == 'fightPokemonCreate':
+                before, after = record['entry']['rng'], record['return']['rng']
+                record['rng_observation'] = {
+                    'seed_unchanged': before['seed'] == after['seed'],
+                    'seed_address_unchanged': before['seed_address'] == after['seed_address'],
+                }
+            if parent_scratch_address is not None:
+                mem1(parent_scratch_address, 312)
+                record['return']['parent_return_scratch'] = {
+                    'address': f'0x{parent_scratch_address:08x}', 'size': 312,
+                    'data_hex': client.read_memory(parent_scratch_address, 312).hex(),
+                }
             breakpoint(client, dol, return_address, False)
         records.append(record)
     return {'schema': 1, 'kind': 'private_original_game_candidate_observation',

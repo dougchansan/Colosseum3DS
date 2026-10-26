@@ -348,8 +348,51 @@ BATTLE_POKEMON_SOURCES = src/battle_pokemon.c src/battle_rng.c
 build/test_battle_pokemon: tests/test_battle_pokemon.c $(BATTLE_POKEMON_SOURCES) $(HEADERS) build/battle_pokemon_original.inc build/battle_rng_source.h | build
 	$(CC) $(CPPFLAGS) -Ibuild $(CFLAGS) tests/test_battle_pokemon.c $(BATTLE_POKEMON_SOURCES) $(LDFLAGS) -o $@
 
+build/libbattle_pokemon.so: $(BATTLE_POKEMON_SOURCES) $(HEADERS) build/battle_pokemon_original.inc build/battle_rng_source.h | build
+	$(CC) $(CPPFLAGS) -Ibuild $(CFLAGS) -fPIC -shared $(BATTLE_POKEMON_SOURCES) $(LDFLAGS) -o $@
+
 all: build/test_battle_pokemon
 .PHONY: battle-pokemon-check
 battle-pokemon-check: build/test_battle_pokemon
 	./build/test_battle_pokemon
 test: battle-pokemon-check
+
+BATTLE_TRAINER_UPSTREAM = $(addprefix vendor/colosseum/,$(shell python3 -c "import json; print(' '.join(f['path'] for f in json.load(open('config/battle-trainer-source-files.json'))['files']))"))
+build/battle_trainer_original.inc: tools/prepare_battle_trainer.py tools/prepare_battle_pokemon.py config/battle-trainer-source-files.json source-lock.json $(BATTLE_TRAINER_UPSTREAM) | build
+	python3 tools/prepare_battle_trainer.py
+
+BATTLE_TRAINER_SOURCES = src/battle_trainer.c $(BATTLE_POKEMON_SOURCES)
+BATTLE_TRAINER_GENERATED = build/battle_trainer_original.inc build/battle_pokemon_original.inc build/battle_rng_source.h
+build/test_battle_trainer: tests/test_battle_trainer.c $(BATTLE_TRAINER_SOURCES) $(HEADERS) $(BATTLE_TRAINER_GENERATED) | build
+	$(CC) $(CPPFLAGS) -Ibuild $(CFLAGS) tests/test_battle_trainer.c $(BATTLE_TRAINER_SOURCES) $(LDFLAGS) -o $@
+
+build/libbattle_trainer.so: $(BATTLE_TRAINER_SOURCES) $(HEADERS) $(BATTLE_TRAINER_GENERATED) | build
+	$(CC) $(CPPFLAGS) -Ibuild $(CFLAGS) -fPIC -shared $(BATTLE_TRAINER_SOURCES) $(LDFLAGS) -o $@
+
+all: build/test_battle_trainer
+.PHONY: battle-trainer-check
+battle-trainer-check: build/test_battle_trainer
+	./build/test_battle_trainer
+test: battle-trainer-check
+
+BATTLE_FIGHT_POKEMON_UPSTREAM = $(addprefix vendor/colosseum/,$(shell python3 -c "import json; print(' '.join(f['path'] for f in json.load(open('config/battle-fight-pokemon-source-files.json'))['files']))"))
+build/battle_fight_pokemon_original.inc: tools/prepare_battle_fight_pokemon.py tools/prepare_battle_pokemon.py config/battle-fight-pokemon-source-files.json source-lock.json $(BATTLE_FIGHT_POKEMON_UPSTREAM) | build
+	python3 tools/prepare_battle_fight_pokemon.py
+
+BATTLE_FIGHT_POKEMON_SOURCES = src/battle_fight_pokemon.c $(BATTLE_POKEMON_SOURCES)
+BATTLE_FIGHT_POKEMON_GENERATED = build/battle_fight_pokemon_original.inc build/battle_pokemon_original.inc build/battle_rng_source.h
+build/test_battle_fight_pokemon: tests/test_battle_fight_pokemon.c $(BATTLE_FIGHT_POKEMON_SOURCES) $(HEADERS) $(BATTLE_FIGHT_POKEMON_GENERATED) | build
+	$(CC) $(CPPFLAGS) -Ibuild $(CFLAGS) tests/test_battle_fight_pokemon.c $(BATTLE_FIGHT_POKEMON_SOURCES) $(LDFLAGS) -o $@
+
+build/test_battle_fight_pokemon_failure: tests/test_battle_fight_pokemon.c src/battle_fight_pokemon.c $(HEADERS) build/battle_fight_pokemon_original.inc | build
+	$(CC) $(CPPFLAGS) -Ibuild $(CFLAGS) -DC3_TEST_FIGHT_POKEMON_INIT_FAILURE tests/test_battle_fight_pokemon.c src/battle_fight_pokemon.c $(LDFLAGS) -o $@
+
+build/libbattle_fight_pokemon.so: $(BATTLE_FIGHT_POKEMON_SOURCES) $(HEADERS) $(BATTLE_FIGHT_POKEMON_GENERATED) | build
+	$(CC) $(CPPFLAGS) -Ibuild $(CFLAGS) -fPIC -shared $(BATTLE_FIGHT_POKEMON_SOURCES) $(LDFLAGS) -o $@
+
+all: build/test_battle_fight_pokemon build/test_battle_fight_pokemon_failure
+.PHONY: battle-fight-pokemon-check
+battle-fight-pokemon-check: build/test_battle_fight_pokemon build/test_battle_fight_pokemon_failure
+	./build/test_battle_fight_pokemon
+	./build/test_battle_fight_pokemon_failure
+test: battle-fight-pokemon-check

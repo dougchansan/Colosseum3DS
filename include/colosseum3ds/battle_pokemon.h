@@ -31,6 +31,10 @@ typedef struct C3BattlePokemonRequest {
     uint8_t attest[4]; /* bytes pointed to by gamedataGetStatus(0,1) */
 } C3BattlePokemonRequest;
 
+/* Original field-based pokemonInit, preserving every untouched backing byte.
+ * Transactional; returns 0 on NULL or a busy constructor context. */
+int c3_battle_pokemon_init(uint8_t backing[C3_BATTLE_POKEMON_BYTES]);
+
 /* Temporary pre-catch PokemonBios constructor at original 801F9F78. Caller
  * supplies all 312 initial backing bytes; untouched bytes remain identical.
  * This does not set the parent's roster selector C9, catch metadata, or create

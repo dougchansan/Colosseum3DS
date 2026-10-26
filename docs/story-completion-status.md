@@ -18,13 +18,22 @@ battle preview is nonpersistent and cannot advance the story.
   identity resolution and full battle entry/turn/post-processing remain open.
 - The temporary [pre-catch Pokemon constructor](battle-pokemon.md) now executes
   the pinned initialization, learned-move, personality and stat closure with
-  staged 312-byte backing and RNG. Host and ARM checks pass. Shadow/cache and
-  control-string names remain unsupported; independent original constructor
-  comparison, parent catch/party creation and live battle integration remain open.
+  staged 312-byte backing and RNG. Both ordinary Willie calls now match actual
+  original entry/return observations in all 312 bytes, final seeds and draw
+  counts (147 and 237). Shadow/cache and control-string names remain unsupported;
+  parent catch/party creation and live battle integration remain open.
 - A bounded [original-game observation client](battle-entry-oracle.md) verifies
   source instruction pins, callers, returns, private object snapshots and the
-  independent save-attest pointer. Transport tests are synthetic; they do not
-  establish a successful original-game constructor capture.
+  independent save-attest pointer. The successful original constructor capture
+  qualifies those two temporary pre-catch calls; full trainer/party and complete
+  battle observations remain separate gates.
+- The [parent trainer constructor](battle-trainer.md) now matches two original
+  calls in all 2,840 hero bytes, all 312 scratch bytes and per-call RNG (386 and
+  zero draws). Four [runtime Pokemon constructors](battle-fight-pokemon.md) match
+  all 340 destination bytes, immutable 312-byte sources and unchanged RNG.
+  These include temporary selection and final primary-entry callers. Party
+  selection, inter-call RNG, sequence/FightTrainer creation and complete battle
+  entry remain open.
 - The [source index](story-source-index.md) inventories 196 lifecycle rows,
   594 events, 607 name rows, 1,835 TOC archives, 176 banks, 2,310 function slots,
   19,086 native sites and83 relocated lifecycle callbacks. It retains 163

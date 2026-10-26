@@ -71,7 +71,7 @@ does not identify a complete battle, floor transition, or caller-owned object.
 
 | Plan name | Address | Candidate meaning |
 | --- | --- | --- |
-| `opponentTrainerCreate` | `0x801F9CBC` | Opponent trainer creation entry. |
+| `opponentTrainerCreate` | `0x801F9CBC` | Opponent trainer creation entry; source arguments are `r3` trainer ID, `r4` input device, `r5` hero pointer. |
 | `postHeroPreRoster` | `0x801F9F78` | `fightTrainerCreateFightTrainerPokemonDataIdToPokemon`; post-hero/pre-roster candidate, with `r3` roster ID, `r4` Pokemon pointer, `r5` trainer ID to validate in context. |
 | `floorStart` | `0x801F17B0` | Floor start candidate. |
 | `floorInit` | `0x801F4860` | Floor initialization candidate. |
@@ -79,6 +79,22 @@ does not identify a complete battle, floor transition, or caller-owned object.
 | `oneTurnPost` | `0x8020BBA4` | Post-turn candidate. |
 | `resultSetter` | `0x801F3984` | Result setter entry. |
 | `partyCopyback` | `0x801F86C0` | Party copyback candidate. |
+| `fightPokemonCreate` | `0x80206AEC` | FightPokemon constructor; `r3` destination, `r4` source Pokemon, signed low 16 bits of `r5` entry ID. |
+
+Source-mapped direct callers of `opponentTrainerCreate` are `0x8006A250`
+(return LR `0x8006A254`), `0x8006AB00` (LR `0x8006AB04`) and `0x8020D38C`
+(LR `0x8020D390`). A private return-capture plan must still supply its caller
+whitelist, and the pinned original DOL instruction and observed entry LR must
+agree. The parent is a candidate creation boundary, not evidence that a final
+party or a full battle has been qualified.
+
+Source-mapped FightPokemon constructor callers `0x8020D47C` and `0x8020D570`
+belong to the action's final entry passes. Callsites `0x802333EC`, `0x80233620`
+and `0x8023374C` belong to temporary party-selection work. These are source
+contexts, not labels assigned by capture order. The private plan supplies its
+admitted callers, and each original DOL linked branch and observed LR must
+still match. A run capturing the first four calls must not call them final
+entries merely because of their ordinal position.
 
 ## Private plan and invocation
 
@@ -152,15 +168,39 @@ admits SIGTERM `0f` or SIGTRAP `05`. Both wire and expanded packets
 are limited to 16 KiB. MEM1 reads are limited to
 `0x80000000 <= address < address+size <= 0x81800000`, at most 4096 bytes per
 operation and 256 bytes per RSP request. Object requests currently admit only
-312-byte Pokemon snapshots, selected by an entry GPR and range checked before
-reading. Return snapshots read the same entry object address, even if the return
-register value has changed.
+312-byte Pokemon snapshots selected by an entry GPR. One larger object
+exception is `{"name":"hero","register":"r5","size":2840}` for
+`opponentTrainerCreate`: exactly `0xB18` bytes, matching the independently mapped
+`heroBiosCopy` copy extent. The name `hero` is reserved for this exact request;
+other candidates, registers and sizes cannot use the exception. Every complete
+range is checked against MEM1 and the unchanged 4096-byte operation cap before
+reading. Return snapshots read the same entry object address and exact extent,
+even if the return register value has changed. PC and restored-stack checks
+still guard the caller return.
+
+The constructor candidate `fightPokemonCreate` admits only these two object
+forms: `{"name":"fight_pokemon","register":"r3","size":340}` and
+`{"name":"pokemon","register":"r4","size":312}`. The destination
+name `fight_pokemon` is reserved for that exact candidate/register/extent.
+Both initial backing records and return records use the entry-derived addresses,
+even if return `r3` or `r4` is clobbered. Each complete extent is MEM1 checked
+before reading, then read in the same bounded chunks as other snapshots. This
+captures the source independently and permits a source non-mutation comparison.
+It does not qualify upstream sorting, entry-counter behavior or final-party
+selection.
+
+For constructor entry/return pairs, `rng_observation.seed_unchanged` and
+`seed_address_unchanged` report equality of the independently captured RNG
+values and pointers. The source closure is expected not to change RNG, but the
+tool reports the observed comparison, including changes; it does not assume
+that expectation. Equal endpoint seeds alone are not a trace proving zero RNG
+draws. Entry-only records cannot report this comparison.
 
 Each stop captures all 32 GPRs, PC, LR, CTR, XER and CR. The active RNG state is
 read through the pointer at `0x80478C94`, then through that validated MEM1 pointer.
 An invalid pointer fails closed. There is no fallback to `0x80478C90`.
 
-New `postHeroPreRoster` entry and return snapshots also record `attest` from an
+New `postHeroPreRoster` and `opponentTrainerCreate` entry and return snapshots record `attest` from an
 independent fixed savedata read: read the big-endian pointer at `0x8047ADB8`,
 validate that four bytes at its pointee fit in MEM1, then read exactly four bytes
 at offset zero. The snapshot retains `pointer_address`, `pointee_address`,
@@ -174,6 +214,51 @@ fails closed, with no fallback. Other candidate snapshots do not add this field.
 Earlier captures lacking `attest` contain no independently observed attest
 evidence. They must not be backfilled from Pokemon output or described as if
 this read occurred.
+
+The parent entry additionally records `parent_entry_inputs`, independently of
+the output hero. Its `pokemon_scratch` contains exactly 312 bytes from entry
+`r1 - 0x148`, before the parent executes. This fixed address follows the pinned
+parent prologue (`stwu r1,-0x150(r1)`) and the child argument setup at
+`0x801F9E34` (`addi r4,r1,8`), immediately before the child call at
+`0x801F9E38`. The client validates all D-form fields of both instructions in the
+original DOL and compares the guest instructions to their original pins. It
+checks eight-byte entry stack ABI alignment and the entire scratch extent against MEM1.
+The child calls reuse this backing; its incoming padding and tail bytes must
+be observed rather than reconstructed from child output.
+
+The earlier sixteen-byte stack admission rule was a client bug. The original
+game's parent entry `g` packet recorded `r1 = 0x8053C8F8`, eight modulo sixteen,
+which gives scratch address `0x8053C7B0`; the pinned
+`stwu` frame subtraction preserves that alignment. That attempt was rejected by
+the client and produced no completed parent capture. It does not establish an
+original-game failure. Regression coverage admits this stack and its exact
+scratch range while rejecting four-modulo-eight stacks and out-of-MEM1 ranges.
+
+The entry inputs also contain the exact `0xB18` saved-hero bytes at the entry attest
+savedata base plus fixed offset `0x70`, then the big-endian selector word at
+`0x80478960`. Only if **entry** `r3` equals that selector does it read the
+big-endian replacement-name pointer at `0x8047A670`, range check it and read
+exactly 22 bytes (11 big-endian 16-bit GSchars). Otherwise it records
+`replacement_name.applies: false` without reading that pointer or its pointee.
+All ranges remain bounded MEM1 reads. This fixed source input is entry-only;
+return `r3` or other ABI-clobbered registers never re-evaluate its condition.
+The source-mapped replacement-name copy writes 22 bytes; it does not establish
+that all 44 hero-name bytes were cleared. The saved-hero player copy itself has
+no RNG draw. These facts describe source inputs and copy bounds, not observed
+final-party equivalence. No arbitrary read offsets or expressions are admitted.
+Older parent captures without these entry inputs do not establish the missing
+scratch, saved-hero or replacement-name bytes.
+
+New parent return captures also record `return.parent_return_scratch`, containing
+`address`, `size: 312` and `data_hex`. The address is retained from the validated
+entry scratch calculation. After the return PC and restored stack are verified,
+the client reads exactly those same 312 bytes, rather than deriving an address
+from return ABI registers or recapturing special entry inputs. The parent API's
+exported final scratch must be compared against this independently observed
+return scratch for that qualification claim. Capture attempt 09 loaded the
+earlier client; if its completed observation lacks `parent_return_scratch`, it
+does not qualify this comparison. No later tool update retroactively adds the
+missing evidence to an earlier capture.
 
 Plans admit 1–8 sequential probes, at most 32 stops and 1–3600 seconds total
 (defaults: 16 stops, 60 seconds). Commands are capped at 512 for the CLI.

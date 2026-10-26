@@ -154,6 +154,7 @@ static int reentrant_messages(void *user,uint32_t id,const uint8_t **bytes,size_
     assert(++context->calls<=2);
     assert(!c3_battle_pokemon_create_pre_catch(context->nested,context->request,
                                              context->data,&context->rng));
+    assert(!c3_battle_pokemon_init(context->nested));
     assert(!memcmp(before,context->nested,sizeof(before)));
     assert(!memcmp(&saved,&context->rng,sizeof(saved)));
     return messages(NULL,id,bytes,size);
@@ -179,9 +180,30 @@ static void reentrant_busy_guard(void)
     assert(c3_battle_pokemon_create_pre_catch(context.nested,&req,&d,&context.rng));
 }
 
+static void standalone_init(void)
+{
+    struct {uint8_t left[9],body[312],right[13];} p;
+    memset(&p,0x6d,sizeof(p));
+    assert(!c3_battle_pokemon_init(NULL));
+    assert(c3_battle_pokemon_init(p.body));
+    const unsigned ranges[][2]={{0,2},{4,0x11},{0x14,0x5a},{0x5c,0x61},
+        {0x64,0x6b},{0x6c,0x72},{0x74,0xd1},{0xd2,0xda},
+        {0xdc,0xe6},{0xe8,0xef},{0xf0,0xf6},{0xf8,0xfc}};
+    for(unsigned b=0;b<312;b++){
+        int written=0;for(unsigned i=0;i<sizeof(ranges)/sizeof(*ranges);i++)written|=b>=ranges[i][0]&&b<ranges[i][1];
+        uint8_t expected=written?0:0x6d;
+        if(b==0x10)expected=2;
+        if(b==0xd0)expected=255;
+        if(b>=0xdc&&b<0xe0)expected=b==0xdf?0x9c:255;
+        assert(p.body[b]==expected);
+    }
+    for(unsigned i=0;i<sizeof(p.left);i++)assert(p.left[i]==0x6d);
+    for(unsigned i=0;i<sizeof(p.right);i++)assert(p.right[i]==0x6d);
+}
+
 int main(void)
 {
-    basic_closure();overrides_and_failure();retry_budget_and_boundary();reentrant_busy_guard();
+    standalone_init();basic_closure();overrides_and_failure();retry_budget_and_boundary();reentrant_busy_guard();
     puts("battle_pokemon: closure, BE write map, learned moves, names, RNG, retry boundary, busy guard and rollback passed");
     return 0;
 }
