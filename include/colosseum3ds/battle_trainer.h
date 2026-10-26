@@ -26,6 +26,11 @@ typedef struct C3BattleTrainerRequest {
     uint8_t attest[4]; /* independent original gamedataGetStatus(0,1) bytes */
 } C3BattleTrainerRequest;
 
+/* Source heroInit field reset on an explicit 0xB18 backing image. NULL is
+ * rejected (implicit global saved-hero access is outside this boundary).
+ * Failure/busy nested Pokemon initialization preserves every input byte. */
+int c3_battle_trainer_init_hero(uint8_t hero[C3_BATTLE_TRAINER_BYTES]);
+
 /* Source parent 801F9CBC through final hero party, items, and badges. All output
  * is BE backing storage; preserve caller-provided unknown bytes. scratch is the
  * parent's local Pokemon312 INITIAL backing (original entrySP-0x148), reused

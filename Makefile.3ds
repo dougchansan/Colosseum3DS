@@ -70,11 +70,11 @@ ifneq ($(C3_BOOT_ONLY),1)
 export _3DSXFLAGS += --romfs=$(CURDIR)/$(BUILD)/romfs
 endif
 
-.PHONY: all clean prepare-gekko prepare-save prepare-battle-action prepare-battle-rng prepare-battle-damage prepare-battle-rules prepare-battle-pokemon prepare-battle-trainer prepare-battle-fight-pokemon
+.PHONY: all clean prepare-gekko prepare-save prepare-battle-action prepare-battle-rng prepare-battle-damage prepare-battle-rules prepare-battle-pokemon prepare-battle-trainer prepare-battle-fight-pokemon prepare-battle-party-sort prepare-battle-runtime-trainer
 ifeq ($(C3_BOOT_ONLY),1)
-all: prepare-save prepare-battle-action prepare-battle-rng prepare-battle-damage prepare-battle-rules prepare-battle-pokemon prepare-battle-trainer prepare-battle-fight-pokemon | $(BUILD)
+all: prepare-save prepare-battle-action prepare-battle-rng prepare-battle-damage prepare-battle-rules prepare-battle-pokemon prepare-battle-trainer prepare-battle-fight-pokemon prepare-battle-party-sort prepare-battle-runtime-trainer | $(BUILD)
 else
-all: prepare-save prepare-battle-action prepare-battle-rng prepare-battle-damage prepare-battle-rules prepare-battle-pokemon prepare-battle-trainer prepare-battle-fight-pokemon prepare-gekko $(BUILD)/romfs/p5_material.shbin
+all: prepare-save prepare-battle-action prepare-battle-rng prepare-battle-damage prepare-battle-rules prepare-battle-pokemon prepare-battle-trainer prepare-battle-fight-pokemon prepare-battle-party-sort prepare-battle-runtime-trainer prepare-gekko $(BUILD)/romfs/p5_material.shbin
 endif
 	$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile.3ds
 
@@ -101,6 +101,12 @@ prepare-battle-trainer:
 
 prepare-battle-fight-pokemon:
 	$(PYTHON) tools/prepare_battle_fight_pokemon.py
+
+prepare-battle-party-sort:
+	$(PYTHON) tools/prepare_battle_party_sort.py
+
+prepare-battle-runtime-trainer:
+	$(PYTHON) tools/prepare_battle_runtime_trainer.py
 
 prepare-gekko: | $(BUILD)
 	$(PYTHON) tools/prepare_gekko_backend.py --output $(BUILD)/gekko
@@ -132,6 +138,8 @@ battle_rules.o: $(TOPDIR)/build/battle_rules_original.inc $(TOPDIR)/build/battle
 battle_pokemon.o: $(TOPDIR)/build/battle_pokemon_original.inc $(TOPDIR)/build/battle_rng_source.h
 battle_trainer.o: $(TOPDIR)/build/battle_trainer_original.inc
 battle_fight_pokemon.o: $(TOPDIR)/build/battle_fight_pokemon_original.inc
+battle_party_sort.o: $(TOPDIR)/build/battle_party_sort_original.inc
+battle_runtime_trainer.o: $(TOPDIR)/build/battle_runtime_trainer_original.inc
 
 %.shbin.o %_shbin.h: %.shbin
 	$(bin2o)

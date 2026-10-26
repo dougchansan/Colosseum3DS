@@ -82,6 +82,15 @@ class FakeServer:
 
 
 class ProtocolTests(unittest.TestCase):
+    def test_maximum_runtime_view_read_uses_only_256_byte_requests(self):
+        server = FakeServer([packet(b'7F' * 256)] * 16)
+        client = PROBE.GDBClient(server.client)
+        self.assertEqual(client.read_memory(0x80420000, 4096), b'\x7f' * 4096)
+        self.assertEqual(len(server.commands), 16)
+        self.assertTrue(all(command.split(b'#')[0].endswith(b',100') for command in server.commands))
+        client.close()
+        server.finish()
+
     def test_exact_live_initial_dolphin_stop_and_trap_context(self):
         initial = b'T0f40:80003154;01:81566550;'
         trap = b'T0540:801f9f78;01:81566550;'
@@ -263,15 +272,21 @@ class ProtocolTests(unittest.TestCase):
 
 def synthetic_dol(directory, name='opponentTrainerCreate'):
     base = PROBE.CANDIDATES[name]
-    data = bytearray(0x300)
+    extent = 0x400 if name == 'partySort' else 0x200
+    data = bytearray(0x100 + extent)
     struct.pack_into('>I', data, 0, 0x100)
     struct.pack_into('>I', data, 0x48, base - 0x10)
-    struct.pack_into('>I', data, 0x90, 0x200)
+    struct.pack_into('>I', data, 0x90, extent)
     struct.pack_into('>I', data, 0x100, (18 << 26) | 0x10 | 1)
     struct.pack_into('>I', data, 0x110, (37 << 26) | (1 << 21) | (1 << 16) | (0x10000 - 0x150))
     if name == 'opponentTrainerCreate':
         argument_offset = 0x100 + PROBE.PARENT_SCRATCH_ARGUMENT - (base - 0x10)
         struct.pack_into('>I', data, argument_offset, (14 << 26) | (4 << 21) | (1 << 16) | 8)
+    if name == 'partySort':
+        for address, (opcode, rt, ra, immediate) in {
+                base: (37, 1, 1, -0x790), **PROBE.PARTY_SORT_PROJECTIONS}.items():
+            offset = 0x100 + address - (base - 0x10)
+            struct.pack_into('>I', data, offset, (opcode << 26) | (rt << 21) | (ra << 16) | (immediate & 0xFFFF))
     path = Path(directory) / 'synthetic.dol'
     path.write_bytes(data)
     return PROBE.OriginalDOL(path, hashlib.sha256(data).hexdigest())
@@ -302,6 +317,16 @@ class MemoryClient:
             return b'\x11' * PROBE.HERO_SIZE
         if address == PROBE.TRAINER_SELECTOR:
             return bytes.fromhex('00000099')
+        sort_context = {
+            (PROBE.PARTY_SORT_GLOBAL_RESULT, 2): bytes.fromhex('0001'),
+            (PROBE.PARTY_SORT_ENCOUNTER_ID, 2): bytes.fromhex('0002'),
+            (PROBE.PARTY_SORT_ENCOUNTER_COUNT_POINTER, 4): bytes.fromhex('80450000'),
+            (0x80450000, 4): bytes.fromhex('00000004'),
+            (PROBE.PARTY_SORT_ENCOUNTER_DATA_POINTER, 4): bytes.fromhex('80451000'),
+            (0x80451070, 56): b'\x00\x01' + b'\x00' * 54,
+        }
+        if (address, size) in sort_context:
+            return sort_context[(address, size)]
         if size == 312:
             return b'\x00' * 312
         return self.dol.word(address)
@@ -324,6 +349,284 @@ class MemoryClient:
 
 
 class ObservationPolicyTests(unittest.TestCase):
+    def test_runtime_trainer_exact_four_view_policy_and_fixed_offsets(self):
+        views = [{'name': 'runtime_head', 'register': 'r3', 'size': 4096},
+                 {'name': 'runtime_middle', 'register': 'r3', 'size': 4096},
+                 {'name': 'runtime_tail', 'register': 'r3', 'size': 2276},
+                 {'name': 'hero', 'register': 'r4', 'size': 2840}]
+        with tempfile.TemporaryDirectory() as directory:
+            dol = synthetic_dol(directory, 'runtimeTrainerCreate')
+            plan = {'schema': 1, 'probes': [{'name': 'runtimeTrainerCreate', 'objects': views}]}
+            normalized, _, _ = PROBE.validate_plan(plan, dol)
+            self.assertEqual([PROBE.object_offset('runtimeTrainerCreate', obj) for obj in normalized[0]['objects']],
+                             [0, 4096, 8192, 0])
+            for index in range(4):
+                for mutation in ('register', 'smaller', 'larger', 'name', 'offset', 'missing', 'duplicate'):
+                    bad = copy.deepcopy(plan)
+                    objects = bad['probes'][0]['objects']
+                    if mutation == 'register': objects[index]['register'] = 'r5'
+                    elif mutation == 'smaller': objects[index]['size'] -= 1
+                    elif mutation == 'larger': objects[index]['size'] += 1
+                    elif mutation == 'name': objects[index]['name'] = 'arbitrary_view'
+                    elif mutation == 'offset': objects[index]['offset'] = 4096
+                    elif mutation == 'missing': objects.pop(index)
+                    else: objects.append(copy.deepcopy(objects[index]))
+                    with self.subTest(index=index, mutation=mutation), self.assertRaises(PROBE.ProbeError):
+                        PROBE.validate_plan(bad, dol)
+            for candidate in ('opponentTrainerCreate', 'fightPokemonCreate', 'partySort'):
+                other = synthetic_dol(directory, candidate)
+                for view in views[:3]:
+                    bad = {'schema': 1, 'probes': [{'name': candidate, 'objects': [view]}]}
+                    with self.subTest(candidate=candidate, view=view['name']), self.assertRaises(PROBE.ProbeError):
+                        PROBE.validate_plan(bad, other)
+        for view in views[:3]:
+            for base in (0, 0x7FFFF000, PROBE.MEM1_END - 10468 + 1, 0xFFFFFFFF):
+                with self.subTest(view=view['name'], base=base), self.assertRaises(PROBE.ProbeError):
+                    PROBE.object_address('runtimeTrainerCreate', view, {'r3': base})
+            base = PROBE.MEM1_END - 10468
+            address = PROBE.object_address('runtimeTrainerCreate', view, {'r3': base})
+            self.assertLessEqual(address + view['size'], PROBE.MEM1_END)
+        for base in (0, PROBE.MEM1_END - 2840 + 1, 0xFFFFFFFF):
+            with self.assertRaises(PROBE.ProbeError):
+                PROBE.object_address('runtimeTrainerCreate', views[3], {'r4': base})
+
+    def test_runtime_trainer_whole_capture_retains_fragments_hero_and_actual_sequence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            dol = synthetic_dol(directory, 'runtimeTrainerCreate')
+            entry = PROBE.CANDIDATES['runtimeTrainerCreate']
+            plan = {'schema': 1, 'probes': [{'name': 'runtimeTrainerCreate', 'capture_return': True,
+                    'caller_addresses': [hex(entry - 0x10)], 'objects': [
+                        {'name': 'runtime_head', 'register': 'r3', 'size': 4096},
+                        {'name': 'runtime_middle', 'register': 'r3', 'size': 4096},
+                        {'name': 'runtime_tail', 'register': 'r3', 'size': 2276},
+                        {'name': 'hero', 'register': 'r4', 'size': 2840}]}]}
+            probes, stops, _ = PROBE.validate_plan(plan, dol)
+            initial = bytes(index % 251 for index in range(10468))
+            final = bytes(value ^ 0xA5 for value in initial)
+            class RuntimeMemory(MemoryClient):
+                mutate_hero = False
+                invalid_destination = False
+                wrong_caller = False
+
+                def registers(self):
+                    registers = super().registers()
+                    returned = self.current != self.entry
+                    registers['r3'] = 0x80470000 if returned else (0xFFFFFFFF if self.invalid_destination else 0x80420000)
+                    registers['r4'] = 0x80500000 if returned else 0x80430000
+                    registers['r5'], registers['r6'], registers['r7'] = (0, 0, 0) if returned else (0x1000A, 0x12345678, 0x80467CC0)
+                    if self.wrong_caller:
+                        registers['lr'] += 4
+                    return registers
+
+                def read_memory(self, address, size):
+                    returned = self.current != self.entry
+                    for offset, length in ((0, 4096), (4096, 4096), (8192, 2276)):
+                        if address == 0x80420000 + offset and size == length:
+                            self.reads.append((address, size))
+                            return (final if returned else initial)[offset:offset + length]
+                    if address == 0x80430000 and size == 2840:
+                        self.reads.append((address, size))
+                        return (b'\xcc' if returned and self.mutate_hero else b'\xbb') * size
+                    return super().read_memory(address, size)
+            for mutate in (False, True):
+                client = RuntimeMemory(dol, entry)
+                client.mutate_hero = mutate
+                record = PROBE.observe(client, dol, probes, stops)['records'][0]
+                for boundary, expected in (('entry', initial), ('return', final)):
+                    fragments = record[boundary]['objects'][:3]
+                    self.assertEqual([part['offset'] for part in fragments], [0, 4096, 8192])
+                    self.assertEqual([part['size'] for part in fragments], [4096, 4096, 2276])
+                    self.assertEqual(b''.join(bytes.fromhex(part['data_hex']) for part in fragments), expected)
+                    self.assertEqual(record[boundary]['objects'][3]['address'], '0x80430000')
+                    self.assertIn('attest', record[boundary])
+                self.assertEqual(record['entry']['registers']['r7'], '0x80467cc0')
+                self.assertEqual(record['return']['registers']['r7'], '0x00000000')
+                self.assertEqual(record['entry']['objects'][3]['data_hex'], (b'\xbb' * 2840).hex())
+                self.assertEqual(record['return']['objects'][3]['data_hex'], ((b'\xcc' if mutate else b'\xbb') * 2840).hex())
+                self.assertEqual(record['rng_observation'], {'seed_unchanged': True, 'seed_address_unchanged': True})
+                self.assertTrue(all(size <= 4096 for _, size in client.reads))
+                self.assertFalse(any(address in (0x80470000, 0x80500000) for address, _ in client.reads))
+                for offset, size in ((0, 4096), (4096, 4096), (8192, 2276)):
+                    self.assertEqual(client.reads.count((0x80420000 + offset, size)), 2)
+            invalid = RuntimeMemory(dol, entry)
+            invalid.invalid_destination = True
+            with self.assertRaises(PROBE.ProbeError):
+                PROBE.observe(invalid, dol, probes, stops)
+            self.assertFalse(any(size > 4 for _, size in invalid.reads))
+            wrong_caller = RuntimeMemory(dol, entry)
+            wrong_caller.wrong_caller = True
+            with self.assertRaisesRegex(PROBE.ProbeError, 'does not match pinned source caller'):
+                PROBE.observe(wrong_caller, dol, probes, stops)
+            for bad_address in (entry, entry - 0x10):
+                class WrongGuestPin(RuntimeMemory):
+                    def read_memory(self, address, size):
+                        if address == bad_address:
+                            return b'\x00' * 4
+                        return super().read_memory(address, size)
+                with self.subTest(pin=bad_address), self.assertRaisesRegex(PROBE.ProbeError, 'instruction differs'):
+                    PROBE.observe(WrongGuestPin(dol, entry), dol, probes, stops)
+
+    def test_party_sort_mutable_encounter_context_range_count_and_independent_reads(self):
+        class ContextMemory:
+            def __init__(self, count_pointer=0x80450000, count=4, base=0x80451000, encounter_id=2):
+                self.count_pointer, self.count, self.base, self.encounter_id = count_pointer, count, base, encounter_id
+                self.reads = []
+
+            def read_memory(self, address, size):
+                self.reads.append((address, size))
+                fixed = {
+                    (PROBE.PARTY_SORT_GLOBAL_RESULT, 2): bytes.fromhex('1234'),
+                    (PROBE.PARTY_SORT_ENCOUNTER_ID, 2): self.encounter_id.to_bytes(2, 'big'),
+                    (PROBE.PARTY_SORT_ENCOUNTER_COUNT_POINTER, 4): self.count_pointer.to_bytes(4, 'big'),
+                    (0x80450000, 4): self.count.to_bytes(4, 'big'),
+                    (PROBE.PARTY_SORT_ENCOUNTER_DATA_POINTER, 4): self.base.to_bytes(4, 'big'),
+                    (0x80451070, 56): b'\x55\x66' + b'\x77' * 54,
+                }
+                return fixed[(address, size)]
+        memory = ContextMemory()
+        result = PROBE.party_sort_mutable_context(memory)
+        self.assertEqual(result['global_result']['value_u16'], 0x1234)
+        self.assertEqual(result['encounter']['id'], 2)
+        self.assertEqual(result['encounter']['count_pointer'], '0x80450000')
+        self.assertEqual(result['encounter']['count'], 4)
+        self.assertEqual(result['encounter']['base'], '0x80451000')
+        self.assertEqual(result['encounter']['row_address'], '0x80451070')
+        self.assertEqual(result['encounter']['row_size'], 56)
+        self.assertEqual(result['encounter']['trainer_byte'], 0x66)
+        self.assertEqual(memory.reads, [(0x8047B5D8, 2), (0x8046DDA2, 2), (0x80478F50, 4),
+                                      (0x80450000, 4), (0x80478F54, 4), (0x80451070, 56)])
+        for arguments in ({'count_pointer': 0}, {'count_pointer': 0x817FFFFD},
+                          {'count': 0}, {'count': 2}, {'base': 0}, {'base': 0x817FFFC8},
+                          {'base': 0x81800000}):
+            bad = ContextMemory(**arguments)
+            with self.subTest(arguments=arguments), self.assertRaises(PROBE.ProbeError):
+                PROBE.party_sort_mutable_context(bad)
+            self.assertFalse(any(size == 56 for _, size in bad.reads))
+
+    def test_party_sort_policy_and_exact_source_projection_fields(self):
+        with tempfile.TemporaryDirectory() as directory:
+            dol = synthetic_dol(directory, 'partySort')
+            PROBE.validate_party_sort_source(dol)
+            for address in (PROBE.CANDIDATES['partySort'], *PROBE.PARTY_SORT_PROJECTIONS):
+                for bit in (1 << 26, 1 << 21, 1 << 16, 1):
+                    class AlteredSource:
+                        def word(self, requested):
+                            word = int.from_bytes(dol.word(requested), 'big')
+                            return (word ^ bit if requested == address else word).to_bytes(4, 'big')
+                    with self.subTest(address=address, bit=bit), self.assertRaises(PROBE.ProbeError):
+                        PROBE.validate_party_sort_source(AlteredSource())
+            for candidate in ('partySort', 'opponentTrainerCreate', 'fightPokemonCreate'):
+                dol = synthetic_dol(directory, candidate)
+                for name, register, size in (('trainer_head', 'r3', 3524), ('trainer_head', 'r4', 3524),
+                                             ('trainer_head', 'r3', 3523), ('trainer_head', 'r3', 3525),
+                                             ('trainer_head', 'r3', 4096), ('trainer_head', 'r3', 312)):
+                    plan = {'schema': 1, 'probes': [{'name': candidate, 'objects': [
+                        {'name': name, 'register': register, 'size': size}]}]}
+                    with self.subTest(candidate=candidate, register=register, size=size):
+                        if candidate == 'partySort' and (name, register, size) == ('trainer_head', 'r3', 3524):
+                            PROBE.validate_plan(plan, dol)
+                        else:
+                            with self.assertRaises(PROBE.ProbeError):
+                                PROBE.validate_plan(plan, dol)
+
+    def test_party_sort_fixed_scratch_selection_counter_and_retained_head(self):
+        with tempfile.TemporaryDirectory() as directory:
+            dol = synthetic_dol(directory, 'partySort')
+            entry = PROBE.CANDIDATES['partySort']
+            stack = 0x8053C8F8
+            sorted_address, selected_address = stack - 0x770, stack - 0x788
+            plan = {'schema': 1, 'probes': [{'name': 'partySort', 'capture_return': True,
+                    'caller_addresses': [hex(entry - 0x10)],
+                    'objects': [{'name': 'trainer_head', 'register': 'r3', 'size': 3524}]}]}
+            probes, stops, _ = PROBE.validate_plan(plan, dol)
+            class SortMemory(MemoryClient):
+                head_address = PROBE.MEM1_END - 3524
+                stack = 0x8053C8F8
+                wrong_return_stack = False
+                bad_guest_projection = None
+
+                def registers(self):
+                    registers = super().registers()
+                    returned = self.current != self.entry
+                    registers['r1'] = self.stack + (8 if returned and self.wrong_return_stack else 0)
+                    registers['r3'] = 0x80440000 if returned else self.head_address
+                    registers['r4'], registers['r5'] = (0, 0) if returned else (0x10006, 0x10002)
+                    return registers
+
+                def read_memory(self, address, size):
+                    returned = self.current != self.entry
+                    if address == self.bad_guest_projection:
+                        return b'\x00' * 4
+                    if address == self.head_address and size == 3524:
+                        self.reads.append((address, size))
+                        return b'\x00\x0a' + (b'\x91' if returned else b'\x82') * (size - 2)
+                    if address == self.head_address and size == 2:
+                        self.reads.append((address, size))
+                        return b'\x00\x0a'
+                    if address == self.stack - 0x770 and size == 1872:
+                        self.reads.append((address, size))
+                        return (b'\x73' if returned else b'\x64') * size
+                    if address == self.stack - 0x788 and size == 24:
+                        self.reads.append((address, size))
+                        return (b'\x55' if returned else b'\x46') * size
+                    if address == PROBE.PARTY_SORT_COUNTER and size == 2:
+                        self.reads.append((address, size))
+                        return bytes.fromhex('0006' if returned else 'fffd')
+                    if address == PROBE.PARTY_SORT_GLOBAL_RESULT and size == 2:
+                        self.reads.append((address, size))
+                        return bytes.fromhex('0002' if returned else '0001')
+                    if address == 0x80451070 and size == 56:
+                        self.reads.append((address, size))
+                        return b'\x00' + (b'\x02' if returned else b'\x01') + b'\x00' * 54
+                    if address == self.pointer:
+                        self.reads.append((address, size))
+                        return bytes.fromhex('89abcdef' if returned else '12345678')
+                    return super().read_memory(address, size)
+            client = SortMemory(dol, entry)
+            record = PROBE.observe(client, dol, probes, stops)['records'][0]
+            for boundary, scratch_byte, selection_byte, counter in (
+                    ('entry', b'\x64', b'\x46', 0xFFFD), ('return', b'\x73', b'\x55', 6)):
+                observed = record[boundary]['party_sort']
+                self.assertEqual(observed['entry_stack'], f'0x{stack:08x}')
+                self.assertEqual(observed['sorted_pokemon']['address'], f'0x{sorted_address:08x}')
+                self.assertEqual(observed['sorted_pokemon']['data_hex'], (scratch_byte * 1872).hex())
+                self.assertEqual(observed['selected']['address'], f'0x{selected_address:08x}')
+                self.assertEqual(observed['selected']['data_hex'], (selection_byte * 24).hex())
+                self.assertEqual(observed['entry_counter']['value_u16'], counter)
+                self.assertEqual(observed['trainer_data_id']['value_u16'], 10)
+                self.assertEqual(observed['global_result']['value_u16'], 1 if boundary == 'entry' else 2)
+                self.assertEqual(observed['encounter']['id'], 2)
+                self.assertEqual(observed['encounter']['trainer_byte'], 1 if boundary == 'entry' else 2)
+                self.assertIn('attest', record[boundary])
+            self.assertEqual(client.reads.count((client.head_address, 3524)), 2)
+            self.assertEqual(client.reads.count((sorted_address, 1872)), 2)
+            self.assertEqual(client.reads.count((selected_address, 24)), 2)
+            self.assertEqual(client.reads.count((PROBE.PARTY_SORT_COUNTER, 2)), 2)
+            self.assertEqual(client.reads.count((PROBE.PARTY_SORT_GLOBAL_RESULT, 2)), 2)
+            self.assertEqual(client.reads.count((0x80451070, 56)), 2)
+            self.assertFalse(any(address == 0x80440000 for address, _ in client.reads))
+            self.assertNotEqual(record['entry']['rng']['seed'], record['return']['rng']['seed'])
+            for address in PROBE.PARTY_SORT_PROJECTIONS:
+                bad = SortMemory(dol, entry)
+                bad.bad_guest_projection = address
+                with self.subTest(address=address), self.assertRaisesRegex(PROBE.ProbeError, 'instruction differs'):
+                    PROBE.observe(bad, dol, probes, stops)
+                self.assertFalse(any(size in (1872, 24) for _, size in bad.reads))
+            for bad_stack in (0, 0x80000768, 0x8053C8FC, 0x81800000):
+                bad = SortMemory(dol, entry)
+                bad.stack = bad_stack
+                with self.subTest(stack=bad_stack), self.assertRaises(PROBE.ProbeError):
+                    PROBE.observe(bad, dol, probes, stops)
+            bad_head = SortMemory(dol, entry)
+            bad_head.head_address += 1
+            with self.assertRaises(PROBE.ProbeError):
+                PROBE.observe(bad_head, dol, probes, stops)
+            wrong_frame = SortMemory(dol, entry)
+            wrong_frame.wrong_return_stack = True
+            with self.assertRaisesRegex(PROBE.ProbeError, 'return PC/stack'):
+                PROBE.observe(wrong_frame, dol, probes, stops)
+            self.assertEqual(wrong_frame.reads.count((sorted_address, 1872)), 1)
+
     def test_fight_pokemon_exact_candidate_object_policy(self):
         with tempfile.TemporaryDirectory() as directory:
             for candidate in ('fightPokemonCreate', 'opponentTrainerCreate', 'postHeroPreRoster'):

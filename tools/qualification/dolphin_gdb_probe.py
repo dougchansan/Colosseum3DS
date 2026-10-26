@@ -31,6 +31,30 @@ REPLACEMENT_NAME_POINTER = 0x8047A670
 REPLACEMENT_NAME_SIZE = 22
 PARENT_SCRATCH_ARGUMENT = 0x801F9E34
 PARENT_SCRATCH_OFFSET = -0x148
+PARTY_SORT_HEAD_SIZE = 3524
+PARTY_SORT_POKEMON_SIZE = 1872
+PARTY_SORT_POKEMON_OFFSET = -0x770
+PARTY_SORT_SELECTED_OFFSET = -0x788
+PARTY_SORT_SELECTED_SIZE = 24
+PARTY_SORT_COUNTER = 0x80478250
+PARTY_SORT_GLOBAL_RESULT = 0x8047B5D8
+PARTY_SORT_ENCOUNTER_ID = 0x8046DDA2
+PARTY_SORT_ENCOUNTER_COUNT_POINTER = 0x80478F50
+PARTY_SORT_ENCOUNTER_DATA_POINTER = 0x80478F54
+PARTY_SORT_ENCOUNTER_ROW_SIZE = 56
+RUNTIME_TRAINER_SIZE = 10468
+RUNTIME_TRAINER_VIEWS = {
+    'runtime_head': ('r3', 4096, 0),
+    'runtime_middle': ('r3', 4096, 4096),
+    'runtime_tail': ('r3', 2276, 8192),
+    'hero': ('r4', HERO_SIZE, 0),
+}
+PARTY_SORT_PROJECTIONS = {
+    0x801F9B64: (14, 27, 1, 8),
+    0x801F9BC0: (14, 5, 1, 8),
+    0x801F9B80: (14, 3, 1, 0x20),
+    0x801F9C44: (14, 29, 1, 0x20),
+}
 SOURCE_SHA256 = 'dbc772fd356f490cab2a6d8ed6ec77cbcd35f647d01e0b0b06542cbd750abae1'
 CANDIDATES = {
     'opponentTrainerCreate': 0x801F9CBC,
@@ -42,6 +66,8 @@ CANDIDATES = {
     'resultSetter': 0x801F3984,
     'partyCopyback': 0x801F86C0,
     'fightPokemonCreate': 0x80206AEC,
+    'partySort': 0x801F99C8,
+    'runtimeTrainerCreate': 0x801FA6D8,
 }
 SPECIAL_REGISTERS = {'pc': 64, 'cr': 66, 'lr': 67, 'ctr': 68, 'xer': 69}
 
@@ -325,7 +351,18 @@ def object_size(candidate, obj):
     size = number(obj['size'])
     if obj['register'] not in [f'r{i}' for i in range(32)]:
         raise ProbeError('invalid object register')
-    if candidate == 'fightPokemonCreate':
+    if candidate == 'runtimeTrainerCreate':
+        expected = RUNTIME_TRAINER_VIEWS.get(obj['name'])
+        if expected is None or (obj['register'], size) != expected[:2]:
+            raise ProbeError('runtimeTrainerCreate requires an exact fixed runtime/hero view')
+    elif obj['name'] in ('runtime_head', 'runtime_middle', 'runtime_tail'):
+        raise ProbeError('runtime views are reserved for runtimeTrainerCreate')
+    elif candidate == 'partySort':
+        if (obj['name'], obj['register'], size) != ('trainer_head', 'r3', PARTY_SORT_HEAD_SIZE):
+            raise ProbeError('partySort admits only trainer_head/r3/exact 3524 bytes')
+    elif obj['name'] == 'trainer_head':
+        raise ProbeError('trainer_head object is reserved for partySort/r3/3524')
+    elif candidate == 'fightPokemonCreate':
         if (obj['name'], obj['register'], size) not in (
                 ('fight_pokemon', 'r3', 340), ('pokemon', 'r4', 312)):
             raise ProbeError('fightPokemonCreate admits only fight_pokemon/r3/340 and pokemon/r4/312')
@@ -339,6 +376,20 @@ def object_size(candidate, obj):
     return size
 
 
+def object_offset(candidate, obj):
+    object_size(candidate, obj)
+    return RUNTIME_TRAINER_VIEWS[obj['name']][2] if candidate == 'runtimeTrainerCreate' else 0
+
+
+def object_address(candidate, obj, registers):
+    base = registers[obj['register']]
+    if candidate == 'runtimeTrainerCreate' and obj['name'] != 'hero':
+        mem1(base, 4)
+        if base + RUNTIME_TRAINER_SIZE > MEM1_END:
+            raise ProbeError('whole runtime trainer extent is outside MEM1')
+    return mem1(base + object_offset(candidate, obj), object_size(candidate, obj))
+
+
 def validate_parent_scratch_source(dol):
     # D-form fields cover the entire instruction: no unchecked opcode bits.
     for address, fields in ((CANDIDATES['opponentTrainerCreate'], (37, 1, 1, -0x150)),
@@ -350,6 +401,18 @@ def validate_parent_scratch_source(dol):
         actual = word >> 26, (word >> 21) & 31, (word >> 16) & 31, immediate
         if actual != fields:
             raise ProbeError('parent scratch source instructions differ from reviewed frame/argument semantics')
+
+
+def validate_party_sort_source(dol):
+    requirements = {CANDIDATES['partySort']: (37, 1, 1, -0x790), **PARTY_SORT_PROJECTIONS}
+    for address, expected in requirements.items():
+        word = int.from_bytes(dol.word(address), 'big')
+        immediate = word & 0xFFFF
+        if immediate & 0x8000:
+            immediate -= 0x10000
+        actual = word >> 26, (word >> 21) & 31, (word >> 16) & 31, immediate
+        if actual != expected:
+            raise ProbeError('party sort source instructions differ from reviewed frame/projection semantics')
 
 
 def validate_plan(plan, dol):
@@ -372,6 +435,8 @@ def validate_plan(plan, dol):
         dol.word(entry)
         if name == 'opponentTrainerCreate':
             validate_parent_scratch_source(dol)
+        if name == 'partySort':
+            validate_party_sort_source(dol)
         callers = item.get('caller_addresses', [])
         if not isinstance(callers, list) or len(callers) > 16:
             raise ProbeError('invalid caller list')
@@ -393,6 +458,9 @@ def validate_plan(plan, dol):
             if not isinstance(obj['name'], str) or not re.fullmatch(r'[a-zA-Z][a-zA-Z0-9_]{0,47}', obj['name']):
                 raise ProbeError('invalid object name')
             normalized_objects.append(dict(obj, size=object_size(name, obj)))
+        if name == 'runtimeTrainerCreate' and (
+                len(normalized_objects) != 4 or {obj['name'] for obj in normalized_objects} != set(RUNTIME_TRAINER_VIEWS)):
+            raise ProbeError('runtimeTrainerCreate capture requires all four exact fixed views once each')
         result.append({'name': name, 'entry': entry, 'capture_return': capture_return,
                        'callers': callers, 'objects': normalized_objects})
     if sum(1 + int(item['capture_return']) for item in result) > stops:
@@ -411,10 +479,12 @@ def snapshot(client, registers, objects, candidate=None):
         mem1(address, size)
         rows.append({'name': obj['name'], 'register': obj['register'], 'address': f'0x{address:08x}',
                      'size': size, 'data_hex': client.read_memory(address, size).hex()})
+        if candidate == 'runtimeTrainerCreate':
+            rows[-1]['offset'] = object_offset(candidate, obj)
     result = {'registers': {key: f'0x{value:08x}' for key, value in registers.items()},
               'rng': {'pointer_address': f'0x{RNG_POINTER:08x}', 'seed_address': f'0x{pointer:08x}',
                       'seed': f'0x{seed:08x}'}, 'objects': rows}
-    if candidate in ('postHeroPreRoster', 'opponentTrainerCreate'):
+    if candidate in ('postHeroPreRoster', 'opponentTrainerCreate', 'partySort', 'runtimeTrainerCreate'):
         # Independently sourced savedata status pointer, never inferred from Pokemon output.
         attest_pointer = int.from_bytes(client.read_memory(ATTEST_POINTER, 4), 'big')
         mem1(attest_pointer, 4)
@@ -454,6 +524,57 @@ def parent_entry_inputs(client, registers, savedata_base):
     return result
 
 
+def party_sort_projections(registers):
+    stack = mem1(registers['r1'], 4)
+    if stack % 8:
+        raise ProbeError('party sort entry stack is not 8-byte ABI aligned')
+    return {'entry_stack': stack,
+            'trainer_head': mem1(registers['r3'], PARTY_SORT_HEAD_SIZE),
+            'sorted_pokemon': mem1(stack + PARTY_SORT_POKEMON_OFFSET, PARTY_SORT_POKEMON_SIZE),
+            'selected': mem1(stack + PARTY_SORT_SELECTED_OFFSET, PARTY_SORT_SELECTED_SIZE)}
+
+
+def party_sort_mutable_context(client):
+    global_result = client.read_memory(PARTY_SORT_GLOBAL_RESULT, 2)
+    encounter_id = int.from_bytes(client.read_memory(PARTY_SORT_ENCOUNTER_ID, 2), 'big')
+    count_pointer = int.from_bytes(client.read_memory(PARTY_SORT_ENCOUNTER_COUNT_POINTER, 4), 'big')
+    mem1(count_pointer, 4)
+    count = int.from_bytes(client.read_memory(count_pointer, 4), 'big')
+    if encounter_id >= count:
+        raise ProbeError('party sort encounter ID is outside source table count')
+    base = int.from_bytes(client.read_memory(PARTY_SORT_ENCOUNTER_DATA_POINTER, 4), 'big')
+    mem1(base, PARTY_SORT_ENCOUNTER_ROW_SIZE)
+    row_address = mem1(base + encounter_id * PARTY_SORT_ENCOUNTER_ROW_SIZE, PARTY_SORT_ENCOUNTER_ROW_SIZE)
+    row = client.read_memory(row_address, PARTY_SORT_ENCOUNTER_ROW_SIZE)
+    return {
+        'global_result': {'address': f'0x{PARTY_SORT_GLOBAL_RESULT:08x}', 'size': 2,
+                          'data_hex': global_result.hex(), 'value_u16': int.from_bytes(global_result, 'big')},
+        'encounter': {'id_address': f'0x{PARTY_SORT_ENCOUNTER_ID:08x}', 'id': encounter_id,
+                      'count_pointer_address': f'0x{PARTY_SORT_ENCOUNTER_COUNT_POINTER:08x}',
+                      'count_pointer': f'0x{count_pointer:08x}', 'count': count,
+                      'data_pointer_address': f'0x{PARTY_SORT_ENCOUNTER_DATA_POINTER:08x}',
+                      'base': f'0x{base:08x}', 'row_address': f'0x{row_address:08x}',
+                      'row_size': PARTY_SORT_ENCOUNTER_ROW_SIZE, 'row_hex': row.hex(), 'trainer_byte': row[1]},
+    }
+
+
+def party_sort_snapshot(client, projections):
+    result = {'entry_stack': f'0x{projections["entry_stack"]:08x}'}
+    for name, size in (('sorted_pokemon', PARTY_SORT_POKEMON_SIZE), ('selected', PARTY_SORT_SELECTED_SIZE)):
+        address = mem1(projections[name], size)
+        result[name] = {'address': f'0x{address:08x}', 'size': size,
+                        'data_hex': client.read_memory(address, size).hex()}
+    counter = client.read_memory(PARTY_SORT_COUNTER, 2)
+    result['entry_counter'] = {'address': f'0x{PARTY_SORT_COUNTER:08x}', 'size': 2,
+                               'data_hex': counter.hex(), 'value_u16': int.from_bytes(counter, 'big')}
+    trainer_address = mem1(projections['trainer_head'], PARTY_SORT_HEAD_SIZE)
+    trainer_id = client.read_memory(trainer_address, 2)
+    result['trainer_data_id'] = {'address': f'0x{trainer_address:08x}', 'size': 2,
+                                 'data_hex': trainer_id.hex(), 'value_u16': int.from_bytes(trainer_id, 'big')}
+    result.update(party_sort_mutable_context(client))
+    return result
+
+
 def breakpoint(client, dol, address, add):
     dol.verify(client, address)
     client.breakpoints.add(address)
@@ -472,6 +593,7 @@ def observe(client, dol, probes, max_stops):
     stops = 0
     for index, probe in enumerate(probes):
         parent_scratch_address = None
+        sort_projections = None
         entry = probe['entry']
         breakpoint(client, dol, entry, True)
         client.request('c')
@@ -482,7 +604,7 @@ def observe(client, dol, probes, max_stops):
         if registers['pc'] != entry:
             raise ProbeError('unexpected stop PC; candidate not observed')
         dol.verify(client, entry)
-        objects = [dict(obj, address=mem1(registers[obj['register']], object_size(probe['name'], obj)))
+        objects = [dict(obj, address=object_address(probe['name'], obj, registers))
                    for obj in probe['objects']]
         record = {'capture_id': f'{index:02d}-{probe["name"]}',
                   'candidate': probe['name'], 'boundary_status': 'candidate_until_caller_context_validated',
@@ -494,6 +616,11 @@ def observe(client, dol, probes, max_stops):
             record['entry']['parent_entry_inputs'] = parent_entry_inputs(client, registers, savedata_base)
             parent_scratch_address = mem1(
                 int(record['entry']['parent_entry_inputs']['pokemon_scratch']['address'], 16), 312)
+        if probe['name'] == 'partySort':
+            for address in PARTY_SORT_PROJECTIONS:
+                dol.verify(client, address)
+            sort_projections = party_sort_projections(registers)
+            record['entry']['party_sort'] = party_sort_snapshot(client, sort_projections)
         breakpoint(client, dol, entry, False)
         if probe['capture_return']:
             return_address = registers['lr']
@@ -512,7 +639,9 @@ def observe(client, dol, probes, max_stops):
                 raise ProbeError('unexpected return PC/stack; return context unproven')
             record['caller_address'] = f'0x{caller:08x}'
             record['return'] = snapshot(client, returned, objects, probe['name'])
-            if probe['name'] == 'fightPokemonCreate':
+            if sort_projections is not None:
+                record['return']['party_sort'] = party_sort_snapshot(client, sort_projections)
+            if probe['name'] in ('fightPokemonCreate', 'runtimeTrainerCreate'):
                 before, after = record['entry']['rng'], record['return']['rng']
                 record['rng_observation'] = {
                     'seed_unchanged': before['seed'] == after['seed'],

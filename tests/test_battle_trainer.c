@@ -168,6 +168,7 @@ static int reentrant_message(void *user,uint32_t id,const uint8_t **p,size_t *si
 {
     (void)user;assert(++nested_calls<=2);
     assert(!c3_battle_trainer_create(nested_hero,nested_scratch,&nested_request,&nested_data,&nested_rng));
+    assert(!c3_battle_trainer_init_hero(nested_hero));
     assert(nested_rng.seed==44&&nested_rng.draws==13);
     for(unsigned i=0;i<sizeof(nested_hero);i++)assert(nested_hero[i]==0x28);
     for(unsigned i=0;i<sizeof(nested_scratch);i++)assert(nested_scratch[i]==0x39);

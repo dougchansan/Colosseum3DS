@@ -34,6 +34,13 @@ battle preview is nonpersistent and cannot advance the story.
   These include temporary selection and final primary-entry callers. Party
   selection, inter-call RNG, sequence/FightTrainer creation and complete battle
   entry remain open.
+- Two original [party-sort wrappers](battle-party-sort.md) now match complete
+  trainer heads, six-record stack scratch, selected pointers, RNG and counters.
+  The ordinary Willie case uses two draws and nine counter increments. Two
+  [runtime trainer constructors](battle-runtime-trainer.md) match all 10,468
+  bytes and preserve their 2,840-byte Hero inputs without consuming RNG.
+  Alternate sorting branches, real sequence allocation, active fighters,
+  complete entry and live stream ownership remain open.
 - The [source index](story-source-index.md) inventories 196 lifecycle rows,
   594 events, 607 name rows, 1,835 TOC archives, 176 banks, 2,310 function slots,
   19,086 native sites and83 relocated lifecycle callbacks. It retains 163
@@ -56,7 +63,7 @@ not yet established. These observations never authorize granting those flags.
 
 | Requirement | Current evidence/status |
 | --- | --- |
-| Original shared RNG and full trainer/Pokemon/FightPokemon entry | Partial initialization and leaf helpers; complete original entry trace/ABI still required |
+| Original shared RNG and full trainer/Pokemon/FightPokemon entry | Bounded parent, Pokemon, sorting and runtime constructors match original calls; live stream bootstrap, actual sequences, active fighters and complete entry remain required |
 | Source-legal commands, AI scoring, ordering, effects, statuses, items and full-party replacements | Selected preview behavior only; authoritative complete turns still required |
 | Terminal results, EXP/EV/rewards/capture/evolution and source party copyback | Isolated result rules qualified; complete result transaction and original witnesses still required |
 | Exactly-once native 98 continuation and authentic story flags | Native98 remains waiting; no preview outcome is accepted |

@@ -8,11 +8,20 @@ original game. Entry/return observations alone do not qualify a full battle.
 
 ## Feasibility and source evidence
 
-The locally available official Windows executable is
+Early captures used the official Windows executable at
 `G:/gamecube-decomp/Dolphin-x64/Dolphin.exe`, SHA256
 `5e076628b977603dcde9ddef5eedf10b5a9ce0b6208bd4e6dfa9039cdebf3433`.
 The launch operator must verify that identity separately. The client does not
 infer executable identity from its network protocol.
+
+That installed file subsequently changed to version 2609a; a launch preflight
+rejected its different hash before starting an emulator. Later fixtures use an
+isolated copy recovered from the [official 2603a Windows archive](https://dl.dolphin-emu.org/releases/2603a/dolphin-2603a-x64.7z).
+The recovered 22,569,984-byte executable matches the earlier SHA256 exactly.
+Its archive SHA256 is
+`4cc6d975fe9646ed7326271ec9a2d84b93301de7cdb525c6b20ed97c0a715bf1`.
+The updated installed application is left untouched. A private launch journal
+records each executable path/hash and its profile, source and save identities.
 
 Reviewed Dolphin source exists locally under
 `/home/douglaswhittingham/colo-linux-test/repo/lib/ModernGekko/vendor/dolphin/Source/Core/`.
@@ -80,6 +89,8 @@ does not identify a complete battle, floor transition, or caller-owned object.
 | `resultSetter` | `0x801F3984` | Result setter entry. |
 | `partyCopyback` | `0x801F86C0` | Party copyback candidate. |
 | `fightPokemonCreate` | `0x80206AEC` | FightPokemon constructor; `r3` destination, `r4` source Pokemon, signed low 16 bits of `r5` entry ID. |
+| `partySort` | `0x801F99C8` | Party-copy/sort wrapper; `r3` runtime trainer, low 16 bits of `r4` selection count, low 16 bits of `r5` selection mode. |
+| `runtimeTrainerCreate` | `0x801FA6D8` | Runtime trainer creation; `r3` destination, `r4` source Hero, low 16 bits of `r5` trainer ID, `r6` controller, `r7` actual sequence identity. |
 
 Source-mapped direct callers of `opponentTrainerCreate` are `0x8006A250`
 (return LR `0x8006A254`), `0x8006AB00` (LR `0x8006AB04`) and `0x8020D38C`
@@ -259,6 +270,98 @@ return scratch for that qualification claim. Capture attempt 09 loaded the
 earlier client; if its completed observation lacks `parent_return_scratch`, it
 does not qualify this comparison. No later tool update retroactively adds the
 missing evidence to an earlier capture.
+
+For `partySort`, the only object request is
+`{"name":"trainer_head","register":"r3","size":3524}`. This exact
+extent is four header bytes, the `0xB18` embedded Hero and the first two
+340-byte FightPokemon records. The source caller is `0x8020D3EC`, returning
+to `0x8020D3F0`; the supplied private caller whitelist and original linked
+branch must match the observed entry LR. All return object reads retain the
+entry trainer address. Runtime trainer ID is independently read as BE16 at
+head offset zero and recorded as `party_sort.trainer_data_id`; it identifies
+the captured trainer without assigning roles from observation order.
+
+The wrapper's exact original DOL semantics are checked before capture:
+`stwu r1,-0x790(r1)` at `0x801F99C8`; selected projections
+`addi r27,r1,8` at `0x801F9B64` and `addi r5,r1,8` at `0x801F9BC0`;
+sorted-Pokemon projections `addi r3,r1,0x20` at `0x801F9B80` and
+`addi r29,r1,0x20` at `0x801F9C44`. All instruction fields and guest pins
+must match. With an eight-byte-aligned, valid entry stack, the fixed projections
+are exactly 1872 bytes at entry SP minus `0x770` and exactly 24 selected-pointer
+bytes at entry SP minus `0x788`. Both complete ranges are validated before
+reading and retained for return. Each snapshot records these as
+`party_sort.sorted_pokemon` and `party_sort.selected`, with their address, size
+and private `data_hex`, plus the retained `entry_stack`. Initial stack bytes
+remain independent inputs, including unwritten Pokemon padding. The pointer
+array is captured as bytes; its initial contents are never dereferenced.
+
+Each wrapper stop also records `party_sort.entry_counter`, a fresh BE16 read
+at `0x80478250` (FightFloor `0x8046DD90 + 0xA4C0`). Its fields are address,
+size two, `data_hex` and `value_u16`; the shared RNG pointer and pointed seed
+and independent attest are captured by the normal snapshot. The before/after
+counter, seed and backing values are observations, not assumed draw counts or
+restoration behavior.
+
+Fixed wrapper validity and encounter context is read independently at both
+entry and return:
+
+- `party_sort.global_result` is BE16 at `0x8047B5D8`, with the same two-byte
+  value fields. Source `battle_main.c:436`'s no-argument `fn_801EF634` returns
+  this global.
+- `party_sort.encounter` records BE16 `id` at `0x8046DDA2`, BE32
+  `count_pointer` at `0x80478F50` and its BE32 `count`, then BE32 `base` at
+  `0x80478F54`. It requires `id < count`, validates each pointer and the entire
+  row extent in MEM1, and reads exactly 56 bytes at `base + id * 56`.
+- Encounter metadata includes `id_address`, `count_pointer_address`,
+  `data_pointer_address`, `row_address`, `row_size: 56`, `row_hex` and
+  `trainer_byte`, the independently read row byte at offset one. This byte
+  supplies floor status `0x14` through the source encounter getter.
+
+The encounter ownership is `fight_floor_bios.c:448`,
+`fight_floor.c:2672` and `fight_encount_exact_8020E0B0.c:8–26,36,52`.
+Trainer ID at head zero and Hero at plus four are source-proven by
+`fight_trainer_db_range_801FBD10.c:1177,1246`. Encounter rows are mutable game
+state, so their runtime bytes are captured; independently pinned DOL/REL
+checking supplies static trainer, AI and roster table provenance separately.
+The tool admits no plan-supplied table addresses, offsets or read expressions.
+Wrapper entry/return captures skip nested calls; they do not establish a
+qualified sorting closure or full battle entry until the complete comparison
+and caller/context review pass.
+
+`runtimeTrainerCreate` captures the complete `0x28E4` / 10468-byte runtime
+trainer and independent `0xB18` / 2840-byte source Hero. Its source-proven
+direct caller is `0x8020D3B0`, returning to `0x8020D3B4`; normal original DOL
+entry/caller pins, direct-branch target validation, observed LR and restored
+stack checks apply. Each plan entry must include all four of these exact
+objects once:
+
+| Object name | Entry register | Size | Fixed offset from register |
+| --- | --- | --- | --- |
+| `runtime_head` | `r3` | 4096 | 0 |
+| `runtime_middle` | `r3` | 4096 | 4096 |
+| `runtime_tail` | `r3` | 2276 | 8192 |
+| `hero` | `r4` | 2840 | 0 |
+
+Only the internal candidate/name/register/size policy determines these offsets.
+The plan format still rejects offset fields and expressions. The whole runtime
+extent must fit in MEM1; each view then passes the unchanged 4096-byte read
+limit and is transferred in requests no larger than 256 bytes. Resolved view
+addresses are retained at entry and reused for return, regardless of return
+register clobbers. Runtime object records include their fixed `offset` along
+with address, size and `data_hex`; concatenating the three destination views
+by offset gives all 10468 independently observed bytes. The source Hero is
+captured separately at both stops, permitting an input non-mutation comparison
+without assuming its result.
+
+The entry GPR snapshot retains the actual caller-supplied `r5`, `r6` and `r7`,
+including the original 32-bit sequence identity. A fabricated null sequence
+cannot replace this evidence. Normal shared RNG and independent attest reads
+run at both boundaries; `rng_observation` reports captured seed/address equality.
+The pinned initializer/status/kaisuu closure is expected to draw no RNG, but
+the observation does not assume that expectation. These bytes qualify only the
+initializer/copy boundary after independent replay comparison. Sequence
+allocation, resource/model lifecycle and full battle entry remain separate
+owner integration work.
 
 Plans admit 1–8 sequential probes, at most 32 stops and 1–3600 seconds total
 (defaults: 16 stops, 60 seconds). Commands are capped at 512 for the CLI.

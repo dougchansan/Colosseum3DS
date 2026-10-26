@@ -396,3 +396,43 @@ battle-fight-pokemon-check: build/test_battle_fight_pokemon build/test_battle_fi
 	./build/test_battle_fight_pokemon
 	./build/test_battle_fight_pokemon_failure
 test: battle-fight-pokemon-check
+
+BATTLE_PARTY_SORT_UPSTREAM = $(addprefix vendor/colosseum/,$(shell python3 -c "import json; print(' '.join(f['path'] for f in json.load(open('config/battle-party-sort-source-files.json'))['files']))"))
+build/battle_party_sort_original.inc: tools/prepare_battle_party_sort.py tools/prepare_battle_pokemon.py config/battle-party-sort-source-files.json source-lock.json $(BATTLE_PARTY_SORT_UPSTREAM) | build
+	python3 tools/prepare_battle_party_sort.py
+
+BATTLE_PARTY_SORT_SOURCES = src/battle_party_sort.c $(BATTLE_FIGHT_POKEMON_SOURCES)
+BATTLE_PARTY_SORT_GENERATED = build/battle_party_sort_original.inc $(BATTLE_FIGHT_POKEMON_GENERATED)
+build/test_battle_party_sort: tests/test_battle_party_sort.c $(BATTLE_PARTY_SORT_SOURCES) $(HEADERS) $(BATTLE_PARTY_SORT_GENERATED) | build
+	$(CC) $(CPPFLAGS) -Ibuild $(CFLAGS) tests/test_battle_party_sort.c $(BATTLE_PARTY_SORT_SOURCES) $(LDFLAGS) -o $@
+
+build/test_battle_party_sort_failure: tests/test_battle_party_sort.c src/battle_party_sort.c src/battle_rng.c $(HEADERS) build/battle_party_sort_original.inc build/battle_rng_source.h | build
+	$(CC) $(CPPFLAGS) -Ibuild $(CFLAGS) -DC3_TEST_PARTY_DEPENDENCY_FAILURE tests/test_battle_party_sort.c src/battle_party_sort.c src/battle_rng.c $(LDFLAGS) -o $@
+
+build/libbattle_party_sort.so: $(BATTLE_PARTY_SORT_SOURCES) $(HEADERS) $(BATTLE_PARTY_SORT_GENERATED) | build
+	$(CC) $(CPPFLAGS) -Ibuild $(CFLAGS) -fPIC -shared $(BATTLE_PARTY_SORT_SOURCES) $(LDFLAGS) -o $@
+
+all: build/test_battle_party_sort build/test_battle_party_sort_failure
+.PHONY: battle-party-sort-check
+battle-party-sort-check: build/test_battle_party_sort build/test_battle_party_sort_failure
+	./build/test_battle_party_sort
+	./build/test_battle_party_sort_failure
+test: battle-party-sort-check
+
+BATTLE_RUNTIME_TRAINER_UPSTREAM = $(addprefix vendor/colosseum/,$(shell python3 -c "import json; print(' '.join(f['path'] for f in json.load(open('config/battle-runtime-trainer-source-files.json'))['files']))"))
+build/battle_runtime_trainer_original.inc: tools/prepare_battle_runtime_trainer.py tools/prepare_battle_pokemon.py config/battle-runtime-trainer-source-files.json source-lock.json $(BATTLE_RUNTIME_TRAINER_UPSTREAM) | build
+	python3 tools/prepare_battle_runtime_trainer.py
+
+BATTLE_RUNTIME_TRAINER_SOURCES = src/battle_runtime_trainer.c src/battle_trainer.c $(BATTLE_FIGHT_POKEMON_SOURCES)
+BATTLE_RUNTIME_TRAINER_GENERATED = build/battle_runtime_trainer_original.inc $(BATTLE_TRAINER_GENERATED) build/battle_fight_pokemon_original.inc
+build/test_battle_runtime_trainer: tests/test_battle_runtime_trainer.c $(BATTLE_RUNTIME_TRAINER_SOURCES) $(HEADERS) $(BATTLE_RUNTIME_TRAINER_GENERATED) | build
+	$(CC) $(CPPFLAGS) -Ibuild $(CFLAGS) tests/test_battle_runtime_trainer.c $(BATTLE_RUNTIME_TRAINER_SOURCES) $(LDFLAGS) -o $@
+
+build/libbattle_runtime_trainer.so: $(BATTLE_RUNTIME_TRAINER_SOURCES) $(HEADERS) $(BATTLE_RUNTIME_TRAINER_GENERATED) | build
+	$(CC) $(CPPFLAGS) -Ibuild $(CFLAGS) -fPIC -shared $(BATTLE_RUNTIME_TRAINER_SOURCES) $(LDFLAGS) -o $@
+
+all: build/test_battle_runtime_trainer
+.PHONY: battle-runtime-trainer-check
+battle-runtime-trainer-check: build/test_battle_runtime_trainer
+	./build/test_battle_runtime_trainer
+test: battle-runtime-trainer-check

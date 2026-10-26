@@ -201,3 +201,16 @@ int c3_battle_trainer_create(u8 hero[C3_BATTLE_TRAINER_BYTES],u8 scratch[312],
     memset(&context,0,sizeof(context));atomic_flag_clear_explicit(&in_use,memory_order_release);
     return ok;
 }
+
+int c3_battle_trainer_init_hero(u8 hero[C3_BATTLE_TRAINER_BYTES])
+{
+    if(!hero||atomic_flag_test_and_set_explicit(&in_use,memory_order_acquire))return 0;
+    u8 staged[C3_BATTLE_TRAINER_BYTES];memcpy(staged,hero,sizeof(staged));
+    memset(&context,0,sizeof(context));
+    c3t_src_heroInit(staged);
+    int ok=!context.error;
+    if(ok)memcpy(hero,staged,sizeof(staged));
+    memset(&context,0,sizeof(context));
+    atomic_flag_clear_explicit(&in_use,memory_order_release);
+    return ok;
+}
