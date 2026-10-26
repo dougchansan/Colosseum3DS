@@ -320,3 +320,22 @@ all: build/test_bottom_screen
 bottom-screen-check: build/test_bottom_screen
 	./build/test_bottom_screen
 test: bottom-screen-check
+
+BATTLE_RULES_UPSTREAM = $(addprefix vendor/colosseum/,$(shell python3 -c "import json; print(' '.join(f['path'] for f in json.load(open('config/battle-rules-source-files.json'))['files']))"))
+build/battle_rules_original.inc: tools/prepare_battle_rules.py config/battle-rules-source-files.json source-lock.json $(BATTLE_RULES_UPSTREAM) | build
+	python3 tools/prepare_battle_rules.py
+
+BATTLE_RULES_SOURCES = src/battle_rules.c src/battle_rng.c
+build/test_battle_rules: tests/test_battle_rules.c $(BATTLE_RULES_SOURCES) $(HEADERS) build/battle_rules_original.inc build/battle_rng_source.h | build
+	$(CC) $(CPPFLAGS) -Ibuild $(CFLAGS) tests/test_battle_rules.c $(BATTLE_RULES_SOURCES) $(LDFLAGS) -o $@
+
+build/libbattle_rules.so: $(BATTLE_RULES_SOURCES) $(HEADERS) build/battle_rules_original.inc build/battle_rng_source.h | build
+	$(CC) $(CPPFLAGS) -Ibuild $(CFLAGS) -fPIC -shared $(BATTLE_RULES_SOURCES) $(LDFLAGS) -o $@
+
+all: build/test_battle_rules
+.PHONY: battle-rules-check battle-rules-original-check
+battle-rules-check: build/test_battle_rules
+	./build/test_battle_rules
+battle-rules-original-check: build/libbattle_rules.so docs/battle-rules-original-vectors.json
+	python3 tools/qualification/check_battle_rules_oracle.py --library build/libbattle_rules.so
+test: battle-rules-check battle-rules-original-check

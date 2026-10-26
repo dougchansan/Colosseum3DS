@@ -70,11 +70,11 @@ ifneq ($(C3_BOOT_ONLY),1)
 export _3DSXFLAGS += --romfs=$(CURDIR)/$(BUILD)/romfs
 endif
 
-.PHONY: all clean prepare-gekko prepare-save prepare-battle-action prepare-battle-rng prepare-battle-damage
+.PHONY: all clean prepare-gekko prepare-save prepare-battle-action prepare-battle-rng prepare-battle-damage prepare-battle-rules
 ifeq ($(C3_BOOT_ONLY),1)
-all: prepare-save prepare-battle-action prepare-battle-rng prepare-battle-damage | $(BUILD)
+all: prepare-save prepare-battle-action prepare-battle-rng prepare-battle-damage prepare-battle-rules | $(BUILD)
 else
-all: prepare-save prepare-battle-action prepare-battle-rng prepare-battle-damage prepare-gekko $(BUILD)/romfs/p5_material.shbin
+all: prepare-save prepare-battle-action prepare-battle-rng prepare-battle-damage prepare-battle-rules prepare-gekko $(BUILD)/romfs/p5_material.shbin
 endif
 	$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile.3ds
 
@@ -89,6 +89,9 @@ prepare-battle-damage:
 
 prepare-battle-rng:
 	$(PYTHON) tools/prepare_battle_rng.py
+
+prepare-battle-rules:
+	$(PYTHON) tools/prepare_battle_rules.py
 
 prepare-gekko: | $(BUILD)
 	$(PYTHON) tools/prepare_gekko_backend.py --output $(BUILD)/gekko
@@ -116,6 +119,7 @@ $(OFILES_SOURCES): $(HFILES)
 .PHONY: force-build-id
 force-build-id:
 model_scene.o boot_scene.o render_recovery.o battle_preview_scene.o: force-build-id
+battle_rules.o: $(TOPDIR)/build/battle_rules_original.inc $(TOPDIR)/build/battle_rng_source.h
 
 %.shbin.o %_shbin.h: %.shbin
 	$(bin2o)
