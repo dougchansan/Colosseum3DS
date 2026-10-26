@@ -428,6 +428,8 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                 (double)player.position[0],(double)player.position[1],(double)player.position[2],(double)player.yaw,(unsigned long)player.motion,
                 (double)wes->active_frame,(unsigned long)player.collision_count,(unsigned long)summary.play_seconds,
                 (unsigned long)stats.draw_calls,(unsigned long)snapshot.last_command_words,(unsigned long)stats.gpu_buffer_bytes);
+            /* A queued cue alone does not prove DSP playback progressed. */
+            if(pda_audio_ready&&ingame->active&&ingame->page==C3_GAME_TONES)c3_pda_audio_trace(trace,"pda_menu_tick");
             fflush(trace);next_trace=now+UINT64_C(1000000);
         }
     }

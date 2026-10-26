@@ -134,8 +134,10 @@ make build/render_ingame_menu_preview
 ```
 
 Host screenshots use the production controller, save accessors and raster
-views. Physical-console readability, HOME/sleep behavior and frame-time/memory
-measurements with the new PDA pack remain a separate hardware acceptance gate.
+views. Physical menu spacing/readability passed on October 26; the bounded
+[viewer and ringtone SDK lifecycle follow-up](evidence/pda-preview-audio-hardware-2026-10-26)
+also passed with unchanged save bytes. HOME/sleep behavior, frame-time/memory
+measurements and full visual/audible parity remain separate acceptance gates.
 
 ## Private model and ringtone preparation
 
