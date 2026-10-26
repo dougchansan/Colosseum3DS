@@ -34,7 +34,7 @@ class FieldBattleHandoffTests(unittest.TestCase):
             self.skipTest('A host C compiler is required')
         source = SOURCE.read_text()
         helpers = source[source.index('static void release_field_models('):
-                         source.index('static const char *pokemon_name')]
+                         source.index('static int save_game')]
         harness = r'''
 #include <assert.h>
 #include <stdint.h>

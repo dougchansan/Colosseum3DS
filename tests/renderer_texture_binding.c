@@ -97,6 +97,8 @@ enum {
 #define C3D_TexEnvSrc NOOP
 #define C3D_TexEnvFunc NOOP
 #define C3D_TexEnvInit NOOP
+#define C3D_TexEnvColor NOOP
+#define color4(r,g,b,a) ((void)(r),(void)(g),(void)(b),(void)(a),0u)
 #define C3D_ImmSendAttrib NOOP
 #define C3D_ImmDrawEnd NOOP
 #define gfxFlushBuffers NOOP

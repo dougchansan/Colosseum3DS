@@ -437,10 +437,12 @@ def encode_pack(bones, vertices, batches, textures, clips, lights, frames, fps=F
             raise ValueError("Invalid title vertex color")
     next_vertex = 0
     for batch in batches:
-        if len(batch)!=28 or batch[0]!=next_vertex or batch[1]<=0 or batch[1]%3 or not 0<=batch[2]<len(textures) or batch[3]&~{1:1023,2:8191,3:16383,4:16383}[format_version]:
+        if len(batch)!=28 or batch[0]!=next_vertex or batch[1]<=0 or batch[1]%3 or not 0<=batch[2]<len(textures) or batch[3]&~{1:1023,2:8191,3:131071,4:131071}[format_version]:
             raise ValueError("Invalid or noncanonical title batch")
         if any(not math.isfinite(v) for v in batch[8:20]) or (format_version<3 and batch[27]):
             raise ValueError("Invalid title batch material or reserved word")
+        if (batch[3]&16384 and not batch[3]&8192) or (batch[3]&32768 and (batch[3]&24576!=24576 or batch[3]&65536)) or (batch[3]&65536 and (not batch[3]&8192 or batch[3]&16384)):
+            raise ValueError("Conflicting source material expressions")
         if batch[3]&(1024|8192):
             if not 0<=batch[26]<len(textures) or tuple(batch[4:6])!=(4,0):
                 raise ValueError("Invalid dual texture material")

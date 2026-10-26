@@ -1,0 +1,284 @@
+{
+  "date": "2026-10-26 Pacific/Honolulu",
+  "hardware": "physical New3DS",
+  "status": "menu spacing passed",
+  "base_commit": "d57c376c6ae46a9d712dbab6b9444d8e74b938ab",
+  "built_working_tree": true,
+  "source_snapshot_note": "The verified executable was built from the uncommitted UI changes before publication; its embedded build ID is the base commit, not a claim that the new commit was hardware-run.",
+  "binary": {
+    "bytes": 677744,
+    "sha256": "42de32511bd050b7df9ca55b5b2d995c755e7aff2c20481c8368295b621424bb"
+  },
+  "save_before_sha256": "7e1cb3159756293bf938fd922fe45e82448d1b667f6833a48da351af3cbd0f23",
+  "save_after_sha256": "7e1cb3159756293bf938fd922fe45e82448d1b667f6833a48da351af3cbd0f23",
+  "assets_readback_verified": 161,
+  "checks": [
+    "actual saved Story continued inside Outskirt Stand",
+    "PDAhub green heading inside field box",
+    "Pokemon heading/hand/HP/EXP clear frame",
+    "Items heading/hand/quantities clear frame",
+    "inventory actions/target inspected on RGB565 candidate; no action committed",
+    "final buffered build captured hub/party/items complete frames",
+    "START+SELECT clean exit observed",
+    "final executable/readback matches source build",
+    "saved GCI byte-identical",
+    "neutral releases3/no transporterrors for60input records"
+  ],
+  "corrected": [
+    "RGB565 mismatch in initial GUI candidate",
+    "long direct raster exposed partially repainted frame; deferred CPU publication added"
+  ],
+  "limits": [
+    "menu spacing/readability acceptance only",
+    "model/audio/HOME/sleep/performance acceptance remains open"
+  ],
+  "capture_freshness": {
+    "93-final-hub": {
+      "counters": {
+        "top": 52,
+        "bottom": 53
+      },
+      "screen_age_seconds": {
+        "top": 0.046999999998661224,
+        "bottom": 0.01599999999598367
+      },
+      "decode_errors": 0
+    },
+    "95-final-party": {
+      "counters": {
+        "top": 53,
+        "bottom": 53
+      },
+      "screen_age_seconds": {
+        "top": 0.01600000000325963,
+        "bottom": 0.046999999998661224
+      },
+      "decode_errors": 0
+    },
+    "101-final-items": {
+      "counters": {
+        "top": 7,
+        "bottom": 7
+      },
+      "screen_age_seconds": {
+        "top": 1.4069999999992433,
+        "bottom": 1.0630000000019209
+      },
+      "decode_errors": 0
+    }
+  },
+  "media": [
+    {
+      "file": "menu-spacing.png",
+      "bytes": 173874,
+      "sha256": "013c3be1efaea810e0e646bb4c4d271bc83757e97c1dfec74ec4e058d6609ad9"
+    },
+    {
+      "file": "visual-verdict.json",
+      "bytes": 570,
+      "sha256": "11244150f78cd75adb6186b1ce950d0ab3c779a3fdf766cb4e806dbacb4cd488"
+    }
+  ],
+  "compiled_source_snapshot": [
+    {
+      "path": "include/colosseum3ds/bottom_ui.h",
+      "sha256": "ff9c5c56b19976c98418858d6a31e189e2b91640fefa5849b1e7522f59855a82"
+    },
+    {
+      "path": "include/colosseum3ds/inventory.h",
+      "sha256": "5eca35ac07859d0422a4385b3f4c23f697dd8e4cc81dbd7ad76dc17c85122950"
+    },
+    {
+      "path": "include/colosseum3ds/pda.h",
+      "sha256": "b5383b4801af7f8e4a7c338a5b67ae9195f49055ae417c569ff6319cb1803511"
+    },
+    {
+      "path": "platform/3ds/bottom_screen.c",
+      "sha256": "e8f85fbeac8bc77e6c81780b512e6d261b3300897ff81b5f2fc5ed3ec3944b8a"
+    },
+    {
+      "path": "platform/3ds/bottom_screen.h",
+      "sha256": "655df3105d4dc8bbe858e71d7c4f980cb48436caaafc0325a3dd4d3caaa46d9c"
+    },
+    {
+      "path": "platform/3ds/game_ui_views.c",
+      "sha256": "6bf65afa1140c6b5fa74e30e444e832e3a5575ef5a2e6ba3700340d3200034f1"
+    },
+    {
+      "path": "platform/3ds/game_ui_views.h",
+      "sha256": "f2434722626f7af1b9e76b5b07c858045d399b1a6155cd59c689d4fc91760c02"
+    },
+    {
+      "path": "platform/3ds/ingame_menu.c",
+      "sha256": "12038bb9cc10d75a2b9aaeec4bbe3d172a7ea39ca1f5e995f9262bfd63e65a96"
+    },
+    {
+      "path": "platform/3ds/ingame_menu.h",
+      "sha256": "02632097f5253bbf0f5c37c34e1c3ec0172e752fe009cabebeebfc395ad60e6c"
+    },
+    {
+      "path": "platform/3ds/pda_audio.c",
+      "sha256": "1d534c172c8c7e189373093c88dc4cd986581af59009834111d5f36686c7caf2"
+    },
+    {
+      "path": "platform/3ds/pda_audio.h",
+      "sha256": "ed59386e0456a727422031e2ccbc686ac2d4e52c375e6d9faefeb933444244f4"
+    },
+    {
+      "path": "platform/3ds/pda_mask_combiner.inc",
+      "sha256": "7b4cd1659f85cb1de9b0a7f1ad74c1285d97c87e4b7bdc20037895abafeca3f5"
+    },
+    {
+      "path": "platform/3ds/pda_preview.c",
+      "sha256": "050bf661bc28c77ea0ff50fdd12a935d12173ef79e14bc825a943ea7efe235c0"
+    },
+    {
+      "path": "platform/3ds/pda_preview.h",
+      "sha256": "d45cbbc36d2973d3580d534e78a4ab465051dcebf9cf6b21869f1ff3e739c693"
+    },
+    {
+      "path": "platform/3ds/pda_spinda.c",
+      "sha256": "57342e7886d7ce060ebd611a7216b053cf051eea099f1544f4a6e47fc24440d2"
+    },
+    {
+      "path": "platform/3ds/pda_spinda.h",
+      "sha256": "8693b08253adf03df1e75c919af3e922b07f83c366d88ccc37946718ce60617a"
+    },
+    {
+      "path": "src/bottom_ui.c",
+      "sha256": "08700be7037a4e75dcb97c39202f01cef27d30198b46e526e360892ccce70596"
+    },
+    {
+      "path": "src/inventory.c",
+      "sha256": "30691c5fe8557357510def29b564e8be6445ba149541d93109306b3af7c7296a"
+    },
+    {
+      "path": "src/pda.c",
+      "sha256": "aa1e7d45c2800df845bf17dc255c433cf878f7f13f06816ef33f1e38d06648de"
+    },
+    {
+      "path": "tests/bottom_screen_stubs/3ds.h",
+      "sha256": "4a9780d1ee57b772dddd316529c9a917217006774768490481efccf83941af4a"
+    },
+    {
+      "path": "tests/pda_preview_native.c",
+      "sha256": "2686e4747ea57564f34a31f86781b39f97bbde7f2d874d87c92706f8668c0b50"
+    },
+    {
+      "path": "tests/test_bottom_screen.c",
+      "sha256": "b652b4ccbf8a1d92eed843450498fbd70c48d64d97553f4124ef7c8dbf19e8ca"
+    },
+    {
+      "path": "tests/test_bottom_ui.c",
+      "sha256": "674ab2d3cb3731555c656bb2466aabd28a7c1f143198fc594040bd3207a8285f"
+    },
+    {
+      "path": "tests/test_inventory.c",
+      "sha256": "46aa50f8cd7bed42609e841cae6d84eeebb2f246e05a46ff2e6611f3c9e46cda"
+    },
+    {
+      "path": "tests/test_inventory_real.c",
+      "sha256": "8bcb89886bbbee4619155941ba1ad02d3b731b752d987fa4914c6d827d529426"
+    },
+    {
+      "path": "tests/test_inventory_ui.c",
+      "sha256": "b0695c050a82703223ed0f0b78a5a26a95cd3b1186511c7ecc41b2cab11f6dab"
+    },
+    {
+      "path": "tests/test_pda.c",
+      "sha256": "a7a9bfafcbe44261fb14341e495e5782aee0f73f20509c3339cfa4b932dbc3db"
+    },
+    {
+      "path": "tests/test_pda_audio.c",
+      "sha256": "1dfb1e49eabbe3a2d5daeda1a094c0b90a55bee61a6e205028841c9aa5c54ac9"
+    },
+    {
+      "path": "tests/test_pda_spinda.c",
+      "sha256": "f7162c73ec04fcb160bd550d920905751a1f049d4fcc9cdc05ad3c8ed90dde58"
+    },
+    {
+      "path": "tools/render_bottom_ui_preview.c",
+      "sha256": "0e1f7e88a0f4a5d1f67748bb944be562497cfe8185ee1a91972c9c1fe229a82a"
+    },
+    {
+      "path": "tools/render_ingame_menu_preview.c",
+      "sha256": "e565bdc0a363bde8c9c4327d7c27660f30cee9ee57d1f2e2e78bebc58638d86a"
+    },
+    {
+      "path": "include/colosseum3ds/field_story.h",
+      "sha256": "a8bd3894dbf1a356fe5bc9da3818fc04e659c76461d956b1d32e43f18a2aff82"
+    },
+    {
+      "path": "include/colosseum3ds/game_state.h",
+      "sha256": "94145378ddf1861b468ec942e2e7412ad44f0829e7e869361fb2b02a5e4f9157"
+    },
+    {
+      "path": "include/colosseum3ds/title.h",
+      "sha256": "be02f874460f26e66ce0465f4f57a636364f20402a899d80f7cd4d83ea6c293b"
+    },
+    {
+      "path": "platform/3ds/battle_preview_scene.c",
+      "sha256": "ecfbe40e4e63483f15602875c6fc3d5012875dc6d84b2eab7c64405e9c920691"
+    },
+    {
+      "path": "platform/3ds/boot_scene.c",
+      "sha256": "be7023119c2d277f1080cfc872d8107e7a51b20be6cdce5130f3c1658a4fafc3"
+    },
+    {
+      "path": "platform/3ds/field_scene.c",
+      "sha256": "326a9e1b60ebd60cc9714aca8483cae3a73e42d481c305cd50042ead5456f071"
+    },
+    {
+      "path": "platform/3ds/game_menu.c",
+      "sha256": "cbd17838cfca37ad0e32fd27d34fa9c0b6b29e9c018b4ac9fc6ed05ff221d309"
+    },
+    {
+      "path": "platform/3ds/game_menu.h",
+      "sha256": "89688922c637c06cff79544f948ced23d70325483b3959b39eaf13e312c3f67a"
+    },
+    {
+      "path": "platform/3ds/movie_player.c",
+      "sha256": "c39669e725f339f159e0038bd4155d0fd5bd556a74cefb25ba2227b0e31ccbb3"
+    },
+    {
+      "path": "platform/3ds/n3ds_platform.c",
+      "sha256": "7c894907d2297889542ae42efa1f36e709a6b4c664b77aa1293b6711458dcecc"
+    },
+    {
+      "path": "platform/3ds/stage_renderer.h",
+      "sha256": "54f8f1e62a7380fa641dd573ff9678aa49fe45d5a0b06b2c82704665b3d92c32"
+    },
+    {
+      "path": "platform/3ds/title_renderer.c",
+      "sha256": "839e9a7666a2c65617659196bb3f678cbad04bdf1a61671c8b2e492a1522a302"
+    },
+    {
+      "path": "src/field_story.c",
+      "sha256": "4ec3b971916167e4462134637060ece5dad2cf66899b8a10a4b186511d4d0cf0"
+    },
+    {
+      "path": "src/game_state.c",
+      "sha256": "3a3709a7fbdc30a617385fb423570ee98f0824b471153d23146a8cd77e56b316"
+    },
+    {
+      "path": "src/title.c",
+      "sha256": "6993eb966f1956bd9f94096a0dee5c62aca3bef04651ea3d532daef025af3521"
+    },
+    {
+      "path": "tests/renderer_texture_binding.c",
+      "sha256": "9e1756c0c7a773a94d3aebba8c6b8c84ae34aea7578b14ddfe1029bfd387f430"
+    },
+    {
+      "path": "tests/test_field_story.c",
+      "sha256": "adb01abbdf8207853b7a7db8854da61a78a1a244d2e75f03c6ac73912d8a5dee"
+    },
+    {
+      "path": "tests/test_game_state.c",
+      "sha256": "994bf1b90ee5702a6cdec2887dc425fa8491e64517958e1e972660a218bfec38"
+    },
+    {
+      "path": "tests/test_title.c",
+      "sha256": "d09fd0c52048ef0138c1c6bb679c7cf9213f433baadc8a83cb84d19ae9cf6809"
+    }
+  ]
+}

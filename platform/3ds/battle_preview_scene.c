@@ -1,4 +1,6 @@
 #include "battle_preview_scene.h"
+#include "bottom_screen.h"
+#include "game_ui_views.h"
 #include "n3ds_platform.h"
 #include "battle_stage.h"
 #include "battle_audio_player.h"
@@ -16,77 +18,6 @@
 #define C3_BUILD_ID "unknown"
 #endif
 
-static void draw_bottom(PrintConsole *bottom,const C3BattlePreview *b,const C3BattlePreviewTables *t,
-    const C3BattlePreviewMenu *m,const char *error)
-{
-    consoleSelect(bottom);consoleClear();
-    if(error[0]){printf("PREVIEW STOPPED\n\n%s\n\nBattle and saved game unchanged.\n\nB / X: return\n",error);return;}
-    printf("WILLIE | 2 vs 2\nItems / Switch / Call unavailable\n\n");
-    switch(m->page){
-    case C3_PREVIEW_MENU_EVENTS:
-        if(m->event<b->event_count)printf("%s\n\n",b->events[m->event].text);
-        printf("A / B: next message\nX: leave preview\n");break;
-    case C3_PREVIEW_MENU_MOVE:{
-        const C3BattlePreviewMon *p=&b->mons[m->actor];uint8_t mask=c3_battle_preview_legal_moves(b,t,m->actor);
-        printf("Choose %s's move\n\n",c3_battle_preview_name(m->actor));
-        if(!mask)printf("> STRUGGLE (no usable moves)\n");
-        else for(unsigned i=0;i<4;++i)printf("%s %-13s %2u/%2u PP%s\n",m->selection==i?">":" ",
-            c3_battle_preview_move_name(p->moves[i].id),p->moves[i].pp,p->moves[i].maximum_pp,mask&(1u<<i)?"":" -");
-        printf("\nD-pad: select   A: confirm\nB: back         X: leave\n");break;
-    }
-    case C3_PREVIEW_MENU_TARGET:
-        printf("Choose a target for\n%s\n\n",m->selection==4?"STRUGGLE":c3_battle_preview_move_name(b->mons[m->actor].moves[m->selection].id));
-        for(unsigned a=2;a<4;++a)printf("%s %-12s %u HP%s\n",m->target==a?">":" ",c3_battle_preview_name(a),b->mons[a].hp,b->mons[a].hp?"":" FAINTED");
-        printf("\nD-pad: target   A: confirm\nB: change move  X: leave\n");break;
-    case C3_PREVIEW_MENU_CONFIRM:
-        printf("Execute these commands?\n\n");
-        for(unsigned a=0;a<2;++a)if(b->mons[a].hp){const C3BattlePreviewCommand *c=&m->commands[a];
-            uint16_t id=c->slot==4?165:b->mons[a].moves[c->slot].id;
-            printf("%s: %s\n",c3_battle_preview_name(a),c3_battle_preview_move_name(id));
-            if(id!=115&&id!=270&&id!=289)printf("  -> %s\n",c3_battle_preview_name(c->target));}
-        printf("\nA: execute turn\nB: revise command\nX: leave preview\n");break;
-    case C3_PREVIEW_MENU_RESULT:
-        printf("PREVIEW %s\n\n",b->outcome==C3_PREVIEW_PLAYER_WON?"WIN":b->outcome==C3_PREVIEW_PLAYER_LOST?"LOSS":"DRAW");
-        printf("Your commands completed this preview.\nThe original story battle is pending.\n\nNo HP, PP, money, experience or story\nflags were written to the game state.\n\nA / B: return\n");break;
-    case C3_PREVIEW_MENU_LEAVE:
-        printf("Leave the nonpersistent preview?\n\nAll preview changes will be discarded.\n\nA: leave\nB: continue playing\n");break;
-    default:break;
-    }
-}
-static int draw_hud(C3BattleStage *s,const C3BattlePreview *b,const C3BattlePreviewMenu *m,char *error,size_t cap)
-{
-    C3StageBattleHud hud={0};hud.enabled=1;
-    snprintf(hud.lines[0],sizeof hud.lines[0],"%s",s->tackle_available?"DEV: Bite/Tackle hit FX; other FX incomplete":s->damage_available?"DEV: Bite hit FX; other FX/cameras incomplete":s->bite_available?"DEV: Bite attack FX; hit FX incomplete":"DEV: ball/move FX, cameras, audio missing");
-    for(unsigned i=0;i<4;++i){hud.hp[i]=s->presentation.hp[i];hud.maximum_hp[i]=b->mons[i].maximum_hp;}
-    const C3BattlePresentation *p=&s->presentation;
-    if(p->cursor<p->count&&p->events[p->cursor].kind==C3_PREVIEW_EVENT_HP&&p->duration_ms){
-        const C3BattlePreviewEvent *e=&p->events[p->cursor];
-        for(unsigned i=0;i<4;++i){int32_t before=e->hp_before[i],after=e->hp[i];
-            hud.hp[i]=(uint16_t)(before+(after-before)*(int32_t)p->elapsed_ms/(int32_t)p->duration_ms);}
-    }
-    snprintf(hud.lines[1],sizeof hud.lines[1],"Umbreon %u/%u    Espeon %u/%u",hud.hp[0],hud.maximum_hp[0],hud.hp[1],hud.maximum_hp[1]);
-    snprintf(hud.lines[2],sizeof hud.lines[2],"Zigzagoon %u/%u  Zigzagoon %u/%u",hud.hp[2],hud.maximum_hp[2],hud.hp[3],hud.maximum_hp[3]);
-    if(m->page==C3_PREVIEW_MENU_EVENTS){
-        const char *text=m->event<b->event_count?b->events[m->event].text:"";
-        snprintf(hud.lines[3],sizeof hud.lines[3],"%.48s",text);
-        if(strlen(text)>48)snprintf(hud.lines[4],sizeof hud.lines[4],"%.48s",text+48);
-        snprintf(hud.lines[6],sizeof hud.lines[6],"%s",p->cursor<p->count?"Presenting committed event...":"A/B: continue   X: leave");
-    }else if(m->page==C3_PREVIEW_MENU_MOVE){
-        snprintf(hud.lines[3],sizeof hud.lines[3],"%s: choose move",c3_battle_preview_name(m->actor));
-        if(m->selection==4)snprintf(hud.lines[4],sizeof hud.lines[4],"> STRUGGLE");
-        else for(unsigned i=0;i<4;++i){const C3BattleInitialMove *move=&b->mons[m->actor].moves[i];
-            snprintf(hud.lines[4+i],sizeof hud.lines[4+i],"%c %s %u/%u PP",i==m->selection?'>':' ',c3_battle_preview_move_name(move->id),move->pp,move->maximum_pp);}
-    }else if(m->page==C3_PREVIEW_MENU_TARGET){
-        snprintf(hud.lines[3],sizeof hud.lines[3],"Target: %s %u",c3_battle_preview_name(m->target),m->target-1);
-        snprintf(hud.lines[5],sizeof hud.lines[5],"D-pad: target  A: confirm  B: back");
-    }else if(m->page==C3_PREVIEW_MENU_CONFIRM){
-        snprintf(hud.lines[3],sizeof hud.lines[3],"Execute commands? A: yes B: revise");
-    }else if(m->page==C3_PREVIEW_MENU_RESULT){
-        snprintf(hud.lines[3],sizeof hud.lines[3],"Preview %s",p->outcome==C3_PREVIEW_PLAYER_WON?"WIN":p->outcome==C3_PREVIEW_PLAYER_LOST?"LOSS":"DRAW");
-        snprintf(hud.lines[5],sizeof hud.lines[5],"A/B: return to pending encounter");
-    }else if(m->page==C3_PREVIEW_MENU_LEAVE)snprintf(hud.lines[3],sizeof hud.lines[3],"Leave preview? A: leave B: continue");
-    return c3_stage_renderer_set_battle_hud(&hud,error,cap)==C3_RENDER_OK;
-}
 static void trace_turn(FILE *f,const C3BattlePreview *b)
 {
     if(!f)return;
@@ -135,6 +66,7 @@ int c3_battle_preview_scene_run(const C3BattleRequest *request,FILE *trace)
         (unsigned long long)(c3_n3ds_time_us()-load_start),stage?stage->damage_available:0,stage?stage->camera_available:0,stage&&stage->sound_cue?1:0);fflush(trace);}
     unsigned frames=0;uint64_t metric_time=previous_time;
     uint64_t sample_cpu_us=0,full_frame_peak_us=0,sample_cpu_peak_us=0;unsigned interval_frames=0;
+    C3UiPager ui_pager={0};
     unsigned last_turn=0;C3BattlePreviewMenuPage previous=menu.page;unsigned previous_event=0;
     while(c3_n3ds_poll(&input)){
         uint64_t frame_start=c3_n3ds_time_us();
@@ -157,6 +89,9 @@ int c3_battle_preview_scene_run(const C3BattleRequest *request,FILE *trace)
                 if(menu.event!=shown){menu.event=shown;dirty=1;}
             }
             uint16_t pressed=released?input.pressed:0;
+            c3_ui_pager_sync(&ui_pager,(uint32_t)menu.page*0x10000u+(uint32_t)menu.event+1u);
+            if(c3_ui_pager_advance(&ui_pager,&pressed))dirty=1;
+            if(p->cursor<p->count&&p->events[p->cursor].kind==C3_PREVIEW_EVENT_HP)dirty=1;
             if(menu.page==C3_PREVIEW_MENU_EVENTS&&!complete)pressed&=C3_PAD_X;
             if(pressed){
                 if(!c3_battle_preview_menu_step(&menu,battle,&tables,pressed,error))dirty=1;
@@ -170,10 +105,13 @@ int c3_battle_preview_scene_run(const C3BattleRequest *request,FILE *trace)
                 previous=menu.page;previous_event=menu.event;dirty=1;
             }
         }
-        if(dirty){draw_bottom(bottom,battle,&tables,&menu,error);dirty=0;}
+        if(dirty){c3_battle_ui_draw_to(c3_bottom_screen_begin(),battle,&tables,&menu,stage?&stage->presentation:NULL,error,&ui_pager);c3_bottom_screen_present();dirty=0;}
         if(stage&&stage->initialized&&!error[0]){
             C3TitleRenderStats stats;
-            if(!draw_hud(stage,battle,&menu,error,sizeof error)){dirty=1;continue;}
+            /* All command/message/status UI now lives on the bottom screen.
+             * Keep the top view clear and avoid allocating the old debug atlas. */
+            C3StageBattleHud hud={0};
+            if(c3_stage_renderer_set_battle_hud(&hud,error,sizeof error)!=C3_RENDER_OK){dirty=1;continue;}
             uint64_t render_start=c3_n3ds_time_us();
             int drawn=c3_battle_stage_draw(stage,&stats,error,sizeof error);
             if(drawn==C3_RENDER_ERROR)dirty=1;
@@ -253,7 +191,7 @@ int c3_battle_preview_from_game_state(const C3GameState *state,FILE *trace)
         }
         snprintf(error,sizeof error,"Unable to allocate the live-state preservation guard.");
     }
-    consoleClear();printf("PREVIEW UNAVAILABLE\n\n%s\n\nB: return\n",error);
+    c3_bottom_screen_notice("PREVIEW UNAVAILABLE",error,"B: return");
     if(trace){fprintf(trace,"preview_admission_failed error=%s\n",error);fflush(trace);}
     C3N3dsInput input={0};
     while(c3_n3ds_poll(&input)){if(input.pressed&C3_PAD_B)return -1;gspWaitForVBlank();}

@@ -222,6 +222,18 @@ static void synthetic_regressions(void)
     /* An absent init cannot suppress a present pre hook. */
     native(code+2,0x64,2,args,1);synthetic_load(s,&game,file,code,0,0x1000002,0);
     CHECK(!c3_field_story_actor(&s->story,3)->visible);close_scene(s);
+    /* Menu callbacks queue work without running it inside the paused menu. */
+    memset(code,0,sizeof code);native(code+3,0x1f,0,NULL,1);args[0]=3;args[1]=0;native(code+5,0x64,2,args,1);
+    synthetic_load(s,&game,file,code,0,0,0x1000003);CHECK(c3_field_story_enter(&s->story,error));
+    for(unsigned i=0;i<10&&!c3_field_story_view(&s->story)->control;++i)CHECK(c3_field_story_tick(&s->story,.1f,0,error));
+    CHECK(c3_field_story_view(&s->story)->control&&c3_field_story_actor(&s->story,3)->visible);
+    CHECK(!c3_field_story_menu_event(&s->story,0x10000ff,error));
+    CHECK(c3_field_story_menu_event(&s->story,0x1000005,error));
+    CHECK(!c3_field_story_view(&s->story)->control&&c3_field_story_actor(&s->story,3)->visible);
+    c3_field_story_cancel_menu_event(&s->story);CHECK(c3_field_story_tick(&s->story,.1f,0,error));
+    CHECK(c3_field_story_view(&s->story)->control&&c3_field_story_actor(&s->story,3)->visible);
+    CHECK(c3_field_story_menu_event(&s->story,0x1000005,error));
+    CHECK(c3_field_story_tick(&s->story,.1f,0,error));CHECK(!c3_field_story_actor(&s->story,3)->visible);close_scene(s);
     memset(code,0,sizeof code);args[0]=2;args[1]=0;native(code+3,0x5f,2,args,1);
     synthetic_load(s,&game,file,code,0,0,0x1000003);CHECK(c3_field_story_enter(&s->story,error));
     for(unsigned i=0;i<10&&!c3_field_story_view(&s->story)->next_floor;++i)CHECK(c3_field_story_tick(&s->story,.1f,0,error));

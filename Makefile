@@ -7,6 +7,7 @@ HEADERS += vendor/colosseum/include/game/gs_colsys.h vendor/colosseum/include/ga
 UPSTREAM = vendor/colosseum/src/hsd/random.c vendor/colosseum/src/game/GScolsys2Util_exact_8010C77C.c vendor/colosseum/src/game/pokemon_range_8012795C.c
 
 .PHONY: all test clean 3ds verify-source
+all: build/test_bottom_ui
 all: build/test_core build/test_data build/test_pokemon build/test_model build/test_movie build/test_save build/test_title build/test_field build/test_game_menu build/test_game_state build/test_render_recovery build/test_area build/test_area_camera build/test_area_lights build/test_story build/test_field_story build/test_battle build/test_battle_action build/test_battle_rng
 
 build:
@@ -65,8 +66,32 @@ build/battle_rng_source.h: tools/prepare_battle_rng.py config/battle-rng-source-
 build/test_battle_rng: tests/test_battle_rng.c src/battle_rng.c src/decomp_rng.c include/colosseum3ds/battle_rng.h build/battle_rng_source.h $(UPSTREAM)
 	$(CC) $(CPPFLAGS) -Ibuild $(CFLAGS) tests/test_battle_rng.c src/battle_rng.c src/decomp_rng.c $(LDFLAGS) -o $@
 
-build/test_game_menu: tests/test_game_menu.c platform/3ds/game_menu.c platform/3ds/game_menu.h platform/3ds/n3ds_platform.h | build
-	$(CC) $(CPPFLAGS) -Iplatform/3ds -DC3_MENU_HOST_TEST $(CFLAGS) tests/test_game_menu.c platform/3ds/game_menu.c $(LDFLAGS) -lm -o $@
+build/test_game_menu: tests/test_game_menu.c platform/3ds/game_menu.c src/bottom_ui.c platform/3ds/game_menu.h platform/3ds/n3ds_platform.h include/colosseum3ds/bottom_ui.h | build
+	$(CC) $(CPPFLAGS) -Iplatform/3ds -DC3_MENU_HOST_TEST $(CFLAGS) tests/test_game_menu.c platform/3ds/game_menu.c src/bottom_ui.c $(LDFLAGS) -lm -o $@
+
+UI_VIEW_SOURCES = src/inventory.c src/decomp_pokemon.c platform/3ds/game_menu.c platform/3ds/game_ui_views.c platform/3ds/ingame_menu.c src/bottom_ui.c src/battle_preview.c src/game_state.c src/pda.c build/save_codec.c
+UI_VIEW_HEADERS = platform/3ds/game_menu.h platform/3ds/game_ui_views.h platform/3ds/ingame_menu.h include/colosseum3ds/bottom_ui.h include/colosseum3ds/game_state.h include/colosseum3ds/pda.h
+build/render_bottom_ui_preview: tools/render_bottom_ui_preview.c $(UI_VIEW_SOURCES) $(UI_VIEW_HEADERS) | build
+	$(CC) $(CPPFLAGS) -Iplatform/3ds -Isrc -DC3_MENU_HOST_TEST $(CFLAGS) -ffunction-sections tools/render_bottom_ui_preview.c $(UI_VIEW_SOURCES) $(LDFLAGS) -Wl,--gc-sections -lm -o $@
+
+build/test_bottom_ui: tests/test_bottom_ui.c $(UI_VIEW_SOURCES) $(UI_VIEW_HEADERS) | build
+	$(CC) $(CPPFLAGS) -Iplatform/3ds -Isrc -DC3_MENU_HOST_TEST $(CFLAGS) -ffunction-sections tests/test_bottom_ui.c $(UI_VIEW_SOURCES) $(LDFLAGS) -Wl,--gc-sections -lm -o $@
+
+build/pda_fixture.c3pd: tests/pda_fixture.py tools/prepare_pda.py | build
+	python3 tests/pda_fixture.py $@
+
+PDA_SOURCES = src/inventory.c platform/3ds/ingame_menu.c src/pda.c src/bottom_ui.c src/game_state.c src/save.c src/decomp_pokemon.c build/save_codec.c
+build/test_pda: tests/test_pda.c tests/test_game_state.c $(PDA_SOURCES) src/story.c $(HEADERS) $(UI_VIEW_HEADERS) build/pda_fixture.c3pd
+	$(CC) $(CPPFLAGS) -Iplatform/3ds -Isrc $(CFLAGS) tests/test_pda.c $(PDA_SOURCES) src/story.c $(LDFLAGS) -lm -o $@
+
+build/render_ingame_menu_preview: tools/render_ingame_menu_preview.c $(PDA_SOURCES) $(HEADERS) $(UI_VIEW_HEADERS)
+	$(CC) $(CPPFLAGS) -Iplatform/3ds -Isrc $(CFLAGS) tools/render_ingame_menu_preview.c $(PDA_SOURCES) $(LDFLAGS) -lm -o $@
+
+all: build/test_pda
+.PHONY: pda-check
+pda-check: build/test_pda
+	./build/test_pda
+test: pda-check
 
 build/test_game_state: tests/test_game_state.c src/game_state.c src/save.c src/decomp_pokemon.c build/save_codec.c $(HEADERS)
 	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_game_state.c src/game_state.c src/save.c src/decomp_pokemon.c build/save_codec.c $(LDFLAGS) -lm -o $@
@@ -81,6 +106,7 @@ build/test_render_recovery: tests/test_render_recovery.c platform/3ds/render_rec
 	$(CC) $(CPPFLAGS) -Iplatform/3ds -DC3_RECOVERY_HOST_TEST $(CFLAGS) tests/test_render_recovery.c platform/3ds/render_recovery.c $(LDFLAGS) -o $@
 
 test: all
+	./build/test_bottom_ui
 	./build/test_core
 	./build/test_data
 	./build/test_pokemon
@@ -250,3 +276,47 @@ all: build/test_particle_tackle
 particle-tackle-check: build/test_particle_tackle
 	./build/test_particle_tackle
 test: particle-tackle-check
+
+build/test_inventory: tests/test_inventory.c tests/test_game_state.c src/inventory.c src/pda.c src/game_state.c src/save.c src/decomp_pokemon.c build/save_codec.c $(HEADERS)
+	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_inventory.c src/inventory.c src/pda.c src/game_state.c src/save.c src/decomp_pokemon.c build/save_codec.c $(LDFLAGS) -lm -o $@
+all: build/test_inventory
+.PHONY: inventory-check
+inventory-check: build/test_inventory
+	./build/test_inventory
+test: inventory-check
+
+build/test_pda_audio: tests/test_pda_audio.c platform/3ds/pda_audio.c platform/3ds/pda_audio.h platform/3ds/battle_audio_player.h | build
+	$(CC) $(CPPFLAGS) -Iplatform/3ds $(CFLAGS) tests/test_pda_audio.c platform/3ds/pda_audio.c $(LDFLAGS) -o $@
+
+all: build/test_pda_audio
+.PHONY: pda-audio-check
+pda-audio-check: build/test_pda_audio
+	./build/test_pda_audio
+test: pda-audio-check
+
+build/test_inventory_ui: tests/test_inventory_ui.c tests/test_game_state.c $(PDA_SOURCES) $(HEADERS) $(UI_VIEW_HEADERS) build/pda_fixture.c3pd
+	$(CC) $(CPPFLAGS) -Iplatform/3ds -Isrc $(CFLAGS) tests/test_inventory_ui.c $(PDA_SOURCES) $(LDFLAGS) -lm -o $@
+all: build/test_inventory_ui
+.PHONY: inventory-ui-check
+inventory-ui-check: build/test_inventory_ui
+	./build/test_inventory_ui
+test: inventory-ui-check
+
+# Opt-in private input: ./build/test_inventory_real INPUT.gci GAME.c3g PDA.c3pd
+build/test_inventory_real: tests/test_inventory_real.c tests/test_game_state.c src/inventory.c src/pda.c src/game_state.c src/save.c src/decomp_pokemon.c build/save_codec.c $(HEADERS)
+	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_inventory_real.c src/inventory.c src/pda.c src/game_state.c src/save.c src/decomp_pokemon.c build/save_codec.c $(LDFLAGS) -lm -o $@
+
+# Opt-in original model audit: pass model root followed by additional species IDs.
+build/pda_valid_batch.inc: platform/3ds/title_renderer.c | build
+	python3 -c 'from pathlib import Path; s=Path("$<").read_text(); i=s.index("static bool valid_batch("); j=s.index("\n}\n",i)+3; Path("$@").write_text(s[i:j])'
+
+build/test_pda_preview: tests/pda_preview_native.c platform/3ds/pda_preview.c platform/3ds/pda_spinda.c src/title.c build/pda_valid_batch.inc $(HEADERS) platform/3ds/pda_preview.h platform/3ds/pda_spinda.h
+	$(CC) $(CPPFLAGS) -Iplatform/3ds -Ibuild -DC3_PDA_VALIDATE_BATCH $(CFLAGS) tests/pda_preview_native.c platform/3ds/pda_preview.c platform/3ds/pda_spinda.c src/title.c $(LDFLAGS) -lm -o $@
+
+build/test_bottom_screen: tests/test_bottom_screen.c tests/bottom_screen_stubs/3ds.h platform/3ds/bottom_screen.c platform/3ds/bottom_screen.h src/bottom_ui.c include/colosseum3ds/bottom_ui.h | build
+	$(CC) $(CPPFLAGS) -Itests/bottom_screen_stubs -Iplatform/3ds $(CFLAGS) tests/test_bottom_screen.c platform/3ds/bottom_screen.c src/bottom_ui.c $(LDFLAGS) -o $@
+all: build/test_bottom_screen
+.PHONY: bottom-screen-check
+bottom-screen-check: build/test_bottom_screen
+	./build/test_bottom_screen
+test: bottom-screen-check

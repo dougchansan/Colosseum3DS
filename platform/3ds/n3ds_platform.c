@@ -1,5 +1,6 @@
 #include "n3ds_platform.h"
 #include "stage_renderer.h"
+#include "bottom_screen.h"
 
 #include <3ds.h>
 #include <stdio.h>
@@ -86,6 +87,7 @@ int c3_n3ds_init(char *error, size_t capacity)
     }
     /* This is a request to the system; it is not a measured clock-rate claim. */
     osSetSpeedupEnable(true);
+    c3_bottom_screen_init();
     if (capacity) error[0] = '\0';
     return 0;
 }
@@ -171,6 +173,7 @@ void c3_n3ds_wait_for_exit(void)
 void c3_n3ds_shutdown(void)
 {
     if (graphics_started) {
+        c3_bottom_screen_close();
         c3_stage_renderer_fini();
         aptUnhook(&clock_hook);
         osSetSpeedupEnable(false);

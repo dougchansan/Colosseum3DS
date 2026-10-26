@@ -64,6 +64,10 @@ int c3_stage_renderer_set_static(size_t model_index, bool enabled);
 /* Source GSmaterial RGB modulation is 2*color*previous, not an opaque overlay.
  * NULL disables. Render-side only, no asset/animation mutation. */
 int c3_stage_renderer_set_modulation(size_t model_index, const uint8_t rgb[3]);
+/* Source GSmodelEnableColorSwap texture RGB swap table. Set before the first
+ * draw. Source CPU assets and alpha remain unchanged; route3 samples alpha.
+ * Intended for a sole PDA actor split across the initialized model parts. */
+int c3_stage_renderer_set_texture_routing(const uint8_t route[3],char *,size_t);
 /* Snapshot exact enabled state before a source owner-color sequence. */
 int c3_stage_renderer_get_modulation(size_t model_index, uint8_t rgb[3], int *enabled);
 /* Upload once before first draw. Borrowed pack/system outlive guarded teardown.

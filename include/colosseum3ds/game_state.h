@@ -19,10 +19,12 @@ typedef struct C3GamePokemon {
     uint8_t level;
     uint16_t hp, max_hp;
     uint32_t personality;
+    uint32_t experience;
+    uint16_t shadow_id;
 } C3GamePokemon;
 
 typedef struct C3GameSummary {
-    char name[32];
+    char name[32],partner[32];
     uint32_t trainer_id, money, play_seconds, saved_count;
     uint32_t floor, previous_floor;
     uint8_t spawn;
@@ -55,6 +57,37 @@ int c3_game_state_new(C3GameState *state, const char *name, uint32_t seed,
                       char error[C3_GAME_ERROR_SIZE]);
 
 int c3_game_state_summary(const C3GameState *state, C3GameSummary *summary);
+/* Reviewed native roster: ordinary Umbreon/Espeon use original growth bank 0.
+ * Returns 0 for unsupported species/shadow records/levels, without guessing a
+ * growth curve. At level 100 the valid range is zero (level cap). */
+int c3_game_pokemon_experience(const C3GamePokemon *pokemon,uint32_t *progress,uint32_t *range);
+typedef struct { uint16_t id,order; uint8_t read; } C3GameMail;
+typedef struct { uint16_t species,raw; uint32_t trainer_id,personality; } C3GameMemo;
+typedef struct { uint16_t id,quantity; } C3GameItem;
+typedef struct { uint32_t id,value; } C3GameFlagChange;
+typedef struct { uint16_t id,unlock_flag,level_flag; uint8_t level; } C3GameMailHint;
+#define C3_GAME_MAIL_FLAG_MAX 40u
+#define C3_GAME_MAIL_HINT_MAX 32u
+typedef struct {
+    uint16_t id,tone;
+    unsigned flag_count,hint_count;
+    C3GameFlagChange flags[C3_GAME_MAIL_FLAG_MAX];
+    C3GameMailHint hints[C3_GAME_MAIL_HINT_MAX];
+} C3GameMailRead;
+int c3_game_state_mail_count(const C3GameState *state,unsigned *count);
+int c3_game_state_mail(const C3GameState *state,unsigned index,C3GameMail *mail);
+int c3_game_state_memo_count(const C3GameState *state,unsigned *count);
+int c3_game_state_memo(const C3GameState *state,unsigned index,C3GameMemo *memo);
+int c3_game_state_item(const C3GameState *state,unsigned pocket,unsigned slot,C3GameItem *item);
+int c3_game_state_pokemon(const C3GameState *state,unsigned slot,uint8_t record[0x138]);
+/* Native mail read transaction follows mailMain fn_801D228C; original flag
+ * metadata comes from the admitted private PDA pack. No disk I/O. */
+int c3_game_state_mail_read(C3GameState *state,const C3GameMailRead *action,int commit);
+int c3_game_state_mail_preferences(C3GameState *state,int sort,int tone);
+int c3_game_state_mail_settings(const C3GameState *state,unsigned *sort,unsigned *tone);
+/* Inventory-only optimistic transaction. Region-wise conflicts reject stale
+ * choices while preserving elapsed play time and all unrelated save bytes. */
+int c3_game_state_inventory_commit(C3GameState *state,const uint8_t *before,const uint8_t *after,size_t bytes);
 const uint8_t *c3_game_state_body(const C3GameState *state, size_t *length);
 
 /* Retail resume semantics store a floor/previous-floor/spawn index, not an

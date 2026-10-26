@@ -127,9 +127,8 @@ static GPU_TEXTURE_WRAP_PARAM wrap_mode(uint32_t mode)
     return mode == 2 ? GPU_MIRRORED_REPEAT : mode == 1 ? GPU_REPEAT : GPU_CLAMP_TO_EDGE;
 }
 
-static bool upload_texture(C3D_Tex *gpu, const C3TitleTexture *source)
+static void write_texture_pixels(C3D_Tex *gpu,const C3TitleTexture *source,const uint8_t route[3])
 {
-    if (!C3D_TexInit(gpu, source->width, source->height, GPU_RGBA8)) return false;
     /* PICA RGBA8 is byte-ordered ABGR, with 8x8 Morton tiles. Keep top-origin
      * GX UVs by reversing the stored pixel rows. The colored-corner
      * native probe verifies this pairing, including the screen rotation. */
@@ -138,39 +137,57 @@ static bool upload_texture(C3D_Tex *gpu, const C3TitleTexture *source)
             size_t tile = ((size_t)(y >> 3) * (source->width >> 3) + (x >> 3)) * 64;
             uint8_t *out = (uint8_t *)gpu->data + (tile + morton8(x, y)) * 4;
             const uint8_t *in = source->pixels + ((size_t)(source->height - 1 - y) * source->width + x) * 4;
-            out[0] = in[3]; out[1] = in[2]; out[2] = in[1]; out[3] = in[0];
+            out[0] = in[3]; out[1] = in[route?route[2]:2]; out[2] = in[route?route[1]:1]; out[3] = in[route?route[0]:0];
         }
     }
+    C3D_TexFlush(gpu);
+}
+static bool upload_texture(C3D_Tex *gpu, const C3TitleTexture *source)
+{
+    if (!C3D_TexInit(gpu, source->width, source->height, GPU_RGBA8)) return false;
+    write_texture_pixels(gpu,source,NULL);
     C3D_TexSetFilter(gpu, GPU_LINEAR, GPU_LINEAR);
     C3D_TexSetWrap(gpu, wrap_mode(source->wrap_s), wrap_mode(source->wrap_t));
-    C3D_TexFlush(gpu);
     return true;
+}
+
+int c3_stage_renderer_set_texture_routing(const uint8_t route[3],char *error,size_t capacity)
+{
+    if(!scene_count||scene_drawn||tv.configured||!route||route[0]>3||route[1]>3||route[2]>3)
+        return fail(error,capacity,"Texture routing requires a fresh sole actor scene.");
+    for(unsigned i=0;i<texture_count;++i)if(!texture_sources[i])
+        return fail(error,capacity,"Texture routing requires only authored actor textures.");
+    for(unsigned i=0;i<texture_count;++i)write_texture_pixels(&textures[i],texture_sources[i],route);
+    return C3_RENDER_OK;
 }
 
 static bool valid_batch(const C3Title *title, const C3TitleBatch *batch)
 {
     unsigned blend_mode = batch->flags & (C3_TITLE_ADDITIVE | C3_TITLE_SUBTRACT | C3_TITLE_ADDITIVE_ONE);
+    bool alpha_second_always=batch->alpha_compare1==7 || (batch->alpha_compare1==3&&batch->alpha_ref1==255);
+    bool alpha_supported=batch->alpha_op==0 &&
+        ((batch->alpha_compare0==7&&alpha_second_always) ||
+         (batch->alpha_compare0==4&&(alpha_second_always ||
+          (batch->alpha_compare1==4&&batch->alpha_ref0==batch->alpha_ref1))));
     if (!batch->count || batch->count % 3 || batch->first > title->vertex_count ||
         batch->count > title->vertex_count - batch->first || batch->texture >= title->texture_count ||
         (batch->color_mode != 0 && batch->color_mode != 3 && batch->color_mode != 4) ||
         (batch->alpha_mode != 0 && batch->alpha_mode != 2 && batch->alpha_mode != 3) ||
         batch->depth_compare > 7 ||
         (blend_mode && (blend_mode & (blend_mode - 1u))) ||
-        batch->alpha_compare0 != batch->alpha_compare1 || batch->alpha_op != 0 ||
+        !alpha_supported ||
         batch->alpha_ref0 > 255u || batch->alpha_ref1 > 255u ||
-        (batch->alpha_compare0 != 7 &&
-         (batch->alpha_compare0 != 4 || batch->alpha_ref0 != batch->alpha_ref1)) ||
         ((batch->flags & C3_TITLE_SPECULAR) &&
          (!(batch->flags & C3_TITLE_LIT) ||
-          (batch->flags & (C3_TITLE_NO_DEPTH_WRITE | C3_TITLE_TEV_LERP | C3_TITLE_DUAL_MODULATE |
-                           C3_TITLE_REFLECTION_BLEND)) || blend_mode ||
-          (batch->color_mode != 3 && batch->color_mode != 4) ||
-          (batch->alpha_mode != 0 && batch->alpha_mode != 3) ||
+          (batch->flags & (C3_TITLE_TEV_LERP | C3_TITLE_DUAL_MODULATE)) ||
+          blend_mode ||
+          (batch->color_mode != 0 && batch->color_mode != 3 && batch->color_mode != 4) ||
+          (batch->alpha_mode != 0 && batch->alpha_mode != 2 && batch->alpha_mode != 3) ||
           !isfinite(batch->shininess) || batch->shininess <= 0 || batch->shininess > 512)) ||
         ((batch->flags & C3_TITLE_REFLECTION_BLEND) &&
          (batch->texture2 >= title->texture_count || batch->color_mode != 4 || batch->alpha_mode != 0 ||
           !(batch->flags & C3_TITLE_LIT) ||
-          (batch->flags & (C3_TITLE_TEV_LERP | C3_TITLE_DUAL_MODULATE | C3_TITLE_SPECULAR)) ||
+          (batch->flags & (C3_TITLE_TEV_LERP | C3_TITLE_DUAL_MODULATE)) ||
           !isfinite(batch->texture2_blend) || batch->texture2_blend < 0 || batch->texture2_blend > 1)) ||
         ((batch->flags & C3_TITLE_DUAL_MODULATE) &&
          (batch->texture2 >= title->texture_count || batch->color_mode != 4 ||
@@ -579,6 +596,22 @@ static void combiner(const C3TitleBatch *batch, const C3TitleMaterialState *mate
     for (int i = 0; i < 6; ++i) C3D_TexEnvInit(C3D_GetTexEnv(i));
     C3D_TexEnvBufUpdate(C3D_Both, 0);
     C3D_TexEnv *tex = C3D_GetTexEnv(0);
+#include "pda_mask_combiner.inc"
+    if(batch->flags&C3_TITLE_PAIRED_NORMAL_EXT){
+        /* Original diffuse raster, then two normal-generated EXT maps:
+         * blend T0 by source factor, add T1 RGB/alpha, saturate each stage. */
+        C3D_TexEnvColor(tex,color4(batch->diffuse[0],batch->diffuse[1],batch->diffuse[2],material->alpha));
+        C3D_TexEnvSrc(tex,C3D_Both,GPU_PRIMARY_COLOR,GPU_CONSTANT,GPU_CONSTANT);
+        C3D_TexEnvFunc(tex,C3D_Both,GPU_MODULATE);
+        C3D_TexEnv *blend=C3D_GetTexEnv(1);
+        C3D_TexEnvColor(blend,color4(batch->texture2_blend,batch->texture2_blend,batch->texture2_blend,1));
+        C3D_TexEnvSrc(blend,C3D_RGB,GPU_TEXTURE0,GPU_PREVIOUS,GPU_CONSTANT);
+        C3D_TexEnvFunc(blend,C3D_RGB,GPU_INTERPOLATE);
+        C3D_TexEnv *add=C3D_GetTexEnv(2);
+        C3D_TexEnvSrc(add,C3D_Both,GPU_PREVIOUS,GPU_TEXTURE1,GPU_CONSTANT);
+        C3D_TexEnvFunc(add,C3D_Both,GPU_ADD);
+        return;
+    }
     if (batch->flags & C3_TITLE_DUAL_MODULATE) {
         /* Reviewed S1_out water material: both TEV0 endpoints are zero,
          * both konst colors match, and both layers modulate RGB while alpha
@@ -908,12 +941,16 @@ int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
                 memset(destination[j].specular, 0, sizeof(destination[j].specular));
                 if (batch->flags & C3_TITLE_SPECULAR)
                     raster_specular(batch, source, model_view, scenes[model].specular_lights, specular, destination[j].specular);
-                if (batch->flags & C3_TITLE_REFLECTION_BLEND) {
+                if ((batch->flags & C3_TITLE_REFLECTION_BLEND) && !(batch->flags&C3_TITLE_SECOND_UV_BLEND)) {
                     float normal[3];
                     view_normal(model_view, source->normal, normal);
                     float u = normal[0]*0.5f + 0.5f, v = -normal[1]*0.5f + 0.5f;
                     destination[j].uv2[0] = u*material->uv2_scale[0] + v*material->uv2_cross[0] + material->uv2_offset[0];
                     destination[j].uv2[1] = u*material->uv2_cross[1] + v*material->uv2_scale[1] + material->uv2_offset[1];
+                    if(batch->flags&C3_TITLE_PAIRED_NORMAL_EXT){
+                        destination[j].uv[0]=u*material->uv_scale[0]+v*material->uv_cross[0]+material->uv_offset[0];
+                        destination[j].uv[1]=u*material->uv_cross[1]+v*material->uv_scale[1]+material->uv_offset[1];
+                    }
                 }
             }
         }
@@ -1031,8 +1068,18 @@ int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
                                 GPU_PRIMARY_COLOR, GPU_PRIMARY_COLOR);
                             C3D_TexEnvFunc(env, C3D_RGB, GPU_REPLACE);
                         }
+                        if((batch->flags&C3_TITLE_REFLECTION_BLEND)&&!(batch->flags&C3_TITLE_SOURCE_ALPHA_MASK)){
+                            /* EXT interpolation follows diffuse+specular in
+                             * HSD. Only the prior lighting contribution is
+                             * attenuated; its texture term was drawn once. */
+                            C3D_TexEnv *ext=C3D_GetTexEnv(4);
+                            float remaining=1.f-batch->texture2_blend;
+                            C3D_TexEnvColor(ext,color4(remaining,remaining,remaining,1));
+                            C3D_TexEnvSrc(ext,C3D_RGB,GPU_PREVIOUS,GPU_CONSTANT,GPU_PRIMARY_COLOR);
+                            C3D_TexEnvFunc(ext,C3D_RGB,GPU_MODULATE);
+                        }
                         apply_model_modulation(model);
-                        C3D_DepthTest(true, GPU_EQUAL, GPU_WRITE_COLOR);
+                        C3D_DepthTest(true, batch->flags&C3_TITLE_NO_DEPTH_WRITE ? depth_function[batch->depth_compare] : GPU_EQUAL, GPU_WRITE_COLOR);
                         C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, transparent ? GPU_SRC_ALPHA : GPU_ONE,
                             GPU_ONE, GPU_ZERO, GPU_ONE);
                         C3D_DrawArrays(GPU_TRIANGLES, batch->first, batch->count);

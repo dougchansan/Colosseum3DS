@@ -342,6 +342,27 @@ int main(void)
     c3_title_close(&title);
     assert(!c3_title_load(&title,"missing-title.c3t",error,sizeof error));
     free(p);
+    p=fixture();
+    /* A source accessory can collapse at a hidden sample. Keep its exact
+     * zero affine so the preceding visible interval shrinks toward zero. */
+    putf(p+FRAME_OFFSET+FRAME_BYTES,0);
+    putf(p+FRAME_OFFSET+FRAME_BYTES+20,0);
+    putf(p+FRAME_OFFSET+FRAME_BYTES+40,0);
+    assert(c3_title_parse(&title,p,FILE_BYTES,error,sizeof error));
+    assert(c3_title_animate(&title,0,.25f));
+    assert(title.pose.materials[0].visible==1);
+    near_value(title.draw_vertices[0].pos[0],3);
+    near_value(title.draw_vertices[0].pos[1],1);
+    near_value(title.draw_vertices[0].pos[2],1.5f);
+    assert(c3_title_animate(&title,0,.5f));
+    assert(title.pose.materials[0].visible==0);
+    near_value(title.pose.matrices[0][0],0);
+    assert(isfinite(title.draw_vertices[0].normal[0]));
+    c3_title_close(&title);
+    /* The same collapsed bone must fail if any consuming batch is visible. */
+    putf(p+FRAME_OFFSET+FRAME_BYTES+68,1);
+    rejects(p,FILE_BYTES);
+    free(p);
     extended_checks();
     actor_clip_checks();
     puts("Native title bounds, ownership, animation and normal checks passed");

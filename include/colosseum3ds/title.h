@@ -27,7 +27,10 @@ enum {
     C3_TITLE_DUAL_MODULATE = 1024u, /* C3T2: a second affine UV/texture stage */
     C3_TITLE_SUBTRACT = 2048u,     /* C3T2: GX subtract, destination - source */
     C3_TITLE_ADDITIVE_ONE = 4096u, /* C3T2: ONE, ONE framebuffer addition */
-    C3_TITLE_REFLECTION_BLEND = 8192u /* C3T3: lerp final RGB with normal-generated texture2 */
+    C3_TITLE_REFLECTION_BLEND = 8192u, /* C3T3: lerp final RGB with normal-generated texture2 */
+    C3_TITLE_SECOND_UV_BLEND = 16384u, /* C3T3: texture2 blend uses authored UV1 */
+    C3_TITLE_SOURCE_ALPHA_MASK = 32768u,
+    C3_TITLE_PAIRED_NORMAL_EXT = 65536u
 };
 
 typedef struct {
