@@ -1,0 +1,32 @@
+{
+  "schema": 1,
+  "scope": "original saved-player and ordinary Willie parent HeroBios construction",
+  "full_fight_pokemon_qualified": false,
+  "full_battle_qualified": false,
+  "inter_call_rng_qualified": false,
+  "dol_sha1": "870e8b9693ca780782d80f22a6a4572d8ba9458f",
+  "common_rel_sha1": "e816761813900aa0fd4f87d012b3b2a19d2f003e",
+  "library_sha256": "c3bf13b5ede256ff2383c0f185e2c6254a2e869809dda7d64f7a6afd4102a2c7",
+  "observation_sha256": "a442a6b656a78dea599b5100b333fd61e456c8273f6db546dfffc80fa2efaf18",
+  "matched": 2,
+  "cases": [
+    {
+      "trainer_id": 10,
+      "branch": "ordinary-Willie-generated",
+      "matched_hero_bytes": 2840,
+      "draws": 386,
+      "seed_before": "0x743ccd37",
+      "seed_after": "0x471708e9",
+      "scratch_final_observed": true
+    },
+    {
+      "trainer_id": 1,
+      "branch": "saved-player-copy",
+      "matched_hero_bytes": 2840,
+      "draws": 0,
+      "seed_before": "0x8ff186ab",
+      "seed_after": "0x8ff186ab",
+      "scratch_final_observed": true
+    }
+  ]
+}

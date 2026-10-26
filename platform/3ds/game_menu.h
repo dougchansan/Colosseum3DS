@@ -2,6 +2,7 @@
 #define COLOSSEUM3DS_GAME_MENU_H
 
 #include "n3ds_platform.h"
+#include "colosseum3ds/bottom_ui.h"
 #include <stddef.h>
 #include <stdint.h>
 
@@ -58,7 +59,7 @@ typedef struct {
 } C3GameMenu;
 
 /* No GPU/frame ownership. Init/close own only the optional text pack. Inputs
- * are already polled by the caller. Draw updates the selected bottom console;
+ * are already polled by the caller. Draw updates the bottom framebuffer;
  * the caller draws the title/top screen and submits the frame. */
 void c3_game_menu_init(C3GameMenu *menu, const C3GameMenuSave *save,
                        const C3GameMenuOptions *options);
@@ -68,6 +69,8 @@ void c3_game_menu_close(C3GameMenu *menu);
 C3GameMenuEvent c3_game_menu_update(C3GameMenu *menu,
                                    const C3N3dsInput *input, float delta_seconds);
 void c3_game_menu_draw(C3GameMenu *menu);
+/* Same raster layout for native framebuffer and host visual verification. */
+void c3_game_menu_draw_to(C3GameMenu *menu,C3BottomUi *ui);
 void c3_game_menu_set_save(C3GameMenu *menu, const C3GameMenuSave *save);
 void c3_game_menu_set_pending(C3GameMenu *menu, const char *message);
 void c3_game_menu_set_error(C3GameMenu *menu, const char *message);

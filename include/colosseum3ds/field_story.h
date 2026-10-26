@@ -52,5 +52,9 @@ int c3_field_story_transition(C3FieldStory *story, uint32_t surface_id,
  * check, so moving into a visible NPC does not pass through it. */
 void c3_field_story_collide(C3FieldStory *story, const float before[3]);
 int c3_field_story_sample(C3FieldStory *story, char *error);
+/* Queue the original mail read callback before resuming the field. The caller
+ * may cancel it only before the next tick if the save-side transaction fails. */
+int c3_field_story_menu_event(C3FieldStory *story,uint32_t script,char *error);
+void c3_field_story_cancel_menu_event(C3FieldStory *story);
 
 #endif

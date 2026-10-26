@@ -1,0 +1,16 @@
+{
+  "score": 78,
+  "verdict": "revise",
+  "category_match": true,
+  "differences": [
+    "Both samples show a bright orange/white circular impact surrounded by dark smoke on Espeon; native4854 is a closer visual phase than the initial late-dust4860 sample.",
+    "Original8997 has a wide side view with a broad visible ring face and clear white outward streaks; native4854 has a tighter oblique view, Espeon partially obscuring the core, and fewer clearly resolved streaks at the sampled instant.",
+    "Screen resolution, viewport crop, retail versus development HUD and actor pose remain different; neither camera nor exact effect age is registered."
+  ],
+  "suggestions": [
+    "Use native4854 rather than4860 when illustrating the bright-core Tackle phase; label it as a derived existing-video frame with its exact provenance.",
+    "Keep4860/4870 as later dust/clear evidence, and retain the initial45/100 unmatched-phase verdict as historical.",
+    "Require matched camera and effect-age evidence before asserting visual parity or changing particle parameters based on remaining differences."
+  ],
+  "reasoning": "The closer native sample visibly contains the expected warm circular core and smoke, resolving the earlier phase-selection gap. It supports a contextual effect-family match but remains below a fidelity-pass threshold because camera, pose, resolution and precise effect age are unmatched."
+}

@@ -1,4 +1,5 @@
 #define _POSIX_C_SOURCE 200809L
+#define _XOPEN_SOURCE 700
 #define GL_GLEXT_PROTOTYPES
 #include "libretro.h"
 #include <EGL/egl.h>
@@ -11,6 +12,8 @@
 #include <inttypes.h>
 #include <limits.h>
 #include <signal.h>
+#include <stdatomic.h>
+#include <sched.h>
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -23,7 +26,7 @@
 /* A bounded development frontend, not a general RetroArch replacement. */
 static char system_dir[PATH_MAX], save_dir[PATH_MAX], output_dir[PATH_MAX];
 static unsigned frame_number, frame_limit = 180, capture_every = 30, video_count;
-static uint64_t audio_frames;
+static _Atomic uint64_t audio_frames;
 static bool use_gl, shutdown_requested, hw_requested;
 static volatile sig_atomic_t interrupted, interrupt_signal;
 static enum retro_pixel_format pixel_format = RETRO_PIXEL_FORMAT_XRGB8888;
@@ -51,6 +54,91 @@ static const char *live_path;
 static FILE *live_log;
 static bool live_seen, live_active;
 static unsigned live_accepted, live_expired, live_rejected;
+
+/* Audio callbacks may arrive from Azahar's audio sink thread. Serialize only
+ * recording state/file writes; the no-recording path keeps counting callbacks.
+ * No resampling, mixing, silence insertion, or replacement cues are performed. */
+#define AUDIO_WAV_MAX_BYTES (256u * 1024u * 1024u)
+#define AUDIO_WAV_MAX_SECONDS 300u
+static FILE *audio_wav;
+static atomic_flag audio_wav_lock = ATOMIC_FLAG_INIT;
+static _Atomic bool audio_wav_enabled;
+static _Atomic int audio_wav_failed;
+static uint64_t audio_wav_frames;
+static uint32_t audio_wav_rate;
+static double audio_wav_source_rate;
+static void audio_lock(void) {
+    while (atomic_flag_test_and_set_explicit(&audio_wav_lock, memory_order_acquire)) sched_yield();
+}
+static void audio_unlock(void) { atomic_flag_clear_explicit(&audio_wav_lock, memory_order_release); }
+static void audio_u16(uint8_t *p,uint16_t n) { p[0]=(uint8_t)n;p[1]=(uint8_t)(n>>8); }
+static void audio_u32(uint8_t *p,uint32_t n) {
+    p[0]=(uint8_t)n;p[1]=(uint8_t)(n>>8);p[2]=(uint8_t)(n>>16);p[3]=(uint8_t)(n>>24);
+}
+static void audio_header(uint8_t h[44],uint32_t rate,uint32_t bytes) {
+    memset(h,0,44);memcpy(h,"RIFF",4);audio_u32(h+4,36u+bytes);memcpy(h+8,"WAVEfmt ",8);
+    audio_u32(h+16,16);audio_u16(h+20,1);audio_u16(h+22,2);audio_u32(h+24,rate);
+    audio_u32(h+28,rate*4u);audio_u16(h+32,4);audio_u16(h+34,16);memcpy(h+36,"data",4);audio_u32(h+40,bytes);
+}
+static bool audio_capture_close(void) {
+    atomic_store_explicit(&audio_wav_enabled,false,memory_order_release);
+    audio_lock();
+    if(audio_wav){
+        uint8_t header[44];audio_header(header,audio_wav_rate,(uint32_t)(audio_wav_frames*4u));
+        if(!audio_wav_rate||fflush(audio_wav)||fseek(audio_wav,0,SEEK_SET)||
+           fwrite(header,1,sizeof header,audio_wav)!=sizeof header)
+            atomic_store(&audio_wav_failed,1);
+        if(fclose(audio_wav))atomic_store(&audio_wav_failed,1);
+        audio_wav=NULL;
+        fprintf(stderr,"AUDIO WAV END frames=%" PRIu64 " bytes=%" PRIu64 " rate=%u source_rate=%.9f failed=%d\n",
+            audio_wav_frames,audio_wav_frames*4u,audio_wav_rate,audio_wav_source_rate,atomic_load(&audio_wav_failed));
+    }
+    audio_unlock();return !atomic_load(&audio_wav_failed);
+}
+static void audio_capture_at_exit(void) { if(!audio_capture_close())fprintf(stderr,"HARNESS ERROR: audio WAV capture incomplete\n"); }
+static bool audio_capture_open(const char *path) {
+    int fd=open(path,O_RDWR|O_CREAT|O_EXCL|O_CLOEXEC|O_NOFOLLOW,0600);
+    if(fd<0)return false;
+    audio_lock();audio_wav=fdopen(fd,"w+b");
+    if(!audio_wav){close(fd);audio_unlock();return false;}
+    uint8_t header[44];audio_header(header,0,0);
+    bool ok=fwrite(header,1,sizeof header,audio_wav)==sizeof header;
+    if(!ok){fclose(audio_wav);audio_wav=NULL;atomic_store(&audio_wav_failed,1);}
+    else atomic_store_explicit(&audio_wav_enabled,true,memory_order_release);
+    audio_unlock();return ok;
+}
+static void audio_capture_rate(double source_rate) {
+    if(!atomic_load_explicit(&audio_wav_enabled,memory_order_acquire))return;
+    audio_lock();
+    if(!(source_rate>=8000&&source_rate<=192000)||
+       (audio_wav_rate&&source_rate!=audio_wav_source_rate))atomic_store(&audio_wav_failed,1);
+    else {
+        audio_wav_source_rate=source_rate;
+        /* RIFF PCM uses an integer Hz field; retain the exact AV rate in log. */
+        audio_wav_rate=(uint32_t)(source_rate+.5);
+        if(audio_wav_frames>(uint64_t)audio_wav_rate*AUDIO_WAV_MAX_SECONDS)atomic_store(&audio_wav_failed,1);
+    }
+    audio_unlock();
+}
+static void audio_capture_write(const int16_t *data,size_t count) {
+    if(!atomic_load_explicit(&audio_wav_enabled,memory_order_acquire)||!count)return;
+    audio_lock();
+    if(!audio_wav||atomic_load(&audio_wav_failed)){audio_unlock();return;}
+    uint64_t frame_bound=(AUDIO_WAV_MAX_BYTES-44u)/4u;
+    uint64_t time_bound=(uint64_t)(audio_wav_rate?audio_wav_rate:8000u)*AUDIO_WAV_MAX_SECONDS;
+    if(time_bound<frame_bound)frame_bound=time_bound;
+    if(!data||audio_wav_frames>frame_bound||count>frame_bound-audio_wav_frames){
+        atomic_store(&audio_wav_failed,1);audio_unlock();return;
+    }
+    uint8_t encoded[4096];size_t done=0;
+    while(done<count){
+        size_t batch=count-done;if(batch>sizeof encoded/4u)batch=sizeof encoded/4u;
+        for(size_t i=0;i<batch*2u;++i)audio_u16(encoded+i*2u,(uint16_t)data[done*2u+i]);
+        if(fwrite(encoded,4,batch,audio_wav)!=batch){atomic_store(&audio_wav_failed,1);break;}
+        audio_wav_frames+=batch;done+=batch;
+    }
+    audio_unlock();
+}
 
 static void on_signal(int sig) { interrupt_signal = sig; interrupted = 1; }
 static void die(const char *message) { fprintf(stderr, "HARNESS ERROR: %s\n", message); exit(2); }
@@ -138,8 +226,9 @@ static bool environment(unsigned command, void *data) {
     case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_UPDATE_DISPLAY_CALLBACK:
     case RETRO_ENVIRONMENT_SET_SERIALIZATION_QUIRKS:
     case RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME:
-    case RETRO_ENVIRONMENT_SET_GEOMETRY:
+    case RETRO_ENVIRONMENT_SET_GEOMETRY: return true;
     case RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO:
+        audio_capture_rate(((const struct retro_system_av_info *)data)->timing.sample_rate);return true;
     case RETRO_ENVIRONMENT_SET_PERFORMANCE_LEVEL: return true;
     case RETRO_ENVIRONMENT_SET_MESSAGE:
         fprintf(stderr, "CORE MESSAGE: %s\n", ((struct retro_message *)data)->msg); return true;
@@ -210,8 +299,12 @@ static int16_t input_state(unsigned port, unsigned device, unsigned index, unsig
     }
     return 0;
 }
-static void audio_sample(int16_t left, int16_t right) { (void)left; (void)right; audio_frames++; }
-static size_t audio_batch(const int16_t *data, size_t count) { (void)data; audio_frames += count; return count; }
+static void audio_sample(int16_t left, int16_t right) {
+    const int16_t frame[2]={left,right};atomic_fetch_add_explicit(&audio_frames,1,memory_order_relaxed);audio_capture_write(frame,1);
+}
+static size_t audio_batch(const int16_t *data, size_t count) {
+    atomic_fetch_add_explicit(&audio_frames,count,memory_order_relaxed);audio_capture_write(data,count);return count;
+}
 static void save_ppm(const char *basename) {
     if (!last_rgb) return;
     char path[PATH_MAX]; snprintf(path, sizeof(path), "%s/%s", output_dir, basename);
@@ -356,11 +449,12 @@ static void poll_live_input(void) {
 int main(int argc, char **argv) {
     const char *content = NULL, *events_path = NULL, *state = "state", *out = "captures", *core_path = "core/azahar_libretro.so";
     unsigned deadline = 45;
-    const char *record_path = NULL;
+    const char *record_path = NULL,*audio_path=NULL;
     for (int i = 1; i < argc; ++i) {
         if (!strcmp(argv[i], "--gl")) use_gl = true;
         else if (i + 1 < argc && !strcmp(argv[i], "--frames")) frame_limit = (unsigned)strtoul(argv[++i], NULL, 10);
         else if (i + 1 < argc && !strcmp(argv[i], "--capture-every")) capture_every = (unsigned)strtoul(argv[++i], NULL, 10);
+        else if (i + 1 < argc && !strcmp(argv[i], "--audio-wav")) audio_path=argv[++i];
         else if (i + 1 < argc && !strcmp(argv[i], "--record-rgb")) record_path = argv[++i];
         else if (i + 1 < argc && !strcmp(argv[i], "--record-every")) record_every = (unsigned)strtoul(argv[++i], NULL, 10);
         else if (i + 1 < argc && !strcmp(argv[i], "--seconds")) deadline = (unsigned)strtoul(argv[++i], NULL, 10);
@@ -370,9 +464,10 @@ int main(int argc, char **argv) {
         else if (i + 1 < argc && !strcmp(argv[i], "--out")) out = argv[++i];
         else if (i + 1 < argc && !strcmp(argv[i], "--core")) core_path = argv[++i];
         else if (argv[i][0] != '-' && !content) content = argv[i];
-        else die("usage: harness content.3dsx [--gl] [--frames N] [--seconds N] [--capture-every N] [--record-rgb FILE] [--record-every N] [--events input.csv] [--live-input FILE] [--state DIR] [--out DIR]");
+        else die("usage: harness content.3dsx [--gl] [--frames N] [--seconds N] [--capture-every N] [--record-rgb FILE] [--audio-wav NEW.wav] [--record-every N] [--events input.csv] [--live-input FILE] [--state DIR] [--out DIR]");
     }
     if (!content || !frame_limit || frame_limit > 36000 || !capture_every || !record_every || record_every > 60 || !deadline || deadline > 300) die("missing content or invalid run bounds");
+    if(audio_path){if(atexit(audio_capture_at_exit)||!audio_capture_open(audio_path))die("cannot exclusively create audio WAV");}
     char state_abs[PATH_MAX], out_abs[PATH_MAX], content_abs[PATH_MAX], xdg[PATH_MAX];
     make_dir(state); make_dir(out);
     if (!realpath(state, state_abs) || !realpath(out, out_abs) || !realpath(content, content_abs)) die("path resolution failed");
@@ -417,15 +512,17 @@ int main(int argc, char **argv) {
     if (hw_requested) setup_gl();
     struct retro_system_av_info av; p_retro_get_system_av_info(&av);
     fprintf(stderr, "AV %ux%u max=%ux%u rate=%.6f audio=%.0f\n", av.geometry.base_width, av.geometry.base_height, av.geometry.max_width, av.geometry.max_height, av.timing.fps, av.timing.sample_rate);
+    audio_capture_rate(av.timing.sample_rate);
+    if(atomic_load(&audio_wav_failed))die("invalid or changed audio capture sample rate");
     double started = monotonic_seconds();
     if (record_file && av.timing.fps != 60.0) die("recording requires the verified 60Hz frontend clock");
-    for (frame_number = 0; frame_number < frame_limit && !interrupted && !shutdown_requested; ++frame_number) {
+    for (frame_number = 0; frame_number < frame_limit && !interrupted && !shutdown_requested && !atomic_load(&audio_wav_failed); ++frame_number) {
         poll_live_input();
         p_retro_run();
         record_frame();
     }
     double elapsed = monotonic_seconds() - started; save_ppm("last.ppm");
-    fprintf(stderr, "RUN END frames=%u video=%u audio=%llu elapsed=%.3f interrupted=%d shutdown=%d\n", frame_number, video_count, (unsigned long long)audio_frames, elapsed, interrupted, shutdown_requested);
+    fprintf(stderr, "RUN END frames=%u video=%u audio=%llu elapsed=%.3f interrupted=%d shutdown=%d\n", frame_number, video_count, (unsigned long long)atomic_load(&audio_frames), elapsed, interrupted, shutdown_requested);
     if (live_log) {
         if (fclose(live_log)) die("live input evidence close failed");
         fprintf(stderr, "LIVE INPUT END accepted=%u expired=%u rejected_polls=%u last_sequence=%" PRIu64 "\n",
@@ -439,12 +536,14 @@ int main(int argc, char **argv) {
     fclose(frame_log);
     if (hw_requested && hw.context_destroy) hw.context_destroy();
     p_retro_unload_game(); p_retro_deinit();
+    bool audio_ok=audio_capture_close();
     if (display != EGL_NO_DISPLAY) {
         glDeleteFramebuffers(1, &framebuffer); glDeleteTextures(1, &color_texture); glDeleteRenderbuffers(1, &depth_buffer);
         eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
         eglDestroyContext(display, context); eglDestroySurface(display, surface); eglTerminate(display);
     }
     free(last_rgb); alarm(0);
+    if(!audio_ok){fprintf(stderr,"HARNESS ERROR: audio WAV write/rate/bound failure\n");return 2;}
     if (!shutdown_requested && frame_number < frame_limit && interrupted)
         return interrupt_signal == SIGALRM ? 124 : 128 + interrupt_signal;
     return video_count ? 0 : 1;

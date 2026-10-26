@@ -2,6 +2,7 @@
 
 #ifndef C3_MENU_HOST_TEST
 #include <3ds.h>
+#include "bottom_screen.h"
 #endif
 #include <math.h>
 #include <stdio.h>
@@ -327,119 +328,101 @@ C3GameMenuEvent c3_game_menu_update(C3GameMenu *menu, const C3N3dsInput *input, 
     return event;
 }
 
-/* Wrap source strings to the 40-column bottom console without treating them
- * as format strings or allowing extracted control codes into the terminal. */
-static void paragraph(const char *text)
-{
-    unsigned column = 0;
-    while (*text) {
-        if (*text == '\n') { putchar('\n'); column = 0; ++text; continue; }
-        if (*text == ' ') {
-            if (column && column < 38) { putchar(' '); ++column; }
-            ++text;
-            continue;
-        }
-        const char *end = text;
-        while (*end && *end != ' ' && *end != '\n') ++end;
-        size_t word = (size_t)(end - text);
-        if (column && column + word > 38) { putchar('\n'); column = 0; }
-        while (text < end) {
-            if (column == 38) { putchar('\n'); column = 0; }
-            putchar(*text++); ++column;
-        }
-    }
-    putchar('\n');
-}
 
-static void confirm_draw(const C3GameMenu *menu)
+void c3_game_menu_draw_to(C3GameMenu *menu,C3BottomUi *ui)
 {
-    printf("\n  %s YES       %s NO\n\n", menu->confirm_yes ? ">" : " ", menu->confirm_yes ? " " : ">");
-    printf("D-Pad: choose   A: confirm   B: back\n");
+    char text[256];
+    if(!menu||!ui)return;
+    switch(menu->page){
+    case C3_MENU_MAIN: {
+        const uint32_t ids[]={0x3C15,0x3C14,0x3C19,0x3C1B,0x3C17,0x3C1D};
+        const char *fallbacks[]={"Start the Story from the beginning.","Continue your saved Story.",
+            "Colosseum Battle is unavailable.","Battle Now is unavailable.","Adjust sound and rumble.","Return to the title screen."};
+        if(ui->assets&&ui->assets->data){
+            c3_ui_sprite(ui,C3_UI_STORY,5,5,150,137);
+            c3_ui_sprite(ui,C3_UI_BATTLE,165,5,150,137);
+            c3_ui_sprite(ui,C3_UI_OPTIONS,12,150,129,37);
+            c3_ui_sprite(ui,C3_UI_QUIT,191,153,91,28);
+            static const int cursor[6][2]={{3,112},{3,91},{161,91},{161,112},{2,160},{171,160}};
+            c3_ui_sprite(ui,C3_UI_HAND,cursor[menu->selection][0],cursor[menu->selection][1],27,19);
+            c3_ui_text(ui,190,137,118,1,"UNAVAILABLE",C3_UI_MUTED);
+            if(!menu->save.can_continue)c3_ui_text(ui,20,137,134,1,"NO SAVE DATA",C3_UI_MUTED);
+        }else{
+            c3_ui_header(ui,"POKEMON COLOSSEUM","STORY MODE / BATTLE MODE");
+            for(unsigned i=0;i<6;++i)c3_ui_row(ui,53+(int)i*23,menu_labels[i],menu->selection==i,
+                i==2||i==3||(i==1&&!menu->save.can_continue));
+        }
+        c3_ui_panel(ui,5,190,310,49);
+        c3_ui_text(ui,14,190,290,2,message(menu,ids[menu->selection],fallbacks[menu->selection]),C3_UI_WHITE);
+        c3_ui_text(ui,14,224,290,1,"D-pad: choose   A: confirm   B: title",C3_UI_MUTED);
+        break;
+    }
+    case C3_MENU_NAME_KEYBOARD: {
+        c3_ui_header(ui,message(menu,0x2EED,"Your name?"),menu->name);
+        for(unsigned row=0;row<5;++row)for(unsigned col=0;col<8;++col){
+            unsigned i=row*8+col;int x=9+(int)col*38,y=56+(int)row*25;
+            char letter=keyboard_letters[i];if(menu->lower_case&&letter>='A'&&letter<='Z')letter+='a'-'A';
+            if(menu->keyboard_selection==i)c3_ui_panel(ui,x,y,34,23);
+            text[0]=letter;text[1]=0;c3_ui_text(ui,x+12,y+2,20,1,text,
+                menu->keyboard_selection==i?C3_UI_GOLD:C3_UI_WHITE);
+        }
+        const char *commands[]={"CASE","SPACE","BACK","DONE"};
+        for(unsigned i=0;i<4;++i){int x=9+(int)i*77;
+            if(menu->keyboard_selection==40+i)c3_ui_panel(ui,x,186,72,26);
+            c3_ui_text(ui,x+8,190,60,1,commands[i],menu->keyboard_selection==40+i?C3_UI_GOLD:C3_UI_WHITE);
+        }
+        c3_ui_footer(ui,"A: enter   B: erase   X: case   START: done");
+        break;
+    }
+    case C3_MENU_NAME_CHOICES:
+        c3_ui_header(ui,message(menu,0x2EED,"Your name?"),"Choose a name.");
+        c3_ui_panel(ui,10,56,300,153);
+        c3_ui_row(ui,68,message(menu,0x2EFD,"NEW NAME"),menu->name_selection==0,0);
+        for(unsigned i=0;i<3;++i)c3_ui_row(ui,99+(int)i*32,message(menu,0x2EFEu+i,preset_names[i]),menu->name_selection==i+1,0);
+        c3_ui_footer(ui,"D-pad: choose   A: confirm   B: back");break;
+    case C3_MENU_OPTIONS:
+        c3_ui_header(ui,"OPTIONS","Sound / Controller Rumble");
+        c3_ui_panel(ui,10,56,300,98);
+        snprintf(text,sizeof text,"SOUND     < %s >",menu->options.sound_mono?"MONO":"STEREO");
+        c3_ui_row(ui,65,text,menu->selection==0,0);
+        snprintf(text,sizeof text,"RUMBLE    < %s >",menu->options.rumble_disabled?"OFF":"ON");
+        c3_ui_row(ui,94,text,menu->selection==1,0);c3_ui_row(ui,123,"END",menu->selection==2,0);
+        c3_ui_text(ui,15,156,290,3,message(menu,0x43FB+menu->selection,
+            menu->selection==0?"Choose Mono or Stereo sound.":menu->selection==1?
+            "3DS has no rumble motor. The preference is kept.":"Apply for this session. Use in-game Save to keep settings."),C3_UI_WHITE);
+        c3_ui_footer(ui,"D-pad: change   A: END   B: cancel");break;
+    case C3_MENU_CONTINUE_CONFIRM:
+        c3_ui_header(ui,"CONTINUE",menu->save.location);
+        c3_ui_panel(ui,10,56,300,104);
+        snprintf(text,sizeof text,"%s\nMoney  %lu\nTime  %lu:%02lu",menu->save.name,(unsigned long)menu->save.money,
+            (unsigned long)(menu->save.play_seconds/3600u),(unsigned long)(menu->save.play_seconds/60u%60u));
+        c3_ui_text(ui,21,63,275,3,text,C3_UI_WHITE);
+        c3_ui_text(ui,21,119,275,2,message(menu,0x3C22,"Is it okay to continue from here?"),C3_UI_WHITE);
+        c3_ui_choices(ui,menu->confirm_yes);c3_ui_footer(ui,"A: confirm   B: back");break;
+    case C3_MENU_NEW_CONFIRM:
+    case C3_MENU_NAME_CONFIRM:
+        c3_ui_header(ui,menu->page==C3_MENU_NEW_CONFIRM?"NEW GAME":"YOUR NAME","");
+        c3_ui_panel(ui,10,56,300,104);
+        if(menu->page==C3_MENU_NAME_CONFIRM){snprintf(text,sizeof text,"Is %s OK?",menu->name);}
+        else snprintf(text,sizeof text,"%s",menu->save.present?
+            "A card file already exists. Starting a new Story permits your next Save to replace that file. Continue?":
+            message(menu,0x3C3A,"Is it okay to start a new Story?"));
+        c3_ui_text(ui,21,66,275,5,text,C3_UI_WHITE);
+        c3_ui_choices(ui,menu->confirm_yes);c3_ui_footer(ui,"D-pad: choose   A: confirm   B: back");break;
+    default:
+        c3_ui_header(ui,menu->page==C3_MENU_ERROR?"Unable to continue":"POKEMON COLOSSEUM","");
+        c3_ui_panel(ui,10,56,300,155);
+        c3_ui_text(ui,21,64,275,8,menu->notice,C3_UI_WHITE);
+        c3_ui_footer(ui,menu->page==C3_MENU_PENDING?"Please wait...":"A / B: return to menu");break;
+    }
 }
 
 void c3_game_menu_draw(C3GameMenu *menu)
 {
-    if (!menu || !menu->dirty) return;
-    menu->dirty = 0;
+    if(!menu||!menu->dirty)return;
+    menu->dirty=0;
 #ifndef C3_MENU_HOST_TEST
-    consoleClear();
+    c3_game_menu_draw_to(menu,c3_bottom_screen_begin());
+    c3_bottom_screen_present();
 #endif
-    printf("POKEMON COLOSSEUM\n\n");
-    switch (menu->page) {
-    case C3_MENU_MAIN: {
-        const uint32_t descriptions[] = {0x3C15, 0x3C14, 0x3C19, 0x3C1B, 0x3C17, 0x3C1D};
-        const char *fallbacks[] = {"Start the Story from the beginning.", "Continue your saved Story.",
-            "Colosseum Battle is not available.", "Battle Now is not available.",
-            "Adjust sound and Controller Rumble.", "Return to the title screen."};
-        for (unsigned i = 0; i < 6; ++i) {
-            int disabled = i == 2 || i == 3 || (i == 1 && !menu->save.can_continue);
-            printf("%s %-17s%s\n\n", menu->selection == i ? ">" : " ", menu_labels[i], disabled ? " [unavailable]" : "");
-        }
-        paragraph(message(menu, descriptions[menu->selection], fallbacks[menu->selection]));
-        printf("\nD-Pad / Circle Pad: move\nA: choose   B: title\n");
-        break;
-    }
-    case C3_MENU_NEW_CONFIRM:
-        printf("NEW GAME\n\n");
-        if (menu->save.present)
-            paragraph("A card file already exists. Starting a new Story permits your next Save to replace that file. Continue?");
-        else paragraph(message(menu, 0x3C3A, "Is it okay to start a new Story?"));
-        confirm_draw(menu);
-        break;
-    case C3_MENU_NAME_CHOICES:
-        paragraph(message(menu, 0x2EED, "Your name?"));
-        printf("\n%s %s\n\n", menu->name_selection == 0 ? ">" : " ", message(menu, 0x2EFD, "NEW NAME"));
-        for (unsigned i = 0; i < 3; ++i)
-            printf("%s %s\n\n", menu->name_selection == i + 1 ? ">" : " ", message(menu, 0x2EFE + i, preset_names[i]));
-        printf("D-Pad: choose   A: confirm   B: back\n");
-        break;
-    case C3_MENU_NAME_KEYBOARD:
-        paragraph(message(menu, 0x2EED, "Your name?"));
-        printf("\n  [%-7s]   %lu / 7\n\n", menu->name, (unsigned long)strlen(menu->name));
-        for (unsigned row = 0; row < 5; ++row) {
-            for (unsigned col = 0; col < 8; ++col) {
-                unsigned index = row * 8 + col;
-                char letter = keyboard_letters[index];
-                if (menu->lower_case && letter >= 'A' && letter <= 'Z') letter += 'a' - 'A';
-                printf(menu->keyboard_selection == index ? "[%c] " : " %c  ", letter);
-            }
-            printf("\n\n");
-        }
-        const char *commands[] = {"CASE", "SPACE", "BACK", "DONE"};
-        for (unsigned i = 0; i < 4; ++i)
-            printf("%c%-6s ", menu->keyboard_selection == i + 40 ? '>' : ' ', commands[i]);
-        printf("\n\nA: letter   B: erase/back\nR/X: case   START: done\n");
-        break;
-    case C3_MENU_NAME_CONFIRM:
-        printf("Is %s OK?\n", menu->name);
-        confirm_draw(menu);
-        break;
-    case C3_MENU_CONTINUE_CONFIRM:
-        printf("CONTINUE\n\n%s\n%s\n\nMoney: %lu\nTime: %lu:%02lu\n\n", menu->save.name,
-               menu->save.location, (unsigned long)menu->save.money,
-               (unsigned long)(menu->save.play_seconds / 3600u),
-               (unsigned long)(menu->save.play_seconds / 60u % 60u));
-        paragraph(message(menu, 0x3C22, "Is it okay to continue from here?"));
-        confirm_draw(menu);
-        break;
-    case C3_MENU_OPTIONS:
-        printf("OPTIONS\n\n%s SOUND      <%s>\n\n%s RUMBLE     <%s>\n\n%s END\n\n",
-               menu->selection == 0 ? ">" : " ", menu->options.sound_mono ? "MONO" : "STEREO",
-               menu->selection == 1 ? ">" : " ", menu->options.rumble_disabled ? "OFF" : "ON",
-               menu->selection == 2 ? ">" : " ");
-        paragraph(message(menu, 0x43FB + menu->selection, menu->selection == 0 ? "Choose Mono or Stereo sound." :
-                          menu->selection == 1 ? "Keep the original rumble preference." : "Apply settings and leave Options."));
-        printf("\nEND applies for this session.\nUse in-game Save to keep settings.\n3DS has no Controller Rumble motor.\n\nD-Pad: choose/change   A: END\nB: cancel changes\n");
-        break;
-    case C3_MENU_ERROR:
-        printf("Unable to continue\n\n");
-        paragraph(menu->notice);
-        printf("\nA / B: return to menu\n");
-        break;
-    case C3_MENU_NOTICE:
-    case C3_MENU_PENDING:
-        paragraph(menu->notice);
-        if (menu->page == C3_MENU_NOTICE) printf("\nA / B: return to menu\n");
-        break;
-    }
 }

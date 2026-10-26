@@ -40,3 +40,11 @@ __pycache__/
 /tools/sandbox/harness
 /tools/sandbox/dependencies.json
 /tools/sandbox/probe-build/
+
+*.c3i
+*.c3p
+*.c3pd
+*.c3ui
+
+# Private source-derived WZX descriptor
+*.c3w

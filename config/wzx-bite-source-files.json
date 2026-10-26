@@ -1,0 +1,15 @@
+{
+  "commit": "51bfe4314a218dfaf9592fc80723c50498d0ee55",
+  "files": {
+    "src/game/wazaSequence.c": "975afb18f19c6da6f7132fe3772d8ab3ab9546f528d8381073b59e614459444d",
+    "src/game/wazaSequenceEntry.c": "6500a4db7253ce776686b86d470a6f9587cfa3db10cf9fcfb9cca50328d0855f",
+    "src/game/sequence.c": "5197f33a164dd2698f04c01272f0deaa7f02629f010856b535684277f5daa1dd",
+    "src/game/gs_range_801DE698.c": "e4594cc503d7dd0c4acd06b5df8aa216d04c10ea3698b6e20285cf5f50e2b69d",
+    "src/game/effect/tracefx.c": "2bf2283cad5bc36624e516d698395125874582b5b2279aeeec49b96f2eb50372",
+    "src/game/effect/effect_visual.c": "8f0dc333353b606fc000b20103ec451f220b7d9b548ae04e187b899a4d883144",
+    "src/game/gs_material_800DF498.c": "93161d865cd3a1e11bbbda85ae891a9bfb1304ac5dd7e9228ea0f1dfb0a6eec0",
+    "src/hsd/mobj.c": "b32587ad0bdd890f836e0363bce5f85678246b82ff260b7cb66a7b41ab4397ad",
+    "src/game/gs_part_exact_800EE150.c": "983eede9aafac0b9560cbfbc51009724a10ae9cada365e77e69a06dd9fc27b2d",
+    "src/game/gs_floor.c": "634fe0914414f54cef9cab0c10daec337e69b1310ffcec93e8f24221893e2e15"
+  }
+}

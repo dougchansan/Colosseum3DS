@@ -383,6 +383,7 @@ int c3_game_state_summary(const C3GameState *state, C3GameSummary *summary)
     s=state->impl; b=s->body;
     memset(summary,0,sizeof *summary);
     display_name(summary->name,b+HERO);
+    display_name(summary->partner,b+HERO+0xac2);
     summary->trainer_id=be32(b+HERO+0x2c); summary->money=be32(b+HERO+0xa84);
     summary->play_seconds=(uint32_t)s->play_time; summary->saved_count=be32(b+0x10);
     summary->floor=be32(b+0x1c); summary->previous_floor=be32(b+0x24);
@@ -393,8 +394,25 @@ int c3_game_state_summary(const C3GameState *state, C3GameSummary *summary)
         C3GamePokemon *q=&summary->party[i];
         q->species=be16(p); q->level=p[0x60]; q->personality=be32(p+4);
         q->hp=be16(p+0x8a); q->max_hp=be16(p+0x8c);
+        q->experience=be32(p+0x5c); q->shadow_id=be16(p+0xd8);
         summary->party_count+=q->species!=0;
     }
+    return 1;
+}
+
+int c3_game_pokemon_experience(const C3GamePokemon *p,uint32_t *progress,uint32_t *range)
+{
+    if(!progress||!range)return 0;
+    *progress=*range=0;
+    if(!p||(p->species!=196&&p->species!=197)||p->shadow_id||p->level<1||p->level>100)return 0;
+    /* pokemonDataBiosGetGrowDataId: both species select bank 0. Checked against
+     * original DOL 0x8035E940: all levels 1..100 use level cubed (entry 0 is
+     * zero). Match pokemonToMenuPokemonStatusSubBar's interval. */
+    if(p->level==100)return 1;
+    uint32_t level=p->level,base=level*level*level,next=(level+1u)*(level+1u)*(level+1u);
+    *range=next-base;
+    *progress=p->experience>base?p->experience-base:0;
+    if(*progress>*range)*progress=*range;
     return 1;
 }
 
@@ -479,6 +497,112 @@ int c3_game_state_set_flag(C3GameState *state, uint32_t id, uint32_t value)
     put32(s->body+offset,(uint32_t)bits);
     if (width+shift>32u) put32(s->body+offset+4,(uint32_t)(bits>>32));
     return 1;
+}
+
+int c3_game_state_mail_count(const C3GameState *state,unsigned *count)
+{
+    const GameStateImpl *s=state?state->impl:NULL;
+    if(!s||!count)return 0;
+    unsigned n=be16(s->body+0x7d20+0x400);if(n>512)return 0;
+    *count=n;return 1;
+}
+int c3_game_state_mail(const C3GameState *state,unsigned index,C3GameMail *mail)
+{
+    unsigned count;const GameStateImpl *s=state?state->impl:NULL;
+    if(!mail||!c3_game_state_mail_count(state,&count)||index>=count)return 0;
+    unsigned id=be16(s->body+0x7d20+index*2);if(id>=512)return 0;
+    *mail=(C3GameMail){(uint16_t)id,(uint16_t)index,
+        (uint8_t)!!(s->body[0x7d20+0x402+id/8]&(0x80u>>(id%8)))};return 1;
+}
+int c3_game_state_memo_count(const C3GameState *state,unsigned *count)
+{
+    const GameStateImpl *s=state?state->impl:NULL;if(!s||!count)return 0;
+    unsigned n=be16(s->body+MEMO);if(n>500)return 0;*count=n;return 1;
+}
+int c3_game_state_memo(const C3GameState *state,unsigned index,C3GameMemo *memo)
+{
+    unsigned count;const GameStateImpl *s=state?state->impl:NULL;
+    if(!memo||!c3_game_state_memo_count(state,&count)||index>=count)return 0;
+    const uint8_t *p=s->body+MEMO+index*12;uint16_t raw=be16(p+4),species=raw&0x3fffu;
+    if(!species||species>=413)return 0;
+    *memo=(C3GameMemo){species,raw,be32(p+8),be32(p+12)};return 1;
+}
+int c3_game_state_item(const C3GameState *state,unsigned pocket,unsigned slot,C3GameItem *item)
+{
+    static const unsigned offsets[]={0x780,0x7d0,0x87c,0x8bc,0x9bc,0xa74};
+    static const unsigned counts[]={20,43,16,64,46,3};
+    const GameStateImpl *s=state?state->impl:NULL;
+    if(!s||!item||pocket>=6||slot>=counts[pocket])return 0;
+    const uint8_t *p=s->body+HERO+offsets[pocket]+slot*4;
+    *item=(C3GameItem){be16(p),be16(p+2)};return 1;
+}
+int c3_game_state_pokemon(const C3GameState *state,unsigned slot,uint8_t record[0x138])
+{
+    const GameStateImpl *s=state?state->impl:NULL;if(!s||!record||slot>=6)return 0;
+    memcpy(record,s->body+PARTY+slot*POKEMON_SIZE,POKEMON_SIZE);return 1;
+}
+int c3_game_state_mail_settings(const C3GameState *state,unsigned *sort,unsigned *tone)
+{
+    const GameStateImpl *s=state?state->impl:NULL;if(!s||!sort||!tone)return 0;
+    *sort=s->body[0x7d20+0x442];*tone=s->body[0x7d20+0x443];return *sort<4&&*tone<10;
+}
+int c3_game_state_mail_preferences(C3GameState *state,int sort,int tone)
+{
+    GameStateImpl *s=state?state->impl:NULL;if(!s||sort < -1||sort>3||tone < -1||tone>9)return 0;
+    if(sort>=0)s->body[0x7d20+0x442]=(uint8_t)sort;
+    if(tone>=0)s->body[0x7d20+0x443]=(uint8_t)tone;
+    return 1;
+}
+int c3_game_state_mail_read(C3GameState *state,const C3GameMailRead *a,int commit)
+{
+    GameStateImpl *s=state?state->impl:NULL;unsigned count,found=0;uint32_t value;
+    if(!s||!a||a->id>=512||a->flag_count>C3_GAME_MAIL_FLAG_MAX||a->hint_count>C3_GAME_MAIL_HINT_MAX||!c3_game_state_mail_count(state,&count))return 0;
+    for(unsigned i=0;i<count;++i){C3GameMail mail;if(!c3_game_state_mail(state,i,&mail))return 0;
+        if(mail.id==a->id){found=1;if(mail.read)return 1;}}
+    if(!found)return 0;
+    for(unsigned i=0;i<a->flag_count;++i)
+        if(!a->flags[i].id||!c3_game_state_get_flag(state,a->flags[i].id,&value))return 0;
+    for(unsigned i=0;i<a->hint_count;++i){const C3GameMailHint *h=&a->hints[i];
+        if(!h->id||h->id>96||!h->level||
+           (h->unlock_flag&&!c3_game_state_get_flag(state,h->unlock_flag,&value))||
+           (h->level_flag&&!c3_game_state_get_flag(state,h->level_flag,&value)))return 0;
+    }
+    if(!commit)return 1;
+    /* Validate first, then apply to a private body so any failure is atomic.
+     * The temporary implementation only borrows card/pack; never release it. */
+    GameStateImpl next=*s;next.body=malloc(C3_SAVE_BODY_SIZE);if(!next.body)return 0;
+    memcpy(next.body,s->body,C3_SAVE_BODY_SIZE);C3GameState temporary={&next};int ok=1;
+    for(unsigned i=0;i<a->flag_count&&ok;++i)ok=c3_game_state_set_flag(&temporary,a->flags[i].id,a->flags[i].value);
+    for(unsigned i=0;i<a->hint_count&&ok;++i){const C3GameMailHint *h=&a->hints[i];
+        if(h->level_flag){c3_game_state_get_flag(&temporary,h->level_flag,&value);
+            if(value>=h->level)continue;}
+        uint8_t *block=next.body+0x1b014,*order=block+h->id*24u+0x4a4;
+        if(be16(order)==0xffffu){uint32_t n=be32(block);if(n>=97){ok=0;break;}put16(order,(uint16_t)n);put32(block,n+1u);}
+        if(h->unlock_flag)ok=c3_game_state_set_flag(&temporary,h->unlock_flag,1);
+        if(ok&&h->level_flag)ok=c3_game_state_set_flag(&temporary,h->level_flag,h->level);
+    }
+    if(ok){next.body[0x7d20+0x402+a->id/8]|=(uint8_t)(0x80u>>(a->id%8));
+        if(a->tone!=0xffffu)put16(next.body+0x7d20+0x444,a->tone);
+        memcpy(s->body,next.body,C3_SAVE_BODY_SIZE);}
+    free(next.body);return ok;
+}
+
+int c3_game_state_inventory_commit(C3GameState *state,const uint8_t *before,const uint8_t *after,size_t bytes)
+{
+    GameStateImpl *s=state?state->impl:NULL;
+    static const unsigned offsets[]={0xa0,0x1d8,0x310,0x448,0x580,0x6b8,
+        0x7f0,0x840,0x8ec,0x92c,0xa2c,0xae4,0x82a8,0x1bdbc};
+    static const unsigned sizes[]={312,312,312,312,312,312,80,172,64,256,184,12,6004,1696};
+    if(!s||!before||!after||bytes!=C3_SAVE_BODY_SIZE)return 0;
+    for(unsigned i=0;i<14;++i)if(memcmp(before+offsets[i],after+offsets[i],sizes[i])&&
+        memcmp(s->body+offsets[i],before+offsets[i],sizes[i]))return 0;
+    for(size_t i=0;i<bytes;++i)if(before[i]!=after[i]){
+        unsigned allowed=0;for(unsigned j=0;j<14;++j)if(i>=offsets[j]&&i-offsets[j]<sizes[j]){allowed=1;break;}
+        if(!allowed)return 0;
+    }
+    uint8_t *next=malloc(bytes);if(!next)return 0;memcpy(next,s->body,bytes);
+    for(unsigned i=0;i<14;++i)if(memcmp(before+offsets[i],after+offsets[i],sizes[i]))memcpy(next+offsets[i],after+offsets[i],sizes[i]);
+    int ok=valid_body(next);if(ok)memcpy(s->body,next,bytes);free(next);return ok;
 }
 
 int c3_game_state_save(C3GameState *state, const char *path,

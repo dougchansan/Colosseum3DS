@@ -1,0 +1,1414 @@
+{
+  "scope": "Independent read-only closed physical GREEN5b audit; only this private JSON/Markdown written. Recorded facts, visual checks and qualifications distinguished.",
+  "source": {
+    "commit": "5b048c8b6299f8256a3392c66a1444deeca88f5d",
+    "tree": "1f50f8be1198acd91c5e1fbfcf1f99d70f77a0f7",
+    "boot_build": [
+      {
+        "line": 1,
+        "text": "boot_build 5b048c8b6299 core=0",
+        "fields": {
+          "core": "0"
+        }
+      }
+    ],
+    "scope": "Normal application, not diagnostic probe"
+  },
+  "binary": {
+    "bytes": 589112,
+    "sha256": "0c624b53fc899b4d32ae98a2380a3da0689a9f9a1a9b48f283e148c301c7c7d9"
+  },
+  "trace": {
+    "bytes": 686002,
+    "lines": 5204,
+    "sha256": "4ac473bf79e0782430ddc545a9ed73f53a278ebfe35e5965fd470b8b931c19d2"
+  },
+  "asset_readback": {
+    "base_count": 11,
+    "supplemental_count": 17,
+    "duplicate_files": [
+      "audio.c3u"
+    ],
+    "distinct_count": 27,
+    "checks": [
+      {
+        "file": "Colosseum3DS.3dsx",
+        "verified": true
+      },
+      {
+        "file": "Colosseum3DS.smdh",
+        "verified": true
+      },
+      {
+        "file": "boot-trace.log",
+        "verified": true
+      },
+      {
+        "file": "saves/pokemon_colosseum.gci",
+        "verified": true
+      },
+      {
+        "file": "saves/pokemon_colosseum.gci.bak",
+        "verified": true
+      },
+      {
+        "file": "boot/battle/bite.c3w",
+        "verified": true
+      },
+      {
+        "file": "boot/battle/bite_attack.c3t",
+        "verified": true
+      },
+      {
+        "file": "boot/battle/bite_damage.c3w",
+        "verified": true
+      },
+      {
+        "file": "boot/battle/bite_damage.c3t",
+        "verified": true
+      },
+      {
+        "file": "boot/battle/bite_damage.c3p",
+        "verified": true
+      },
+      {
+        "file": "boot/battle/bite_camera.c3c",
+        "verified": true
+      },
+      {
+        "file": "boot/battle/audio.c3u",
+        "verified": true
+      },
+      {
+        "file": "boot/battle/reflect.c3w",
+        "verified": true
+      },
+      {
+        "file": "boot/battle/reflect.c3t",
+        "verified": true
+      },
+      {
+        "file": "boot/battle/reflect.c3p",
+        "verified": true
+      },
+      {
+        "file": "boot/battle/reflect_parts.c3r",
+        "verified": true
+      },
+      {
+        "file": "boot/battle/confusion_sequence.c3s",
+        "supplemental": true,
+        "verified": true
+      },
+      {
+        "file": "boot/battle/confusion_type12.c3f",
+        "supplemental": true,
+        "verified": true
+      },
+      {
+        "file": "boot/battle/confusion_attack.c3p",
+        "supplemental": true,
+        "verified": true
+      },
+      {
+        "file": "boot/battle/confusion_damage.c3p",
+        "supplemental": true,
+        "verified": true
+      },
+      {
+        "file": "boot/battle/confusion_camera.c3c",
+        "supplemental": true,
+        "verified": true
+      },
+      {
+        "file": "boot/battle/tail_whip.c3w",
+        "supplemental": true,
+        "verified": true
+      },
+      {
+        "file": "boot/battle/tail_whip_controller.c3m",
+        "supplemental": true,
+        "verified": true
+      },
+      {
+        "file": "boot/battle/tail_whip_effect.c3t",
+        "supplemental": true,
+        "verified": true
+      },
+      {
+        "file": "boot/battle/tailwhip_camera.c3c",
+        "supplemental": true,
+        "verified": true
+      },
+      {
+        "file": "boot/battle/growl.c3w",
+        "supplemental": true,
+        "verified": true
+      },
+      {
+        "file": "boot/battle/growl_model.c3t",
+        "supplemental": true,
+        "verified": true
+      },
+      {
+        "file": "boot/battle/growl.c3p",
+        "supplemental": true,
+        "verified": true
+      },
+      {
+        "file": "boot/battle/growl_camera.c3c",
+        "supplemental": true,
+        "verified": true
+      },
+      {
+        "file": "boot/battle/stat_down.c3w",
+        "supplemental": true,
+        "verified": true
+      },
+      {
+        "file": "boot/battle/stat_down.c3p",
+        "supplemental": true,
+        "verified": true
+      },
+      {
+        "file": "boot/battle/stat_down_camera.c3c",
+        "supplemental": true,
+        "verified": true
+      },
+      {
+        "file": "boot/battle/audio.c3u",
+        "supplemental": true,
+        "verified": true
+      }
+    ],
+    "all_verified": true,
+    "actual_distinct_files": [
+      {
+        "file": "audio.c3u",
+        "bytes": 1539692,
+        "sha256": "557550648f3adaa7d31af0aacb52cd0fe4980c47b70c380c4419669dcbcd4d0c"
+      },
+      {
+        "file": "bite.c3w",
+        "bytes": 256,
+        "sha256": "d09f9616086beae627464d594be18397fa0e1bf3f73e478bb7d291fb3040c1d9"
+      },
+      {
+        "file": "bite_attack.c3t",
+        "bytes": 189680,
+        "sha256": "d15ec7e3fac067bcee2b8a82eb3ed280f75f09893afd9c9e41f1187a2e78cb74"
+      },
+      {
+        "file": "bite_camera.c3c",
+        "bytes": 18368,
+        "sha256": "93f105aef2ec3644f71d66eb24a3b05640fe91893b9012aff5179d829b0e0b35"
+      },
+      {
+        "file": "bite_damage.c3p",
+        "bytes": 308480,
+        "sha256": "9fe84012d54bba173a53dc9fc4eaf9aee782ba390e21e03a46d4aa651564e45d"
+      },
+      {
+        "file": "bite_damage.c3t",
+        "bytes": 627512,
+        "sha256": "f49562d04ec2117e61f22c9c9c23a2b775cf15474b77069dcb2e91474927752c"
+      },
+      {
+        "file": "bite_damage.c3w",
+        "bytes": 256,
+        "sha256": "ecf7be4b638f467b896bef17d07eba1394d76c044046e485a25e9f324ccc962e"
+      },
+      {
+        "file": "confusion_attack.c3p",
+        "bytes": 414688,
+        "sha256": "c4fb9eab25cf99ed5814e34eb6ab7873204de336afd1975bc7ef1536a500d4bb"
+      },
+      {
+        "file": "confusion_camera.c3c",
+        "bytes": 22524,
+        "sha256": "6818a7908bc9ca4f392b6815681af191e9046fb35b7f44e71b57bb633d19a6a2"
+      },
+      {
+        "file": "confusion_damage.c3p",
+        "bytes": 160672,
+        "sha256": "9570f60e0793e8ebc194c8f6cc07b16338dcbe4c225ab47a8980a2c94703aeef"
+      },
+      {
+        "file": "confusion_sequence.c3s",
+        "bytes": 13048,
+        "sha256": "a2bd7564e9b1a04343cc6002782dd71bf26bf4a19de3bea70c491d20fe8c2f8f"
+      },
+      {
+        "file": "confusion_type12.c3f",
+        "bytes": 16640,
+        "sha256": "21a0ebb2cb2b06decd1b69ac365f83e0c375b616529f8ec0929a5812d02b6e4b"
+      },
+      {
+        "file": "growl.c3p",
+        "bytes": 1710208,
+        "sha256": "538e94f797a4307f57f7c3ec15b481528664f56e138f3994d9a321fb7a90ed67"
+      },
+      {
+        "file": "growl.c3w",
+        "bytes": 1280,
+        "sha256": "ddfc4864cabd7413e1249addef888e0f551869eb497e37679431bcc7d5a28ab7"
+      },
+      {
+        "file": "growl_camera.c3c",
+        "bytes": 12124,
+        "sha256": "c0698aca8c969eaacffb083e6aa26a65ec1159f31e41788fad08d42849f8059a"
+      },
+      {
+        "file": "growl_model.c3t",
+        "bytes": 585528,
+        "sha256": "b36c101bdfe76e5b99ef2f9137d8955f9733e611d195bf1890c680d967480064"
+      },
+      {
+        "file": "reflect.c3p",
+        "bytes": 462944,
+        "sha256": "a397faff5a7ee5acb1b31b37ec63ef50aaf8ca81394c249f079ef313e3e36a5b"
+      },
+      {
+        "file": "reflect.c3t",
+        "bytes": 176344,
+        "sha256": "58dac5ec1dff0f46699a2f3ceb32eb15be3f5657935f76605dd37f3451332bdc"
+      },
+      {
+        "file": "reflect.c3w",
+        "bytes": 288,
+        "sha256": "d7540d79983505e3b0d342352d5d9b19fe8d620f25ab1f2a4256e5b8ff2fc1c8"
+      },
+      {
+        "file": "reflect_parts.c3r",
+        "bytes": 3728,
+        "sha256": "e6b6c61a0036ea9a1220dccf28ac4cfdf49470469bb8bca9704d867fa67e2906"
+      },
+      {
+        "file": "stat_down.c3p",
+        "bytes": 6496,
+        "sha256": "d8d2cf5ce1357d29e05be91b6a4bd50870db1f901182cd0743fe5c65c00ae6c5"
+      },
+      {
+        "file": "stat_down.c3w",
+        "bytes": 1024,
+        "sha256": "feb6c2eac768c9093eef37483c92a704622076db371f0d703dd51d4730f443f0"
+      },
+      {
+        "file": "stat_down_camera.c3c",
+        "bytes": 4720,
+        "sha256": "c4e04a48126fc782b4b053a9041c1c26810d5a83423327d6096f8f53bc86bdf7"
+      },
+      {
+        "file": "tail_whip.c3w",
+        "bytes": 512,
+        "sha256": "cea9395e8275c238efb3a9b7244e58e2ab23299ad67b398fe9f069a244a90466"
+      },
+      {
+        "file": "tail_whip_controller.c3m",
+        "bytes": 6176,
+        "sha256": "fec21131059e7a2ab94e60a66e2dc5beb4838bdb2866238e1af71a7154bb88b7"
+      },
+      {
+        "file": "tail_whip_effect.c3t",
+        "bytes": 330104,
+        "sha256": "8d097323ad0f9c2f17ced5ce0fff340ab96ffee6e2a47a786676247b7e74f891"
+      },
+      {
+        "file": "tailwhip_camera.c3c",
+        "bytes": 5908,
+        "sha256": "2b17963c68c9066d7ce4c9bb6beeaecfcefab0044e22fbf2a9bc19e7c8187255"
+      }
+    ]
+  },
+  "recording": {
+    "view_only": true,
+    "input_packets_sent": 0,
+    "tcp_commands_sent": 0,
+    "frames": 10689,
+    "encoded_fps": 10,
+    "wall_seconds": 1068.9530000000377,
+    "first_frame_wall_seconds": 0.07800000003771856,
+    "stale_samples": 1,
+    "decode_errors": 0,
+    "encoder_exit": 0,
+    "silent": true,
+    "scope": "Continuous actual NTR screens sampled at10fps; repeated frames and freshness retained in frames.jsonl; no audio stream",
+    "sha256": "da558c640c8ae1f40721e2fc29f0e453b0c05ef36015230a97b4b2ca27abf134",
+    "actual_sha256": "da558c640c8ae1f40721e2fc29f0e453b0c05ef36015230a97b4b2ca27abf134",
+    "actual_bytes": 18252257,
+    "full_ffmpeg_decode_exit": 0,
+    "jsonl_records": 10689,
+    "nonfresh_indices": [
+      0
+    ],
+    "first": {
+      "frame": 0,
+      "wall_seconds": 0.07800000003771856,
+      "utc": "2026-10-24T09:22:42.029342+00:00",
+      "screens": {
+        "bottom": {
+          "frame_id": 105,
+          "counter": 1,
+          "received_utc": "2026-10-24T09:22:41.990863+00:00"
+        },
+        "top": {
+          "frame_id": 106,
+          "counter": 1,
+          "received_utc": "2026-10-24T09:22:42.008272+00:00"
+        }
+      },
+      "ages": {
+        "top": 0.01600000000325963,
+        "bottom": 0.031000000017229468
+      },
+      "fresh": false
+    },
+    "last": {
+      "frame": 10688,
+      "wall_seconds": 1068.890000000014,
+      "utc": "2026-10-24T09:40:30.829850+00:00",
+      "screens": {
+        "bottom": {
+          "frame_id": 156,
+          "counter": 18206,
+          "received_utc": "2026-10-24T09:40:30.806218+00:00"
+        },
+        "top": {
+          "frame_id": 156,
+          "counter": 18154,
+          "received_utc": "2026-10-24T09:40:30.792464+00:00"
+        }
+      },
+      "ages": {
+        "top": 0.0470000000204891,
+        "bottom": 0.031000000017229468
+      },
+      "fresh": true
+    }
+  },
+  "effects": {
+    "wzx_stat_down_camera_begin ": [
+      {
+        "line": 2271,
+        "text": "wzx_stat_down_camera_begin target=0 motion=2 duration=118 draws=7",
+        "fields": {
+          "target": "0",
+          "motion": "2",
+          "duration": "118",
+          "draws": "7"
+        }
+      },
+      {
+        "line": 2283,
+        "text": "wzx_stat_down_camera_begin target=1 motion=0 duration=180 draws=18",
+        "fields": {
+          "target": "1",
+          "motion": "0",
+          "duration": "180",
+          "draws": "18"
+        }
+      }
+    ],
+    "wzx_stat_down_start ": [
+      {
+        "line": 2272,
+        "text": "wzx_stat_down_start event=21 target=0 special=0x29 delta=-1 cue=4",
+        "fields": {
+          "event": "21",
+          "target": "0",
+          "special": "0x29",
+          "delta": "-1",
+          "cue": "4"
+        }
+      },
+      {
+        "line": 2284,
+        "text": "wzx_stat_down_start event=22 target=1 special=0x29 delta=-1 cue=5",
+        "fields": {
+          "event": "22",
+          "target": "1",
+          "special": "0x29",
+          "delta": "-1",
+          "cue": "5"
+        }
+      }
+    ],
+    "wzx_stat_down_complete ": [
+      {
+        "line": 2282,
+        "text": "wzx_stat_down_complete event=21 target=0 units=118000 emitted=369 peak=232 cosmetic_draws=1772 audio=finished cleanup_audio=finished cue=4 color_restored=1 camera_restored=1",
+        "fields": {
+          "event": "21",
+          "target": "0",
+          "units": "118000",
+          "emitted": "369",
+          "peak": "232",
+          "cosmetic_draws": "1772",
+          "audio": "finished",
+          "cleanup_audio": "finished",
+          "cue": "4",
+          "color_restored": "1",
+          "camera_restored": "1"
+        }
+      },
+      {
+        "line": 2312,
+        "text": "wzx_stat_down_complete event=22 target=1 units=180000 emitted=369 peak=232 cosmetic_draws=1772 audio=finished cleanup_audio=finished cue=5 color_restored=1 camera_restored=1",
+        "fields": {
+          "event": "22",
+          "target": "1",
+          "units": "180000",
+          "emitted": "369",
+          "peak": "232",
+          "cosmetic_draws": "1772",
+          "audio": "finished",
+          "cleanup_audio": "finished",
+          "cue": "5",
+          "color_restored": "1",
+          "camera_restored": "1"
+        }
+      }
+    ],
+    "wzx_growl_complete ": [
+      {
+        "line": 2352,
+        "text": "wzx_growl_complete event=23 owner=2 units=230000 emitted=26 peak=25 cosmetic_draws=200 family_cancelled=1 audio_status=stopped cue=6 owner_released=1 motion_continues_at_half_rate=1 camera_restored=1",
+        "fields": {
+          "event": "23",
+          "owner": "2",
+          "units": "230000",
+          "emitted": "26",
+          "peak": "25",
+          "cosmetic_draws": "200",
+          "family_cancelled": "1",
+          "audio_status": "stopped",
+          "cue": "6",
+          "owner_released": "1",
+          "motion_continues_at_half_rate": "1",
+          "camera_restored": "1"
+        }
+      }
+    ],
+    "wzx_reflect_instance_complete ": [
+      {
+        "line": 639,
+        "text": "wzx_reflect_instance_complete event=6 owner=1 cue=1",
+        "fields": {
+          "event": "6",
+          "owner": "1",
+          "cue": "1"
+        }
+      },
+      {
+        "line": 676,
+        "text": "wzx_reflect_instance_complete event=6 owner=0 cue=2",
+        "fields": {
+          "event": "6",
+          "owner": "0",
+          "cue": "2"
+        }
+      }
+    ],
+    "wzx_tail_whip_complete ": [
+      {
+        "line": 2270,
+        "text": "wzx_tail_whip_complete event=20 owner=3 units=169440 controller_done=1 effect_done=1 audio_done=1 cue=3 owner_restored=1",
+        "fields": {
+          "event": "20",
+          "owner": "3",
+          "units": "169440",
+          "controller_done": "1",
+          "effect_done": "1",
+          "audio_done": "1",
+          "cue": "3",
+          "owner_restored": "1"
+        }
+      }
+    ],
+    "wzx_confusion_complete ": [
+      {
+        "line": 2906,
+        "text": "wzx_confusion_complete phase=0 units=215100 emitted=26 peak=24 cosmetic_draws=134 audio_done=1 cues=7,0,0,0",
+        "fields": {
+          "phase": "0",
+          "units": "215100",
+          "emitted": "26",
+          "peak": "24",
+          "cosmetic_draws": "134",
+          "audio_done": "1",
+          "cues": "7,0,0,0"
+        }
+      },
+      {
+        "line": 2973,
+        "text": "wzx_confusion_complete phase=1 units=402000 emitted=738 peak=652 cosmetic_draws=3302 audio_done=1 cues=9,8,10,0",
+        "fields": {
+          "phase": "1",
+          "units": "402000",
+          "emitted": "738",
+          "peak": "652",
+          "cosmetic_draws": "3302",
+          "audio_done": "1",
+          "cues": "9,8,10,0"
+        }
+      },
+      {
+        "line": 3811,
+        "text": "wzx_confusion_complete phase=0 units=220260 emitted=26 peak=24 cosmetic_draws=134 audio_done=1 cues=13,0,0,0",
+        "fields": {
+          "phase": "0",
+          "units": "220260",
+          "emitted": "26",
+          "peak": "24",
+          "cosmetic_draws": "134",
+          "audio_done": "1",
+          "cues": "13,0,0,0"
+        }
+      },
+      {
+        "line": 3878,
+        "text": "wzx_confusion_complete phase=1 units=402000 emitted=738 peak=652 cosmetic_draws=3302 audio_done=1 cues=15,14,16,0",
+        "fields": {
+          "phase": "1",
+          "units": "402000",
+          "emitted": "738",
+          "peak": "652",
+          "cosmetic_draws": "3302",
+          "audio_done": "1",
+          "cues": "15,14,16,0"
+        }
+      }
+    ],
+    "wzx_damage_complete ": [
+      {
+        "line": 3054,
+        "text": "wzx_damage_complete tick=380 particles=82 peak=81 cosmetic_draws=325 hp_faint_gate=released",
+        "fields": {
+          "tick": "380",
+          "particles": "82",
+          "peak": "81",
+          "cosmetic_draws": "325",
+          "hp_faint_gate": "released"
+        }
+      }
+    ],
+    "wzx_bite_stop ": [
+      {
+        "line": 2995,
+        "text": "wzx_bite_stop tick=165 model_hidden=1 floor_restored=1",
+        "fields": {
+          "tick": "165",
+          "model_hidden": "1",
+          "floor_restored": "1"
+        }
+      }
+    ]
+  },
+  "preview": {
+    "begins": [
+      {
+        "line": 299,
+        "text": "preview_begin build=5b048c8b6299 seed=12345678 enemy_policy=uniform_legal experimental=1",
+        "fields": {
+          "build": "5b048c8b6299",
+          "seed": "12345678",
+          "enemy_policy": "uniform_legal",
+          "experimental": "1"
+        }
+      },
+      {
+        "line": 4655,
+        "text": "preview_begin build=5b048c8b6299 seed=12345678 enemy_policy=uniform_legal experimental=1",
+        "fields": {
+          "build": "5b048c8b6299",
+          "seed": "12345678",
+          "enemy_policy": "uniform_legal",
+          "experimental": "1"
+        }
+      }
+    ],
+    "turns": [
+      {
+        "line": 300,
+        "text": "preview_turn turn=0 seed=2c53ded8 draws=352 outcome=1 save_writes=0 gsvm_resumed=0",
+        "fields": {
+          "turn": "0",
+          "seed": "2c53ded8",
+          "draws": "352",
+          "outcome": "1",
+          "save_writes": "0",
+          "gsvm_resumed": "0"
+        }
+      },
+      {
+        "line": 571,
+        "text": "preview_turn turn=1 seed=7c853675 draws=363 outcome=1 save_writes=0 gsvm_resumed=0",
+        "fields": {
+          "turn": "1",
+          "seed": "7c853675",
+          "draws": "363",
+          "outcome": "1",
+          "save_writes": "0",
+          "gsvm_resumed": "0"
+        }
+      },
+      {
+        "line": 2191,
+        "text": "preview_turn turn=2 seed=1b13b0ac draws=372 outcome=1 save_writes=0 gsvm_resumed=0",
+        "fields": {
+          "turn": "2",
+          "seed": "1b13b0ac",
+          "draws": "372",
+          "outcome": "1",
+          "save_writes": "0",
+          "gsvm_resumed": "0"
+        }
+      },
+      {
+        "line": 2853,
+        "text": "preview_turn turn=3 seed=783b002d draws=387 outcome=1 save_writes=0 gsvm_resumed=0",
+        "fields": {
+          "turn": "3",
+          "seed": "783b002d",
+          "draws": "387",
+          "outcome": "1",
+          "save_writes": "0",
+          "gsvm_resumed": "0"
+        }
+      },
+      {
+        "line": 3762,
+        "text": "preview_turn turn=4 seed=b3b225c0 draws=392 outcome=2 save_writes=0 gsvm_resumed=0",
+        "fields": {
+          "turn": "4",
+          "seed": "b3b225c0",
+          "draws": "392",
+          "outcome": "2",
+          "save_writes": "0",
+          "gsvm_resumed": "0"
+        }
+      },
+      {
+        "line": 4656,
+        "text": "preview_turn turn=0 seed=2c53ded8 draws=352 outcome=1 save_writes=0 gsvm_resumed=0",
+        "fields": {
+          "turn": "0",
+          "seed": "2c53ded8",
+          "draws": "352",
+          "outcome": "1",
+          "save_writes": "0",
+          "gsvm_resumed": "0"
+        }
+      }
+    ],
+    "win_events": [
+      {
+        "line": 3768,
+        "text": "preview_event index=5 hp=83,64,0,0 draws=392 text=Preview result: WIN. No rewards, save, or story flags were written."
+      }
+    ],
+    "exits": [
+      {
+        "line": 4577,
+        "text": "preview_exit app_exit=0 error= save_writes=0 gsvm_resumed=0",
+        "fields": {
+          "app_exit": "0",
+          "save_writes": "0",
+          "gsvm_resumed": "0"
+        }
+      },
+      {
+        "line": 5182,
+        "text": "preview_exit app_exit=0 error= save_writes=0 gsvm_resumed=0",
+        "fields": {
+          "app_exit": "0",
+          "save_writes": "0",
+          "gsvm_resumed": "0"
+        }
+      }
+    ],
+    "guards": [
+      {
+        "line": 4578,
+        "text": "preview_state_guard bytes=122832 unchanged=1 before_sha1=a96b39d89f238d5e0fd27066a1a1c9f9180a34ae after_sha1=a96b39d89f238d5e0fd27066a1a1c9f9180a34ae play_time_advanced=0",
+        "fields": {
+          "bytes": "122832",
+          "unchanged": "1",
+          "before_sha1": "a96b39d89f238d5e0fd27066a1a1c9f9180a34ae",
+          "after_sha1": "a96b39d89f238d5e0fd27066a1a1c9f9180a34ae",
+          "play_time_advanced": "0"
+        }
+      },
+      {
+        "line": 5183,
+        "text": "preview_state_guard bytes=122832 unchanged=1 before_sha1=34d353a5672df1909c7c042ab6fb0e98151695b3 after_sha1=34d353a5672df1909c7c042ab6fb0e98151695b3 play_time_advanced=0",
+        "fields": {
+          "bytes": "122832",
+          "unchanged": "1",
+          "before_sha1": "34d353a5672df1909c7c042ab6fb0e98151695b3",
+          "after_sha1": "34d353a5672df1909c7c042ab6fb0e98151695b3",
+          "play_time_advanced": "0"
+        }
+      }
+    ],
+    "returns": [
+      {
+        "line": 4585,
+        "text": "field_battle_return preview=0 pending=10 vm_preserved=1 models=9",
+        "fields": {
+          "preview": "0",
+          "pending": "10",
+          "vm_preserved": "1",
+          "models": "9"
+        }
+      },
+      {
+        "line": 5190,
+        "text": "field_battle_return preview=0 pending=10 vm_preserved=1 models=9",
+        "fields": {
+          "preview": "0",
+          "pending": "10",
+          "vm_preserved": "1",
+          "models": "9"
+        }
+      }
+    ],
+    "cancel_ui": [
+      {
+        "line": 5060,
+        "text": "preview_ui page=5 actor=0 slot=0 target=2 event=1 input=0400",
+        "fields": {
+          "page": "5",
+          "actor": "0",
+          "slot": "0",
+          "target": "2",
+          "event": "1",
+          "input": "0400"
+        }
+      }
+    ],
+    "field_end": [
+      {
+        "line": 84,
+        "text": "field_end result=2 error=",
+        "fields": {
+          "result": "2"
+        }
+      },
+      {
+        "line": 5203,
+        "text": "field_end result=1 error=",
+        "fields": {
+          "result": "1"
+        }
+      }
+    ],
+    "boot_end": [
+      {
+        "line": 5204,
+        "text": "boot_end result=1 error=",
+        "fields": {
+          "result": "1"
+        }
+      }
+    ]
+  },
+  "save": {
+    "before_bytes": 393280,
+    "before_sha256": "7e1cb3159756293bf938fd922fe45e82448d1b667f6833a48da351af3cbd0f23",
+    "after_bytes": 393280,
+    "after_sha256": "7e1cb3159756293bf938fd922fe45e82448d1b667f6833a48da351af3cbd0f23",
+    "byte_identical": true,
+    "backup_absent": true
+  },
+  "recovery": {
+    "drains": [
+      {
+        "line": 15,
+        "text": "render_recovery scene=title event=drained frames=977 elapsed_us=338 ready=1 exit=0 input=0000 counters=4734,4734 build=5b048c8b6299",
+        "fields": {
+          "scene": "title",
+          "event": "drained",
+          "frames": "977",
+          "elapsed_us": "338",
+          "ready": "1",
+          "exit": "0",
+          "input": "0000",
+          "counters": "4734,4734",
+          "build": "5b048c8b6299"
+        }
+      },
+      {
+        "line": 82,
+        "text": "render_recovery scene=field event=drained frames=64 elapsed_us=26070 ready=1 exit=0 input=0000 counters=5652,5652 build=5b048c8b6299",
+        "fields": {
+          "scene": "field",
+          "event": "drained",
+          "frames": "64",
+          "elapsed_us": "26070",
+          "ready": "1",
+          "exit": "0",
+          "input": "0000",
+          "counters": "5652,5652",
+          "build": "5b048c8b6299"
+        }
+      },
+      {
+        "line": 295,
+        "text": "render_recovery scene=field-to-battle event=drained frames=1214 elapsed_us=26674 ready=1 exit=0 input=0000 counters=13309,13309 build=5b048c8b6299",
+        "fields": {
+          "scene": "field-to-battle",
+          "event": "drained",
+          "frames": "1214",
+          "elapsed_us": "26674",
+          "ready": "1",
+          "exit": "0",
+          "input": "0000",
+          "counters": "13309,13309",
+          "build": "5b048c8b6299"
+        }
+      },
+      {
+        "line": 4573,
+        "text": "render_recovery scene=battle event=drained frames=3704 elapsed_us=455 ready=1 exit=0 input=0000 counters=42838,42838 build=5b048c8b6299",
+        "fields": {
+          "scene": "battle",
+          "event": "drained",
+          "frames": "3704",
+          "elapsed_us": "455",
+          "ready": "1",
+          "exit": "0",
+          "input": "0000",
+          "counters": "42838,42838",
+          "build": "5b048c8b6299"
+        }
+      },
+      {
+        "line": 4579,
+        "text": "render_recovery scene=battle-to-field event=drained frames=0 elapsed_us=164 ready=1 exit=0 input=0000 counters=42842,42842 build=5b048c8b6299",
+        "fields": {
+          "scene": "battle-to-field",
+          "event": "drained",
+          "frames": "0",
+          "elapsed_us": "164",
+          "ready": "1",
+          "exit": "0",
+          "input": "0000",
+          "counters": "42842,42842",
+          "build": "5b048c8b6299"
+        }
+      },
+      {
+        "line": 4651,
+        "text": "render_recovery scene=field-to-battle event=drained frames=1844 elapsed_us=26951 ready=1 exit=0 input=0000 counters=47094,47094 build=5b048c8b6299",
+        "fields": {
+          "scene": "field-to-battle",
+          "event": "drained",
+          "frames": "1844",
+          "elapsed_us": "26951",
+          "ready": "1",
+          "exit": "0",
+          "input": "0000",
+          "counters": "47094,47094",
+          "build": "5b048c8b6299"
+        }
+      },
+      {
+        "line": 5178,
+        "text": "render_recovery scene=battle event=drained frames=454 elapsed_us=519 ready=1 exit=0 input=0000 counters=51139,51139 build=5b048c8b6299",
+        "fields": {
+          "scene": "battle",
+          "event": "drained",
+          "frames": "454",
+          "elapsed_us": "519",
+          "ready": "1",
+          "exit": "0",
+          "input": "0000",
+          "counters": "51139,51139",
+          "build": "5b048c8b6299"
+        }
+      },
+      {
+        "line": 5184,
+        "text": "render_recovery scene=battle-to-field event=drained frames=0 elapsed_us=159 ready=1 exit=0 input=0000 counters=51142,51142 build=5b048c8b6299",
+        "fields": {
+          "scene": "battle-to-field",
+          "event": "drained",
+          "frames": "0",
+          "elapsed_us": "159",
+          "ready": "1",
+          "exit": "0",
+          "input": "0000",
+          "counters": "51142,51142",
+          "build": "5b048c8b6299"
+        }
+      },
+      {
+        "line": 5201,
+        "text": "render_recovery scene=field event=drained frames=1938 elapsed_us=38813 ready=1 exit=1 input=0000 counters=51993,51993 build=5b048c8b6299",
+        "fields": {
+          "scene": "field",
+          "event": "drained",
+          "frames": "1938",
+          "elapsed_us": "38813",
+          "ready": "1",
+          "exit": "1",
+          "input": "0000",
+          "counters": "51993,51993",
+          "build": "5b048c8b6299"
+        }
+      }
+    ],
+    "gpu_release_reports": [
+      {
+        "line": 16,
+        "text": "render_gpu submitted=977 fill=977 command=977 transfer=977 words=5164 draws=42 vertices=17247 models=0 textures=0 bytes=0",
+        "fields": {
+          "submitted": "977",
+          "fill": "977",
+          "command": "977",
+          "transfer": "977",
+          "words": "5164",
+          "draws": "42",
+          "vertices": "17247",
+          "models": "0",
+          "textures": "0",
+          "bytes": "0"
+        }
+      },
+      {
+        "line": 83,
+        "text": "render_gpu submitted=1041 fill=1104 command=1041 transfer=1041 words=16756 draws=133 vertices=40287 models=0 textures=0 bytes=0",
+        "fields": {
+          "submitted": "1041",
+          "fill": "1104",
+          "command": "1041",
+          "transfer": "1041",
+          "words": "16756",
+          "draws": "133",
+          "vertices": "40287",
+          "models": "0",
+          "textures": "0",
+          "bytes": "0"
+        }
+      },
+      {
+        "line": 296,
+        "text": "render_gpu submitted=2255 fill=2318 command=2255 transfer=2255 words=19644 draws=160 vertices=64230 models=0 textures=0 bytes=0",
+        "fields": {
+          "submitted": "2255",
+          "fill": "2318",
+          "command": "2255",
+          "transfer": "2255",
+          "words": "19644",
+          "draws": "160",
+          "vertices": "64230",
+          "models": "0",
+          "textures": "0",
+          "bytes": "0"
+        }
+      },
+      {
+        "line": 4574,
+        "text": "render_gpu submitted=5959 fill=6053 command=5959 transfer=5959 words=15480 draws=125 vertices=55737 models=0 textures=0 bytes=0",
+        "fields": {
+          "submitted": "5959",
+          "fill": "6053",
+          "command": "5959",
+          "transfer": "5959",
+          "words": "15480",
+          "draws": "125",
+          "vertices": "55737",
+          "models": "0",
+          "textures": "0",
+          "bytes": "0"
+        }
+      },
+      {
+        "line": 4580,
+        "text": "render_gpu submitted=5959 fill=6053 command=5959 transfer=5959 words=15480 draws=125 vertices=55737 models=0 textures=0 bytes=0",
+        "fields": {
+          "submitted": "5959",
+          "fill": "6053",
+          "command": "5959",
+          "transfer": "5959",
+          "words": "15480",
+          "draws": "125",
+          "vertices": "55737",
+          "models": "0",
+          "textures": "0",
+          "bytes": "0"
+        }
+      },
+      {
+        "line": 4652,
+        "text": "render_gpu submitted=6589 fill=6683 command=6589 transfer=6589 words=19644 draws=160 vertices=64230 models=0 textures=0 bytes=0",
+        "fields": {
+          "submitted": "6589",
+          "fill": "6683",
+          "command": "6589",
+          "transfer": "6589",
+          "words": "19644",
+          "draws": "160",
+          "vertices": "64230",
+          "models": "0",
+          "textures": "0",
+          "bytes": "0"
+        }
+      },
+      {
+        "line": 5179,
+        "text": "render_gpu submitted=7043 fill=7137 command=7043 transfer=7043 words=18920 draws=153 vertices=60555 models=0 textures=0 bytes=0",
+        "fields": {
+          "submitted": "7043",
+          "fill": "7137",
+          "command": "7043",
+          "transfer": "7043",
+          "words": "18920",
+          "draws": "153",
+          "vertices": "60555",
+          "models": "0",
+          "textures": "0",
+          "bytes": "0"
+        }
+      },
+      {
+        "line": 5185,
+        "text": "render_gpu submitted=7043 fill=7137 command=7043 transfer=7043 words=18920 draws=153 vertices=60555 models=0 textures=0 bytes=0",
+        "fields": {
+          "submitted": "7043",
+          "fill": "7137",
+          "command": "7043",
+          "transfer": "7043",
+          "words": "18920",
+          "draws": "153",
+          "vertices": "60555",
+          "models": "0",
+          "textures": "0",
+          "bytes": "0"
+        }
+      },
+      {
+        "line": 5202,
+        "text": "render_gpu submitted=7137 fill=7231 command=7137 transfer=7137 words=19644 draws=160 vertices=64230 models=0 textures=0 bytes=0",
+        "fields": {
+          "submitted": "7137",
+          "fill": "7231",
+          "command": "7137",
+          "transfer": "7137",
+          "words": "19644",
+          "draws": "160",
+          "vertices": "64230",
+          "models": "0",
+          "textures": "0",
+          "bytes": "0"
+        }
+      }
+    ],
+    "independently_viewed_frames": [
+      "../hardware-5b048c8-live/samples/frame-009200.png",
+      "../hardware-5b048c8-live/samples/frame-010010.png",
+      "../hardware-5b048c8-live/samples/frame-010180.png",
+      "../hardware-5b048c8-live/samples/frame-010680.png"
+    ],
+    "observed": "9200 field-to-battle and10010 field overlays display transient GPU busy/wait0.0seconds, subsequent trace drainedready1 andfreshHBL10180/FTPD10680 prove reached recovery route. Not a zero-busy/hang-impossible claim.",
+    "same_boot_qualification": "Single boot_build in trace; closed continuous NTR capture reaches HBL/FTPD after normal boot_end, with fresh final receiver records. No reset is evident in this bounded route; no independent uptime counter is asserted."
+  },
+  "performance": {
+    "qualification": "515 periodic CPU/previous-GPU telemetry samples across2previewentries, not an FPS benchmark. GPUprevious is not additive to CPUframe. NTR10fps is capture sampling.",
+    "render": {
+      "samples": 515,
+      "draw_cpu_us": {
+        "min": 61350.0,
+        "median": 79714.0,
+        "max": 137903.0
+      },
+      "gpu_previous_ms": {
+        "min": 6.723,
+        "median": 12.176,
+        "max": 48.53
+      },
+      "draws": {
+        "min": 125.0,
+        "median": 153.0,
+        "max": 1287.0
+      },
+      "vertices": {
+        "min": 55737.0,
+        "median": 60567.0,
+        "max": 222636.0
+      },
+      "gpu_buffer_bytes": {
+        "min": 27335672.0,
+        "median": 27335672.0,
+        "max": 27704312.0
+      },
+      "command_words": {
+        "min": 15480.0,
+        "median": 18920.0,
+        "max": 148308.0
+      },
+      "particle_command_words": {
+        "min": 0.0,
+        "median": 0.0,
+        "max": 129226.0
+      },
+      "command_capacity_words": {
+        "min": 262144.0,
+        "median": 262144.0,
+        "max": 262144.0
+      }
+    },
+    "frame": {
+      "samples": 515,
+      "sample_clock_cpu_us": {
+        "min": 47534.0,
+        "median": 49392.0,
+        "max": 140823.0
+      },
+      "sample_clock_peak_us": {
+        "min": 48461.0,
+        "median": 50569.0,
+        "max": 140823.0
+      },
+      "full_cpu_frame_us": {
+        "min": 112909.0,
+        "median": 128685.0,
+        "max": 277063.0
+      },
+      "full_cpu_peak_us": {
+        "min": 115956.0,
+        "median": 130733.0,
+        "max": 280488.0
+      },
+      "particles": {
+        "min": 0.0,
+        "median": 0.0,
+        "max": 1133.0
+      },
+      "particle_vertices": {
+        "min": 0.0,
+        "median": 0.0,
+        "max": 6798.0
+      },
+      "particle_live_peak": {
+        "min": 0.0,
+        "median": 652.0,
+        "max": 1369.0
+      }
+    },
+    "battle_linear_free": {
+      "samples": 515,
+      "linear_free_bytes": {
+        "min": 2697344.0,
+        "median": 3065984.0,
+        "max": 3065984.0
+      }
+    },
+    "released": [
+      {
+        "line": 4575,
+        "text": "platform_memory stage=battle_released heap_bytes=95592448 linear_heap_bytes=33554432 linear_free_bytes=30893056",
+        "fields": {
+          "stage": "battle_released",
+          "heap_bytes": "95592448",
+          "linear_heap_bytes": "33554432",
+          "linear_free_bytes": "30893056"
+        }
+      },
+      {
+        "line": 5180,
+        "text": "platform_memory stage=battle_released heap_bytes=95592448 linear_heap_bytes=33554432 linear_free_bytes=30893056",
+        "fields": {
+          "stage": "battle_released",
+          "heap_bytes": "95592448",
+          "linear_heap_bytes": "33554432",
+          "linear_free_bytes": "30893056"
+        }
+      }
+    ],
+    "restored": [
+      {
+        "line": 4583,
+        "text": "platform_memory stage=field_battle_restored heap_bytes=95592448 linear_heap_bytes=33554432 linear_free_bytes=15233408",
+        "fields": {
+          "stage": "field_battle_restored",
+          "heap_bytes": "95592448",
+          "linear_heap_bytes": "33554432",
+          "linear_free_bytes": "15233408"
+        }
+      },
+      {
+        "line": 5188,
+        "text": "platform_memory stage=field_battle_restored heap_bytes=95592448 linear_heap_bytes=33554432 linear_free_bytes=15233408",
+        "fields": {
+          "stage": "field_battle_restored",
+          "heap_bytes": "95592448",
+          "linear_heap_bytes": "33554432",
+          "linear_free_bytes": "15233408"
+        }
+      }
+    ]
+  },
+  "errors": [],
+  "limits": {
+    "field_audio_unrendered": [
+      {
+        "line": 24,
+        "text": "story_presentation native=68 status=unrendered reason=field_audio_backend_pending",
+        "fields": {
+          "native": "68",
+          "status": "unrendered",
+          "reason": "field_audio_backend_pending"
+        }
+      },
+      {
+        "line": 26,
+        "text": "story_presentation native=6d status=unrendered reason=field_audio_backend_pending",
+        "fields": {
+          "native": "6d",
+          "status": "unrendered",
+          "reason": "field_audio_backend_pending"
+        }
+      },
+      {
+        "line": 28,
+        "text": "story_presentation native=69 status=unrendered reason=field_audio_backend_pending",
+        "fields": {
+          "native": "69",
+          "status": "unrendered",
+          "reason": "field_audio_backend_pending"
+        }
+      },
+      {
+        "line": 79,
+        "text": "story_presentation native=99 status=unrendered reason=field_audio_backend_pending",
+        "fields": {
+          "native": "99",
+          "status": "unrendered",
+          "reason": "field_audio_backend_pending"
+        }
+      },
+      {
+        "line": 91,
+        "text": "story_presentation native=69 status=unrendered reason=field_audio_backend_pending",
+        "fields": {
+          "native": "69",
+          "status": "unrendered",
+          "reason": "field_audio_backend_pending"
+        }
+      },
+      {
+        "line": 103,
+        "text": "story_presentation native=68 status=unrendered reason=field_audio_backend_pending",
+        "fields": {
+          "native": "68",
+          "status": "unrendered",
+          "reason": "field_audio_backend_pending"
+        }
+      },
+      {
+        "line": 105,
+        "text": "story_presentation native=6d status=unrendered reason=field_audio_backend_pending",
+        "fields": {
+          "native": "6d",
+          "status": "unrendered",
+          "reason": "field_audio_backend_pending"
+        }
+      }
+    ],
+    "sendout_unsupported": [
+      {
+        "line": 313,
+        "text": "battle_source_sendout actor=0 pose=source_idle appearance_effect=unsupported cameras=unsupported audio=unsupported",
+        "fields": {
+          "actor": "0",
+          "pose": "source_idle",
+          "appearance_effect": "unsupported",
+          "cameras": "unsupported",
+          "audio": "unsupported"
+        }
+      },
+      {
+        "line": 314,
+        "text": "battle_source_sendout actor=1 pose=source_idle appearance_effect=unsupported cameras=unsupported audio=unsupported",
+        "fields": {
+          "actor": "1",
+          "pose": "source_idle",
+          "appearance_effect": "unsupported",
+          "cameras": "unsupported",
+          "audio": "unsupported"
+        }
+      },
+      {
+        "line": 315,
+        "text": "battle_source_sendout actor=2 pose=source_idle appearance_effect=unsupported cameras=unsupported audio=unsupported",
+        "fields": {
+          "actor": "2",
+          "pose": "source_idle",
+          "appearance_effect": "unsupported",
+          "cameras": "unsupported",
+          "audio": "unsupported"
+        }
+      },
+      {
+        "line": 316,
+        "text": "battle_source_sendout actor=3 pose=source_idle appearance_effect=unsupported cameras=unsupported audio=unsupported",
+        "fields": {
+          "actor": "3",
+          "pose": "source_idle",
+          "appearance_effect": "unsupported",
+          "cameras": "unsupported",
+          "audio": "unsupported"
+        }
+      },
+      {
+        "line": 4669,
+        "text": "battle_source_sendout actor=0 pose=source_idle appearance_effect=unsupported cameras=unsupported audio=unsupported",
+        "fields": {
+          "actor": "0",
+          "pose": "source_idle",
+          "appearance_effect": "unsupported",
+          "cameras": "unsupported",
+          "audio": "unsupported"
+        }
+      },
+      {
+        "line": 4670,
+        "text": "battle_source_sendout actor=1 pose=source_idle appearance_effect=unsupported cameras=unsupported audio=unsupported",
+        "fields": {
+          "actor": "1",
+          "pose": "source_idle",
+          "appearance_effect": "unsupported",
+          "cameras": "unsupported",
+          "audio": "unsupported"
+        }
+      },
+      {
+        "line": 4671,
+        "text": "battle_source_sendout actor=2 pose=source_idle appearance_effect=unsupported cameras=unsupported audio=unsupported",
+        "fields": {
+          "actor": "2",
+          "pose": "source_idle",
+          "appearance_effect": "unsupported",
+          "cameras": "unsupported",
+          "audio": "unsupported"
+        }
+      },
+      {
+        "line": 4672,
+        "text": "battle_source_sendout actor=3 pose=source_idle appearance_effect=unsupported cameras=unsupported audio=unsupported",
+        "fields": {
+          "actor": "3",
+          "pose": "source_idle",
+          "appearance_effect": "unsupported",
+          "cameras": "unsupported",
+          "audio": "unsupported"
+        }
+      }
+    ],
+    "audio": "GREENcues4/5 naturalfinished andcleanupfinished recorded; Growlcue6STOPPEDnotnaturalfinish. SilentNTRvideo givesnoaudibleproof; no allcuesfullplay/originalDSPreleasewetmixparity claim.",
+    "owner_continuation": "Growl completionflag asserts released/half-ratecontinuation; trace has no peractorclipclock for directhardwareproof. GREENminimum/color/cameracompletionflags do not prove every intermediate colorframe or idlephase; separate actual-resource host regression checks exact clocks.",
+    "scope": "One committed targetorder0then1 in this run, not universal originaltargetordering/allvariants/allcameraRNGparity. No full retailbattle/storycompletion claim."
+  }
+}
