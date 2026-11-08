@@ -43,6 +43,12 @@ class ScriptLengths(unittest.TestCase):
         self.assertEqual(self.length(0x28), ("goto", 1))       # unconditional jump
         self.assertEqual(self.length(0xF9)[0], 20)             # status get16
 
+    def test_native_name_table_in_sync(self):
+        text = (ROOT / "src/battle_script_names.inc").read_text()
+        native = __import__("re").findall(r'"([^"]+)"', text)
+        expected = [n if not n.startswith("0x") else "(null)" for n in self.names]
+        self.assertEqual(native, expected)
+
     def test_canonical_prefers_exact_units(self):
         srcs = tool.canonical("WS_TYPE_CHECK", self.bodies)
         self.assertTrue(srcs and all("exact" in name for name, _ in srcs))

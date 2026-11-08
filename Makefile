@@ -465,4 +465,15 @@ all: build/test_battle_entry_preview
 battle-entry-preview-check: build/test_battle_entry_preview
 	./build/test_battle_entry_preview
 test: battle-entry-preview-check
+
+# Original move-script interpreter. The original-pack run needs C3_SCRIPT_PACK.
+BATTLE_SCRIPT_SOURCES = src/battle_script.c build/save_codec.c
+build/test_battle_script: tests/test_battle_script.c $(BATTLE_SCRIPT_SOURCES) src/battle_script_names.inc include/colosseum3ds/battle_script.h | build
+	$(CC) $(CPPFLAGS) -Isrc -Ibuild $(CFLAGS) tests/test_battle_script.c $(BATTLE_SCRIPT_SOURCES) $(LDFLAGS) -o $@
+
+all: build/test_battle_script
+.PHONY: battle-script-check
+battle-script-check: build/test_battle_script
+	./build/test_battle_script
+test: battle-script-check
 test: battle-runtime-trainer-check
