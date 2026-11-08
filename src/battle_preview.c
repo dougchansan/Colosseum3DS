@@ -127,16 +127,56 @@ static int state_valid(const C3BattlePreview *b,const C3BattlePreviewTables *t)
     }
     return b->reflect[0]<=5&&b->reflect[1]<=5;
 }
-int c3_battle_preview_begin(C3BattlePreview *out,const C3BattleRequest *r,
-    const C3BattleInitTables *init,const C3BattlePreviewTables *t,uint32_t seed,char *e)
+/* One supported preview mon from a 312-byte original Pokemon record (player
+ * party bytes or the PokemonBios copy inside an entry-built FightPokemon). */
+static int mon_from_record(C3BattlePreviewMon *m,const uint8_t *p,unsigned index,
+    const C3BattlePreviewTables *t,char *e)
 {
-    uint8_t digest[20];uint16_t low,high;C3BattleRng rng;
-    if(!out||!r||!init||!tables_valid(t)||overlap(out,sizeof *out,r,sizeof *r)||
-       overlap(out,sizeof *out,init,sizeof *init)||overlap(out,sizeof *out,t,sizeof *t))
-        return fail(e,"Invalid combat-preview arguments.");
+    static const uint8_t abilities[3]={28,28,53},types[3]={17,14,0};
+    unsigned kind=index<2?index:2;
+    if(be16(p)!=species_ids[kind]||be16(p+0x88)||p[0xcc]||p[0xcd]||be16(p+0xd8))
+        return fail(e,index<2?"Preview admits only ordinary item-free Umbreon and Espeon.":
+                              "Preview admits only ordinary item-free Zigzagoon opponents.");
+    for(unsigned j=0x64;j<0x78;++j)if(p[j])return fail(e,"Persistent status import is outside the preview profile.");
+    memset(m,0,sizeof *m);
+    m->species=be16(p);m->level=p[0x60];m->hp=be16(p+0x8a);m->maximum_hp=be16(p+0x8c);
+    m->friendship=be16(p+0xb0);m->ability=abilities[kind];m->types[0]=m->types[1]=types[kind];
+    static const unsigned order[]={C3_STAT_HP,C3_STAT_ATTACK,C3_STAT_DEFENSE,C3_STAT_SP_ATTACK,C3_STAT_SP_DEFENSE,C3_STAT_SPEED};
+    for(unsigned j=0;j<6;++j)m->stats[order[j]]=be16(p+0x8c+2*j);
+    for(unsigned j=0;j<4;++j){uint16_t id=be16(p+0x78+4*j);C3BattlePreviewMove data;
+        if(!id)continue;
+        if(id==165||!c3_battle_preview_move(t,id,&data))
+            return fail(e,index<2?"Player move is outside the preview profile.":"Opponent move is outside the preview profile.");
+        m->moves[j]=(C3BattleInitialMove){id,p[0x7a+4*j],p[0x7b+4*j],data.pp};
+    }
+    return 1;
+}
+static int admit(const C3BattlePreviewTables *t,const C3BattleRequest *r,char *e)
+{
+    uint8_t digest[20];
     c3_save_codec_sha1(digest,(const uint8_t *)&r->data,sizeof r->data);
     if(memcmp(digest,t->bytes+76,20)||r->data.kind[1]||r->player_party_count!=2)
         return fail(e,"Combat preview requires the ordinary two-starter encounter 10.");
+    for(unsigned i=2;i<6;++i)if(be16(r->player_party[i]))return fail(e,"Extra party slots need switching support.");
+    return 1;
+}
+static int finish_begin(C3BattlePreview *out,C3BattlePreview *b,const C3BattlePreviewTables *t,char *e)
+{
+    if(!b->mons[0].hp&&!b->mons[1].hp)return fail(e,"Preview needs a non-fainted starter.");
+    if(!state_valid(b,t))return fail(e,"Unsupported initial combat-preview state.");
+    b->event_actor=b->event_target=C3_PREVIEW_NO_SLOT;
+    typed_event(b,C3_PREVIEW_EVENT_INTRO,"Nonpersistent battle preview. No retail AI or story result.");
+    typed_event(b,C3_PREVIEW_EVENT_SEND_OUT,"WILLIE sends out two ZIGZAGOON!");
+    *out=*b;if(e)e[0]=0;return 1;
+}
+int c3_battle_preview_begin(C3BattlePreview *out,const C3BattleRequest *r,
+    const C3BattleInitTables *init,const C3BattlePreviewTables *t,uint32_t seed,char *e)
+{
+    uint16_t low,high;C3BattleRng rng;
+    if(!out||!r||!init||!tables_valid(t)||overlap(out,sizeof *out,r,sizeof *r)||
+       overlap(out,sizeof *out,init,sizeof *init)||overlap(out,sizeof *out,t,sizeof *t))
+        return fail(e,"Invalid combat-preview arguments.");
+    if(!admit(t,r,e))return 0;
     C3BattlePreview *b=calloc(1,sizeof *b);C3BattleInitialState *initial=calloc(1,sizeof *initial);
     if(!b||!initial){free(b);free(initial);return fail(e,"Combat-preview allocation failed.");}
     int ok=0;b->magic=MAGIC;b->seed=seed;b->original_request=*r;b->outcome=C3_PREVIEW_RUNNING;
@@ -145,33 +185,37 @@ int c3_battle_preview_begin(C3BattlePreview *out,const C3BattleRequest *r,
     b->opponent_trainer_id=(uint32_t)low|((uint32_t)high<<16);
     if(!c3_battle_init_prepare(initial,r,init,b->opponent_trainer_id,&rng,e))goto done;
     b->rng=rng;
-    for(unsigned i=0;i<2;++i){const uint8_t *p=r->player_party[i];C3BattlePreviewMon *m=&b->mons[i];
-        if(be16(p)!=species_ids[i]||be16(p+0x88)||p[0xcc]||p[0xcd]||be16(p+0xd8)){
-            fail(e,"Preview admits only ordinary item-free Umbreon and Espeon.");goto done;}
-        for(unsigned j=0x64;j<0x78;++j)if(p[j]){fail(e,"Persistent status import is outside the preview profile.");goto done;}
-        m->species=be16(p);m->level=p[0x60];m->hp=be16(p+0x8a);m->maximum_hp=be16(p+0x8c);
-        m->friendship=be16(p+0xb0);m->ability=28;m->types[0]=m->types[1]=i?14:17;
-        static const unsigned order[]={C3_STAT_HP,C3_STAT_ATTACK,C3_STAT_DEFENSE,C3_STAT_SP_ATTACK,C3_STAT_SP_DEFENSE,C3_STAT_SPEED};
-        for(unsigned j=0;j<6;++j)m->stats[order[j]]=be16(p+0x8c+2*j);
-        for(unsigned j=0;j<4;++j){uint16_t id=be16(p+0x78+4*j);C3BattlePreviewMove data;
-            if(!id)continue;
-            if(id==165||!c3_battle_preview_move(t,id,&data)){fail(e,"Player move is outside the preview profile.");goto done;}
-            m->moves[j]=(C3BattleInitialMove){id,p[0x7a+4*j],p[0x7b+4*j],data.pp};
-        }
-    }
-    if(!b->mons[0].hp&&!b->mons[1].hp){fail(e,"Preview needs a non-fainted starter.");goto done;}
-    for(unsigned i=2;i<6;++i)if(be16(r->player_party[i])){fail(e,"Extra party slots need switching support.");goto done;}
+    for(unsigned i=0;i<2;++i)if(!mon_from_record(&b->mons[i],r->player_party[i],i,t,e))goto done;
     for(unsigned i=0;i<2;++i){const C3BattleInitialOpponent *p=&initial->opponents[i];C3BattlePreviewMon *m=&b->mons[i+2];
         m->species=p->pokemon.species_id;m->level=p->pokemon.level;m->hp=p->pokemon.current_hp;
         m->maximum_hp=p->pokemon.stats[C3_STAT_HP];m->friendship=p->friendship;m->ability=p->ability_id;
+        m->types[0]=m->types[1]=0;
         memcpy(m->stats,p->pokemon.stats,sizeof m->stats);memcpy(m->moves,p->moves,sizeof m->moves);
     }
-    if(!state_valid(b,t)){fail(e,"Unsupported initial combat-preview state.");goto done;}
-    b->event_actor=b->event_target=C3_PREVIEW_NO_SLOT;
-    typed_event(b,C3_PREVIEW_EVENT_INTRO,"Nonpersistent battle preview. No retail AI or story result.");
-    typed_event(b,C3_PREVIEW_EVENT_SEND_OUT,"WILLIE sends out two ZIGZAGOON!");
-    *out=*b;if(e)e[0]=0;ok=1;
+    ok=finish_begin(out,b,t,e);
 done:free(initial);free(b);return ok;
+}
+int c3_battle_preview_begin_records(C3BattlePreview *out,const C3BattleRequest *r,
+    const uint8_t *const records[4],const C3BattleRng *rng,
+    const C3BattlePreviewTables *t,char *e)
+{
+    if(!out||!r||!records||!rng||!tables_valid(t)||overlap(out,sizeof *out,r,sizeof *r)||
+       overlap(out,sizeof *out,t,sizeof *t)||overlap(out,sizeof *out,rng,sizeof *rng))
+        return fail(e,"Invalid combat-preview arguments.");
+    for(unsigned i=0;i<4;++i)if(!records[i]||overlap(out,sizeof *out,records[i],C3_BATTLE_POKEMON_SIZE))
+        return fail(e,"Invalid combat-preview arguments.");
+    if(!admit(t,r,e))return 0;
+    /* The player side must be the pending request's own party, byte for byte:
+     * the entry builds it from the same saved hero. */
+    for(unsigned i=0;i<2;++i)if(memcmp(records[i],r->player_party[i],C3_BATTLE_POKEMON_SIZE))
+        return fail(e,"Entry-built player party differs from the pending request.");
+    C3BattlePreview *b=calloc(1,sizeof *b);
+    if(!b)return fail(e,"Combat-preview allocation failed.");
+    int ok=0;b->magic=MAGIC;b->seed=rng->seed;b->original_request=*r;b->outcome=C3_PREVIEW_RUNNING;
+    b->rng=*rng;b->opponent_trainer_id=0; /* seed = RNG state at the handoff; trainer ID not modelled */
+    for(unsigned i=0;i<4;++i)if(!mon_from_record(&b->mons[i],records[i],i,t,e))goto done;
+    ok=finish_begin(out,b,t,e);
+done:free(b);return ok;
 }
 uint8_t c3_battle_preview_legal_moves(const C3BattlePreview *b,const C3BattlePreviewTables *t,unsigned a)
 {

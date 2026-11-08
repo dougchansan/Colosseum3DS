@@ -81,6 +81,17 @@ int c3_battle_preview_begin(C3BattlePreview *out, const C3BattleRequest *request
                             const C3BattleInitTables *init,
                             const C3BattlePreviewTables *tables,
                             uint32_t diagnostic_seed, char *error);
+/* Same preview, but its four mons come from original records instead of the
+ * roster initializer: records[0..1] are the player's active Pokemon and
+ * records[2..3] the opponent's, each 312 bytes (the PokemonBios copy inside an
+ * entry-built FightPokemon). The player records must equal the request's
+ * party bytes. Turns continue from *rng (the entry session's RNG after
+ * construction); out->seed records that RNG state at the handoff, not an
+ * initial seed. opponent_trainer_id is left 0 (not modelled here). */
+int c3_battle_preview_begin_records(C3BattlePreview *out, const C3BattleRequest *request,
+                                    const uint8_t *const records[4],
+                                    const C3BattleRng *rng,
+                                    const C3BattlePreviewTables *tables, char *error);
 /* Opponent-only targets for attacks; Helping Hand automatically uses the
  * ally. slot=4 is legal only when no usable move remains (Struggle).
  * No items, switching, capture, Call, rewards, or save writes are exposed.
