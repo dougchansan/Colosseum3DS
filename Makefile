@@ -336,8 +336,11 @@ all: build/test_battle_rules
 .PHONY: battle-rules-check battle-rules-original-check
 battle-rules-check: build/test_battle_rules
 	./build/test_battle_rules
+# ctypes can load an ASan-instrumented library only when the sanitizer runtime
+# is first in the process; leak reports would otherwise cover Python itself.
+SANITIZER_PYTHON_ENV = $(if $(findstring -fsanitize=address,$(CFLAGS) $(LDFLAGS)),LD_PRELOAD="$$($(CC) -print-file-name=libasan.so)" ASAN_OPTIONS=detect_leaks=0)
 battle-rules-original-check: build/libbattle_rules.so docs/battle-rules-original-vectors.json
-	python3 tools/qualification/check_battle_rules_oracle.py --library build/libbattle_rules.so
+	$(SANITIZER_PYTHON_ENV) python3 tools/qualification/check_battle_rules_oracle.py --library build/libbattle_rules.so
 test: battle-rules-check battle-rules-original-check
 
 BATTLE_POKEMON_UPSTREAM = $(addprefix vendor/colosseum/,$(shell python3 -c "import json; print(' '.join(f['path'] for f in json.load(open('config/battle-pokemon-source-files.json'))['files']))"))
