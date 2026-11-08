@@ -16,6 +16,85 @@ uint32_t c3_battle_state_fight_pokemon(const C3BattleState *s,unsigned side,unsi
 uint32_t c3_battle_state_fight_out(const C3BattleState *s,unsigned side,unsigned slot)
 {return s&&side<2&&slot<2?s->trainer[side]+C3_RUNTIME_FIGHT_OUT_OFFSET+slot*C3_FIGHT_OUT_POKEMON_BYTES:0;}
 
+/* ---- msgctrlSetValue (msgctrl_exact_80132A38.c) -------------------------- */
+
+void c3_battle_msgctrl_set(C3BattleState *s,uint32_t id,uint32_t value)
+{
+    static const uint8_t ids[]={0x2D,0x2E,0x2F,0x30,0x31,0x32,0x33,0x34,0x35,0x36,0x37,0x51,0x39,0x4D,0x57,
+        0x4E,0x4B,0x4C,0x50,0x55,0x56,0x58,0x59,0x5D,0x0D,0x0E,0x41,0x0F,0x10,0x11,0x12,0x13,0x14,0x15,0x16,
+        0x17,0x18,0x19,0x1A,0x1B,0x1C,0x1D,0x1E,0x1F,0x20,0x21,0x22,0x23,0x24,0x25,0x26,0x27,0x28,0x29,0x2A,
+        0x42,0x43,0x44};
+    static const uint8_t half[]={0x2D,0x2E,0x39,0x4E,0x58,0x59,0x5D};
+    if(!s||id>=C3_MSGCTRL_IDS)return;
+    int known=0;
+    for(unsigned i=0;i<sizeof ids;++i)known|=ids[i]==id;
+    if(!known)return;
+    for(unsigned i=0;i<sizeof half;++i)if(half[i]==id)value&=0xFFFFu;
+    s->msgctrl[id]=value;
+}
+
+/* ---- fightFloorInit / fightSideInitAry ----------------------------------- */
+
+/* fn_8011B950: reset `count` 16-byte condition slots, preserving the two
+ * padding bytes (+7, +0xE..0xF stay as they were). */
+static void condition_init(uint8_t *p,unsigned count)
+{
+    for(unsigned i=0;i<count;++i,p+=16){memset(p,0,7);memset(p+8,0,6);}
+}
+static void floor_field(C3BattleState *s,uint32_t field,uint32_t value)
+{
+    (void)c3_battle_floor_status_set(&s->arena,s->floor,s->floor,field,0,value);
+}
+/* fightFloorSetStatus with value 0 for the target fields whose setter also
+ * drives message variables: the zero branch clears them, then stores 0. */
+static void floor_target_zero(C3BattleState *s,uint32_t field)
+{
+    static const uint8_t clear36[]={0x0F,0x1A,0x1F,0x21,0x20},clear42[]={0x10,0x1B,0x42,0x44,0x43},
+        clear47[]={0x12,0x1D},clear4b[]={0x1E,0x1C};
+    const uint8_t *ids=NULL;unsigned n=0;
+    if(field==0x36){ids=clear36;n=sizeof clear36;}
+    else if(field==0x42){ids=clear42;n=sizeof clear42;}
+    else if(field==0x47){ids=clear47;n=sizeof clear47;}
+    else if(field==0x4B){ids=clear4b;n=sizeof clear4b;}
+    for(unsigned i=0;i<n;++i)c3_battle_msgctrl_set(s,ids[i],0);
+    /* 0x49 with 0: no item lookup. Every target then stores 0 at its
+     * FightFloor offset (generated floor table: 0x36 +0xA474 ... 0x4F +0xA4A4). */
+    static const struct{uint8_t field;uint16_t offset;}store[13]={
+        {0x36,0xA474},{0x42,0xA478},{0x44,0xA47C},{0x45,0xA480},{0x46,0xA484},{0x47,0xA488},{0x48,0xA48C},
+        {0x49,0xA490},{0x4B,0xA494},{0x4C,0xA498},{0x4D,0xA49C},{0x4E,0xA4A0},{0x4F,0xA4A4}};
+    for(unsigned i=0;i<13;++i)if(store[i].field==field)memset(s->memory+store[i].offset,0,4);
+}
+
+int c3_battle_floor_init(C3BattleState *s,uint16_t encounter)
+{
+    if(!s)return 0;
+    uint8_t *f=s->memory;
+    condition_init(f+0x00,1);                                   /* field 9: floor condition */
+    floor_field(s,0x0C,0);floor_field(s,0x0D,0);
+    for(unsigned side=0;side<2;++side){                         /* fightSideInitAry(field 0x35, 2) */
+        uint8_t *sd=f+C3_FIGHT_SIDE_OFFSET+side*C3_FIGHT_SIDE_BYTES;
+        sd[0]=sd[1]=0;                                          /* side data ID */
+        condition_init(sd+4,6);
+        for(unsigned t=0;t<2;++t)                               /* fightTrainerInit(trainer, 2) */
+            if(!c3_battle_runtime_trainer_init(sd+C3_FIGHT_SIDE_TRAINER_OFFSET+t*C3_BATTLE_RUNTIME_TRAINER_BYTES))return 0;
+        sd[0x522C]=0;                                           /* spikes check flag */
+    }
+    static const uint8_t targets[13]={0x36,0x42,0x44,0x45,0x46,0x47,0x48,0x49,0x4B,0x4C,0x4D,0x4E,0x4F}; /* lbl_80279C28 */
+    for(unsigned i=0;i<13;++i)floor_target_zero(s,targets[i]);
+    for(uint32_t field=0x50;field<=0x58;++field){
+        if(field==0x56){                                        /* item 0's name, then the item ID */
+            c3_battle_msgctrl_set(s,0x29,C3_MSGREF_ITEM_NAME(0));f[0xA4BC]=f[0xA4BD]=0;
+        }else if(field==0x57){                                  /* ability 0's name, then the ID */
+            c3_battle_msgctrl_set(s,0x1C,C3_MSGREF_ABILITY_NAME(0));f[0xA4BE]=f[0xA4BF]=0;
+        }else floor_field(s,field,0);
+    }
+    memset(f+0xA4C4,0,8*4);                                     /* field 0x5A: active array */
+    floor_field(s,0x5B,0);
+    floor_field(s,0x0D,encounter);
+    floor_field(s,0x0C,1);
+    return 1;
+}
+
 int c3_battle_state_from_entry(C3BattleState *s,const C3BattleEntrySession *e,const C3BattleEntryPack *p,char *err)
 {
     if(!s||!e||!p)return fail(err,"Missing battle state inputs.");
@@ -23,14 +102,16 @@ int c3_battle_state_from_entry(C3BattleState *s,const C3BattleEntrySession *e,co
         return fail(err,"Trainer entry did not finish.");
     memset(s,0,sizeof *s);
     s->arena.bytes=s->memory;s->arena.size=sizeof s->memory;
+    s->floor=C3_ARENA_BASE;
+    if(!c3_battle_floor_init(s,e->config.encounter_id))return fail(err,"FightFloor initialization failed.");
     for(unsigned side=0;side<2;++side){
-        s->trainer[side]=C3_ARENA_BASE+side*C3_BATTLE_STATE_TRAINER_STRIDE;
-        memcpy(s->memory+side*C3_BATTLE_STATE_TRAINER_STRIDE,e->runtime[side],C3_BATTLE_RUNTIME_TRAINER_BYTES);
+        uint32_t off=C3_FIGHT_SIDE_OFFSET+side*C3_FIGHT_SIDE_BYTES+C3_FIGHT_SIDE_TRAINER_OFFSET;
+        s->trainer[side]=C3_ARENA_BASE+off;
+        memcpy(s->memory+off,e->runtime[side],C3_BATTLE_RUNTIME_TRAINER_BYTES);
     }
-    s->floor=C3_ARENA_BASE+C3_BATTLE_STATE_FLOOR_OFFSET;
     /* Relocate FightPokemon source links (native party identity -> address). */
     for(unsigned side=0;side<2;++side)for(unsigned j=0;j<6;++j){
-        uint8_t *fp=s->memory+side*C3_BATTLE_STATE_TRAINER_STRIDE+0xB1Cu+j*0x154u;
+        uint8_t *fp=c3_battle_arena_bytes(&s->arena,c3_battle_state_fight_pokemon(s,side,j),0x154);
         uint32_t link=be32(fp);
         if(!link)continue;
         int found=0;

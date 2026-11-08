@@ -84,6 +84,28 @@ static void original(const char *pack_path,const char *newgame)
     CHECK(!c3_battle_state_from_entry(s,e,pack,error)&&strstr(error,"did not finish"));
     int r;unsigned guard=0;while((r=c3_battle_entry_session_step(e))==1)CHECK(++guard<64);CHECK(r==0);
     CHECK(c3_battle_state_from_entry(s,e,pack,error));
+    /* fightFloorInit, then the entry's trainers in each side's first slot. */
+    CHECK(s->floor==C3_ARENA_BASE);
+    CHECK(s->trainer[0]==C3_ARENA_BASE+0x14+0x64&&s->trainer[1]==C3_ARENA_BASE+0x14+0x5230+0x64);
+    {
+        uint32_t v;
+        CHECK(c3_battle_floor_status_get(&s->arena,&s->floors,s->floor,0,0,0x0D,0,&v)&&v==10);   /* encounter */
+        CHECK(c3_battle_floor_status_get(&s->arena,&s->floors,s->floor,0,0,0x0C,0,&v)&&v==1);    /* turn 1 */
+        CHECK(c3_battle_floor_status_get(&s->arena,&s->floors,s->floor,0,0,0x36,0,&v)&&v==0);    /* attacker */
+        static uint8_t fresh[0x28E4];memset(fresh,0,sizeof fresh);
+        CHECK(c3_battle_runtime_trainer_init(fresh));
+        for(unsigned side=0;side<2;++side){
+            const uint8_t *sd=s->memory+0x14+side*0x5230;
+            CHECK(sd[0]==0&&sd[1]==0&&sd[0x522C]==0);                                         /* side ID, spikes */
+            CHECK(!memcmp(sd+0x64+0x28E4,fresh,sizeof fresh));                                /* unused slot */
+        }
+        CHECK(s->msgctrl[0x29]==C3_MSGREF_ITEM_NAME(0)&&s->msgctrl[0x1C]==C3_MSGREF_ABILITY_NAME(0));
+        CHECK(s->msgctrl[0x0F]==0&&s->msgctrl[0x10]==0);
+        c3_battle_msgctrl_set(s,0x2D,0x12345);CHECK(s->msgctrl[0x2D]==0x2345);                 /* 16-bit ID */
+        c3_battle_msgctrl_set(s,0x0F,0x12345);CHECK(s->msgctrl[0x0F]==0x12345);
+        c3_battle_msgctrl_set(s,0x38,7);CHECK(s->msgctrl[0x38]==0);                             /* unknown ID */
+        s->msgctrl[0x2D]=s->msgctrl[0x0F]=0;
+    }
 
     for(unsigned side=0;side<2;++side){
         unsigned linked=0;

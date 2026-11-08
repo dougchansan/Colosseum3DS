@@ -127,8 +127,17 @@ interpreter yet.
   (`tests/test_battle_fight_out.c`).
 
 
-- `src/battle_state.c` builds the battle memory from a finished entry: both
-  trainer records and the FightFloor record in one arena, the battle result
+- The trainer records live inside the FightFloor record: FightFloor `+0x14`
+  holds two FightSide records (0x5230 bytes: side data ID `+0x00`, six
+  condition slots `+0x04`, two trainers of 0x28E4 at `+0x64`, spikes flag
+  `+0x522C`). `c3_battle_floor_init` lowers `fightFloorInit` (condition slots,
+  `fightSideInitAry` with the trainer initializer, the thirteen target fields
+  with their message-variable side effects, fields 0x50-0x5B, encounter ID,
+  turn 1); message variables (`msgctrlSetValue`, 58 IDs) live in the state,
+  with message strings kept as tagged references.
+- `src/battle_state.c` builds the battle memory from a finished entry: the
+  FightFloor arena initialized for the encounter, with each side's entry-built
+  trainer placed in that side's first trainer slot, the battle result
   (`lbl_8047B5D8`) and the borrowed species/move/floor tables. The entry
   stores FightPokemon source links as native party identities; the state
   relocates each to that party slot in the trainer's embedded Hero (`+0x34 +
