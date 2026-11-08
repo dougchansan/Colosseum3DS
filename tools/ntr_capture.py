@@ -86,14 +86,17 @@ class Assembler:
 def atomic_bytes(path, data):
     temporary = path.with_name(path.name + ".tmp")
     temporary.write_bytes(data)
-    for attempt in range(5):
+    for attempt in range(6):
         try:
             temporary.replace(path)
             return
-        except PermissionError:
-            if attempt == 4:
+        except OSError as exc:
+            # Windows readers can briefly deny atomic replacement. Retry only
+            # those native codes; write failures and POSIX permission errors
+            # remain fatal. Never unlink the previous published destination.
+            if getattr(exc, "winerror", None) not in (5, 32) or attempt == 5:
                 raise
-            time.sleep(0.01)
+            time.sleep(0.01 * (attempt + 1))
 
 
 class DecodeError(ValueError):

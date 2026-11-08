@@ -1,0 +1,225 @@
+{
+  "scope": "Published evidence bytes; original/prepared assets, executables and GCI remain private",
+  "files": [
+    {
+      "file": ".gitattributes",
+      "bytes": 100,
+      "sha256": "54144784c0bf7cf5f63247895cec1d9139ed678eb2fc35bd8998df91ab3613db"
+    },
+    {
+      "file": "asset-deployment.json",
+      "bytes": 2533,
+      "sha256": "db79225381f9c034ec5aa4acc1bf5934d7f7d86961aef5ff17820636f1839d9e"
+    },
+    {
+      "file": "emulator-application-trace.log",
+      "bytes": 23877,
+      "sha256": "a208c005810367ffa654f57cda3666e15943d9d358c1216d5f164329d9fbe4d9"
+    },
+    {
+      "file": "emulator-both-fainted-pre-result.png",
+      "bytes": 82959,
+      "sha256": "38005611e14d4886d138dbe4792c760f46d3dcc821c5053f26d69ae03a377659"
+    },
+    {
+      "file": "emulator-command-selection.png",
+      "bytes": 84700,
+      "sha256": "bc6ff8459cff88337cc78394d2cd47fd9f876921ed39998e0d0f164628253bb7"
+    },
+    {
+      "file": "emulator-controller.mp4",
+      "bytes": 347864,
+      "sha256": "ea373473be4a7ee3f9855c2666c035cb51f8eb74cd71aba8b31e937fc16a221b"
+    },
+    {
+      "file": "emulator-first-faint-hp-zero.png",
+      "bytes": 83208,
+      "sha256": "f53a2cfa7faca43fb65de41f4e097304fbba0e82e7ddc01b6da61ec4bde25a0e"
+    },
+    {
+      "file": "emulator-opposing-tackle-hit.png",
+      "bytes": 83317,
+      "sha256": "6a0e2d2b18d296d257f6453a96458e90952d22a34e21305330eb000c58ec290d"
+    },
+    {
+      "file": "emulator-readable-hud-four-pokemon.png",
+      "bytes": 83389,
+      "sha256": "9e0feb8e6f5ab6643944f3591d984a4aba01ab3c8f187e3d80ebe0204f114230"
+    },
+    {
+      "file": "emulator-staging.json",
+      "bytes": 2499,
+      "sha256": "3d51676e2b8b14da2a55f2d3f03a758a7938d85a3ba391eaf0a3637d8c4966c1"
+    },
+    {
+      "file": "emulator-tracked-source.patch.gz",
+      "bytes": 5630,
+      "sha256": "84ca0e89f8f77deef38e95b846401eb6955d635e1479f1db95a2a686c60fa74d"
+    },
+    {
+      "file": "emulator-validation-report.json",
+      "bytes": 4891,
+      "sha256": "03227e8379d79a64da1b084f1b1b75d194ea00f6305ce7ce8d807cb35dbaaf5f"
+    },
+    {
+      "file": "hardware-clean-exit.png",
+      "bytes": 131046,
+      "sha256": "096e14b38094955353673338b5a9d76e32ad972b029ce7afdffa9e3a2e9686e0"
+    },
+    {
+      "file": "hardware-command-revision.png",
+      "bytes": 101659,
+      "sha256": "cdc32ec9c2ff1262d25fcb8c11da6c3ca33ae38010917f01b4bfdba40d7c8869"
+    },
+    {
+      "file": "hardware-command-selection.png",
+      "bytes": 101639,
+      "sha256": "2b444252153541ef288ab47308bed2c8de0125d3af4c706815bc8e644a22fe16"
+    },
+    {
+      "file": "hardware-controller-older-hud.mp4",
+      "bytes": 394238,
+      "sha256": "9e3ad714baaa424ceb3f3858aa100d3b9d18c947538dfcdcc821c1b069576b4b"
+    },
+    {
+      "file": "hardware-controller.mp4",
+      "bytes": 468429,
+      "sha256": "8f2ed7333886847fa9e774807d9b2b894e30c1ac061da23a17d1ca12da75216d"
+    },
+    {
+      "file": "hardware-corrected-cancellation.png",
+      "bytes": 113889,
+      "sha256": "28f4289e3a3d62f723b44bb46ab09a1f7037e5e141f2d917601434c938765c5e"
+    },
+    {
+      "file": "hardware-corrected-exit.png",
+      "bytes": 133806,
+      "sha256": "76a916791ba0c90faad18c42d3a082d225391d25a37f1be08e7f425dd44e6786"
+    },
+    {
+      "file": "hardware-corrected-reentry.png",
+      "bytes": 113824,
+      "sha256": "90344ca2da630bad36daac7cf5d05ecda4964fdc714ab1b3412762df4bf7b6d8"
+    },
+    {
+      "file": "hardware-corrected-return.png",
+      "bytes": 114364,
+      "sha256": "b31b4d38cf3838d3ad38a6e5eae82dc8cdd14c10fd742f9380ae841c2ace6360"
+    },
+    {
+      "file": "hardware-deployment.json",
+      "bytes": 4375,
+      "sha256": "cbc24ef553ad8ac89914a1437b2c8c3ae06360eb33458576b0d86e1ea883de71"
+    },
+    {
+      "file": "hardware-final-ftpd.png",
+      "bytes": 110272,
+      "sha256": "5be8e1c7d9681daa7caf668f241fb9308c72b877786ca902a52c7f96d5f1c9a8"
+    },
+    {
+      "file": "hardware-first-turn-complete.png",
+      "bytes": 94962,
+      "sha256": "835819d7aad6bba3b7976a3070a93cfae7a99c89fb05fc8cc75a8531c328f9a9"
+    },
+    {
+      "file": "hardware-input-gate.png",
+      "bytes": 179954,
+      "sha256": "4cf830d7ffed9ed0bf356973c22db8482f609f916db26fcd9a9179e7648fd1d5"
+    },
+    {
+      "file": "hardware-leave-cancelled.png",
+      "bytes": 96651,
+      "sha256": "6a91879842cbabceb7c6c3db5b49d426048e825ea85452c0168b4212a4449e82"
+    },
+    {
+      "file": "hardware-older-readback.json",
+      "bytes": 273,
+      "sha256": "d8017639d6e683552df57481effc4700d421377a59d1acdeeec4d78ba0443b19"
+    },
+    {
+      "file": "hardware-older-trace.log",
+      "bytes": 411510,
+      "sha256": "8b67cfcd957d62aa506bb709de923c45692939970382f17c5b90aa149c29fb18"
+    },
+    {
+      "file": "hardware-pending-field-return.png",
+      "bytes": 114430,
+      "sha256": "bfd23abf67ad18d32347c87bd8ba3bfc1963aed58dadeb1a71e81dcc6a1ed339"
+    },
+    {
+      "file": "hardware-preview-win.png",
+      "bytes": 97347,
+      "sha256": "c3a13735589762d6ba98682c940dc65e3df049dbb82d7e07ad5c259770ab6908"
+    },
+    {
+      "file": "hardware-readable-battle.png",
+      "bytes": 113650,
+      "sha256": "2154819e77befb22bee8998c7a3ed40ba99157714770d1f004ea5887a9f6243c"
+    },
+    {
+      "file": "hardware-readable-commands.png",
+      "bytes": 120729,
+      "sha256": "e16b33af19b6b00ec298366576acabb894f213d80ea1bd1a4715e96c4bea6641"
+    },
+    {
+      "file": "hardware-readable-hp.png",
+      "bytes": 111165,
+      "sha256": "701cb21d4625d12848c1e25dd3d7ec608c0453c08c8a4f2aebe336805c00fe24"
+    },
+    {
+      "file": "hardware-readable-support-command.png",
+      "bytes": 120664,
+      "sha256": "2a373d76a42f076209ddcca5dd1390278ac0d5383fef9399f89c8a3664b54eba"
+    },
+    {
+      "file": "hardware-readable-win.png",
+      "bytes": 112746,
+      "sha256": "9e2054e026311b74ada335b12a2d43311b059109656dd6e9458fc977771ebd8d"
+    },
+    {
+      "file": "hardware-readback.json",
+      "bytes": 405,
+      "sha256": "91af0613641a28fe0eb9a61763cee0ebd095e99c581b5b7860fc29830780740b"
+    },
+    {
+      "file": "hardware-recording.json",
+      "bytes": 83508,
+      "sha256": "c33f84209a84488ce902edeb40ec4c6e921192dd944a9286a2225d59159ab25b"
+    },
+    {
+      "file": "hardware-reentry.png",
+      "bytes": 96727,
+      "sha256": "2cf51c8a861c7ce8d86062e73b780ba4a9bbcc3f7756e97934816ee5def89e76"
+    },
+    {
+      "file": "hardware-reflect-selection.png",
+      "bytes": 100842,
+      "sha256": "3d98e57617b974f1c6c1a9bbe2ff236347c87ebd4ef58dffa21733404d33b898"
+    },
+    {
+      "file": "hardware-trace.log",
+      "bytes": 422964,
+      "sha256": "6d22df6c65362df42ef84f6b5e172c2253d4dd0a1c4d15e03ec667d0ec01015a"
+    },
+    {
+      "file": "older-run-verification.json",
+      "bytes": 97797,
+      "sha256": "9d8ab19bf5b25d65ad0b3c4b1bd389abb16094dfd57c724b22bc0b109f4490fa"
+    },
+    {
+      "file": "performance.json",
+      "bytes": 2086,
+      "sha256": "582f7fdc8aeb1cb48d9ba7a2b8474fbb06135ca1187316444ed2fd2039be68e5"
+    },
+    {
+      "file": "README.md",
+      "bytes": 8007,
+      "sha256": "69ab568352c0457c74d38b56be4238cb149d41cf94d304b8877ea4d5d53bee86"
+    },
+    {
+      "file": "verification.json",
+      "bytes": 98326,
+      "sha256": "74701c38c47b47bccea9bcb8493a2c587495af91a03c5709c084f28b5753c9f0"
+    }
+  ]
+}

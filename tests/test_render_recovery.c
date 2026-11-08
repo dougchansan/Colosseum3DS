@@ -10,6 +10,17 @@ static unsigned checks;
 static uint64_t now_us, ready_us, exit_us, x_us, a_us;
 static unsigned polls, sleeps, flushes, clears, idle_calls, shutdown_calls, frees;
 static uint16_t deferred;
+static unsigned pause_calls, resume_calls;
+static uint64_t paused_at, resumed_at;
+static bool audio_paused, clear_hook;
+static void audio_pause(int paused)
+{
+    CHECK(audio_paused != (paused != 0));
+    audio_paused = paused != 0;
+    if (paused) { ++pause_calls; paused_at = now_us; }
+    else { ++resume_calls; resumed_at = now_us; }
+}
+
 static bool active, false_poll, sent_x, sent_a, sent_exit;
 
 uint64_t c3_n3ds_time_us(void) { return now_us; }
@@ -29,6 +40,11 @@ void c3_n3ds_defer_buttons(uint16_t pressed) { deferred |= pressed; }
 bool c3_n3ds_poll(C3N3dsInput *input)
 {
     ++polls;
+    if (audio_paused && !clear_hook) c3_render_recovery_set_pause_callback(audio_pause);
+    if (clear_hook && audio_paused) {
+        c3_render_recovery_set_pause_callback(NULL);
+        clear_hook = false;
+    }
     memset(input, 0, sizeof(*input));
     if (!sent_x && now_us >= x_us) { input->pressed |= C3_PAD_X; sent_x = true; }
     if (!sent_a && now_us >= a_us) { input->pressed |= C3_PAD_A; sent_a = true; }
@@ -51,6 +67,11 @@ bool c3_stage_renderer_try_shutdown(void)
 }
 static FILE *reset(uint64_t ready)
 {
+    c3_render_recovery_set_pause_callback(NULL);
+    pause_calls = resume_calls = 0;
+    paused_at = resumed_at = 0;
+    audio_paused = clear_hook = false;
+    c3_render_recovery_set_pause_callback(audio_pause);
     now_us = 0; ready_us = ready;
     exit_us = x_us = a_us = UINT64_MAX;
     polls = sleeps = flushes = clears = idle_calls = shutdown_calls = frees = 0;
@@ -74,17 +95,22 @@ int main(void)
     CHECK(c3_render_recover(trace, "test", 1, C3_RECOVER_WAIT) == C3_RECOVERY_RESUME);
     CHECK(now_us == 0 && sleeps == 0 && frees == 0);
     CHECK(clears == 0 && flushes == 0);
+    CHECK(pause_calls == 0 && resume_calls == 0);
     fclose(trace);
 
     trace = reset(64000); a_us = 16000;
     CHECK(c3_render_recover(trace, "test", 2, C3_RECOVER_WAIT) == C3_RECOVERY_RESUME);
     CHECK(polls >= 3 && sleeps >= 3 && deferred == C3_PAD_A);
     CHECK(clears == 0 && flushes == 0 && frees == 0);
+    CHECK(pause_calls == 0 && resume_calls == 0);
     fclose(trace);
 
     trace = reset(3600000); x_us = 3100000; a_us = 3200000;
     CHECK(c3_render_recover(trace, "test", 3, C3_RECOVER_WAIT) == C3_RECOVERY_RESUME_PAUSED);
     CHECK(polls > 200 && now_us >= ready_us && deferred == 0);
+    CHECK(pause_calls == 1 && resume_calls == 1 && !audio_paused);
+    CHECK(paused_at >= 3000000 && paused_at < 3016000);
+    CHECK(resumed_at == now_us && now_us - ready_us < 16000);
     CHECK(clears > 0 && flushes > 0 && frees == 0);
     has_event(trace, "event=timeout");
     has_event(trace, "event=heartbeat");
@@ -123,6 +149,27 @@ int main(void)
     CHECK(deferred == 0);
     has_event(trace, "event=snapshot");
     fclose(trace);
+    for (unsigned mode = 0; mode < 2; ++mode) {
+        trace = reset(3400000);
+        C3RenderRecoveryMode recovery_mode = mode ? C3_RECOVER_EXIT : C3_RECOVER_DRAIN;
+        CHECK(c3_render_recover(trace, "audio drain", 8, recovery_mode) ==
+              (mode ? C3_RECOVERY_EXIT : C3_RECOVERY_DRAINED));
+        CHECK(pause_calls == 1 && resume_calls == 1 && !audio_paused);
+        CHECK(resumed_at == now_us);
+        fclose(trace);
+    }
+    trace = reset(3100000); a_us = 3600000;
+    CHECK(c3_render_recover(trace, "delayed retry", 9, C3_RECOVER_WAIT) == C3_RECOVERY_RESUME_PAUSED);
+    CHECK(pause_calls == 1 && resume_calls == 1 && !audio_paused);
+    CHECK(resumed_at >= a_us && resumed_at == now_us);
+    CHECK(resumed_at - a_us < 32000);
+    fclose(trace);
+    trace = reset(3400000); a_us = 3200000; clear_hook = true;
+    CHECK(c3_render_recover(trace, "clear audio hook", 9, C3_RECOVER_WAIT) == C3_RECOVERY_RESUME_PAUSED);
+    CHECK(pause_calls == 1 && resume_calls == 1 && !audio_paused);
+    CHECK(resumed_at == paused_at);
+    fclose(trace);
+    c3_render_recovery_set_pause_callback(NULL);
     printf("render recovery: %u checks passed\n", checks);
     return 0;
 }

@@ -855,6 +855,18 @@ int c3_field_story_transition(C3FieldStory *story,uint32_t source_id,char *error
     log_line(s,"story_door source=%lu script=%08lx",(unsigned long)source_id,(unsigned long)link->script);
     s->view.control=0;return start(s,link->script,link->args,4,&s->event_key,error);
 }
+int c3_field_story_menu_event(C3FieldStory *story,uint32_t script,char *error)
+{
+    Impl *s=story?story->impl:NULL;
+    if(!s||!script||!s->view.control||s->event_key||s->talk_key)return fail(error,"The field cannot accept this mail callback.");
+    if(!start(s,script,NULL,0,&s->event_key,error))return 0;
+    s->view.control=0;return 1;
+}
+void c3_field_story_cancel_menu_event(C3FieldStory *story)
+{
+    Impl *s=story?story->impl:NULL;if(!s||!s->event_key)return;
+    c3_story_stop(&s->vm,s->event_key);s->event_key=0;
+}
 void c3_field_story_collide(C3FieldStory *story,const float before[3])
 {
     Impl *s=story?story->impl:NULL;if(!s||!before)return;

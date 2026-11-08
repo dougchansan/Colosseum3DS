@@ -1,5 +1,12 @@
 # Colosseum3DS
 
+The [graphical bottom-screen UI](docs/bottom-screen-ui.md) now uses privately
+prepared original menu artwork and fonts for title/menu flow, dialogue, saves
+and battle controls. See that guide for `ui.c3ui` preparation and verification.
+The [in-game menu/P★DA](docs/ingame-pda.md) adds original UI artwork and live
+save-backed Mail, Strategy Memo, Snag List, inventory actions and trainer pages,
+plus original model previews and ringtone audition. See [in-game menu preparation](docs/ingame-pda.md).
+
 A native **New Nintendo 3DS / New 3DS XL / New 2DS XL** port project for
 Pokémon Colosseum, based on Count-Sheep's decompilation and the maintainer's
 private GC6E01 build inputs.

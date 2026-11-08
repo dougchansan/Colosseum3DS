@@ -27,7 +27,10 @@ enum {
     C3_TITLE_DUAL_MODULATE = 1024u, /* C3T2: a second affine UV/texture stage */
     C3_TITLE_SUBTRACT = 2048u,     /* C3T2: GX subtract, destination - source */
     C3_TITLE_ADDITIVE_ONE = 4096u, /* C3T2: ONE, ONE framebuffer addition */
-    C3_TITLE_REFLECTION_BLEND = 8192u /* C3T3: lerp final RGB with normal-generated texture2 */
+    C3_TITLE_REFLECTION_BLEND = 8192u, /* C3T3: lerp final RGB with normal-generated texture2 */
+    C3_TITLE_SECOND_UV_BLEND = 16384u, /* C3T3: texture2 blend uses authored UV1 */
+    C3_TITLE_SOURCE_ALPHA_MASK = 32768u,
+    C3_TITLE_PAIRED_NORMAL_EXT = 65536u
 };
 
 typedef struct {
@@ -109,6 +112,7 @@ typedef struct {
     float fps;
     uint32_t active_clip;
     float active_frame;
+    uint8_t borrowed_storage;
 } C3Title;
 
 /* Zero-initialize before first use. Owns its file and decoded geometry after
@@ -120,6 +124,10 @@ typedef struct {
 int c3_title_load(C3Title *title, const char *path, char *error, size_t capacity);
 int c3_title_parse(C3Title *title, const void *data, size_t bytes, char *error, size_t capacity);
 void c3_title_close(C3Title *title);
+/* Shares immutable source/geometry with owner; owns pose and sampled vertices.
+ * Owner must outlive all instances, including GPU teardown. Zero initialize
+ * instance; nested borrowing and self replacement are rejected. */
+int c3_title_instance(C3Title *instance, const C3Title *owner, char *error, size_t capacity);
 
 /* Select and sample one authored clip. Each clip's loop flag determines
  * wrapping; nonlooping clips clamp. Finite negative seconds clamp to zero; NaN/Inf or invalid

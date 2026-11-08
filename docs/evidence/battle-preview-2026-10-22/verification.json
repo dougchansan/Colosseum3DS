@@ -1,0 +1,53 @@
+{
+  "scope": "Native ARM diagnostic preview in Azahar, not physical or original-story battle acceptance",
+  "implementation_commit": "1aafb1e448420381fc4f969d2e06d9645518e45f",
+  "build_commit": "9ff12eb4986b86f4290d479f118f77e83d73400b",
+  "source_tree": "4021e33170dd4d47cccad9ce4eca246ee44e5363",
+  "defensive_fix_commit_not_recorded": "7ddb660319fae4ac3cabc3f648df5cd7523ae398",
+  "binary": {
+    "file": "Colosseum3DS-battle-preview-probe.3dsx",
+    "bytes": 376632,
+    "sha256": "a73350937d60410ec08ad015aee8e8a0825d10aa96183c58ac5730a8300b901c"
+  },
+  "core_sha256": "a447e9ecb7b4ef0a530d31eeb83a39edf4697f17bb3e44251f27a1d25fde7662",
+  "harness_sha256": "9d5a7d0113247ff9fff1becd886febc537dd5e4b5e186f0b048969a7e8511a06",
+  "input_sha256": "c45b3ad1d7448ec286b63eb85549e3925e20defd49ffaf55e437e26fbb85e0e9",
+  "trace_sha256": "b4482e5496766f7171935ecf2b1e6104942c9ffd5f54996912aced8ccdea4d4e",
+  "renderer": "Azahar software PICA",
+  "model": "New 3DS",
+  "frontend_frames": 2400,
+  "frontend_process_exit_code": 0,
+  "native_probe_result": 0,
+  "guest_faults": 0,
+  "application_failures": 0,
+  "turns": 2,
+  "preview_outcome": "WIN",
+  "final_hp": [81, 75, 0, 0],
+  "final_rng_seed": "1b13b0ac",
+  "final_rng_draws": 372,
+  "enemy_policy": "uniform legal moves and living opponent targets; not original AI",
+  "diagnostic_seed": "12345678",
+  "save_existed_before": false,
+  "save_existed_after": false,
+  "save_writes": 0,
+  "gsvm_resumed": false,
+  "physical_tested": false,
+  "field_modal_transition_tested": false,
+  "original_full_turn_qualified": false,
+  "assets": [
+    {"file":"newgame.c3g","bytes":176722,"sha256":"6bfdc9ffd1ce16303801ade262d64a6e8cffcb5907c87a920b195427527b0903","changed":false},
+    {"file":"willie.c3b","bytes":644,"sha256":"873052ebb92bcf11f2dc9deed182362bf941020adcc945bd994c38c7ea0f4319","changed":false},
+    {"file":"willie.c3i","bytes":768,"sha256":"8878693f7d7dd98c58b9decfbd67b54d8b1088f6cf24e2d9852a82bc9bf33bd8","changed":false},
+    {"file":"willie.c3p","bytes":1024,"sha256":"da6a5666fa008629ef1fe035ad7e69ff3c27c38ec57cb0283c56cab978aee46e","changed":false}
+  ],
+  "video": {
+    "file": "Colosseum3DS-PR7-battle-preview.mp4",
+    "publication": "conversation attachment, not embedded in Git",
+    "bytes": 181545,
+    "sha256": "6cf182d1057d8e1884dfa572be7c3a028e78226ab096210163ecc53701b3361f",
+    "frames": 1200,
+    "playback_fps": 30,
+    "seconds": 40,
+    "audio": false
+  }
+}

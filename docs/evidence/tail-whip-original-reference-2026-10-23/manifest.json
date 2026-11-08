@@ -1,0 +1,220 @@
+{
+  "schema": 1,
+  "scope": "Isolated official original game DSU ordinary-controller Tail reference; no native/original RNG parity",
+  "capture_tool": {
+    "repository": "dougchansan/Colosseum3DS",
+    "source_commit": "6864e7e3bb7500a8387a7964cc17b60684af5de8",
+    "file": "tools/dolphin_dsu.py",
+    "sha256": "546d341f187cad2bf3f5d704b4897dc060487e3e09c3f7a5e373c5a721c4c8e7"
+  },
+  "original_execution": {
+    "dolphin_source_pin": "5e7cc91d8c9a43ca189b288937f65c9763af9c22",
+    "exe_sha256": "5e076628b977603dcde9ddef5eedf10b5a9ce0b6208bd4e6dfa9039cdebf3433",
+    "rvz_sha256": "f278e568b5c2dafb153ec932edc95051146cecf5ebc1d3843d71745cd0c1861e",
+    "movie_prefix_sha256": "7168c298d2ce179b40bab586bf7ef04f2245d22e885e8cc4ca605271218350f5",
+    "prefix_semantics": "Verified ordinary Umbreon CALL, Espeon main atEOF",
+    "actual_player_commands": [
+      "Umbreon CALL from verified ordinary-controller movie prefix",
+      "Espeon REFLECT from fresh-screenshot-gated DSU A/DOWN/A"
+    ],
+    "completed_utc": "2026-10-24T07:40:26.034002+00:00",
+    "turns_completed": 1,
+    "ordinary_controller_only": true,
+    "game_memory_writes": false,
+    "card_before_sha256": "7e1cb3159756293bf938fd922fe45e82448d1b667f6833a48da351af3cbd0f23",
+    "card_after_sha256": "7e1cb3159756293bf938fd922fe45e82448d1b667f6833a48da351af3cbd0f23",
+    "card_unchanged": true
+  },
+  "actor_identification": {
+    "frame": 9209,
+    "text": "ZIGZAGOON used TAIL WHIP!",
+    "visible_actor_hud": "Female Zigzagoon Lv24; source A/B slot identity not inferred from screen position"
+  },
+  "proxy": {
+    "file": "original-tail-whip-reference-silent-30fps.mp4",
+    "bytes": 858077,
+    "sha256": "80b832ceea5c2702e548251c5f97c3eae9d74984a5cbb05e1678829b9cdf8516",
+    "source_frames": [
+      9180,
+      9449
+    ],
+    "duration_seconds": 4.5,
+    "frames": 135,
+    "size": [
+      640,
+      480
+    ],
+    "silent": true,
+    "speed_scope": "60dumpframes/sec to30fps viewing convention, not measured game FPS",
+    "full_decode_exit": 0,
+    "verified_video_stream": {
+      "width": 640,
+      "height": 480,
+      "r_frame_rate": "30/1",
+      "duration": "4.500000",
+      "nb_frames": "135"
+    }
+  },
+  "selected_images": [
+    {
+      "file": "original-tail-whip-female-announcement.png",
+      "bytes": 425835,
+      "sha256": "814100f98c387c20a677dc4aa3bdc02ab7e89c89250a51ceb4a4bcde6c9af578",
+      "source_frame": 9209,
+      "backing_size": [
+        640,
+        512
+      ],
+      "sample_aspect_ratio": "16:15"
+    },
+    {
+      "file": "original-tail-whip-actor-before.png",
+      "bytes": 427859,
+      "sha256": "517accde5f14c36f0350cd45cbbb1cdf3696759d8e9e88c0cbdb267a52631867",
+      "source_frame": 9240,
+      "backing_size": [
+        640,
+        512
+      ],
+      "sample_aspect_ratio": "16:15"
+    },
+    {
+      "file": "original-tail-whip-cyan-rings.png",
+      "bytes": 481132,
+      "sha256": "f3901a3322b387e4e67198c5351df49d845dbf9e07677a75456136df092c63ad",
+      "source_frame": 9260,
+      "backing_size": [
+        640,
+        512
+      ],
+      "sample_aspect_ratio": "16:15"
+    },
+    {
+      "file": "original-tail-whip-rings-late.png",
+      "bytes": 483041,
+      "sha256": "46a0b84cbf3f24ab3cc42b55d39a1f468b3243522089fa0d065d96a234572ffa",
+      "source_frame": 9280,
+      "backing_size": [
+        640,
+        512
+      ],
+      "sample_aspect_ratio": "16:15"
+    },
+    {
+      "file": "original-tail-whip-actor-after.png",
+      "bytes": 468790,
+      "sha256": "8688738d6894bb1d027e7c68eb381381333527cb6e6ad355ea5f32ba2476dc66",
+      "source_frame": 9300,
+      "backing_size": [
+        640,
+        512
+      ],
+      "sample_aspect_ratio": "16:15"
+    },
+    {
+      "file": "original-tail-whip-defense-umbreon.png",
+      "bytes": 516450,
+      "sha256": "60ee467dde69dfed90339e303c9f7b3683fa084ddbb94dc57af8fdfc9a271270",
+      "source_frame": 9320,
+      "backing_size": [
+        640,
+        512
+      ],
+      "sample_aspect_ratio": "16:15"
+    },
+    {
+      "file": "original-tail-whip-defense-espeon.png",
+      "bytes": 561082,
+      "sha256": "53770ace164b3ed898150a8b41734ef106c350a3d183cee55f5785d43763a6d9",
+      "source_frame": 9380,
+      "backing_size": [
+        640,
+        512
+      ],
+      "sample_aspect_ratio": "16:15"
+    },
+    {
+      "file": "original-tail-whip-defense-after.png",
+      "bytes": 520425,
+      "sha256": "2e4b14e6e4a44899c8ac0110f7d5908ec53a295827ccdba8b201bef932d7b02b",
+      "source_frame": 9430,
+      "backing_size": [
+        640,
+        512
+      ],
+      "sample_aspect_ratio": "16:15"
+    }
+  ],
+  "comparison": {
+    "native_checkpoint": "../tail-whip-hardware-2026-10-23/README.md",
+    "native_image": "../tail-whip-hardware-2026-10-23/tail-band.png",
+    "verdict_file": "visual-verdict.json",
+    "score": 76,
+    "threshold": 90,
+    "threshold_pass": false,
+    "verdict": "revise",
+    "category_match": true,
+    "retail_visual_parity": false,
+    "camera_effect_age_rng_synchronized": false
+  },
+  "remaining_gaps": [
+    "Native generic stat-down defender effects are not implemented by the caster Tail Whip slice; original Umbreon and Espeon green-streak/tint frames are published separately.",
+    "Camera/RNG variant and authored effect age are not synchronized; no pixel/geometry/camera parity verdict follows.",
+    "Original female HUD plus explicit Tail Whip caption does not establish original A/B slot identity.",
+    "No audio recording, retail audible comparison, shared RNG parity or game-performance measurement."
+  ],
+  "limitations": [
+    "Original game reference only, not native3DS output.",
+    "No shared RNG/AI/damage/camera frame parity claim.",
+    "Silent PNG dump capture; no audio recorded.",
+    "Proxy input60dumpframes/sec to30fps is viewing convention, not measured game FPS.",
+    "Original PNG backing640x512; proxy rescale640x480 recorded."
+  ],
+  "media": [
+    {
+      "file": "original-tail-whip-female-announcement.png",
+      "bytes": 425835,
+      "sha256": "814100f98c387c20a677dc4aa3bdc02ab7e89c89250a51ceb4a4bcde6c9af578"
+    },
+    {
+      "file": "original-tail-whip-actor-before.png",
+      "bytes": 427859,
+      "sha256": "517accde5f14c36f0350cd45cbbb1cdf3696759d8e9e88c0cbdb267a52631867"
+    },
+    {
+      "file": "original-tail-whip-cyan-rings.png",
+      "bytes": 481132,
+      "sha256": "f3901a3322b387e4e67198c5351df49d845dbf9e07677a75456136df092c63ad"
+    },
+    {
+      "file": "original-tail-whip-rings-late.png",
+      "bytes": 483041,
+      "sha256": "46a0b84cbf3f24ab3cc42b55d39a1f468b3243522089fa0d065d96a234572ffa"
+    },
+    {
+      "file": "original-tail-whip-actor-after.png",
+      "bytes": 468790,
+      "sha256": "8688738d6894bb1d027e7c68eb381381333527cb6e6ad355ea5f32ba2476dc66"
+    },
+    {
+      "file": "original-tail-whip-defense-umbreon.png",
+      "bytes": 516450,
+      "sha256": "60ee467dde69dfed90339e303c9f7b3683fa084ddbb94dc57af8fdfc9a271270"
+    },
+    {
+      "file": "original-tail-whip-defense-espeon.png",
+      "bytes": 561082,
+      "sha256": "53770ace164b3ed898150a8b41734ef106c350a3d183cee55f5785d43763a6d9"
+    },
+    {
+      "file": "original-tail-whip-defense-after.png",
+      "bytes": 520425,
+      "sha256": "2e4b14e6e4a44899c8ac0110f7d5908ec53a295827ccdba8b201bef932d7b02b"
+    },
+    {
+      "file": "original-tail-whip-reference-silent-30fps.mp4",
+      "bytes": 858077,
+      "sha256": "80b832ceea5c2702e548251c5f97c3eae9d74984a5cbb05e1678829b9cdf8516"
+    }
+  ]
+}

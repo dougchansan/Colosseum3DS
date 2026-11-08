@@ -1,0 +1,702 @@
+{
+  "source_commit": "c2712ebb0f6eb8de38c0ff9025011868bdaecd2f",
+  "source_tree": "27c9da48c86459aac97f67815f5b0cf7bf2c236f",
+  "normal_executable": {
+    "bytes": 614292,
+    "sha256": "47138d399fa38afdb48b63b886643f4e872607834f1fe5b21d3e98f4aad34203"
+  },
+  "trace": {
+    "bytes": 492514,
+    "sha256": "bcf65ed238a78d3222be2801924e5664f0287b446938ca246069fda7f94ce18e"
+  },
+  "recording": {
+    "view_only": true,
+    "input_packets_sent": 0,
+    "tcp_commands_sent": 0,
+    "frames": 7484,
+    "encoded_fps": 10,
+    "wall_seconds": 821.2339999999967,
+    "first_frame_wall_seconds": 0.0779999999795109,
+    "stale_samples": 4,
+    "decode_errors": 0,
+    "encoder_exit": 0,
+    "silent": true,
+    "scope": "Continuous actual NTR screens sampled at10fps; repeated frames and freshness retained in frames.jsonl; no audio stream",
+    "sha256": "110bd0af3dc05dc631deff17ba2b5115083b215d476b81b7320bdd77dca646ae",
+    "encoded_seconds": 748.4,
+    "full_ffmpeg_decode_exit": 0
+  },
+  "selected": [
+    {
+      "file": "zigzagoon-a-attack.png",
+      "candidate": "corrected_c2712eb",
+      "source_frame": 3550,
+      "utc": "2026-10-24T23:11:52.678526+00:00",
+      "wall_seconds": 355.0779999999795,
+      "fresh": true,
+      "screens": {
+        "bottom": {
+          "frame_id": 168,
+          "counter": 6073,
+          "received_utc": "2026-10-24T23:11:52.600985+00:00"
+        },
+        "top": {
+          "frame_id": 169,
+          "counter": 6071,
+          "received_utc": "2026-10-24T23:11:52.652005+00:00"
+        }
+      },
+      "ages": {
+        "top": 0.030999999959021807,
+        "bottom": 0.0779999999795109
+      },
+      "bytes": 102340,
+      "sha256": "f764e3ff6808fd63eddfd3ed81aa8d87a05e736969b817bd39e26ee9c8cf9b98"
+    },
+    {
+      "file": "umbreon-impact-a.png",
+      "candidate": "corrected_c2712eb",
+      "source_frame": 3570,
+      "utc": "2026-10-24T23:11:54.685126+00:00",
+      "wall_seconds": 357.0779999999795,
+      "fresh": true,
+      "screens": {
+        "bottom": {
+          "frame_id": 203,
+          "counter": 6108,
+          "received_utc": "2026-10-24T23:11:54.646269+00:00"
+        },
+        "top": {
+          "frame_id": 203,
+          "counter": 6105,
+          "received_utc": "2026-10-24T23:11:54.622062+00:00"
+        }
+      },
+      "ages": {
+        "top": 0.061999999976251274,
+        "bottom": 0.030999999959021807
+      },
+      "bytes": 113864,
+      "sha256": "16f3417bd5a88f0fb4061b0e189aba5fc695fb699fa9761fff1ee3e16787c138"
+    },
+    {
+      "file": "umbreon-after-impact-a.png",
+      "candidate": "corrected_c2712eb",
+      "source_frame": 3580,
+      "utc": "2026-10-24T23:11:55.686765+00:00",
+      "wall_seconds": 358.0779999999795,
+      "fresh": true,
+      "screens": {
+        "bottom": {
+          "frame_id": 219,
+          "counter": 6124,
+          "received_utc": "2026-10-24T23:11:55.576742+00:00"
+        },
+        "top": {
+          "frame_id": 220,
+          "counter": 6122,
+          "received_utc": "2026-10-24T23:11:55.608748+00:00"
+        }
+      },
+      "ages": {
+        "top": 0.061999999976251274,
+        "bottom": 0.09399999998277053
+      },
+      "bytes": 115274,
+      "sha256": "0b6478d8e61c96110370b1a62039e6fda3972858ea693d6ef7ccb299a59fff11"
+    },
+    {
+      "file": "zigzagoon-b-attack.png",
+      "candidate": "corrected_c2712eb",
+      "source_frame": 3620,
+      "utc": "2026-10-24T23:11:59.679849+00:00",
+      "wall_seconds": 362.0779999999795,
+      "fresh": true,
+      "screens": {
+        "bottom": {
+          "frame_id": 34,
+          "counter": 6193,
+          "received_utc": "2026-10-24T23:11:59.654007+00:00"
+        },
+        "top": {
+          "frame_id": 34,
+          "counter": 6189,
+          "received_utc": "2026-10-24T23:11:59.637223+00:00"
+        }
+      },
+      "ages": {
+        "top": 0.046999999962281436,
+        "bottom": 0.030999999959021807
+      },
+      "bytes": 118503,
+      "sha256": "196fe358d208469f6224f93b6704e6f46dc10b7b2124cf50b50b725700d85877"
+    },
+    {
+      "file": "umbreon-impact-b.png",
+      "candidate": "corrected_c2712eb",
+      "source_frame": 3640,
+      "utc": "2026-10-24T23:12:01.691476+00:00",
+      "wall_seconds": 364.0779999999795,
+      "fresh": true,
+      "screens": {
+        "bottom": {
+          "frame_id": 68,
+          "counter": 6227,
+          "received_utc": "2026-10-24T23:12:01.618983+00:00"
+        },
+        "top": {
+          "frame_id": 69,
+          "counter": 6224,
+          "received_utc": "2026-10-24T23:12:01.652420+00:00"
+        }
+      },
+      "ages": {
+        "top": 0.030999999959021807,
+        "bottom": 0.061999999976251274
+      },
+      "bytes": 110904,
+      "sha256": "82f9e18a604270345303462c2939a3b5c41d0aaedd8ee9f6eb85a47a0eddddd3"
+    },
+    {
+      "file": "zigzagoon-a-fainted.png",
+      "candidate": "corrected_c2712eb",
+      "source_frame": 4810,
+      "utc": "2026-10-24T23:14:05.732110+00:00",
+      "wall_seconds": 488.0,
+      "fresh": true,
+      "screens": {
+        "bottom": {
+          "frame_id": 147,
+          "counter": 8349,
+          "received_utc": "2026-10-24T23:14:05.546198+00:00"
+        },
+        "top": {
+          "frame_id": 148,
+          "counter": 8342,
+          "received_utc": "2026-10-24T23:14:05.589155+00:00"
+        }
+      },
+      "ages": {
+        "top": 0.01600000000325963,
+        "bottom": 0.0470000000204891
+      },
+      "bytes": 112081,
+      "sha256": "4569acccec4b75ee0293c73733e5f3d48f182724ef1224fdc7be5bcc0ec4a76b"
+    },
+    {
+      "file": "zigzagoon-b-after-faint-attack.png",
+      "candidate": "corrected_c2712eb",
+      "source_frame": 4840,
+      "utc": "2026-10-24T23:14:09.219359+00:00",
+      "wall_seconds": 491.5779999999795,
+      "fresh": true,
+      "screens": {
+        "bottom": {
+          "frame_id": 208,
+          "counter": 8410,
+          "received_utc": "2026-10-24T23:14:09.105858+00:00"
+        },
+        "top": {
+          "frame_id": 209,
+          "counter": 8403,
+          "received_utc": "2026-10-24T23:14:09.138139+00:00"
+        }
+      },
+      "ages": {
+        "top": 0.046999999962281436,
+        "bottom": 0.0779999999795109
+      },
+      "bytes": 112848,
+      "sha256": "ffb14d47b013cdda8730855df386849741bff2a668ba9541039fec9b248aa8e0"
+    },
+    {
+      "file": "espeon-impact-after-faint.png",
+      "candidate": "corrected_c2712eb",
+      "source_frame": 4860,
+      "utc": "2026-10-24T23:14:11.180667+00:00",
+      "wall_seconds": 493.5779999999795,
+      "fresh": true,
+      "screens": {
+        "bottom": {
+          "frame_id": 243,
+          "counter": 8445,
+          "received_utc": "2026-10-24T23:14:11.148352+00:00"
+        },
+        "top": {
+          "frame_id": 243,
+          "counter": 8437,
+          "received_utc": "2026-10-24T23:14:11.125961+00:00"
+        }
+      },
+      "ages": {
+        "top": 0.046999999962281436,
+        "bottom": 0.030999999959021807
+      },
+      "bytes": 108950,
+      "sha256": "804b63f260f072223ca67e5be966165ecd0c6d97e459f3e61430eec4a62f5dac"
+    },
+    {
+      "file": "espeon-after-impact.png",
+      "candidate": "corrected_c2712eb",
+      "source_frame": 4870,
+      "utc": "2026-10-24T23:14:12.253375+00:00",
+      "wall_seconds": 494.5779999999795,
+      "fresh": true,
+      "screens": {
+        "bottom": {
+          "frame_id": 4,
+          "counter": 8462,
+          "received_utc": "2026-10-24T23:14:12.158772+00:00"
+        },
+        "top": {
+          "frame_id": 5,
+          "counter": 8455,
+          "received_utc": "2026-10-24T23:14:12.168428+00:00"
+        }
+      },
+      "ages": {
+        "top": 0.01600000000325963,
+        "bottom": 0.01600000000325963
+      },
+      "bytes": 108699,
+      "sha256": "ea5e48137cc895821bb89596971674ce9a9e016505483496a3b0f37b4cab75e7"
+    },
+    {
+      "file": "preview-win.png",
+      "candidate": "corrected_c2712eb",
+      "source_frame": 5700,
+      "utc": "2026-10-24T23:16:40.459158+00:00",
+      "wall_seconds": 642.8589999999967,
+      "fresh": true,
+      "screens": {
+        "bottom": {
+          "frame_id": 206,
+          "counter": 10274,
+          "received_utc": "2026-10-24T23:16:40.442121+00:00"
+        },
+        "top": {
+          "frame_id": 206,
+          "counter": 10253,
+          "received_utc": "2026-10-24T23:16:40.421201+00:00"
+        }
+      },
+      "ages": {
+        "top": 0.031000000017229468,
+        "bottom": 0.015000000013969839
+      },
+      "bytes": 115543,
+      "sha256": "59b5f895c875b535bccf2ad24c7ef4d6012b7f7ebeeff51eafeda3faa5557821"
+    },
+    {
+      "file": "preview-summary.png",
+      "candidate": "corrected_c2712eb",
+      "source_frame": 5900,
+      "utc": "2026-10-24T23:17:00.459432+00:00",
+      "wall_seconds": 662.8589999999967,
+      "fresh": true,
+      "screens": {
+        "bottom": {
+          "frame_id": 31,
+          "counter": 10611,
+          "received_utc": "2026-10-24T23:17:00.439963+00:00"
+        },
+        "top": {
+          "frame_id": 31,
+          "counter": 10590,
+          "received_utc": "2026-10-24T23:17:00.411409+00:00"
+        }
+      },
+      "ages": {
+        "top": 0.0470000000204891,
+        "bottom": 0.015000000013969839
+      },
+      "bytes": 112965,
+      "sha256": "37cd8f90b94483e65d5ed703534a235eb82375f5df0ffb637045caf8986303f2"
+    },
+    {
+      "file": "field-return.png",
+      "candidate": "corrected_c2712eb",
+      "source_frame": 6000,
+      "utc": "2026-10-24T23:17:10.459246+00:00",
+      "wall_seconds": 672.8589999999967,
+      "fresh": true,
+      "screens": {
+        "bottom": {
+          "frame_id": 200,
+          "counter": 10780,
+          "received_utc": "2026-10-24T23:17:10.385473+00:00"
+        },
+        "top": {
+          "frame_id": 200,
+          "counter": 10759,
+          "received_utc": "2026-10-24T23:17:10.358479+00:00"
+        }
+      },
+      "ages": {
+        "top": 0.09299999999348074,
+        "bottom": 0.0779999999795109
+      },
+      "bytes": 114231,
+      "sha256": "3bfbe198017fe5fc4ccb530902bc9ec642927857416e7e59339c16bfc0dde4a6"
+    },
+    {
+      "file": "reentry-recovery.png",
+      "candidate": "corrected_c2712eb",
+      "source_frame": 6100,
+      "utc": "2026-10-24T23:17:20.466649+00:00",
+      "wall_seconds": 682.8589999999967,
+      "fresh": true,
+      "screens": {
+        "bottom": {
+          "frame_id": 101,
+          "counter": 10937,
+          "received_utc": "2026-10-24T23:17:20.400075+00:00"
+        },
+        "top": {
+          "frame_id": 102,
+          "counter": 10917,
+          "received_utc": "2026-10-24T23:17:20.435128+00:00"
+        }
+      },
+      "ages": {
+        "top": 0.031000000017229468,
+        "bottom": 0.061999999976251274
+      },
+      "bytes": 113777,
+      "sha256": "1e6edc76315dc36ef4f35d8d0f4439d9bef2f4a59e6e4c01a45aa60218602561"
+    },
+    {
+      "file": "preview-reentry.png",
+      "candidate": "corrected_c2712eb",
+      "source_frame": 6300,
+      "utc": "2026-10-24T23:17:40.466715+00:00",
+      "wall_seconds": 702.8589999999967,
+      "fresh": true,
+      "screens": {
+        "bottom": {
+          "frame_id": 195,
+          "counter": 11287,
+          "received_utc": "2026-10-24T23:17:40.424208+00:00"
+        },
+        "top": {
+          "frame_id": 196,
+          "counter": 11267,
+          "received_utc": "2026-10-24T23:17:40.451220+00:00"
+        }
+      },
+      "ages": {
+        "top": 0.015000000013969839,
+        "bottom": 0.031000000017229468
+      },
+      "bytes": 113889,
+      "sha256": "9701da31d4fa9370448a910856b60e2d15ce4286252eda8942babbf6ade56ad8"
+    },
+    {
+      "file": "reentry-discard.png",
+      "candidate": "corrected_c2712eb",
+      "source_frame": 6500,
+      "utc": "2026-10-24T23:18:00.464241+00:00",
+      "wall_seconds": 722.8589999999967,
+      "fresh": true,
+      "screens": {
+        "bottom": {
+          "frame_id": 28,
+          "counter": 11631,
+          "received_utc": "2026-10-24T23:18:00.435405+00:00"
+        },
+        "top": {
+          "frame_id": 28,
+          "counter": 11610,
+          "received_utc": "2026-10-24T23:18:00.414494+00:00"
+        }
+      },
+      "ages": {
+        "top": 0.0470000000204891,
+        "bottom": 0.031000000017229468
+      },
+      "bytes": 110115,
+      "sha256": "6fe2082f7a2dd14f6d597f595c420327ff084d0cccdcde1e3c2db84561826f34"
+    },
+    {
+      "file": "field-after-cancel.png",
+      "candidate": "corrected_c2712eb",
+      "source_frame": 6600,
+      "utc": "2026-10-24T23:18:10.467207+00:00",
+      "wall_seconds": 732.8589999999967,
+      "fresh": true,
+      "screens": {
+        "bottom": {
+          "frame_id": 192,
+          "counter": 11795,
+          "received_utc": "2026-10-24T23:18:10.431442+00:00"
+        },
+        "top": {
+          "frame_id": 192,
+          "counter": 11774,
+          "received_utc": "2026-10-24T23:18:10.407165+00:00"
+        }
+      },
+      "ages": {
+        "top": 0.0470000000204891,
+        "bottom": 0.031000000017229468
+      },
+      "bytes": 108723,
+      "sha256": "9384de8cd876bd649e639f1f5a8c93d6ef6fab353249be6ebd381eba5198b5b9"
+    },
+    {
+      "file": "homebrew-launcher.png",
+      "candidate": "corrected_c2712eb",
+      "source_frame": 6800,
+      "utc": "2026-10-24T23:18:30.466622+00:00",
+      "wall_seconds": 752.8589999999967,
+      "fresh": true,
+      "screens": {
+        "bottom": {
+          "frame_id": 6,
+          "counter": 12121,
+          "received_utc": "2026-10-24T23:18:30.440860+00:00"
+        },
+        "top": {
+          "frame_id": 6,
+          "counter": 12100,
+          "received_utc": "2026-10-24T23:18:30.417937+00:00"
+        }
+      },
+      "ages": {
+        "top": 0.0470000000204891,
+        "bottom": 0.015000000013969839
+      },
+      "bytes": 136410,
+      "sha256": "6d1f5ce835b0405c3e2347cc2c962f0ece622c990f2307cef287b18a3ca9f318"
+    },
+    {
+      "file": "home-menu.png",
+      "candidate": "corrected_c2712eb",
+      "source_frame": 7000,
+      "utc": "2026-10-24T23:18:50.461150+00:00",
+      "wall_seconds": 772.8589999999967,
+      "fresh": true,
+      "screens": {
+        "bottom": {
+          "frame_id": 100,
+          "counter": 12470,
+          "received_utc": "2026-10-24T23:18:50.431718+00:00"
+        },
+        "top": {
+          "frame_id": 100,
+          "counter": 12448,
+          "received_utc": "2026-10-24T23:18:50.402596+00:00"
+        }
+      },
+      "ages": {
+        "top": 0.061999999976251274,
+        "bottom": 0.031000000017229468
+      },
+      "bytes": 181267,
+      "sha256": "4798ac7cdcd089d596c27ba93d42065718dc2fe8d94d9d34a7666a299d8ade92"
+    },
+    {
+      "file": "ftpd.png",
+      "candidate": "corrected_c2712eb",
+      "source_frame": 7300,
+      "utc": "2026-10-24T23:19:20.463651+00:00",
+      "wall_seconds": 802.8589999999967,
+      "fresh": true,
+      "screens": {
+        "bottom": {
+          "frame_id": 162,
+          "counter": 13040,
+          "received_utc": "2026-10-24T23:19:20.416473+00:00"
+        },
+        "top": {
+          "frame_id": 163,
+          "counter": 13019,
+          "received_utc": "2026-10-24T23:19:20.451368+00:00"
+        }
+      },
+      "ages": {
+        "top": 0.015000000013969839,
+        "bottom": 0.0470000000204891
+      },
+      "bytes": 109951,
+      "sha256": "9729b015d12ecc2ac356808262bdd474f3a77b018c829ac800694c0dd168fe0a"
+    },
+    {
+      "file": "failed-f6ef3a7-preview-stopped.png",
+      "candidate": "failed_f6ef3a7",
+      "source_frame": 4570,
+      "utc": "2026-10-24T23:00:18.349683+00:00",
+      "wall_seconds": 457.0779999999795,
+      "fresh": true,
+      "screens": {
+        "bottom": {
+          "frame_id": 70,
+          "counter": 7879,
+          "received_utc": "2026-10-24T23:00:18.323412+00:00"
+        },
+        "top": {
+          "frame_id": 70,
+          "counter": 7868,
+          "received_utc": "2026-10-24T23:00:18.314196+00:00"
+        }
+      },
+      "ages": {
+        "top": 0.031000000017229468,
+        "bottom": 0.031000000017229468
+      },
+      "bytes": 108897,
+      "sha256": "64593f51e3ec0d1c18de8b27a134b27baaef20c4fea5e84d2a2db8a918b52088"
+    }
+  ],
+  "excerpts": [
+    {
+      "file": "tackle-owners-silent.mp4",
+      "source_segments": [
+        {
+          "start_frame": 3530,
+          "end_frame_exclusive": 3680,
+          "encoded_start_seconds": 353.0,
+          "encoded_duration_seconds": 15.0,
+          "start_utc": "2026-10-24T23:11:50.679430+00:00",
+          "last_utc": "2026-10-24T23:12:05.584873+00:00",
+          "stale_samples": 0
+        },
+        {
+          "start_frame": 4830,
+          "end_frame_exclusive": 4890,
+          "encoded_start_seconds": 483.0,
+          "encoded_duration_seconds": 6.0,
+          "start_utc": "2026-10-24T23:14:08.284977+00:00",
+          "last_utc": "2026-10-24T23:14:14.064972+00:00",
+          "stale_samples": 0
+        }
+      ],
+      "playback_speed": 1,
+      "probe": {
+        "programs": [],
+        "stream_groups": [],
+        "streams": [
+          {
+            "codec_type": "video",
+            "r_frame_rate": "10/1",
+            "duration": "21.000000",
+            "nb_frames": "210"
+          }
+        ]
+      },
+      "full_ffmpeg_decode_exit": 0,
+      "bytes": 627753,
+      "sha256": "21d07a1cb13cf5ef2623f9fc90c84e2c050a1da786534f0cc512bfae96072856"
+    },
+    {
+      "file": "finish-route-silent-5x.mp4",
+      "source_segments": [
+        {
+          "start_frame": 5700,
+          "end_frame_exclusive": 7340,
+          "encoded_start_seconds": 570.0,
+          "encoded_duration_seconds": 164.0,
+          "start_utc": "2026-10-24T23:16:40.459158+00:00",
+          "last_utc": "2026-10-24T23:19:24.359727+00:00",
+          "stale_samples": 0
+        }
+      ],
+      "playback_speed": 5,
+      "probe": {
+        "programs": [],
+        "stream_groups": [],
+        "streams": [
+          {
+            "codec_type": "video",
+            "r_frame_rate": "10/1",
+            "duration": "32.800000",
+            "nb_frames": "328"
+          }
+        ]
+      },
+      "full_ffmpeg_decode_exit": 0,
+      "bytes": 521139,
+      "sha256": "d9fb8bd12afd817f90d8c6950edf06bf446222078753c435730476a92aa4ba94"
+    }
+  ],
+  "privacy": "Only actual-screen media and sanitized metadata. Original packs, save bytes, raw audio, executable bytes, full trace and private configuration are not included.",
+  "original_reference": {
+    "capture": "Existing Dolphin official DSU ordinary-controller session",
+    "provenance": "Reused actual original frames from the prior CALL/REFLECT/two-Tackle turn; native candidate capture is NTR on physical New 3DS.",
+    "dolphin_source_pin": "5e7cc91d8c9a43ca189b288937f65c9763af9c22",
+    "exe_sha256": "5e076628b977603dcde9ddef5eedf10b5a9ce0b6208bd4e6dfa9039cdebf3433",
+    "rvz_sha256": "f278e568b5c2dafb153ec932edc95051146cecf5ebc1d3843d71745cd0c1861e",
+    "movie_prefix_sha256": "7168c298d2ce179b40bab586bf7ef04f2245d22e885e8cc4ca605271218350f5",
+    "source_card_sha256": "7e1cb3159756293bf938fd922fe45e82448d1b667f6833a48da351af3cbd0f23",
+    "original_frames": [
+      {
+        "file": "original-tackle-b-announcement.png",
+        "original_dolphin_dump_frame": 8890,
+        "bytes": 418092,
+        "sha256": "b0890c6130e9d8e82ee802268259b56d0111d4101a2a5aade6e2c7dddc48f528",
+        "pixels_unchanged": true,
+        "capture": "Existing original-game Dolphin DSU ordinary-controller capture; not native NTR and not a new capture."
+      },
+      {
+        "file": "original-tackle-b-impact.png",
+        "original_dolphin_dump_frame": 8997,
+        "bytes": 505050,
+        "sha256": "c6ce2e93d2aee51d0a9f5b150cba866e39553335f9345e9c8341efe1f3a94b86",
+        "pixels_unchanged": true,
+        "capture": "Existing original-game Dolphin DSU ordinary-controller capture; not native NTR and not a new capture."
+      }
+    ],
+    "identity_proof": "Original frames 8890\u20138910 explicitly announce ZIGZAGOON used TACKLE; frame8997 is its Espeon impact. Earlier Growl/Tail labels were corrected in the source manifest.",
+    "comparison_limit": "Camera, pose and effect age are not aligned; reference identity/category does not qualify pixel, temporal or full-rendering parity."
+  },
+  "derived_video_frames": [
+    {
+      "file": "espeon-bright-core-video-frame.png",
+      "bytes": 113587,
+      "sha256": "946fb94c88322b89698d313e9f90184914c2028f78dd9637b39bfc091cfacc58",
+      "source_recording_sha256": "110bd0af3dc05dc631deff17ba2b5115083b215d476b81b7320bdd77dca646ae",
+      "source_frame": 4854,
+      "utc": "2026-10-24T23:14:10.568946+00:00",
+      "wall_seconds": 492.96899999998277,
+      "screens": {
+        "bottom": {
+          "frame_id": 232,
+          "counter": 8434,
+          "received_utc": "2026-10-24T23:14:10.506960+00:00"
+        },
+        "top": {
+          "frame_id": 233,
+          "counter": 8427,
+          "received_utc": "2026-10-24T23:14:10.544845+00:00"
+        }
+      },
+      "ages": {
+        "top": 0.03200000000651926,
+        "bottom": 0.06299999996554106
+      },
+      "fresh": true,
+      "origin": "PNG decoded without crop from existing lossy H.264 MP4 using OpenCV CAP_FFMPEG; not an original lossless recorder PNG and not a new capture.",
+      "decoder_procedure": "OpenCV 5.0.0 CAP_FFMPEG: seek video frame4800, decode sequentially through4870, save even indices as RGB PNG; selected4854. Decoded4860 was independently compared to matching lossless sample: mean absolute channel error1.128515625, compatible with lossy encoding."
+    }
+  ],
+  "visual_review": {
+    "file": "visual-verdict.json",
+    "bytes": 1428,
+    "sha256": "d011b4f5f9aa24866801b7495d474ef39cc815306cf5965f112c7760aa0ff89e",
+    "score": 78,
+    "verdict": "revise",
+    "category_match": true,
+    "original_frame": 8997,
+    "native_derived_frame": 4854,
+    "native_lossless_later_frames": [
+      4860,
+      4870
+    ],
+    "initial_phase_selection": {
+      "score": 45,
+      "native_frame": 4860,
+      "qualification": "Unmatched late-dust sample; retained privately as historical, superseded by existing-video phase inspection."
+    },
+    "scope": "Contextual effect-family match; camera, pose, resolution and exact effect age remain unmatched. No parity pass or particle-parameter change inferred."
+  }
+}

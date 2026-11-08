@@ -19,6 +19,28 @@ uint32_t C3D_FrameCounter(int screen);
 #define WATCHDOG_US UINT64_C(3000000)
 #define HEARTBEAT_US UINT64_C(1000000)
 
+static void (*pause_callback)(int);
+static bool callback_paused;
+
+static void set_paused(bool paused)
+{
+    if (callback_paused == paused) return;
+    callback_paused = paused;
+    if (pause_callback) pause_callback(paused ? 1 : 0);
+}
+
+void c3_render_recovery_set_pause_callback(void (*callback)(int))
+{
+    if (pause_callback == callback) {
+        if (!callback) callback_paused = false;
+        return;
+    }
+    if (pause_callback && callback_paused) pause_callback(0);
+    pause_callback = callback;
+    if (!callback) callback_paused = false;
+    else if (callback_paused) callback(1);
+}
+
 static void record(FILE *trace, const char *scene, const char *event,
                    unsigned frames, uint64_t elapsed, bool ready, bool exiting,
                    uint16_t pressed)
@@ -85,10 +107,12 @@ C3RenderRecoveryResult c3_render_recover(FILE *trace, const char *scene,
         uint64_t elapsed = now >= started ? now - started : 0;
         if (ready && (draining || pending_exit)) {
             record(trace, scene, "drained", submitted_frames, elapsed, true, pending_exit, 0);
+            set_paused(false);
             return pending_exit ? C3_RECOVERY_EXIT : C3_RECOVERY_DRAINED;
         }
         if (!paused && elapsed >= WATCHDOG_US) {
             paused = true;
+            set_paused(true);
             deferred = 0;
             record(trace, scene, "timeout", submitted_frames, elapsed, ready, pending_exit, 0);
             next_display = 0;
@@ -96,6 +120,7 @@ C3RenderRecoveryResult c3_render_recover(FILE *trace, const char *scene,
         if (ready && !draining && (!paused || retry)) {
             if (paused) record(trace, scene, "resume", submitted_frames, elapsed, true, false, 0);
             else if (deferred) c3_n3ds_defer_buttons(deferred);
+            set_paused(false);
             return paused ? C3_RECOVERY_RESUME_PAUSED : C3_RECOVERY_RESUME;
         }
 

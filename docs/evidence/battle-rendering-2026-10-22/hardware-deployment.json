@@ -1,0 +1,129 @@
+{
+  "command": "deploy",
+  "started_utc": "2026-10-23T03:26:45.143509+00:00",
+  "application_directory": "/3ds/Colosseum3DS",
+  "status": "passed",
+  "limits": "FTP bytes only; launch, exit, input, screens and gameplay require manual observation",
+  "build_metadata": {
+    "git_commit": "c9a43ddc13beca602661d2616c5b1fa63ca5c35a",
+    "build_configuration": "Normal full actor-animation milestone, readable two-batch development HUD; original FX/camera/audio absent",
+    "toolchain": "devkitARM pinned Docker116afba8; GCC16.1.0 r68-1; libctru2.7.0-1; Citro3D1.7.1-2; Picasso2.7.2-3"
+  },
+  "endpoint": {
+    "host": "192.168.50.154",
+    "port": 5000
+  },
+  "resolved_addresses": [
+    "192.168.50.154"
+  ],
+  "ftp_local_source_address": "192.168.50.47",
+  "passive_ftp": true,
+  "server_system": "215 UNIX Type: L8",
+  "application_directory_accessible": true,
+  "app_exited_attested": true,
+  "deployment": [
+    {
+      "name": "Colosseum3DS.3dsx",
+      "bytes": 426624,
+      "sha256": "9d64014f970b09939d8ec05a80911c5b4cc80b5763e34a50c1b55f3d88b7b344",
+      "staged_verified": true,
+      "installed_verified": true
+    },
+    {
+      "name": "Colosseum3DS.smdh",
+      "bytes": 14016,
+      "sha256": "f3fad3feb7b42caab0a647bb392050bf72e4507593cded5a16819cc1c68e5a55",
+      "staged_verified": true,
+      "installed_verified": true
+    }
+  ],
+  "installed_directory": "/3ds/Colosseum3DS",
+  "nested_installation": false,
+  "files": [
+    {
+      "name": "Colosseum3DS.3dsx",
+      "bytes": 425496,
+      "sha256": "0a7470c93fd848a5b5424a7357f12d08764107515cbfb51c015d46ad21e672aa"
+    },
+    {
+      "name": "Colosseum3DS.smdh",
+      "bytes": 14016,
+      "sha256": "f3fad3feb7b42caab0a647bb392050bf72e4507593cded5a16819cc1c68e5a55"
+    }
+  ],
+  "deployment_verified": true,
+  "rollback_verified": false,
+  "recovery_required": false,
+  "remote_backups": [
+    "/3ds/Colosseum3DS/Colosseum3DS.3dsx.backup-2e6d6fe8f0984cad86e3ade3d64a2892",
+    "/3ds/Colosseum3DS/Colosseum3DS.smdh.backup-2e6d6fe8f0984cad86e3ade3d64a2892"
+  ],
+  "journal": [
+    {
+      "phase": "prepared"
+    },
+    {
+      "phase": "upload_attempt",
+      "path": "/3ds/Colosseum3DS/Colosseum3DS.3dsx.upload-2e6d6fe8f0984cad86e3ade3d64a2892"
+    },
+    {
+      "phase": "upload_verified",
+      "path": "/3ds/Colosseum3DS/Colosseum3DS.3dsx.upload-2e6d6fe8f0984cad86e3ade3d64a2892"
+    },
+    {
+      "phase": "upload_attempt",
+      "path": "/3ds/Colosseum3DS/Colosseum3DS.smdh.upload-2e6d6fe8f0984cad86e3ade3d64a2892"
+    },
+    {
+      "phase": "upload_verified",
+      "path": "/3ds/Colosseum3DS/Colosseum3DS.smdh.upload-2e6d6fe8f0984cad86e3ade3d64a2892"
+    },
+    {
+      "phase": "backup_rename_attempt",
+      "source": "/3ds/Colosseum3DS/Colosseum3DS.3dsx",
+      "destination": "/3ds/Colosseum3DS/Colosseum3DS.3dsx.backup-2e6d6fe8f0984cad86e3ade3d64a2892"
+    },
+    {
+      "phase": "backup_rename_complete",
+      "source": "/3ds/Colosseum3DS/Colosseum3DS.3dsx",
+      "destination": "/3ds/Colosseum3DS/Colosseum3DS.3dsx.backup-2e6d6fe8f0984cad86e3ade3d64a2892"
+    },
+    {
+      "phase": "install_rename_attempt",
+      "source": "/3ds/Colosseum3DS/Colosseum3DS.3dsx.upload-2e6d6fe8f0984cad86e3ade3d64a2892",
+      "destination": "/3ds/Colosseum3DS/Colosseum3DS.3dsx"
+    },
+    {
+      "phase": "install_rename_complete",
+      "destination": "/3ds/Colosseum3DS/Colosseum3DS.3dsx"
+    },
+    {
+      "phase": "backup_rename_attempt",
+      "source": "/3ds/Colosseum3DS/Colosseum3DS.smdh",
+      "destination": "/3ds/Colosseum3DS/Colosseum3DS.smdh.backup-2e6d6fe8f0984cad86e3ade3d64a2892"
+    },
+    {
+      "phase": "backup_rename_complete",
+      "source": "/3ds/Colosseum3DS/Colosseum3DS.smdh",
+      "destination": "/3ds/Colosseum3DS/Colosseum3DS.smdh.backup-2e6d6fe8f0984cad86e3ade3d64a2892"
+    },
+    {
+      "phase": "install_rename_attempt",
+      "source": "/3ds/Colosseum3DS/Colosseum3DS.smdh.upload-2e6d6fe8f0984cad86e3ade3d64a2892",
+      "destination": "/3ds/Colosseum3DS/Colosseum3DS.smdh"
+    },
+    {
+      "phase": "install_rename_complete",
+      "destination": "/3ds/Colosseum3DS/Colosseum3DS.smdh"
+    },
+    {
+      "phase": "deployment_verified"
+    },
+    {
+      "phase": "finished"
+    }
+  ],
+  "cleanup_errors": [],
+  "rollback_errors": [],
+  "recovery_note": "Local originals and recorded remote backups must be retained until recovery is verified."
+}

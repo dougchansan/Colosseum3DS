@@ -1,0 +1,7 @@
+*.png binary
+*.mp4 binary
+*.json text eol=lf
+*.md text eol=lf
+*.log -text
+*.patch -text
+*.gz binary
