@@ -110,12 +110,14 @@ jobs:
           make -f Makefile.3ds -j2
           mkdir -p dist
           cp build-3ds/Colosseum3DS.3dsx build-3ds/Colosseum3DS.smdh dist/
+          make -f Makefile.3ds C3_BOOT_ONLY=1 C3_EXTRA_CFLAGS='-DC3_BATTLE_PREVIEW_PROBE -Werror' -j2
+          cp build-3ds-boot/Colosseum3DS.3dsx dist/Colosseum3DS-battle-preview-probe.3dsx
           cp README.md LICENSE THIRD_PARTY.md dist/
           cp vendor/colosseum/LICENSE dist/LICENSE-upstream
           cp vendor/colosseum/NOTICE dist/NOTICE-upstream
           cp vendor/gekkoctr/LICENSE dist/LICENSE-GekkoCTR-GPLv3
           cd dist
-          sha256sum Colosseum3DS.3dsx Colosseum3DS.smdh > SHA256SUMS
+          sha256sum Colosseum3DS.3dsx Colosseum3DS.smdh Colosseum3DS-battle-preview-probe.3dsx > SHA256SUMS
           '@
           $script = $script.Replace("`r`n", "`n")
           docker run --rm --mount $mount --workdir /work devkitpro/devkitarm@sha256:116afba8df8453961de2936ffab20dd441edf4d682856c1ec8b0e53d7ed0bbf5 bash -lc $script

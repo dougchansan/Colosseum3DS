@@ -1,0 +1,54 @@
+{
+  "platform": "physical New 3DS, streaming on",
+  "samples": 817,
+  "draw_cpu_us_median": 80532,
+  "draw_cpu_us_p95": 82758,
+  "gpu_previous_ms_median": 12.998,
+  "draw_calls_max": 153,
+  "submitted_vertices_max": 60831,
+  "gpu_buffer_bytes_max": 16441080,
+  "allocator_used_bytes_observed_max": 45665192,
+  "linear_free_bytes_observed_min": 14508928,
+  "limits": [
+    "CPU draw scope excludes animation sampling; no complete CPU frame-time claim",
+    "GPU value is last completed Citro3D drawing sample",
+    "Memory maxima are observed checkpoints including transitions, not continuous allocator high-water instrumentation",
+    "Native load-time counter, streaming-off comparison and original-game comparison footage are not collected",
+    "NTR delivery and encoded MP4 rate are not gameplay FPS"
+  ],
+  "transition_checkpoints": {
+    "field_battle_before_drain": {
+      "allocator_used_bytes_observed_max": 44733000,
+      "linear_free_bytes_observed_min": 16019840
+    },
+    "field_battle_payloads_released": {
+      "allocator_used_bytes_observed_max": 1026776,
+      "linear_free_bytes_observed_min": 31679488
+    },
+    "battle_stage_loaded": {
+      "allocator_used_bytes_observed_max": 45665144,
+      "linear_free_bytes_observed_min": 15403136
+    },
+    "battle_render": {
+      "allocator_used_bytes_observed_max": 45665192,
+      "linear_free_bytes_observed_min": 15238272
+    },
+    "battle_released": {
+      "allocator_used_bytes_observed_max": 1343872,
+      "linear_free_bytes_observed_min": 31679488
+    },
+    "field_battle_before_restore": {
+      "allocator_used_bytes_observed_max": 1026776,
+      "linear_free_bytes_observed_min": 31679488
+    },
+    "field_battle_restored": {
+      "allocator_used_bytes_observed_max": 44733000,
+      "linear_free_bytes_observed_min": 16019840
+    }
+  },
+  "controller_to_first_hud_observation_seconds": {
+    "last_observed_without_hud": 4.85,
+    "first_observed_with_hud": 5.37,
+    "limits": "NTR/half-second observer bounds, includes input/load/first render/network delivery; not native loader CPU timing"
+  }
+}

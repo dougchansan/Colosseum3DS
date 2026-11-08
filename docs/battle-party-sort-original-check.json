@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "scope": "two observed party-copy/sort wrapper calls only",
+  "full_battle_entry_qualified": false,
+  "full_battle_qualified": false,
+  "inter_call_rng_qualified": false,
+  "target_side_graph_qualified": false,
+  "unobserved_candidate_scratch_qualified": false,
+  "dol_sha1": "870e8b9693ca780782d80f22a6a4572d8ba9458f",
+  "common_rel_sha1": "e816761813900aa0fd4f87d012b3b2a19d2f003e",
+  "library_sha256": "6296c35577da53a1dd7b97bc61bc2b26cae1ca79d7018891c551a19614e2c65e",
+  "observation_sha256": "044fa4067a25ec0917fc51abe7b0315bb9cb925b0455b5990aeff1ce7a61c781",
+  "matched": 2,
+  "cases": [
+    {
+      "capture_id": "00-partySort",
+      "trainer_id": 10,
+      "matched_trainer_head_bytes": 3524,
+      "matched_sorted_scratch_bytes": 1872,
+      "matched_selected_handle_bytes": 24,
+      "entry_counter_before": 0,
+      "entry_counter_after": 9,
+      "draws": 2,
+      "seed_before": "0x471708e9",
+      "seed_after": "0x8ff186ab",
+      "mutable_context_unchanged": true,
+      "canonical_tables_unchanged": true
+    },
+    {
+      "capture_id": "01-partySort",
+      "trainer_id": 1,
+      "matched_trainer_head_bytes": 3524,
+      "matched_sorted_scratch_bytes": 1872,
+      "matched_selected_handle_bytes": 24,
+      "entry_counter_before": 11,
+      "entry_counter_after": 11,
+      "draws": 0,
+      "seed_before": "0x8ff186ab",
+      "seed_after": "0x8ff186ab",
+      "mutable_context_unchanged": true,
+      "canonical_tables_unchanged": true
+    }
+  ]
+}

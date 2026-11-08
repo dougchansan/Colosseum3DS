@@ -1,0 +1,102 @@
+{
+  "commit": "51bfe4314a218dfaf9592fc80723c50498d0ee55",
+  "files": {
+    "src/game/fight_waza.c": "680d4b391266423c36cbe64599b9552f0dbed2078ba6f31300e8acac376b78d6",
+    "src/game/sequence.c": "5197f33a164dd2698f04c01272f0deaa7f02629f010856b535684277f5daa1dd",
+    "src/game/wazaSequence.c": "975afb18f19c6da6f7132fe3772d8ab3ab9546f528d8381073b59e614459444d",
+    "src/game/wazaSequenceEntry.c": "6500a4db7253ce776686b86d470a6f9587cfa3db10cf9fcfb9cca50328d0855f",
+    "src/game/wazaSequenceSys_tail.c": "91fb672f4d033367b472de815a8fea43824b0eed7deb69bbd8a85be1aa8a2a8e",
+    "src/game/generator.c": "da5f8de6327e5cd5cb7ccd06513009408f6fd21542d228a42fd2ab2713301414",
+    "src/game/psinterpret.c": "3cb29fe1b4e04d25f2c80553f2bebd2ad8fe7e7e470b1de40caf022ab5b907b6",
+    "src/game/psdisp.c": "9556cef7febef3d712f66130d2b6d8bb4302395e54e77daaf4961e394aa0ea6a",
+    "src/game/ps_exact_8016A9B4.c": "091035d8d88d46e59bf116e897cf3e0f118d27eba316afc9e61a7eea6c9d75a7",
+    "src/game/field_range_80117E58.c": "024f1b87bd348a69e3d4a1b309e268c928c803f6dd36b6a691f0da6cec4c2af4",
+    "src/game/gs_model_main_suffix_800E4AC0.c": "ed366dda2bb2f2ce6f00f17e9a75ef72519003b322636c8dc36f70127a508802",
+    "src/game/gs_model_bound.c": "834f966ce186f00a347eaecd1a04ab48bc84778c7e03b50f718cfb86a07b2df2",
+    "src/game/wazaSequenceCamera.c": "f59ed730b4f94c842e81c2316537c7ca847a44de7d0e5a6e21eada4179ef93f4",
+    "src/game/gs_range_801DE698.c": "e4594cc503d7dd0c4acd06b5df8aa216d04c10ea3698b6e20285cf5f50e2b69d",
+    "src/game/particle.c": "be476e7b65e8b4d1bab156c4839efba7bd7fe02e16111bc4a78117edf82e71e1",
+    "src/game/gs_range_801653CC_exact_8016604C.c": "af7682c7bb02183903fb255442674beb290eca01bf301f9b753bdbe481d2ab8b",
+    "src/game/gs_dvd_candidate_80167040.c": "bc1c4fbcd0c97960077688bbce346891db8a104ade8f27bdf311a49b54b6bce3"
+  },
+  "dol_slices": [
+    {
+      "name": "sequence_time",
+      "address": 2149430264,
+      "bytes": 1104,
+      "sha256": "fd8903edf575fa95d66658c33b1925a7008e890a066dba6b1ade3e4b85d84f90"
+    },
+    {
+      "name": "sequence_update",
+      "address": 2149431688,
+      "bytes": 392,
+      "sha256": "41b7cc79b8cc3b8b8da0b9e6321737f8c272ae259a3a13bc42d914a8761735e9"
+    },
+    {
+      "name": "entry_update",
+      "address": 2149417420,
+      "bytes": 808,
+      "sha256": "5c7a49c8e79ae2f0b909a6d50316f1432a679928ccea0fb1c12e8d65a274bd05"
+    },
+    {
+      "name": "sequence_select",
+      "address": 2149437696,
+      "bytes": 88,
+      "sha256": "eaedd37d235365674542532f8f0fe583a7b56ffa8c2ef5e3d5836c5e0272d9bf"
+    },
+    {
+      "name": "pokemon_motion_start",
+      "address": 2149424156,
+      "bytes": 512,
+      "sha256": "1e659824eacaeae0602509efdc779f935617947bc798337e61ceaee077247ca9"
+    },
+    {
+      "name": "direct_motion",
+      "address": 2149445744,
+      "bytes": 240,
+      "sha256": "a2247a7044ab438f1445acbb3506303ef970824f6603a4c3bbbbca8fe430766d"
+    },
+    {
+      "name": "sequence_apply_stop",
+      "address": 2149432080,
+      "bytes": 288,
+      "sha256": "6c3a9fb40f01b1dea6da71fea7022f504c56a8709735527f2997cdbd16d5b8e4"
+    },
+    {
+      "name": "field_bank_stop",
+      "address": 2148632692,
+      "bytes": 500,
+      "sha256": "ebffe9e2a36a2f4a0421a12001c781490be34209bdfd3f342362ca5725580d99"
+    },
+    {
+      "name": "sound_stop_wrapper",
+      "address": 2148952856,
+      "bytes": 36,
+      "sha256": "b44c6798f260b3409b05211334edbb9ae7b4bf4359ba00a176749229b4a9f5d9"
+    },
+    {
+      "name": "sound_stop_work",
+      "address": 2148954224,
+      "bytes": 168,
+      "sha256": "4004ee52261ebe9ccc680794f21f93e691c1f888590001173b9fd3bca94a5771"
+    },
+    {
+      "name": "kill_family",
+      "address": 2148963836,
+      "bytes": 212,
+      "sha256": "a3fe4d1b262e8d36b7034e5aa24255d4c7ad80a6d20a8974a8e4ce5aba08e13a"
+    },
+    {
+      "name": "stop_se_keyoff",
+      "address": 2148955280,
+      "bytes": 120,
+      "sha256": "9faee3a3ae7ca685681266f69fc0eddb8470275abe9ed75c1b621559ad114be4"
+    },
+    {
+      "name": "stop_sound_dispatch",
+      "address": 2148952548,
+      "bytes": 68,
+      "sha256": "00b4e4cbc130446fce3ce7cb865c1c9a4c5cc16dd21d7ed12acf5b6c3d81998c"
+    }
+  ]
+}

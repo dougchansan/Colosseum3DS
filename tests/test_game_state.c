@@ -176,6 +176,34 @@ int main(int argc,char **argv)
     write_file(packpath,pack,PACK_SIZE);
     CHECK(c3_game_state_new(&state,NULL,0x12345678,packpath,error));
     CHECK(c3_game_state_summary(&state,&summary) && !strcmp(summary.name,"WES"));
+    CHECK(summary.party[0].experience==0x4a6fu && summary.party[1].experience==0x3ff4u);
+    CHECK(!summary.party[0].shadow_id && !summary.party[1].shadow_id);
+    uint32_t exp_progress,exp_range;
+    CHECK(c3_game_pokemon_experience(&summary.party[0],&exp_progress,&exp_range));
+    CHECK(exp_progress==1479 && exp_range==2107);
+    CHECK(c3_game_pokemon_experience(&summary.party[1],&exp_progress,&exp_range));
+    CHECK(exp_progress==747 && exp_range==1951);
+    C3GamePokemon exp_pokemon={.species=197};
+    for(unsigned level=1;level<100;++level){
+        exp_pokemon.level=(uint8_t)level;exp_pokemon.experience=level*level*level;
+        CHECK(c3_game_pokemon_experience(&exp_pokemon,&exp_progress,&exp_range));CHECK(!exp_progress&&exp_range>0);
+        exp_pokemon.experience+=(exp_range/2u);
+        CHECK(c3_game_pokemon_experience(&exp_pokemon,&exp_progress,&exp_range));CHECK(exp_progress==exp_range/2u);
+    }
+    exp_pokemon.experience=UINT32_MAX;
+    CHECK(c3_game_pokemon_experience(&exp_pokemon,&exp_progress,&exp_range)&&exp_progress==exp_range);
+    exp_pokemon.experience=0;
+    CHECK(c3_game_pokemon_experience(&exp_pokemon,&exp_progress,&exp_range)&&!exp_progress);
+    exp_pokemon.level=100;
+    CHECK(c3_game_pokemon_experience(&exp_pokemon,&exp_progress,&exp_range)&&!exp_progress&&!exp_range);
+    exp_pokemon.level=0;CHECK(!c3_game_pokemon_experience(&exp_pokemon,&exp_progress,&exp_range));
+    exp_pokemon.level=101;CHECK(!c3_game_pokemon_experience(&exp_pokemon,&exp_progress,&exp_range));
+    exp_pokemon.level=26;exp_pokemon.species=288;
+    CHECK(!c3_game_pokemon_experience(&exp_pokemon,&exp_progress,&exp_range));
+    exp_pokemon.species=197;exp_pokemon.shadow_id=1;
+    CHECK(!c3_game_pokemon_experience(&exp_pokemon,&exp_progress,&exp_range));
+    CHECK(!c3_game_pokemon_experience(NULL,&exp_progress,&exp_range));
+    CHECK(!c3_game_pokemon_experience(&exp_pokemon,NULL,&exp_range));
     CHECK(summary.trainer_id==0x1c465252 && summary.saved_count==0);
     before=c3_game_state_body(&state,&length);CHECK(length==C3_SAVE_BODY_SIZE);
     CHECK(!c3_game_state_new(&state,"TOOLONG8",1,packpath,error));CHECK(c3_game_state_body(&state,NULL)==before);

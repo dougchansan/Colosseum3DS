@@ -1,6 +1,7 @@
 /* Execute the production scene initialization/teardown with a Citro3D
  * shader-pointer contract. The real SDK keeps that pointer until final Fini. */
 #include "stage_renderer.h"
+#include "stage_cache.h"
 #include <assert.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -15,7 +16,19 @@ typedef struct { int unused; } C3D_RenderTarget;
 typedef struct { int numDVLE, DVLE[1]; } DVLB_s;
 typedef struct { int *vertexShader; } shaderProgram_s;
 typedef unsigned u32;
+static const C3ParticlePack *particle_pack;
+static const C3ParticlePack *particle_bindings[C3_STAGE_MAX_PARTICLE_BANKS];
+static uint32_t particle_binding_textures[C3_STAGE_MAX_PARTICLE_BANKS][32];
+static unsigned particle_binding_count;
+static const C3ParticleSystem *particle_system;
+static C3ParticleSystem *particle_srt_system;
+static C3ParticleSystem *particle_order_system;
+static uint64_t particle_render_frame;
+static TitleGPUVertex *particle_vertices;
+static bool scene_drawn;
 static SceneBinding scenes[C3_STAGE_MAX_MODELS];
+static C3StageVertexCache vertex_cache[C3_STAGE_MAX_MODELS];
+static uint8_t model_modulation[C3_STAGE_MAX_MODELS][4];
 static size_t scene_count;
 static bool c3d_started, program_started, driver_live;
 static bool completion_hooks;
@@ -25,10 +38,13 @@ static shaderProgram_s program;
 static shaderProgram_s *sdk_program;
 static int mvp_location, color_pass_location;
 static TitleGPUVertex *vertices;
+static TitleGPUVertex *hud_vertices;
 static C3D_Tex textures[C3_STAGE_MAX_TEXTURES];
 static const C3TitleTexture *texture_sources[C3_STAGE_MAX_TEXTURES];
 static uint32_t texture_count, vertex_count;
 static size_t gpu_buffer_bytes;
+static C3StageBattleHud battle_hud;
+static uint32_t hud_texture;
 typedef struct { bool configured, enabled; size_t model, screen_model; uint32_t texture; } TVBinding;
 static TVBinding tv;
 static C3D_Tex tv_texture;
@@ -55,7 +71,7 @@ static int validate_asset(const C3Title *title, char *error, size_t capacity)
 { (void)title; (void)error; (void)capacity; return 0; }
 static uint32_t specular_light_mask(const C3Title *title) { (void)title; return 0; }
 static bool C3D_Init(size_t size)
-{ (void)size; assert(!driver_live); ++init_calls; if (should_fail()) return false; driver_live = true; return true; }
+{ assert(size==C3_RENDER_COMMAND_BUFFER_BYTES); assert(!driver_live); ++init_calls; if (should_fail()) return false; driver_live = true; return true; }
 static void C3D_Fini(void)
 {
     assert(driver_live);
@@ -98,6 +114,9 @@ static void C3D_FrameEnd(unsigned flags) { assert(flags == 0); }
 static void install_completion_counters(void) { completion_hooks = true; }
 #define gspSetEventCallback(...) ((void)0)
 
+static void confusion_shutdown(void){}
+static void particle_line_shutdown(void){}
+static void particle_line_fini(void){}
 #include "renderer_lifecycle.inc"
 
 int main(int argc, char **argv)
@@ -170,7 +189,20 @@ int main(int argc, char **argv)
         if (sdk_program) assert(sdk_program == &program && sdk_program->vertexShader);
         sdk_program = &program;
         assert(c3_stage_renderer_init(models, 1, error, sizeof(error)) == -1);
+        /* Model the optional HUD arena in alternate scene bundles. Production
+         * shutdown must release it after the same idle barrier as geometry. */
+        if (transition & 1u) {
+            hud_vertices = linearAlloc(2358u * sizeof *hud_vertices);
+            assert(hud_vertices && buffers == 2);
+        }
+        /* Optional particle ownership follows the same sole-scene drain. */
+        particle_vertices=linearAlloc(6u*sizeof *particle_vertices);
+        assert(particle_vertices&&buffers==((transition&1u)?3u:2u));
+        particle_pack=(const C3ParticlePack *)(uintptr_t)1;
+        particle_system=(const C3ParticleSystem *)(uintptr_t)2;
+        particle_order_system=(C3ParticleSystem *)(uintptr_t)3;
         assert(c3_stage_renderer_try_shutdown());
+        assert(!hud_vertices&&!particle_vertices&&!particle_pack&&!particle_system&&!particle_order_system);
         assert(!targets && !buffers && !images && !scene_count);
         assert(driver_live && program.vertexShader && shader);
         assert(init_calls == 1 && shader_inits == 1 && !fini_calls && !shader_frees);

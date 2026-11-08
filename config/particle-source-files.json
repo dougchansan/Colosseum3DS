@@ -1,0 +1,33 @@
+{
+  "commit": "51bfe4314a218dfaf9592fc80723c50498d0ee55",
+  "files": {
+    "src/game/psinterpret.c": "3cb29fe1b4e04d25f2c80553f2bebd2ad8fe7e7e470b1de40caf022ab5b907b6",
+    "src/game/generator.c": "da5f8de6327e5cd5cb7ccd06513009408f6fd21542d228a42fd2ab2713301414",
+    "src/game/particle.c": "be476e7b65e8b4d1bab156c4839efba7bd7fe02e16111bc4a78117edf82e71e1",
+    "src/hsd/random.c": "5cbf926074e0efc33caafa312333cc7b62b7d4124eaea1af238952feb2ececd5",
+    "include/sysdolphin/baselib/psstructs.h": "9b2892282245e2d3c71dcd523c091a24ccbecdfdbcecc303976c3c3d5b47afbb",
+    "src/game/psdisp.c": "9556cef7febef3d712f66130d2b6d8bb4302395e54e77daaf4961e394aa0ea6a",
+    "src/game/psdisptev.c": "8673c1741849b0a32add4033658996d5ad3d1124ff1727a0cdf9129d3ed93d7b",
+    "src/game/wazaSequenceEntry.c": "6500a4db7253ce776686b86d470a6f9587cfa3db10cf9fcfb9cca50328d0855f",
+    "src/game/wazaSequence.c": "975afb18f19c6da6f7132fe3772d8ab3ab9546f528d8381073b59e614459444d",
+    "src/game/field_range_80117E58.c": "024f1b87bd348a69e3d4a1b309e268c928c803f6dd36b6a691f0da6cec4c2af4",
+    "src/game/field_candidate_801195AC.c": "d1af09c41846c7146e4bc218856bcebadfc8d2d49cd0217985ab275133e53875"
+  },
+  "scope": "Source handlers reached by Bite defender GPT1 generator3 closure0/3/5; no original bytes embedded.",
+  "handlers": {
+    "psInitDataBankLocate": "0x8016A2D0",
+    "psGenerateParticle0": "0x80169B40",
+    "psInterpretParticle0": "0x8016F500",
+    "psCreateGeneratorID": "0x80173718",
+    "psExecGenerator": "0x80173F98",
+    "generateParticle_8017424C": "0x8017424C",
+    "psSetupTev": "0x8016EC1C",
+    "psSetupTevCommon": "0x8016F300"
+  },
+  "semantics_notes": [
+    "PSCmdList +2 is texture group; +4 generator life; +6 particle life, not maximum allocation count.",
+    "Opcode AC reads variable time and two floats; pinned importer disassembler omits the second float and must not drive native execution.",
+    "I8 intensity supplies RGBA including alpha; textures use source 8x4 tiled storage.",
+    "Bank kind fixup clears 0x0E000000 and sets 0x08000000 before source F0 spawn kind overrides."
+  ]
+}

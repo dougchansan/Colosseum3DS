@@ -19,6 +19,11 @@ class SandboxGuestFaultTests(unittest.TestCase):
         self.assertEqual(RUN.application_failures("field_end result=2 error=\nboot_end result=1 error=\n")["count"], 0)
         self.assertEqual(RUN.application_failures("game_save status=failed reason=write failed\n")["count"], 1)
 
+    def test_stopped_preview_is_failure_before_app_exit(self):
+        log = "preview_runtime_failed error=Audio completion cue identity is unknown\n"
+        self.assertEqual(RUN.application_failures(log)["count"], 1)
+        self.assertEqual(RUN.application_failures("preview_begin build=test\npreview_probe_end result=0 error= save_writes=0\n")["count"], 0)
+
     def test_real_null_texture_read_is_a_guest_fault(self):
         log = "[19716.303625] HW.Memory <Error> core/memory.cpp:UnmappedAccess:583: unmapped Read32 @ 0x0000000C at PC 0x0011545C\nRUN END frames=8750 video=8750 audio=0 elapsed=19.9 interrupted=0 shutdown=0\n"
         self.assertEqual(RUN.guest_faults(log)["count"], 1)
