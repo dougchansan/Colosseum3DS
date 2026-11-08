@@ -197,7 +197,7 @@ static int preset_mode(void *user,uint8_t *out)
 static int sequence_index(void *user,uint16_t id,uint16_t *out)
 {
     const C3BattleEntryRecords *r=context(user);if(!r||!output_ok(r,out,sizeof *out))return 0;
-    const uint8_t *p=row(r,C3_ENTRY_TRAINER,id);*out=p?be16(p+0x10):0;return 1;
+    const uint8_t *p=row(r,C3_ENTRY_TRAINER,id);*out=p?(uint16_t)be32(p+0x10):0;return 1; /* (u16)selector9: low half of BE32 +0x10 */
 }
 static int trainer_valid(void *user,uint32_t ref,uint8_t *out)
 {

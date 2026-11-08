@@ -114,8 +114,8 @@ static void init(void)
     records.action_data=actions;records.action_count=2;records.encounter_id=10;records.encounter_reference=700;
     encounters[10][0]=1;encounters[10][1]=2;w16(encounters[10]+24,10);w16(encounters[10]+32,1);
     w32(encounters[10]+36,1);types[2][0]=1;types[2][1]=6;types[2][2]=2;
-    w16(trainers[10]+6,4);w16(trainers[10]+2,2);w16(trainers[10]+16,38);
-    w16(trainers[1]+2,1);w16(trainers[1]+16,1);w16(sides[1],1);w16(sides[2],2);
+    w16(trainers[10]+6,4);w16(trainers[10]+2,2);w16(trainers[10]+16,0xa5a5);w16(trainers[10]+18,38);
+    w16(trainers[1]+2,1);w16(trainers[1]+16,0x5a5a);w16(trainers[1]+18,1);w16(sides[1],1);w16(sides[2],2);
     for(unsigned i=0;i<414;++i)w32(species[i]+24,100+i);
     for(unsigned i=0;i<2;++i){
         slots[i].trainer=100+i;slots[i].hero=200+i;slots[i].runtime=runtime[i];slots[i].runtime_size=sizeof runtime[i];

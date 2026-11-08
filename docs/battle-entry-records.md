@@ -29,7 +29,9 @@ Important source details retained:
   getters compare with `>`: their supplied limit is an **inclusive maximum**.
   Backing must include that entire final row. A count cannot be passed unchanged
   as a maximum, and no invented boundary row is appended by this adapter.
-- Trainer sequence selection comes from trainer row +0x10, not the AI field.
+- Trainer sequence selection is `(u16)` of the BE32 at trainer row +0x10 (the
+  low half, bytes +0x12..+0x13), as `fightTrainerCreateSequence` narrows
+  selector 9; it is not the AI field. Real rows: trainer 1 = 1, trainer 10 = 38.
   Encounter devices are read as BE32 and narrowed at the original caller's u16
   boundary. Action selection reads its referenced data's buff, not action.buff.
 - Pokemon validity checks species, source name presence, attestation and the
