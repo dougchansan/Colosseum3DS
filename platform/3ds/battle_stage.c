@@ -66,6 +66,32 @@ int c3_battle_stage_load(C3BattleStage *s,const char *root,const uint16_t hp[4],
         s->draw[i]=&s->models[i];
     }
     if(seen!=63||!arenas)goto invalid;
+#ifndef C3_ARENA_OVERVIEW_CAMERA
+    /* Native command-phase view (NOT the original battle camera sequence, which
+     * is not ported): behind and above the player's pair, looking across at the
+     * opponents. The arena's authored camera is a steep overhead overview. Only
+     * eye/target change; the authored lens, roll and clip planes are kept so
+     * effect cameras inheriting them are unchanged. Slots 0/1 are the player's
+     * Pokemon and 2/3 the opponent's. Build with -DC3_ARENA_OVERVIEW_CAMERA to
+     * restore the authored overview. */
+    {
+        float player[3]={0,0,0},enemy[3]={0,0,0};
+        for(uint32_t i=0;i<count;++i){
+            float *side=s->slots[i]<2?player:s->slots[i]<4?enemy:NULL;
+            if(side)for(unsigned j=0;j<3;++j)side[j]+=s->transforms[i][j]*.5f;
+        }
+        float axis[2]={enemy[0]-player[0],enemy[2]-player[2]};
+        float span=sqrtf(axis[0]*axis[0]+axis[1]*axis[1]);
+        if(isfinite(span)&&span>.5f){
+            axis[0]/=span;axis[1]/=span;
+            /* Back 6.3 m keeps both player Pokemon inside the 30-degree lens at
+             * the 5:3 top-screen width; height 4.0 puts the opponents near
+             * frame centre and the player's pair in the lower third. */
+            s->camera.eye[0]=player[0]-axis[0]*6.3f;s->camera.eye[1]=player[1]+4.0f;s->camera.eye[2]=player[2]-axis[1]*6.3f;
+            s->camera.target[0]=player[0]+axis[0]*span*.86f;s->camera.target[1]=player[1]+.7f;s->camera.target[2]=player[2]+axis[1]*span*.86f;
+        }
+    }
+#endif
     /* Optional, exact-source attack slice. Absence preserves the accepted
      * actor-only build. A present but invalid descriptor is not ignored. */
     if(snprintf(path,sizeof path,"%s/bite.c3w",root)>=(int)sizeof path)goto invalid;
