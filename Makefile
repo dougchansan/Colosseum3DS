@@ -438,4 +438,17 @@ all: build/test_battle_runtime_trainer
 .PHONY: battle-runtime-trainer-check
 battle-runtime-trainer-check: build/test_battle_runtime_trainer
 	./build/test_battle_runtime_trainer
+
+# Trainer-entry session over the real constructors (no spies). It runs the
+# private-pack path only when C3_ENTRY_PACK and C3_ENTRY_NEWGAME are set.
+BATTLE_ENTRY_SESSION_SOURCES = src/battle_entry_session.c src/battle_entry_pack.c 	src/battle_entry_records.c src/battle_trainer_entry.c src/battle_trainer_entry_native.c 	src/battle_sequence.c src/battle_resume.c src/battle_action.c src/battle_party_sort.c 	src/battle_runtime_trainer.c src/battle_trainer.c $(BATTLE_FIGHT_POKEMON_SOURCES) 	src/game_state.c src/save.c src/decomp_pokemon.c build/save_codec.c
+BATTLE_ENTRY_SESSION_GENERATED = build/battle_action_original.inc build/battle_party_sort_original.inc 	$(BATTLE_RUNTIME_TRAINER_GENERATED)
+build/test_battle_entry_session: tests/test_battle_entry_session.c $(BATTLE_ENTRY_SESSION_SOURCES) $(HEADERS) $(BATTLE_ENTRY_SESSION_GENERATED) | build
+	$(CC) $(CPPFLAGS) -Isrc -Ibuild $(CFLAGS) tests/test_battle_entry_session.c $(BATTLE_ENTRY_SESSION_SOURCES) $(LDFLAGS) -lm -o $@
+
+all: build/test_battle_entry_session
+.PHONY: battle-entry-session-check
+battle-entry-session-check: build/test_battle_entry_session
+	./build/test_battle_entry_session
+test: battle-entry-session-check
 test: battle-runtime-trainer-check
