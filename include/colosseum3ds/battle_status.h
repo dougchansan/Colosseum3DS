@@ -33,6 +33,42 @@ int c3_battle_fight_status_get(const C3BattleArena *arena, uint32_t object,
 int c3_battle_fight_status_set(C3BattleArena *arena, uint32_t object,
                                uint32_t selector, uint32_t index, uint32_t value);
 
+/* Static original tables addressed by data ID (move rows: 56 bytes;
+ * floor data rows: 24 bytes). Rows at or beyond count read as the original
+ * NULL row (0). */
+typedef struct {
+    const uint8_t *rows;
+    uint32_t count, stride;
+} C3BattleDataRows;
+
+/* wazaGetStatus / wazaSetStatus: statuses 1..0x24 read move data rows by
+ * data_id; 0x25..0x34 read the FightWaza record at fight_waza (arena), with
+ * 0x33/0x34 (type of the original/used move) lowered by hand. Move rows are
+ * never written. Same return convention as above. */
+int c3_battle_waza_status_get(const C3BattleArena *arena, const C3BattleDataRows *moves,
+                              uint32_t fight_waza, uint16_t data_id, uint32_t status,
+                              uint32_t index, uint32_t *value);
+int c3_battle_waza_status_set(C3BattleArena *arena, uint32_t fight_waza, uint32_t status,
+                              uint32_t index, uint32_t value);
+
+/* fightFloorGetStatus / fightFloorSetStatus. floor is the FightFloor record
+ * (arena address of lbl_8046DD90's 0xA4E8 bytes); object defaults to it for
+ * fields 8..0x5E, fields 1..7 read floor data rows by slot. 0x37/0x38
+ * (attacker's used/original move) are lowered by hand. Setters that also
+ * drive presentation (e.g. attacker 0x36, defender 0x42) are not handled. */
+#define C3_FIGHT_FLOOR_BYTES 0xA4E8u
+int c3_battle_floor_status_get(const C3BattleArena *arena, const C3BattleDataRows *floors,
+                               uint32_t floor, uint32_t object, uint32_t slot,
+                               uint32_t field, uint32_t arg, uint32_t *value);
+int c3_battle_floor_status_set(C3BattleArena *arena, uint32_t floor, uint32_t object,
+                               uint32_t field, uint32_t arg, uint32_t value);
+
+/* fightTargetGetPtrAsNowFightType for the fixed kinds: 0, 1 (FightFloor) and
+ * 0x11..0x1D (floor attacker 0x36, defender 0x42, ...). Side/trainer-relative
+ * kinds return 0 (not lowered yet). */
+int c3_battle_target(const C3BattleArena *arena, uint32_t floor, uint32_t kind,
+                     uint32_t index, uint32_t *target);
+
 #define C3_FIGHT_OUT_POKEMON_BYTES 0x6E0u
 #define C3_RUNTIME_FIGHT_OUT_OFFSET 0x1314u /* two active FightOutPokemon per trainer
                                               (trainer field 0x46); another record

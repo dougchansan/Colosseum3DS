@@ -6,6 +6,61 @@
 
 #define CHECK(x) do{if(!(x)){fprintf(stderr,"%s:%d: CHECK(%s)\n",__FILE__,__LINE__,#x);exit(1);}}while(0)
 
+static void waza_and_floor(void)
+{
+    static uint8_t big[2*0x28E4+C3_FIGHT_FLOOR_BYTES],moves[3*56],floors[2*24];
+    C3BattleArena a={big,sizeof big};
+    C3BattleDataRows mv={moves,3,56},fl={floors,2,24};
+    const uint32_t fo=C3_ARENA_BASE+0x1314,floor=C3_ARENA_BASE+2*0x28E4,fw=fo+0x49C;
+    uint32_t v;
+    /* Move row 2: priority -1, PP 30, type 14, accuracy 100, power 50 (s16). */
+    uint8_t *r=moves+2*56;r[0]=0xFF;r[1]=30;r[2]=14;r[4]=100;r[0x16]=0;r[0x17]=50;
+    CHECK(c3_battle_waza_status_get(&a,&mv,0,2,4,0,&v)&&v==0xFFFFFFFFu);   /* (s8) priority */
+    CHECK(c3_battle_waza_status_get(&a,&mv,0,2,2,0,&v)&&v==30);
+    CHECK(c3_battle_waza_status_get(&a,&mv,0,2,3,0,&v)&&v==14);
+    CHECK(c3_battle_waza_status_get(&a,&mv,0,2,7,0,&v)&&v==50);
+    CHECK(c3_battle_waza_status_get(&a,&mv,0,9,2,0,&v)&&v==0);            /* beyond count: NULL row */
+    CHECK(c3_battle_waza_status_get(&a,&mv,0,2,0,0,&v)&&v==0);            /* status 0 */
+    CHECK(c3_battle_waza_status_get(&a,&mv,0,2,0x35,0,&v)&&v==0);         /* >= 0x35 */
+    CHECK(!c3_battle_waza_status_set(&a,fw,2,0,1));                       /* move rows read-only */
+    CHECK(!c3_battle_waza_status_get(&a,&mv,0,2,0x1C,0,&v));              /* AI func ptr: computed */
+    /* FightWaza record: original move @+2, used move @+4, joutai @+8 (x9). */
+    CHECK(c3_battle_waza_status_set(&a,fw,0x27,0,1)&&c3_battle_waza_status_set(&a,fw,0x28,0,2));
+    CHECK(big[0x1314+0x49C+3]==1&&big[0x1314+0x49C+5]==2);
+    CHECK(c3_battle_waza_status_get(&a,&mv,fw,0,0x2A,8,&v)&&v==fw+8+8*16);
+    CHECK(c3_battle_waza_status_get(&a,&mv,fw,0,0x2A,9,&v)&&v==0);
+    CHECK(c3_battle_waza_status_get(&a,&mv,fw,0,0x34,0,&v)&&v==14);       /* used move's type */
+    CHECK(c3_battle_waza_status_get(&a,&mv,fw,0,0x33,0,&v)&&v==0);        /* move 1 type 0 */
+    /* pokemonGetStatus 0xDA/0xDB through the FightWaza at FightOutPokemon +0x49C. */
+    CHECK(c3_battle_fight_status_get(&a,fo,0xDA,0,&v)&&v==2);
+    CHECK(c3_battle_fight_status_get(&a,fo,0xDB,0,&v)&&v==1);
+    CHECK(c3_battle_fight_status_get(&a,0,0xDA,0,&v)&&v==0);
+    /* FightFloor: attacker @+0xA474, defender @+0xA478, turn count @+0x10. */
+    uint8_t *fr=big+2*0x28E4;
+    fr[0xA474]=(uint8_t)(fo>>24);fr[0xA475]=(uint8_t)(fo>>16);fr[0xA476]=(uint8_t)(fo>>8);fr[0xA477]=(uint8_t)fo;
+    const uint32_t def=C3_ARENA_BASE+0x28E4+0x1314;
+    fr[0xA478]=(uint8_t)(def>>24);fr[0xA479]=(uint8_t)(def>>16);fr[0xA47A]=(uint8_t)(def>>8);fr[0xA47B]=(uint8_t)def;
+    CHECK(c3_battle_floor_status_set(&a,floor,0,0x0C,0,7)&&fr[0x11]==7);
+    CHECK(c3_battle_floor_status_get(&a,&fl,floor,0,0,0x0C,0,&v)&&v==7);
+    CHECK(c3_battle_floor_status_get(&a,&fl,floor,0,0,0,0,&v)&&v==floor);
+    CHECK(c3_battle_floor_status_get(&a,&fl,floor,0,0,0x60,0,&v)&&v==0);
+    CHECK(c3_battle_floor_status_get(&a,&fl,floor,0,0,0x37,0,&v)&&v==2);  /* attacker used move */
+    CHECK(c3_battle_floor_status_get(&a,&fl,floor,0,0,0x38,0,&v)&&v==1);
+    CHECK(!c3_battle_floor_status_set(&a,floor,0,0x36,0,fo));             /* drives presentation */
+    /* Floor data rows by slot: side data IDs @+0x14 (x2). */
+    floors[24+0x14]=0;floors[24+0x15]=2;floors[24+0x16]=0;floors[24+0x17]=1;
+    CHECK(c3_battle_floor_status_get(&a,&fl,floor,0,1,3,0,&v)&&v==2);
+    CHECK(c3_battle_floor_status_get(&a,&fl,floor,0,1,3,1,&v)&&v==1);
+    CHECK(c3_battle_floor_status_get(&a,&fl,floor,0,1,3,2,&v)&&v==0);
+    CHECK(c3_battle_floor_status_get(&a,&fl,floor,0,5,3,0,&v)&&v==0);     /* NULL row */
+    /* Targets: attacker / defender / floor; side-relative kinds refused. */
+    CHECK(c3_battle_target(&a,floor,0x11,0,&v)&&v==fo);
+    CHECK(c3_battle_target(&a,floor,0x12,0,&v)&&v==def);
+    CHECK(c3_battle_target(&a,floor,1,0,&v)&&v==floor);
+    CHECK(c3_battle_target(&a,floor,0,0,&v)&&v==0);
+    CHECK(!c3_battle_target(&a,floor,2,0,&v));
+}
+
 int main(void)
 {
     static uint8_t bytes[0x4000];
@@ -83,12 +138,13 @@ int main(void)
 
     /* Not handled here: computed, absent, outside the range, outside the arena. */
     v=0x77;
-    CHECK(!c3_battle_fight_status_get(&arena,obj,0xDA,0,&v)&&v==0x77);  /* use-waza: computed */
+    CHECK(!c3_battle_fight_status_get(&arena,obj,0xDC,0,&v)&&v==0x77);  /* still computed */
     CHECK(!c3_battle_fight_status_get(&arena,obj,0x123,0,&v));          /* checkFightOut: computed */
     CHECK(!c3_battle_fight_status_get(&arena,obj,0xD3,0,&v));           /* absent */
     CHECK(!c3_battle_fight_status_get(&arena,obj,0x6E,0,&v));           /* Pokemon field: elsewhere */
     CHECK(!c3_battle_fight_status_get(&arena,C3_ARENA_BASE+sizeof bytes-4,0xE6,0,&v));
     CHECK(!c3_battle_fight_status_set(&arena,0x80001000u,0xE6,0,1));
+    waza_and_floor();
     puts("battle_status OK");
     return 0;
 }

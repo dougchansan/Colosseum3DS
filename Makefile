@@ -478,10 +478,11 @@ battle-script-check: build/test_battle_script
 test: battle-script-check
 
 # FightPokemon/FightOutPokemon status accessors (field table generated from source).
-build/battle_status_fields.inc: tools/prepare_battle_status_fields.py vendor/colosseum/src/game/pokemon_get_status_exact_8012640C.c vendor/colosseum/src/game/pokemon_range_8011F5FC.c vendor/colosseum/src/game/fight_trainer_db_range_801FBD10.c | build
-	python3 tools/prepare_battle_status_fields.py --output $@
+BATTLE_STATUS_TABLES = build/battle_status_fields.inc build/battle_waza_fields.inc build/battle_floor_fields.inc
+$(BATTLE_STATUS_TABLES) &: tools/prepare_battle_status_fields.py vendor/colosseum/src/game/pokemon_get_status_exact_8012640C.c vendor/colosseum/src/game/pokemon_range_8011F5FC.c vendor/colosseum/src/game/fight_trainer_db_range_801FBD10.c vendor/colosseum/src/game/waza.c vendor/colosseum/src/game/fight_floor.c vendor/colosseum/src/game/fight_floor_bios.c vendor/colosseum/src/game/fight_out_pokemon_exact_802096E8.c | build
+	python3 tools/prepare_battle_status_fields.py --output-dir build
 
-build/test_battle_status: tests/test_battle_status.c src/battle_status.c include/colosseum3ds/battle_status.h build/battle_status_fields.inc | build
+build/test_battle_status: tests/test_battle_status.c src/battle_status.c include/colosseum3ds/battle_status.h $(BATTLE_STATUS_TABLES) | build
 	$(CC) $(CPPFLAGS) -Isrc -Ibuild $(CFLAGS) tests/test_battle_status.c src/battle_status.c $(LDFLAGS) -o $@
 
 all: build/test_battle_status
@@ -492,7 +493,7 @@ test: battle-status-check
 
 # fightOutPokemonCreate over the arena; private run with C3_ENTRY_PACK/C3_ENTRY_NEWGAME.
 BATTLE_FIGHT_OUT_SOURCES = $(sort src/battle_fight_out.c src/battle_status.c $(BATTLE_ENTRY_SESSION_SOURCES))
-build/test_battle_fight_out: tests/test_battle_fight_out.c $(BATTLE_FIGHT_OUT_SOURCES) $(HEADERS) build/battle_status_fields.inc $(BATTLE_ENTRY_SESSION_GENERATED) | build
+build/test_battle_fight_out: tests/test_battle_fight_out.c $(BATTLE_FIGHT_OUT_SOURCES) $(HEADERS) $(BATTLE_STATUS_TABLES) $(BATTLE_ENTRY_SESSION_GENERATED) | build
 	$(CC) $(CPPFLAGS) -Isrc -Ibuild $(CFLAGS) tests/test_battle_fight_out.c $(BATTLE_FIGHT_OUT_SOURCES) $(LDFLAGS) -lm -o $@
 
 all: build/test_battle_fight_out

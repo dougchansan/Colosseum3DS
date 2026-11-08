@@ -106,6 +106,17 @@ interpreter yet.
   lowered. Records live in an arena addressed by synthetic guest addresses
   (`0x90000000`+), so stored record pointers and pointer arithmetic behave as
   on the GameCube, with every access bounds-checked.
+- The same generator now covers `wazaGetStatus` (move data rows by ID and
+  the FightWaza record at FightOutPokemon `+0x49C`; 41 of 52 statuses, the
+  rest are AI/animation function pointers) and `fightFloorGetStatus` (floor
+  data rows and the 0xA4E8-byte FightFloor record `lbl_8046DD90`: attacker
+  `+0xA474`, defender `+0xA478`, active array `+0xA4C4`; 34 of 95 fields,
+  the rest are computed from encounter tables). Where the original routes a
+  selector's setter to a different field (`wazaSetStatus` case 10 calls the
+  case-11 setter) the setter is not modelled. Hand-lowered computed
+  selectors: used/original move (`0xDA`/`0xDB`, floor `0x37`/`0x38`) and their
+  types (waza `0x33`/`0x34`). `c3_battle_target` resolves the fixed
+  `fightTargetGetPtrAsNowFightType` kinds (attacker 0x11, defender 0x12, ...).
 - Each trainer record holds two active FightOutPokemon (0x6E0 bytes) at
   `+0x1314` and one more of that size at `+0x20D4`.
 - `src/battle_fight_out.c` lowers `fightOutPokemonCreate` (send-out
