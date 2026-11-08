@@ -3,6 +3,7 @@
 #include "game_ui_views.h"
 #include "n3ds_platform.h"
 #include "battle_stage.h"
+#include "battle_entry_console.h"
 #include "battle_audio_player.h"
 #include "render_recovery.h"
 #include "colosseum3ds/battle_preview_menu.h"
@@ -172,6 +173,10 @@ int c3_battle_preview_from_game_state(const C3GameState *state,FILE *trace)
         uint8_t *before=malloc(bytes);
         if(before) {
             memcpy(before,body,bytes);
+            /* Original trainer entry in an isolated session, inside the same
+             * state guard. Its outcome is traced; the preview still drives
+             * the battle and nothing here is authoritative. */
+            (void)c3_battle_entry_console_run(10,body,bytes,trace);
             int result=c3_battle_preview_scene_run(&request,trace);
             size_t after_bytes=0;const uint8_t *after=c3_game_state_body(state,&after_bytes);
             int unchanged=after&&after_bytes==bytes&&!memcmp(before,after,bytes);
