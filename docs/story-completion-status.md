@@ -7,6 +7,19 @@ only the Outskirt Stand exterior/shop, and GSVM native 98 remains suspended
 because authoritative combat/result/writeback is not implemented. The selected
 battle preview is nonpersistent and cannot advance the story.
 
+## Current battle checkpoint (2026-11-08)
+
+`main` now runs the original two-side trainer entry (PR #9's action flow,
+record services and constructors over original tables) at the encounter-10
+handoff, and the preview battle starts from the entry-built FightPokemon and
+session RNG. On New 3DS that battle matched a host prediction over the same
+save event for event, with the save unchanged
+([evidence](evidence/entry-combat-hardware-2026-11-08/README.md)). The turns
+themselves are still the preview's own engine, the session seed is a labelled
+native value, and nothing is authoritative. The next phase replaces the
+preview turn engine with original turn code paths: see the
+[phase plan](original-battle-turns.md).
+
 ## Newly verified prerequisites
 
 - `battle_rules.c` executes pinned source result-combination and 16-slot AI
@@ -63,7 +76,7 @@ not yet established. These observations never authorize granting those flags.
 
 | Requirement | Current evidence/status |
 | --- | --- |
-| Original shared RNG and full trainer/Pokemon/FightPokemon entry | Bounded parent, Pokemon, sorting and runtime constructors match original calls; live stream bootstrap, actual sequences, active fighters and complete entry remain required |
+| Original shared RNG and full trainer/Pokemon/FightPokemon entry | Two-side trainer entry runs through the original action flow on hardware and seeds the preview battle; original battle-entry RNG state, the Kaijou venue action, applied grid placement and active-fighter (send-out) entry remain required |
 | Source-legal commands, AI scoring, ordering, effects, statuses, items and full-party replacements | Selected preview behavior only; authoritative complete turns still required |
 | Terminal results, EXP/EV/rewards/capture/evolution and source party copyback | Isolated result rules qualified; complete result transaction and original witnesses still required |
 | Exactly-once native 98 continuation and authentic story flags | Native98 remains waiting; no preview outcome is accepted |
