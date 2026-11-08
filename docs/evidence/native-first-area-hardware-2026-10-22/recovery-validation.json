@@ -1,0 +1,21 @@
+{
+  "source_identities": 9,
+  "numpy": "2.4.3",
+  "python_tests": 134,
+  "result": "passed",
+  "compiler_available": true,
+  "pillow": "11.3.0",
+  "arm_build_performed": false,
+  "python": "3.12.15",
+  "skips": 0,
+  "native_suites": 11,
+  "recovery_checks": 734,
+  "sanitizers": "ASan/UBSan native suites plus executed renderer contracts; final734 recovery checks rerun sanitized",
+  "leak_sanitizer": "No separate leak-coverage claim",
+  "review": "No remaining fatal ownership/liveness findings after transition-exit regression fix",
+  "arm": "normal pinned ARM compile/link passed; forced recovery build-ID refresh verified",
+  "physical": "PASS: watchdog after3s, PAD0400 X receipt before/after pending exit, Aresume request, STARTSELECT deferredexit, freshNTR throughout; underlyingGPUqueue stillbusy",
+  "source_commit": "7a4a74613d01e3a4598da6e26c14f5bb701be83f",
+  "standalone_probes": "Five graphics variants plus actual-field probe compile/link with pinned ARM; runtime/pixel outputs not rerun",
+  "trace_snapshot_contents_downloaded": false
+}

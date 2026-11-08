@@ -1,0 +1,38 @@
+{
+  "schema": 1,
+  "scope": "two observed runtime-trainer field constructors only",
+  "sequence_creation_qualified": false,
+  "active_fighters_qualified": false,
+  "full_battle_entry_qualified": false,
+  "full_battle_qualified": false,
+  "inter_call_rng_qualified": false,
+  "source_status3f_kaisuu0_no_rng_profile": true,
+  "dol_sha1": "870e8b9693ca780782d80f22a6a4572d8ba9458f",
+  "library_sha256": "bb05dc4b93533bdd6bb845696cdeb9403db24ab9ee5502473caf0d9239b58e04",
+  "observation_sha256": "9ee559b6e67e23cfc24445a5513702ed9cb86a787a8531b419705ff25090bae6",
+  "matched": 2,
+  "cases": [
+    {
+      "capture_id": "00-runtimeTrainerCreate",
+      "trainer_id": 10,
+      "controller_id": 0,
+      "sequence_identity": "0x809cf580",
+      "matched_runtime_bytes": 10468,
+      "unchanged_source_hero_bytes": 2840,
+      "original_rng_unchanged": true,
+      "draws": 0,
+      "seed": "0x471708e9"
+    },
+    {
+      "capture_id": "01-runtimeTrainerCreate",
+      "trainer_id": 1,
+      "controller_id": 1,
+      "sequence_identity": "0x809cf60c",
+      "matched_runtime_bytes": 10468,
+      "unchanged_source_hero_bytes": 2840,
+      "original_rng_unchanged": true,
+      "draws": 0,
+      "seed": "0x8ff186ab"
+    }
+  ]
+}

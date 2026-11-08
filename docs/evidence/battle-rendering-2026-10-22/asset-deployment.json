@@ -1,0 +1,80 @@
+{
+  "files": [
+    {
+      "path": "/3ds/Colosseum3DS/boot/battle/arena0_0.c3t",
+      "sha256": "12a4ca0fc1568ff79943b6f3f66048d65e6c1100c0f606a89408969fc4a23b10",
+      "bytes": 12294400,
+      "reused": true
+    },
+    {
+      "path": "/3ds/Colosseum3DS/boot/battle/arena1_0.c3t",
+      "sha256": "dadd4d142a14002ed20b5396b26df7e3bc1e6bfc79aeb5dca8ccca81bbb3a6c2",
+      "bytes": 1510168,
+      "reused": true
+    },
+    {
+      "path": "/3ds/Colosseum3DS/boot/battle/arena2_0.c3t",
+      "sha256": "cc96d2002958a499a9f96c1336cf5af12910f14b81edc0fb552edafe04d763b8",
+      "bytes": 4135024,
+      "reused": true
+    },
+    {
+      "path": "/3ds/Colosseum3DS/boot/battle/pokemon196_0.c3t",
+      "sha256": "23cf55ad4c639c634ddbf7a7c7b6ae54df1867e5432d695ed4c848a75d29496c",
+      "bytes": 3997504,
+      "reused": true
+    },
+    {
+      "path": "/3ds/Colosseum3DS/boot/battle/pokemon197_0.c3t",
+      "sha256": "aa50977b39cfec0655dd7ec853ddac1050a1266bbd3dbada77cebedfc3bdc30a",
+      "bytes": 3932104,
+      "reused": true
+    },
+    {
+      "path": "/3ds/Colosseum3DS/boot/battle/pokemon288_0.c3t",
+      "sha256": "95821f9afa59e887f09dc7f98b83dcf8b4f5dbc645ba2307e91443e612013cdc",
+      "bytes": 5247600,
+      "reused": true
+    },
+    {
+      "path": "/3ds/Colosseum3DS/boot/battle/scene.c3v",
+      "bytes": 1280,
+      "sha256": "2c3eddcca1ab8a620429072b569695a7908dba32e7937dcbb488191cba20452c",
+      "staged_verified": true,
+      "installed_verified": true
+    },
+    {
+      "path": "/3ds/Colosseum3DS/boot/battle/trainer10_0.c3t",
+      "sha256": "d6c3bea225cb57088390ef2e0c1fd8413315fb7f2d78c1c1cd13316e3587eb91",
+      "bytes": 1944184,
+      "reused": true
+    },
+    {
+      "path": "/3ds/Colosseum3DS/boot/battle/trainer1_0.c3t",
+      "sha256": "95296918b8d7f364e53084e57757a1ef0d18508be501b48beada9282ec76f204",
+      "bytes": 5675168,
+      "reused": true
+    },
+    {
+      "path": "/3ds/Colosseum3DS/boot/willie.c3i",
+      "bytes": 768,
+      "sha256": "8878693f7d7dd98c58b9decfbd67b54d8b1088f6cf24e2d9852a82bc9bf33bd8",
+      "staged_verified": true,
+      "installed_verified": true
+    },
+    {
+      "path": "/3ds/Colosseum3DS/boot/willie.c3p",
+      "sha256": "da6a5666fa008629ef1fe035ad7e69ff3c27c38ec57cb0283c56cab978aee46e",
+      "bytes": 1024,
+      "reused": true
+    }
+  ],
+  "save": {
+    "pokemon_colosseum.gci": {
+      "bytes": 393280,
+      "sha256": "7e1cb3159756293bf938fd922fe45e82448d1b667f6833a48da351af3cbd0f23"
+    }
+  },
+  "original_files_preserved": true,
+  "status": "passed"
+}

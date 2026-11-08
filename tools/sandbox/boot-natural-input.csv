@@ -1,0 +1,5 @@
+# Frontend frame numbers are bounded input scheduling, not exact app-frame timing.
+# Allow the native title entrance to finish, accept START, inspect controls, exit.
+1300,40,0x0008,0,0,0,0
+1400,60,0x0c00,16000,-16000,24000,-24000
+1540,40,0x000c,0,0,0,0

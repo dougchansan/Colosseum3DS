@@ -1,3 +1,9 @@
 [submodule "vendor/colosseum"]
 	path = vendor/colosseum
 	url = https://github.com/Count-Sheep/pkmn-colosseum.git
+[submodule "vendor/gekkoctr"]
+	path = vendor/gekkoctr
+	url = https://github.com/dougchansan/GekkoCTR.git
+[submodule "vendor/hsd-importer"]
+	path = vendor/hsd-importer
+	url = https://github.com/StarsMmd/Blender-Addon-Gamecube-Models.git

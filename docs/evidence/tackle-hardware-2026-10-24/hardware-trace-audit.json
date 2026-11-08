@@ -1,0 +1,782 @@
+{
+  "schema": "physical-tackle-qualification-v1",
+  "source_commit": "c2712ebb0f6eb8de38c0ff9025011868bdaecd2f",
+  "source_tree": "27c9da48c86459aac97f67815f5b0cf7bf2c236f",
+  "status": "corrected_bounded_execution_pass",
+  "normal_executable": {
+    "bytes": 614292,
+    "sha256": "47138d399fa38afdb48b63b886643f4e872607834f1fe5b21d3e98f4aad34203"
+  },
+  "closed_trace": {
+    "bytes": 492514,
+    "sha256": "bcf65ed238a78d3222be2801924e5664f0287b446938ca246069fda7f94ce18e"
+  },
+  "asset_counts": {
+    "base": 11,
+    "supplemental": 23,
+    "duplicate_audio": 1,
+    "distinct": 33
+  },
+  "battle_assets": {
+    "bite.c3w": {
+      "bytes": 256,
+      "sha256": "d09f9616086beae627464d594be18397fa0e1bf3f73e478bb7d291fb3040c1d9",
+      "base_readback": true,
+      "supplemental_readback": false,
+      "canonical_fixture_match": true
+    },
+    "bite_attack.c3t": {
+      "bytes": 189680,
+      "sha256": "d15ec7e3fac067bcee2b8a82eb3ed280f75f09893afd9c9e41f1187a2e78cb74",
+      "base_readback": true,
+      "supplemental_readback": false,
+      "canonical_fixture_match": true
+    },
+    "bite_damage.c3w": {
+      "bytes": 256,
+      "sha256": "ecf7be4b638f467b896bef17d07eba1394d76c044046e485a25e9f324ccc962e",
+      "base_readback": true,
+      "supplemental_readback": false,
+      "canonical_fixture_match": true
+    },
+    "bite_damage.c3t": {
+      "bytes": 627512,
+      "sha256": "f49562d04ec2117e61f22c9c9c23a2b775cf15474b77069dcb2e91474927752c",
+      "base_readback": true,
+      "supplemental_readback": false,
+      "canonical_fixture_match": true
+    },
+    "bite_damage.c3p": {
+      "bytes": 308480,
+      "sha256": "9fe84012d54bba173a53dc9fc4eaf9aee782ba390e21e03a46d4aa651564e45d",
+      "base_readback": true,
+      "supplemental_readback": false,
+      "canonical_fixture_match": true
+    },
+    "bite_camera.c3c": {
+      "bytes": 18368,
+      "sha256": "93f105aef2ec3644f71d66eb24a3b05640fe91893b9012aff5179d829b0e0b35",
+      "base_readback": true,
+      "supplemental_readback": false,
+      "canonical_fixture_match": true
+    },
+    "audio.c3u": {
+      "bytes": 1804740,
+      "sha256": "958c4947b0b450385b438dbf4c9d228ef6555f2fd0382102fced958c27a46096",
+      "base_readback": true,
+      "supplemental_readback": true,
+      "canonical_fixture_match": true
+    },
+    "reflect.c3w": {
+      "bytes": 288,
+      "sha256": "d7540d79983505e3b0d342352d5d9b19fe8d620f25ab1f2a4256e5b8ff2fc1c8",
+      "base_readback": true,
+      "supplemental_readback": false,
+      "canonical_fixture_match": true
+    },
+    "reflect.c3t": {
+      "bytes": 176344,
+      "sha256": "58dac5ec1dff0f46699a2f3ceb32eb15be3f5657935f76605dd37f3451332bdc",
+      "base_readback": true,
+      "supplemental_readback": false,
+      "canonical_fixture_match": true
+    },
+    "reflect.c3p": {
+      "bytes": 462944,
+      "sha256": "a397faff5a7ee5acb1b31b37ec63ef50aaf8ca81394c249f079ef313e3e36a5b",
+      "base_readback": true,
+      "supplemental_readback": false,
+      "canonical_fixture_match": true
+    },
+    "reflect_parts.c3r": {
+      "bytes": 3728,
+      "sha256": "e6b6c61a0036ea9a1220dccf28ac4cfdf49470469bb8bca9704d867fa67e2906",
+      "base_readback": true,
+      "supplemental_readback": false,
+      "canonical_fixture_match": true
+    },
+    "confusion_sequence.c3s": {
+      "bytes": 13048,
+      "sha256": "a2bd7564e9b1a04343cc6002782dd71bf26bf4a19de3bea70c491d20fe8c2f8f",
+      "base_readback": false,
+      "supplemental_readback": true,
+      "canonical_fixture_match": true
+    },
+    "confusion_type12.c3f": {
+      "bytes": 16640,
+      "sha256": "21a0ebb2cb2b06decd1b69ac365f83e0c375b616529f8ec0929a5812d02b6e4b",
+      "base_readback": false,
+      "supplemental_readback": true,
+      "canonical_fixture_match": true
+    },
+    "confusion_attack.c3p": {
+      "bytes": 414688,
+      "sha256": "c4fb9eab25cf99ed5814e34eb6ab7873204de336afd1975bc7ef1536a500d4bb",
+      "base_readback": false,
+      "supplemental_readback": true,
+      "canonical_fixture_match": true
+    },
+    "confusion_damage.c3p": {
+      "bytes": 160672,
+      "sha256": "9570f60e0793e8ebc194c8f6cc07b16338dcbe4c225ab47a8980a2c94703aeef",
+      "base_readback": false,
+      "supplemental_readback": true,
+      "canonical_fixture_match": true
+    },
+    "confusion_camera.c3c": {
+      "bytes": 22524,
+      "sha256": "6818a7908bc9ca4f392b6815681af191e9046fb35b7f44e71b57bb633d19a6a2",
+      "base_readback": false,
+      "supplemental_readback": true,
+      "canonical_fixture_match": true
+    },
+    "tail_whip.c3w": {
+      "bytes": 512,
+      "sha256": "cea9395e8275c238efb3a9b7244e58e2ab23299ad67b398fe9f069a244a90466",
+      "base_readback": false,
+      "supplemental_readback": true,
+      "canonical_fixture_match": true
+    },
+    "tail_whip_controller.c3m": {
+      "bytes": 6176,
+      "sha256": "fec21131059e7a2ab94e60a66e2dc5beb4838bdb2866238e1af71a7154bb88b7",
+      "base_readback": false,
+      "supplemental_readback": true,
+      "canonical_fixture_match": true
+    },
+    "tail_whip_effect.c3t": {
+      "bytes": 330104,
+      "sha256": "8d097323ad0f9c2f17ced5ce0fff340ab96ffee6e2a47a786676247b7e74f891",
+      "base_readback": false,
+      "supplemental_readback": true,
+      "canonical_fixture_match": true
+    },
+    "tailwhip_camera.c3c": {
+      "bytes": 5908,
+      "sha256": "2b17963c68c9066d7ce4c9bb6beeaecfcefab0044e22fbf2a9bc19e7c8187255",
+      "base_readback": false,
+      "supplemental_readback": true,
+      "canonical_fixture_match": true
+    },
+    "growl.c3w": {
+      "bytes": 1280,
+      "sha256": "ddfc4864cabd7413e1249addef888e0f551869eb497e37679431bcc7d5a28ab7",
+      "base_readback": false,
+      "supplemental_readback": true,
+      "canonical_fixture_match": true
+    },
+    "growl_model.c3t": {
+      "bytes": 585528,
+      "sha256": "b36c101bdfe76e5b99ef2f9137d8955f9733e611d195bf1890c680d967480064",
+      "base_readback": false,
+      "supplemental_readback": true,
+      "canonical_fixture_match": true
+    },
+    "growl.c3p": {
+      "bytes": 1710208,
+      "sha256": "538e94f797a4307f57f7c3ec15b481528664f56e138f3994d9a321fb7a90ed67",
+      "base_readback": false,
+      "supplemental_readback": true,
+      "canonical_fixture_match": true
+    },
+    "growl_camera.c3c": {
+      "bytes": 12124,
+      "sha256": "c0698aca8c969eaacffb083e6aa26a65ec1159f31e41788fad08d42849f8059a",
+      "base_readback": false,
+      "supplemental_readback": true,
+      "canonical_fixture_match": true
+    },
+    "stat_down.c3w": {
+      "bytes": 1024,
+      "sha256": "feb6c2eac768c9093eef37483c92a704622076db371f0d703dd51d4730f443f0",
+      "base_readback": false,
+      "supplemental_readback": true,
+      "canonical_fixture_match": true
+    },
+    "stat_down.c3p": {
+      "bytes": 6496,
+      "sha256": "d8d2cf5ce1357d29e05be91b6a4bd50870db1f901182cd0743fe5c65c00ae6c5",
+      "base_readback": false,
+      "supplemental_readback": true,
+      "canonical_fixture_match": true
+    },
+    "stat_down_camera.c3c": {
+      "bytes": 4720,
+      "sha256": "c4e04a48126fc782b4b053a9041c1c26810d5a83423327d6096f8f53bc86bdf7",
+      "base_readback": false,
+      "supplemental_readback": true,
+      "canonical_fixture_match": true
+    },
+    "attack_down.c3w": {
+      "bytes": 1024,
+      "sha256": "a0564c33991a8289ccafdeb214c7741c6f11d5303e6398f5b1628d02e20fd8f1",
+      "base_readback": false,
+      "supplemental_readback": true,
+      "canonical_fixture_match": true
+    },
+    "attack_down.c3p": {
+      "bytes": 6496,
+      "sha256": "b8f116680ad1ad7c8758c98171d90b3fb139c7133cae61277027e63e9fb948f3",
+      "base_readback": false,
+      "supplemental_readback": true,
+      "canonical_fixture_match": true
+    },
+    "attack_down_camera.c3c": {
+      "bytes": 4720,
+      "sha256": "743115543a590cbeb107ff49ba9a4766f0596fb17e077ce21e2f8212d1eee75c",
+      "base_readback": false,
+      "supplemental_readback": true,
+      "canonical_fixture_match": true
+    },
+    "tackle.c3w": {
+      "bytes": 1024,
+      "sha256": "bd96c00dc30fd02f787b92673cecbc68aff822a5b4786cd271c235149f690977",
+      "base_readback": false,
+      "supplemental_readback": true,
+      "canonical_fixture_match": true
+    },
+    "tackle.c3p": {
+      "bytes": 452480,
+      "sha256": "11f7aee01defd8de5ead83ad78b2431c5f2d2cee8d2e76b56c98605042fd3a9b",
+      "base_readback": false,
+      "supplemental_readback": true,
+      "canonical_fixture_match": true
+    },
+    "tackle_camera.c3c": {
+      "bytes": 19964,
+      "sha256": "a444a58ec03fd1399f0b45a6d84f5be34a8983b6cbeeafc4ebfb2b014c582d33",
+      "base_readback": false,
+      "supplemental_readback": true,
+      "canonical_fixture_match": true
+    }
+  },
+  "save": {
+    "bytes": 393280,
+    "sha256": "7e1cb3159756293bf938fd922fe45e82448d1b667f6833a48da351af3cbd0f23",
+    "before_final_byte_identical": true,
+    "backup_absent": true
+  },
+  "selected_trace_records": [
+    {
+      "line": 15,
+      "record": "render_recovery scene=title event=drained frames=598 elapsed_us=255 ready=1 exit=0 input=0000 counters=2879,2879 build=c2712ebb0f6e"
+    },
+    {
+      "line": 89,
+      "record": "render_recovery scene=field event=drained frames=104 elapsed_us=31329 ready=1 exit=0 input=0000 counters=4208,4208 build=c2712ebb0f6e"
+    },
+    {
+      "line": 91,
+      "record": "field_end result=2 error="
+    },
+    {
+      "line": 306,
+      "record": "render_recovery scene=field-to-battle event=drained frames=1242 elapsed_us=29537 ready=1 exit=0 input=0000 counters=12090,12090 build=c2712ebb0f6e"
+    },
+    {
+      "line": 311,
+      "record": "preview_turn turn=0 seed=2c53ded8 draws=352 outcome=1 save_writes=0 gsvm_resumed=0"
+    },
+    {
+      "line": 321,
+      "record": "wzx_tackle_admitted attacker=288_entry2_clip4 defenders=197_entry8_clip3,196_entry8_clip2 camera=source normal=170,100 minimum=298,176"
+    },
+    {
+      "line": 530,
+      "record": "preview_turn turn=1 seed=7c853675 draws=363 outcome=1 save_writes=0 gsvm_resumed=0"
+    },
+    {
+      "line": 636,
+      "record": "wzx_tackle_start event=9 owner=2 target=0 attack130=4A2 stop133=defender_mode2"
+    },
+    {
+      "line": 655,
+      "record": "wzx_tackle_attack_sound source_tick=130 units=130020 sound=4a2 cue=3"
+    },
+    {
+      "line": 656,
+      "record": "wzx_tackle_defender_start source_tick=133 units=20 handoff_units=20 target=0 bodymap2=42 flags_raw=2 bank_flags=1 position_flags=1 anchor_source=-32.480164,3.874979,-26.250000 reset_except=1 owner_flags=admitted_normal hp_gate=0 cue=4"
+    },
+    {
+      "line": 693,
+      "record": "wzx_tackle_complete event=9 target=0 units=298040 emitted=134 peak=133 draws=964 audio=finished family_cancelled=1 camera_restored=1"
+    },
+    {
+      "line": 694,
+      "record": "wzx_tackle_start event=11 owner=3 target=0 attack130=4A2 stop133=defender_mode2"
+    },
+    {
+      "line": 713,
+      "record": "wzx_tackle_attack_sound source_tick=130 units=130020 sound=4a2 cue=5"
+    },
+    {
+      "line": 714,
+      "record": "wzx_tackle_defender_start source_tick=133 units=20 handoff_units=20 target=0 bodymap2=42 flags_raw=2 bank_flags=1 position_flags=1 anchor_source=-32.480164,3.874979,-26.250000 reset_except=1 owner_flags=admitted_normal hp_gate=0 cue=6"
+    },
+    {
+      "line": 760,
+      "record": "wzx_tackle_complete event=11 target=0 units=298040 emitted=134 peak=133 draws=964 audio=finished family_cancelled=1 camera_restored=1"
+    },
+    {
+      "line": 817,
+      "record": "preview_turn turn=2 seed=1b13b0ac draws=372 outcome=1 save_writes=0 gsvm_resumed=0"
+    },
+    {
+      "line": 1638,
+      "record": "preview_turn turn=3 seed=783b002d draws=387 outcome=1 save_writes=0 gsvm_resumed=0"
+    },
+    {
+      "line": 1858,
+      "record": "wzx_tackle_start event=34 owner=3 target=1 attack130=4A2 stop133=defender_mode2"
+    },
+    {
+      "line": 1877,
+      "record": "wzx_tackle_attack_sound source_tick=130 units=130020 sound=4a2 cue=19"
+    },
+    {
+      "line": 1878,
+      "record": "wzx_tackle_defender_start source_tick=133 units=20 handoff_units=20 target=1 bodymap2=62 flags_raw=2 bank_flags=1 position_flags=1 anchor_source=-33.683205,3.640747,25.402126 reset_except=1 owner_flags=admitted_normal hp_gate=0 cue=20"
+    },
+    {
+      "line": 1906,
+      "record": "wzx_tackle_complete event=34 target=1 units=176000 emitted=134 peak=133 draws=964 audio=finished family_cancelled=1 camera_restored=1"
+    },
+    {
+      "line": 3055,
+      "record": "preview_turn turn=4 seed=b3b225c0 draws=392 outcome=2 save_writes=0 gsvm_resumed=0"
+    },
+    {
+      "line": 3061,
+      "record": "preview_event index=5 hp=83,64,0,0 draws=392 text=Preview result: WIN. No rewards, save, or story flags were written."
+    },
+    {
+      "line": 3434,
+      "record": "render_recovery scene=battle event=drained frames=2602 elapsed_us=409 ready=1 exit=0 input=0000 counters=33280,33280 build=c2712ebb0f6e"
+    },
+    {
+      "line": 3438,
+      "record": "preview_exit app_exit=0 error= save_writes=0 gsvm_resumed=0"
+    },
+    {
+      "line": 3439,
+      "record": "preview_state_guard bytes=122832 unchanged=1 before_sha1=fe5e79642f0a3c1a3c825145052567f5b425ecb0 after_sha1=fe5e79642f0a3c1a3c825145052567f5b425ecb0 play_time_advanced=0"
+    },
+    {
+      "line": 3440,
+      "record": "render_recovery scene=battle-to-field event=drained frames=0 elapsed_us=163 ready=1 exit=0 input=0000 counters=33283,33283 build=c2712ebb0f6e"
+    },
+    {
+      "line": 3466,
+      "record": "render_recovery scene=field-to-battle event=drained frames=1404 elapsed_us=27337 ready=1 exit=0 input=0000 counters=34564,34564 build=c2712ebb0f6e"
+    },
+    {
+      "line": 3471,
+      "record": "preview_turn turn=0 seed=2c53ded8 draws=352 outcome=1 save_writes=0 gsvm_resumed=0"
+    },
+    {
+      "line": 3481,
+      "record": "wzx_tackle_admitted attacker=288_entry2_clip4 defenders=197_entry8_clip3,196_entry8_clip2 camera=source normal=170,100 minimum=298,176"
+    },
+    {
+      "line": 3707,
+      "record": "render_recovery scene=battle event=drained frames=200 elapsed_us=436 ready=1 exit=0 input=0000 counters=36659,36659 build=c2712ebb0f6e"
+    },
+    {
+      "line": 3711,
+      "record": "preview_exit app_exit=0 error= save_writes=0 gsvm_resumed=0"
+    },
+    {
+      "line": 3712,
+      "record": "preview_state_guard bytes=122832 unchanged=1 before_sha1=347d27933697ece4d5b02ed7fbd87f77a02b69dc after_sha1=347d27933697ece4d5b02ed7fbd87f77a02b69dc play_time_advanced=0"
+    },
+    {
+      "line": 3713,
+      "record": "render_recovery scene=battle-to-field event=drained frames=0 elapsed_us=158 ready=1 exit=0 input=0000 counters=36663,36663 build=c2712ebb0f6e"
+    },
+    {
+      "line": 3740,
+      "record": "render_recovery scene=field event=drained frames=1595 elapsed_us=27727 ready=1 exit=1 input=0000 counters=38128,38128 build=c2712ebb0f6e"
+    },
+    {
+      "line": 3742,
+      "record": "field_end result=1 error="
+    },
+    {
+      "line": 3743,
+      "record": "boot_end result=1 error="
+    }
+  ],
+  "recording": {
+    "view_only": true,
+    "input_packets_sent": 0,
+    "tcp_commands_sent": 0,
+    "frames": 7484,
+    "encoded_fps": 10,
+    "wall_seconds": 821.2339999999967,
+    "first_frame_wall_seconds": 0.0779999999795109,
+    "stale_samples": 4,
+    "decode_errors": 0,
+    "encoder_exit": 0,
+    "silent": true,
+    "scope": "Continuous actual NTR screens sampled at10fps; repeated frames and freshness retained in frames.jsonl; no audio stream",
+    "sha256": "110bd0af3dc05dc631deff17ba2b5115083b215d476b81b7320bdd77dca646ae",
+    "encoded_seconds": 748.4,
+    "full_ffmpeg_decode_exit": 0
+  },
+  "performance_limits": {
+    "sampled_full_cpu_peak_us": 274471,
+    "minimum_recorded_linear_free_bytes": 2067072
+  },
+  "build": {
+    "commit": "c2712ebb0f6eb8de38c0ff9025011868bdaecd2f",
+    "tree": "27c9da48c86459aac97f67815f5b0cf7bf2c236f",
+    "build_id": "c2712ebb0f6e",
+    "toolchain": "devkitpro/devkitarm@sha256:116afba8df8453961de2936ffab20dd441edf4d682856c1ec8b0e53d7ed0bbf5",
+    "strict": true,
+    "files": [
+      {
+        "file": "Colosseum3DS-battle-preview-probe.3dsx",
+        "bytes": 580224,
+        "sha256": "28207cb6c9d672919deecc59893fd57402f64919354f4b43fc06a717f82672e5"
+      },
+      {
+        "file": "Colosseum3DS.3dsx",
+        "bytes": 614292,
+        "sha256": "47138d399fa38afdb48b63b886643f4e872607834f1fe5b21d3e98f4aad34203"
+      },
+      {
+        "file": "Colosseum3DS.smdh",
+        "bytes": 14016,
+        "sha256": "f3fad3feb7b42caab0a647bb392050bf72e4507593cded5a16819cc1c68e5a55"
+      }
+    ]
+  },
+  "navigation": {
+    "corrected_willie": {
+      "status": "failed_safely",
+      "actions": 5,
+      "observed_states": 6,
+      "error": "Current state no longer matches route authorization",
+      "duration_seconds": 11.297000000020489,
+      "subsequent_route": "Fresh-frame manual completion; no corrected nine-action CLI pass claimed."
+    },
+    "corrected_two_turn": {
+      "status": "passed",
+      "steps": 14,
+      "duration_seconds": 60.43699999997625
+    },
+    "earlier_f6ef3a7_willie": {
+      "status": "passed",
+      "actions": 9,
+      "observed_states": 10,
+      "duration_seconds": 23.68699999997625,
+      "qualification": "Different failed candidate; not the corrected run."
+    }
+  },
+  "earlier_failed_candidate": {
+    "source_commit": "f6ef3a72e4c562b8be140c352f7fa7d721f4617f",
+    "status": "failed_later_turn_safe_recovery",
+    "scope": "Two Umbreon Tackle sequences completed; subsequent Espeon sequence refused because a prior Bite marker bypassed the faint animation completion wait.",
+    "trace": {
+      "bytes": 247669,
+      "sha256": "c6fe999c294f724c0a40c925450fa6b1189157093875127360a9db521e8cf082"
+    },
+    "completed_events": [
+      9,
+      11
+    ],
+    "failed_event": 34,
+    "recovered_to_ftpd": true,
+    "reboot": false,
+    "ntr_reload": false,
+    "save_writes": 0,
+    "gsvm_resumed": 0,
+    "save_sha256": "7e1cb3159756293bf938fd922fe45e82448d1b667f6833a48da351af3cbd0f23",
+    "recording": {
+      "view_only": true,
+      "input_packets_sent": 0,
+      "tcp_commands_sent": 0,
+      "frames": 5944,
+      "encoded_fps": 10,
+      "wall_seconds": 594.4689999999828,
+      "first_frame_wall_seconds": 0.0779999999795109,
+      "stale_samples": 1,
+      "decode_errors": 0,
+      "encoder_exit": 0,
+      "silent": true,
+      "scope": "Continuous actual NTR screens sampled at10fps; repeated frames and freshness retained in frames.jsonl; no audio stream",
+      "sha256": "cbeccd16c1b427a4d2ffe05673c4bd5db0f2b3844519064dbd316714ed043a18"
+    },
+    "failure_png": "failed-f6ef3a7-preview-stopped.png"
+  },
+  "host_qualification": {
+    "full_base_suite": {
+      "c_programs_per_mode": 38,
+      "python_tests_per_mode": 334,
+      "optional_skips_per_mode": 67,
+      "modes": [
+        "strict",
+        "asan_ubsan"
+      ],
+      "known_in_run_source_drift": [
+        "platform\\3ds\\battle_tackle_effect.inc",
+        "tests\\test_wzx_tackle_stage.c"
+      ],
+      "qualification": "Two reported files changed while the broad working-tree suite ran: Tackle trace/lifecycle include and optional actual-stage test. Later focused actual-resource strict/sanitizer verification covers their final production/test versions. The full suite is not misrepresented as an exact clean c2712eb rerun."
+    },
+    "followup": {
+      "problem": "Bite damage_hit remains a committed-group marker after damage completes; using it as a clock owner skipped the later generic FAINT wait, hiding the actor before its authored clip completed and making subsequent Tackle ResetExcept reject it.",
+      "change": "One condition in generic stage wait excludes the former damage owner only while damage.active, preserving the completed-faint release predicate.",
+      "old_stage_red_result": "FAIL as expected: newly hidden faint actor clock was below authored clip frame_count.",
+      "strict": "PASS",
+      "asan_ubsan_leak_check": "PASS",
+      "drift": [],
+      "event_chains": [
+        "Bite actor0 kills enemy2 -> actual FAINT2 -> Confusion actor1 damages enemy3 -> enemy3 Tackle player0",
+        "Bite actor0 kills enemy3 -> actual FAINT3 -> Confusion actor1 damages enemy2 -> enemy2 Tackle player0"
+      ],
+      "legacy_bite_strict": "PASS",
+      "legacy_bite_asan_ubsan": "PASS",
+      "targeted_synthetic": [
+        "test_battle_stage.py PASS",
+        "test_battle_stage_timing.py PASS"
+      ]
+    },
+    "current_production_sha256": {
+      "platform/3ds/battle_stage.c": "bf1ce8b7bfb82050cbf30efe870721815ce51119bdb3a8ec5593dd2501b2ed89",
+      "platform/3ds/battle_stage.h": "15b6b2e56a094af6dd1d4bf6e49340ef1bf36e6b580c2e9dcd6f4b81976bfe5b",
+      "platform/3ds/battle_tackle_effect.inc": "e5c8886aaddc7fa85f6a178793f73053ba2623289cdb44d9531b4233a15ed208",
+      "platform/3ds/particle_renderer.inc": "0ce04169460feeabc6954014a5b832c40b00b02166095c180205cdfb79324bd2",
+      "platform/3ds/particle_line_renderer.inc": "7e5d6435cd9d297461a4a0cd464185248cab0811fe52af94b110e853bbdb4b62",
+      "platform/3ds/stage_renderer.h": "0d2cea862058a6476a785136dd391df59323494a2ca2322d6edffb143e56beaf",
+      "src/wzx_tackle.c": "384b8ef39ee53b35db481509a2c563a9ca822e5b98e828bec0240b1932b43921",
+      "include/colosseum3ds/wzx_tackle.h": "e51c9d3c4b9b33d9265ad7679ac93ff0471b5efb01f9aeba0da7c48c372e6dc6",
+      "src/particle.c": "f29223ae4b6a56a8ee91568c879f71c3f688c30e4507359036acbed3e437100e",
+      "src/particle_line.c": "b5fa0d57b805f067225ac294ab0d795e0aaf4a2a45b843c857ea794aa5e01ada",
+      "src/particle_pack.c": "f58039a917210ed5701621d0fbfdb7547f04b0ca7d06fc371c30172cc10553b5",
+      "include/colosseum3ds/particle.h": "d18e174a35e00291d0f2923c71ca0e32b58882d6fdf329c6422d1ce02b6e410b",
+      "include/colosseum3ds/particle_pack.h": "6d50a1deddfac72d9df1a376f3192ee616bea0d026cc701ac1d9dde7ce14cbae",
+      "src/battle_camera.c": "30925bfb42ab22d34729ec8072f03d9f0858640ce45f8f062a82838c81588759",
+      "include/colosseum3ds/battle_camera.h": "f0d0887e999c64c3aa311a539b9b5a1c65db59dc17e89d11a444870c4adc16dc",
+      "src/battle_audio.c": "9cf466a2930c476c45a8f167d61aa0fd67ee4b638f2d29af49fc2d10615b3d57",
+      "include/colosseum3ds/battle_audio.h": "6fb5637d53284ba923a39954757050a883dddad832eea76be3aca365e9c620da",
+      "tools/prepare_wzx_tackle.py": "35285a42bab9bc4d4c6fc7fca60fbda3f59fac9c55a8424acedceba42c220ba5",
+      "tools/prepare_particle.py": "0f3523861123bda920b18436b5de0492fde5def2c47e5ed7f99aaf13a063853f",
+      "tools/prepare_battle_camera.py": "2045a3d0795561ff9d708ab106b8d55e4dfae70b0a8d5dec5b426fb5c8ec5b53",
+      "tools/prepare_battle_audio.py": "a7b6320303a4011f00adec192f3c0e796992d2c5ec14f7055ba46697b1a87d24",
+      "config/wzx-tackle-source-files.json": "ef8045d14359f3ed4383f35a5bb86cc6350bf4b7f4a5506703c5acffdc4c1ea1"
+    },
+    "original_source_pins": {
+      "commit": "51bfe4314a218dfaf9592fc80723c50498d0ee55",
+      "files": {
+        "src/game/sequence.c": "5197f33a164dd2698f04c01272f0deaa7f02629f010856b535684277f5daa1dd",
+        "src/game/wazaSequence.c": "975afb18f19c6da6f7132fe3772d8ab3ab9546f528d8381073b59e614459444d",
+        "src/game/wazaSequenceSys.c": "0a6ae93e3ffacf678122ebb965a91c9fd6e204c98a1a3f0ec8325c00031826ea",
+        "src/game/wazaSequenceSys_tail.c": "91fb672f4d033367b472de815a8fea43824b0eed7deb69bbd8a85be1aa8a2a8e",
+        "src/game/wazaSequenceEntry.c": "6500a4db7253ce776686b86d470a6f9587cfa3db10cf9fcfb9cca50328d0855f",
+        "src/game/gs_range_801DE698.c": "e4594cc503d7dd0c4acd06b5df8aa216d04c10ea3698b6e20285cf5f50e2b69d",
+        "src/game/fight_waza.c": "680d4b391266423c36cbe64599b9552f0dbed2078ba6f31300e8acac376b78d6",
+        "src/game/fight_out_pokemon_suffix_80207C6C.c": "dcdd443bf323b793cbf71b17e5cbf856f39391ca1b020bde9ac70bf42a70e2d7",
+        "src/game/fight_range_exact_80226134.c": "b3d1d1babc2e0bf4f8ecd6c0d262e63bf814949231cfd5c776bf33d4056efc5b",
+        "src/game/fight_range_exact_80222110.c": "6691d742e74cf1068cb79f66789e413b8425639e6f0086b0891599b6bb93f399",
+        "src/game/gs_model_anim_exact_800EC4D0.c": "fc99c538bf7c9ee460b12bd02a2deb03a1dbc9a740098f8470306aabedf18c06",
+        "src/game/gs_model_anim_suffix_800ED4D4.c": "78dcdb6bb3e8e89b27cf73d0fdc524bf16518d44e2eb94391e2c66fe0201619b",
+        "src/game/generator.c": "da5f8de6327e5cd5cb7ccd06513009408f6fd21542d228a42fd2ab2713301414",
+        "src/game/psdisp.c": "9556cef7febef3d712f66130d2b6d8bb4302395e54e77daaf4961e394aa0ea6a",
+        "src/game/pslist.c": "f2c8dca89e412fada19cf6e80b91a4103a4937bf32c9a010849dc246c30f2fb7",
+        "src/game/particle.c": "be476e7b65e8b4d1bab156c4839efba7bd7fe02e16111bc4a78117edf82e71e1",
+        "src/game/fight_range_exact_80223A24.c": "1165cfd689cb6cdc7e6499e6af05da05511f94dce6658b67ac1de88effbadc69"
+      },
+      "dol_slices": [
+        {
+          "address": 2149432524,
+          "bytes": 272,
+          "sha256": "566ceb38a50410103e7a0b81b0e92189233bb059d01562c35dac9b84658951f9"
+        },
+        {
+          "address": 2149431396,
+          "bytes": 152,
+          "sha256": "a8e7ece3790bea8e1c7ea0635e8fe9895727af3c43d72089452adb0a727d2298"
+        },
+        {
+          "address": 2149445388,
+          "bytes": 356,
+          "sha256": "17bb06f614fd44538c8259c0249eb6690e4e91d90f20b1d45befc25df3464c38"
+        },
+        {
+          "address": 2152195016,
+          "bytes": 8,
+          "sha256": "8250ab532e40d24a67c08f58e0cd1d76cef63a045599ae5dc9279472cada42dd"
+        },
+        {
+          "address": 2151114158,
+          "bytes": 12,
+          "sha256": "1f70211b8ca56859be79633b038d5d16d3e08c1fe006b773de5351e2b6d06590"
+        },
+        {
+          "address": 2151112598,
+          "bytes": 32,
+          "sha256": "709f0d0dfc04a429880d0f7e247dda21d2c2cbb2be4db6c0d94656e691f8d343"
+        },
+        {
+          "address": 2151128063,
+          "bytes": 4,
+          "sha256": "d1502bf30cc492a60f39f4821a96fc0cd9f464942fab3e8da64c41a092c0c756"
+        },
+        {
+          "address": 2151128187,
+          "bytes": 4,
+          "sha256": "0ad93118ae9b8871d9ace378ad5511d8c81a50178fa82c530c449806f3aa3e6c"
+        },
+        {
+          "address": 2149429504,
+          "bytes": 84,
+          "sha256": "484a6acd77761f38615fc29157f273b58927b15a707514a557191ca5a7068824"
+        },
+        {
+          "address": 2149617964,
+          "bytes": 596,
+          "sha256": "b6e602fab863a0bedcb76db1b853b123c1a73fa7a8b455e119a13ed913e0139f"
+        },
+        {
+          "address": 2149728028,
+          "bytes": 324,
+          "sha256": "fc06ab8dcd93a0d21d6ce307cbca109187e5247a560a3312e284c5aee24e00d7"
+        }
+      ]
+    },
+    "qualified_contract": {
+      "attack": "4A2 at130, whole attack stop133; defender mode2 ResetExcept requests guarded idle rather than caster carry through authored240.",
+      "defender": "HP gate0, original bodymap2 U42/E62 frame0 anchors in native .1 original units; one-shot node flags2 distinct from bank flags1; root0 unchanged91680-byte bank.",
+      "completion": "Normal170U/100E is not terminal; admitted minimum298U/176E plus surviving particle/generator consumers and natural FINISHED audio. Retained20-unit handoff, explicit family/keyoff teardown and GPU-drain ownership.",
+      "particles": "Explicit shape4 generator6, source generator visitation and mutable source display buckets; actual seed123 bank134 births/8 emitters/peak133/first finish104/RNG964; mixed POINT+TRAIL and quad geometry. Actual stage fixed event seed also134/8/133/964; partition1/17/1000 phase298040. No whole-pool/pixel partition parity claim across display cadence.",
+      "camera": "Explicit Tackle camera; attack130 and target damage170/100, independent of minimum.",
+      "audio": "13-cue selected dry adapter; new4A2 andDE. Playback/status/keyoff ownership tested; original DSP/reverb/audio waveform parity not claimed.",
+      "miss": "Production no-hit callback starts no Tackle clock/camera/cue/bank/reset; original special57 remains unsupported actor-only fallback.",
+      "legacy": "Six older actual-resource effect profiles passed strict+sanitizer; proof tackle-final-stage-regressions.json. Followup reran affected Bite strict+sanitizer rather than repeating full generic suite."
+    }
+  },
+  "ci": {
+    "run_id": 40141331733,
+    "url": "https://github.com/dougchansan/Colosseum3DS/actions/runs/40141331733",
+    "head_sha": "c2712ebb0f6eb8de38c0ff9025011868bdaecd2f",
+    "overall": "failure",
+    "jobs": [
+      [
+        "host",
+        "success"
+      ],
+      [
+        "capture",
+        "success"
+      ],
+      [
+        "new3ds",
+        "failure"
+      ]
+    ],
+    "strict": {
+      "c_programs": 38,
+      "python_tests": 334,
+      "optional_skips": 67,
+      "seconds": 12.776
+    },
+    "asan_ubsan": {
+      "c_programs": 38,
+      "python_tests": 334,
+      "optional_skips": 67,
+      "seconds": 21.929
+    },
+    "capture_tests": [
+      17,
+      22
+    ],
+    "new3ds_compile": "success",
+    "artifact_upload": "failure: storage quota reached"
+  },
+  "limits": [
+    "Bounded native execution and verified original Tackle reference identity only; no aligned spatial/temporal or pixel parity.",
+    "No audible, wet-reverb, original DSP, shared/global RNG or full-speed acceptance.",
+    "Captured video cadence is not game FPS.",
+    "Field text clipping and transient recovery overlays remain visible; no uninterrupted visual-transition pass."
+  ],
+  "original_reference": {
+    "capture": "Existing Dolphin official DSU ordinary-controller session",
+    "provenance": "Reused actual original frames from the prior CALL/REFLECT/two-Tackle turn; native candidate capture is NTR on physical New 3DS.",
+    "dolphin_source_pin": "5e7cc91d8c9a43ca189b288937f65c9763af9c22",
+    "exe_sha256": "5e076628b977603dcde9ddef5eedf10b5a9ce0b6208bd4e6dfa9039cdebf3433",
+    "rvz_sha256": "f278e568b5c2dafb153ec932edc95051146cecf5ebc1d3843d71745cd0c1861e",
+    "movie_prefix_sha256": "7168c298d2ce179b40bab586bf7ef04f2245d22e885e8cc4ca605271218350f5",
+    "source_card_sha256": "7e1cb3159756293bf938fd922fe45e82448d1b667f6833a48da351af3cbd0f23",
+    "original_frames": [
+      {
+        "file": "original-tackle-b-announcement.png",
+        "original_dolphin_dump_frame": 8890,
+        "bytes": 418092,
+        "sha256": "b0890c6130e9d8e82ee802268259b56d0111d4101a2a5aade6e2c7dddc48f528",
+        "pixels_unchanged": true,
+        "capture": "Existing original-game Dolphin DSU ordinary-controller capture; not native NTR and not a new capture."
+      },
+      {
+        "file": "original-tackle-b-impact.png",
+        "original_dolphin_dump_frame": 8997,
+        "bytes": 505050,
+        "sha256": "c6ce2e93d2aee51d0a9f5b150cba866e39553335f9345e9c8341efe1f3a94b86",
+        "pixels_unchanged": true,
+        "capture": "Existing original-game Dolphin DSU ordinary-controller capture; not native NTR and not a new capture."
+      }
+    ],
+    "identity_proof": "Original frames 8890\u20138910 explicitly announce ZIGZAGOON used TACKLE; frame8997 is its Espeon impact. Earlier Growl/Tail labels were corrected in the source manifest.",
+    "comparison_limit": "Camera, pose and effect age are not aligned; reference identity/category does not qualify pixel, temporal or full-rendering parity."
+  },
+  "derived_video_frames": [
+    {
+      "file": "espeon-bright-core-video-frame.png",
+      "bytes": 113587,
+      "sha256": "946fb94c88322b89698d313e9f90184914c2028f78dd9637b39bfc091cfacc58",
+      "source_recording_sha256": "110bd0af3dc05dc631deff17ba2b5115083b215d476b81b7320bdd77dca646ae",
+      "source_frame": 4854,
+      "utc": "2026-10-24T23:14:10.568946+00:00",
+      "wall_seconds": 492.96899999998277,
+      "screens": {
+        "bottom": {
+          "frame_id": 232,
+          "counter": 8434,
+          "received_utc": "2026-10-24T23:14:10.506960+00:00"
+        },
+        "top": {
+          "frame_id": 233,
+          "counter": 8427,
+          "received_utc": "2026-10-24T23:14:10.544845+00:00"
+        }
+      },
+      "ages": {
+        "top": 0.03200000000651926,
+        "bottom": 0.06299999996554106
+      },
+      "fresh": true,
+      "origin": "PNG decoded without crop from existing lossy H.264 MP4 using OpenCV CAP_FFMPEG; not an original lossless recorder PNG and not a new capture.",
+      "decoder_procedure": "OpenCV 5.0.0 CAP_FFMPEG: seek video frame4800, decode sequentially through4870, save even indices as RGB PNG; selected4854. Decoded4860 was independently compared to matching lossless sample: mean absolute channel error1.128515625, compatible with lossy encoding."
+    }
+  ],
+  "visual_review": {
+    "file": "visual-verdict.json",
+    "bytes": 1428,
+    "sha256": "d011b4f5f9aa24866801b7495d474ef39cc815306cf5965f112c7760aa0ff89e",
+    "score": 78,
+    "verdict": "revise",
+    "category_match": true,
+    "original_frame": 8997,
+    "native_derived_frame": 4854,
+    "native_lossless_later_frames": [
+      4860,
+      4870
+    ],
+    "initial_phase_selection": {
+      "score": 45,
+      "native_frame": 4860,
+      "qualification": "Unmatched late-dust sample; retained privately as historical, superseded by existing-video phase inspection."
+    },
+    "scope": "Contextual effect-family match; camera, pose, resolution and exact effect age remain unmatched. No parity pass or particle-parameter change inferred."
+  }
+}

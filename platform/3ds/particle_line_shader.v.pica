@@ -1,0 +1,19 @@
+; GX major-axis line triangles arrive in unrotated homogeneous clip space.
+; Citro3D Mtx_PerspTilt equals (y,-x,z,w) after Mtx_Persp for equal inputs.
+; Keep each endpoint's w: forcing 1 would change clipping and interpolation.
+.out outPosition position
+.out outColor color
+.out outTexCoord texcoord0
+.out outTexCoord2 texcoord1
+.alias clipPosition v0
+.alias vertexUV v1
+.alias vertexColor v2
+.proc main
+    mov outPosition.x, clipPosition.y
+    mov outPosition.y, -clipPosition.x
+    mov outPosition.zw, clipPosition
+    mov outColor, vertexColor
+    mov outTexCoord, vertexUV
+    mov outTexCoord2, vertexUV
+    end
+.end

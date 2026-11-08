@@ -1,5 +1,7 @@
 import ast
+import errno
 import importlib.util
+import itertools
 import io
 from pathlib import Path
 import struct
@@ -17,30 +19,140 @@ def packet(frame, screen=1, index=0, data=b"jpeg", end=True):
 
 
 class CaptureTests(unittest.TestCase):
+    def test_listen_only_receives_existing_stream_without_tcp_or_sends(self):
+        state = MagicMock()
+        state.counters = {"top": 2, "bottom": 2}
+        state.metadata = {"top": {"counter": 2}, "bottom": {"counter": 2}}
+        state.received_monotonic = {"top": 0, "bottom": 0}
+        udp = MagicMock()
+        udp.recvfrom.return_value = (packet(1), ("192.0.2.1", 8001))
+        with tempfile.TemporaryDirectory() as directory, \
+             patch.object(ntr, "Images", return_value=state), \
+             patch.object(ntr.socket, "socket") as factory, \
+             patch.object(ntr.socket, "create_connection") as control, \
+             patch.object(ntr.select, "select", return_value=([udp], [], [])) as select, \
+             patch.object(ntr.time, "monotonic", side_effect=itertools.count(0, 0.1)):
+            factory.return_value.__enter__.return_value = udp
+            report = ntr.capture("192.0.2.1", "192.0.2.2", Path(directory) / "new", 0.5, listen_only=True)
+        control.assert_not_called()
+        udp.sendto.assert_not_called()
+        self.assertEqual(select.call_args.args[0], [udp])
+        state.accept.assert_called_once()
+        self.assertEqual(report["status"], "passed")
+        self.assertTrue(report["listen_only"])
+
     def test_atomic_publication_retries_transient_windows_sharing_denial(self):
-        with tempfile.TemporaryDirectory() as directory:
-            target = Path(directory) / "frames.json"
-            original_replace = Path.replace
-            attempts = []
-            def denied_once(path, destination):
-                attempts.append(path)
-                if len(attempts) == 1:
-                    raise PermissionError("sharing violation")
-                return original_replace(path, destination)
-            with patch.object(Path, "replace", new=denied_once), patch.object(ntr.time, "sleep") as sleep:
-                ntr.atomic_bytes(target, b"new metadata")
-            self.assertEqual(target.read_bytes(), b"new metadata")
-            self.assertEqual(len(attempts), 2)
-            sleep.assert_called_once_with(0.01)
+        for code in (5, 32):
+            with self.subTest(winerror=code), tempfile.TemporaryDirectory() as directory:
+                target = Path(directory) / "frames.json"
+                target.write_bytes(b"old metadata")
+                original_replace = Path.replace
+                attempts = []
+                def denied_twice(path, destination):
+                    attempts.append(path)
+                    self.assertEqual(target.read_bytes(), b"old metadata")
+                    self.assertEqual(path.read_bytes(), b"new metadata")
+                    if len(attempts) <= 2:
+                        exc = PermissionError("Windows transient replacement denial")
+                        exc.winerror = code
+                        raise exc
+                    return original_replace(path, destination)
+                with patch.object(Path, "replace", new=denied_twice), patch.object(ntr.time, "sleep") as sleep:
+                    ntr.atomic_bytes(target, b"new metadata")
+                self.assertEqual(target.read_bytes(), b"new metadata")
+                self.assertFalse(target.with_name("frames.json.tmp").exists())
+                self.assertEqual(len(attempts), 3)
+                self.assertEqual([call.args[0] for call in sleep.call_args_list], [.01, .02])
 
     def test_atomic_publication_persistent_denial_remains_fatal_and_bounded(self):
-        with tempfile.TemporaryDirectory() as directory, \
-             patch.object(Path, "replace", side_effect=PermissionError("sharing violation")) as replace, \
-             patch.object(ntr.time, "sleep") as sleep:
-            with self.assertRaises(PermissionError):
-                ntr.atomic_bytes(Path(directory) / "frames.json", b"new metadata")
-            self.assertEqual(replace.call_count, 5)
-            self.assertEqual(sleep.call_count, 4)
+        exc = PermissionError("Windows sharing violation")
+        exc.winerror = 32
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "frames.json"
+            target.write_bytes(b"old metadata")
+            with patch.object(Path, "replace", side_effect=exc) as replace, \
+                 patch.object(ntr.time, "sleep") as sleep:
+                with self.assertRaises(PermissionError):
+                    ntr.atomic_bytes(target, b"new metadata")
+            self.assertEqual(replace.call_count, 6)
+            self.assertEqual(sleep.call_count, 5)
+            self.assertAlmostEqual(sum(call.args[0] for call in sleep.call_args_list), .15)
+            self.assertEqual(target.read_bytes(), b"old metadata")
+            self.assertEqual(target.with_name("frames.json.tmp").read_bytes(), b"new metadata")
+
+    def test_non_windows_and_non_transient_replace_errors_fail_immediately(self):
+        errors = [PermissionError(errno.EACCES, "POSIX permission denied"),
+                  OSError(errno.ENOSPC, "disk full")]
+        other_windows = OSError("other Windows error")
+        other_windows.winerror = 112
+        errors.append(other_windows)
+        for exc in errors:
+            with self.subTest(error=exc), tempfile.TemporaryDirectory() as directory:
+                target = Path(directory) / "frames.json"
+                target.write_bytes(b"old")
+                with patch.object(Path, "replace", side_effect=exc) as replace, \
+                     patch.object(ntr.time, "sleep") as sleep:
+                    with self.assertRaises(OSError) as failure:
+                        ntr.atomic_bytes(target, b"new")
+                self.assertIs(failure.exception, exc)
+                replace.assert_called_once()
+                sleep.assert_not_called()
+                self.assertEqual(target.read_bytes(), b"old")
+
+    def test_temporary_write_enospc_is_not_retried(self):
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "frames.json"
+            target.write_bytes(b"old")
+            with patch.object(Path, "write_bytes", side_effect=OSError(errno.ENOSPC, "disk full")), \
+                 patch.object(Path, "replace") as replace, patch.object(ntr.time, "sleep") as sleep:
+                with self.assertRaises(OSError) as failure:
+                    ntr.atomic_bytes(target, b"new")
+            self.assertEqual(failure.exception.errno, errno.ENOSPC)
+            replace.assert_not_called()
+            sleep.assert_not_called()
+            self.assertEqual(target.read_bytes(), b"old")
+
+    def test_persistent_windows_metadata_denial_does_not_advance_images_or_freshness(self):
+        try:
+            from PIL import Image
+        except ImportError:
+            self.skipTest("Pillow not installed")
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            images = ntr.Images(output)
+            jpeg = io.BytesIO()
+            Image.new("RGB", (240, 400), "red").save(jpeg, format="JPEG")
+            bottom = io.BytesIO()
+            Image.new("RGB", (240, 320), "blue").save(bottom, format="JPEG")
+            for frame in (1, 2):
+                images.accept("top", frame, jpeg.getvalue())
+                images.accept("bottom", frame, bottom.getvalue())
+            old_metadata = dict(images.metadata)
+            old_received = dict(images.received_monotonic)
+            old_latest = dict(images.latest)
+            old_counters = dict(images.counters)
+            old_published = (output / "frames.json").read_bytes()
+            self.assertTrue(ntr.freshness(images, max(old_received.values()) + .1)[0])
+            original_replace = Path.replace
+            attempts = []
+            def deny_metadata(path, destination):
+                if destination.name == "frames.json":
+                    attempts.append(path)
+                    exc = PermissionError("Windows access denied")
+                    exc.winerror = 5
+                    raise exc
+                return original_replace(path, destination)
+            with patch.object(Path, "replace", new=deny_metadata), patch.object(ntr.time, "sleep") as sleep:
+                with self.assertRaises(ntr.PublicationError):
+                    images.accept("top", 3, jpeg.getvalue())
+            self.assertEqual(len(attempts), 6)
+            self.assertEqual(sleep.call_count, 5)
+            self.assertEqual(images.counters, old_counters)
+            self.assertEqual(images.metadata, old_metadata)
+            self.assertEqual(images.received_monotonic, old_received)
+            self.assertEqual(images.latest, old_latest)
+            self.assertEqual((output / "frames.json").read_bytes(), old_published)
+            self.assertFalse(ntr.freshness(images, max(old_received.values()) + 4)[0])
 
     def test_header_exact_layout_and_view_command_only(self):
         values = struct.unpack("<21I", ntr.header(7, 901, (257, 70)))

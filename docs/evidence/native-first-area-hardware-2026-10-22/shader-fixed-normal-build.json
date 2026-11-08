@@ -1,0 +1,22 @@
+{
+  "source_commit": "4cce6c157b065757e9c6512a9ceea51baa96ba1c",
+  "build_id": "4cce6c1",
+  "configuration": "normal full native flow; complete shaderoutputs; cooperative recovery; no probe",
+  "outputs": [
+    {
+      "name": "Colosseum3DS.3dsx",
+      "bytes": 315308,
+      "sha256": "049a08a355e69828145465bdd3e6a990407917e3e72b74de9a41dd11f332fd72"
+    },
+    {
+      "name": "Colosseum3DS.smdh",
+      "bytes": 14016,
+      "sha256": "f3fad3feb7b42caab0a647bb392050bf72e4507593cded5a16819cc1c68e5a55"
+    },
+    {
+      "name": "Colosseum3DS.elf",
+      "bytes": 2398704,
+      "sha256": "e4dc391902d57350dc48767cde5cedaf1b1ecc336dcf02105a8366cdc5f0a5ae"
+    }
+  ]
+}

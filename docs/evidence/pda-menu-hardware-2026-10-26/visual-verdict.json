@@ -1,0 +1,14 @@
+{
+  "score": 99,
+  "verdict": "pass",
+  "category_match": true,
+  "differences": [
+    "Hardware framebuffer usesRGB565 and NTRJPEGcompression, so exactRGB8hostpixelparity is not asserted."
+  ],
+  "suggestions": [],
+  "reasoning": "Fresh physical-console captures show green headings inside their header fields, cursor/highlight clear of the metal border, and right-aligned HP/PP values. Final buffered build presents complete menu images.",
+  "threshold": 90,
+  "threshold_pass": true,
+  "next_actions": [],
+  "generated_screenshot": "menu-spacing.png"
+}

@@ -1,0 +1,106 @@
+{
+  "status": "passed",
+  "total_bytes": 387614826,
+  "files": [
+    {
+      "sd_filename": "menu.c3u",
+      "bytes": 1260,
+      "sha256": "322f6201e1a4af9e56eec2b7b55a18d630c59f4235c913a6c2d53ebeded251f1",
+      "reused": false,
+      "installed_verified": true
+    },
+    {
+      "sd_filename": "newgame.c3g",
+      "bytes": 176722,
+      "sha256": "6bfdc9ffd1ce16303801ade262d64a6e8cffcb5907c87a920b195427527b0903",
+      "reused": false,
+      "installed_verified": true
+    },
+    {
+      "sd_filename": "title.c3t",
+      "bytes": 18353048,
+      "sha256": "0019ee50b41ba3b59fe7f783cdf15b04c67cb378777f1491dd4c1a9d862b69d2",
+      "reused": false,
+      "installed_verified": true
+    },
+    {
+      "sd_filename": "openingdemo.c3v",
+      "bytes": 304066812,
+      "sha256": "f5cf0716ce6331166a5a97058c48105c691bb9482d039b6c1005b9378813afee",
+      "reused": false,
+      "installed_verified": true
+    },
+    {
+      "sd_filename": "gs_logo.c3v",
+      "bytes": 19968064,
+      "sha256": "b9fabb1bc42e8525379eb5c7e2e3fa4896ab9332d94b55109d6b40028d2e7783",
+      "reused": false,
+      "installed_verified": true
+    },
+    {
+      "sd_filename": "tpc.c3v",
+      "bytes": 11840672,
+      "sha256": "ab205a7479a2fd81b4b7d266af6285e0ac381d29ccdc6402a5135545656fdf2a",
+      "reused": false,
+      "installed_verified": true
+    },
+    {
+      "sd_filename": "outskirt_arrival0.c3t",
+      "bytes": 3519720,
+      "sha256": "28ff3752722e28f4b3c442a09630a8d0028910031af9ef17c4d068acaffad86f",
+      "reused": false,
+      "installed_verified": true
+    },
+    {
+      "sd_filename": "outskirt_arrival1.c3t",
+      "bytes": 1113808,
+      "sha256": "aa21929fd770f260709e11fba541873c7d0c298ca842467f66d78cfc1ee7afaa",
+      "reused": false,
+      "installed_verified": true
+    },
+    {
+      "sd_filename": "outskirt_map0.c3t",
+      "bytes": 12053184,
+      "sha256": "350097e53d1833d6dc70b1fb504c6ea6e89e14c69ab61292caf6fa1f5106cadf",
+      "reused": false,
+      "installed_verified": true
+    },
+    {
+      "sd_filename": "outskirt_map1.c3t",
+      "bytes": 7751912,
+      "sha256": "f337f2eacb25e6f11b230ef51f38a9e8b4a445031105fcdff90ebd89778a3944",
+      "reused": false,
+      "installed_verified": true
+    },
+    {
+      "sd_filename": "outskirt_map2.c3t",
+      "bytes": 4765944,
+      "sha256": "497355ef80631b9b1e086372dfc4065f9f45ba900c0b4f8c3f0f518b899df735",
+      "reused": false,
+      "installed_verified": true
+    },
+    {
+      "sd_filename": "outskirt_map3.c3t",
+      "bytes": 3406456,
+      "sha256": "7152f7fb7a9d2deecaf5362e75c6770d34b3bf8110d4655a299b2e1bb66bc3ba",
+      "reused": false,
+      "installed_verified": true
+    },
+    {
+      "sd_filename": "outskirt_wes.c3t",
+      "bytes": 575568,
+      "sha256": "2e27fe700196f2d8adeb15f156ba7a5bbd98baa4f1fb0fe0d00ab55ecaf797c0",
+      "reused": false,
+      "installed_verified": true
+    },
+    {
+      "sd_filename": "outskirt.c3f",
+      "bytes": 21656,
+      "sha256": "45e9c8b4be3afc26c783d087d3348217ce555d852ba570168ca5459c2ad0b82e",
+      "reused": false,
+      "installed_verified": true
+    }
+  ],
+  "duration_seconds": 861.4962928295135,
+  "verification": "Streaming upload, full staged readback SHA256, rename, full final readback SHA256; no conflicting original boot assets existed"
+}

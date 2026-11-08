@@ -1,0 +1,54 @@
+{
+  "host_suite": "passed",
+  "python_unittest": {
+    "tests": 175,
+    "failures": 0,
+    "skipped": 0
+  },
+  "private_first_visit_host": {
+    "checks": 15595,
+    "normal": "passed",
+    "address_and_undefined_sanitizers": "passed",
+    "trace_byte_identical": true,
+    "trace_sha256": "251fea1edb7093dcfb640c8ed7d864fcab524454c5acc261e0fa07b07c231cd7",
+    "leak_detection": false,
+    "leak_detection_reason": "Sandbox process mapping restrictions; no leak-check claim."
+  },
+  "source_verification": {
+    "files": 9,
+    "mode": "--materialized",
+    "result": "passed",
+    "reason": "Sandbox uses connector-materialized pinned source files; remote repository keeps its actual submodule gitlinks."
+  },
+  "arm_build": {
+    "target": "full 3dsx including GekkoCTR",
+    "warnings": "treated as errors",
+    "build_id": "story-review",
+    "bytes": 381732,
+    "sha256": "fe5567d2d60835044d08ae4e335d3d47e95b20cad60914ae501fedadb9f36a63",
+    "result": "passed"
+  },
+  "logs": [
+    {
+      "file": "host-tests.log",
+      "bytes": 10459,
+      "sha256": "ec49b60a104b4d259fe4112c1d559165e35cded5c2416ebc58418441dc96af0a"
+    },
+    {
+      "file": "python-tests.log",
+      "bytes": 3068,
+      "sha256": "d32a294ec79d980999f69da4b4367cb88007774eed3982e0ec4e1acddd7e8574"
+    },
+    {
+      "file": "arm-build.log",
+      "bytes": 332,
+      "sha256": "0a24ae94d3637cc4ee22aa1b8dc6722f8789a2a5af0d7c448e34235553a16eb8"
+    },
+    {
+      "file": "source-verification.log",
+      "bytes": 47,
+      "sha256": "ef9b6292bbc69ee7d4cade4fedabd6ea6cd3cb9548712241a0bf53f49cdf385f"
+    }
+  ],
+  "note": "Some tests deliberately exercise FTP, corrupt data and renderer failure paths; their expected error messages do not indicate failed tests."
+}

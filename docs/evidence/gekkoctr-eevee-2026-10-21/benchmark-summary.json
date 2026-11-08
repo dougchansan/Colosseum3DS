@@ -1,0 +1,63 @@
+{
+  "tested_commit": "630fadd1072620652712197ca1f540fdc9220356",
+  "executable_sha256": "99019aa23ae6ad007da4e05e40f78615746e22a0b6c3d062fb11c775549bee2d",
+  "executable_bytes": 219548,
+  "samples": 600,
+  "warmup_frames": 60,
+  "duration_seconds": 10.028202,
+  "streaming": "active; original JPEG UDP; receive-only capture",
+  "streaming_disabled_comparison": "NOT MEASURED; receiver closure does not disable engine",
+  "camera": "fixed front three-quarter orthographic",
+  "preview_fps": 30,
+  "animation": "pkx_eievui_0_Idle; source frames 0..40; preview loops",
+  "metrics_ms": {
+    "frame_us": {
+      "median": 16.71,
+      "p95": 26.453,
+      "mean": 16.713669999999997,
+      "max": 30.162
+    },
+    "skin_us": {
+      "median": 1.109,
+      "p95": 1.177,
+      "mean": 1.1175083333333335,
+      "max": 1.302
+    },
+    "draw_prepare_us": {
+      "median": 1.0,
+      "p95": 1.059,
+      "mean": 1.0039116666666665,
+      "max": 1.202
+    },
+    "previous_gpu_us": {
+      "median": 1.449,
+      "p95": 1.812,
+      "mean": 1.498175,
+      "max": 2.248
+    }
+  },
+  "load_including_gpu_setup_ms": 67.817,
+  "memory_bytes": {
+    "pack": 299112,
+    "model_resident": 530480,
+    "temporary_model_load_peak": 829592,
+    "gpu_vertex_arenas_and_textures": 630784,
+    "largest_upload_staging": 65536,
+    "tracked_peak": 1198128
+  },
+  "excluded_memory": "driver, command buffers, render targets, shader internals and static BSS; total process memory unmeasured",
+  "draws_per_frame": 37,
+  "submitted_vertices": 1944,
+  "triangles": 648,
+  "bones": 66,
+  "textures": 9,
+  "hardware": {
+    "model": "New 3DS family; exact variant unverified",
+    "speedup": "requested, clock not measured",
+    "launcher": "Rosalina v2.4.3 label",
+    "luma_firmware": "unverified",
+    "ftpd": "3.2.1, port 5000",
+    "ntr_engine": "owner reports HR; installed ntr.bin says NTR 3.6.1, HR menu says NTR 3.6 HR; exact loaded release not attested"
+  },
+  "benchmark_csv_sha256": "2a476af4616f2b1a40686235d84ac0a2d4a4e6ef959496827e3eb2978f640508"
+}

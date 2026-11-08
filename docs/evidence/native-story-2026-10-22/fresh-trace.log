@@ -1,0 +1,419 @@
+boot_build story-review core=0
+platform_memory stage=boot_start heap_bytes=96034816 linear_heap_bytes=33554432 linear_free_bytes=31941632
+movie_begin name=tpc frames=75 fps=30000/1001 audio=unavailable mix=stereo result=d880a7fa
+movie_end name=tpc result=0 displayed=71 skipped=4 elapsed_us=2531916
+movie_begin name=gs_logo frames=130 fps=30000/1001 audio=no_embedded_track mix=stereo result=00000000
+movie_end name=gs_logo result=0 displayed=122 skipped=8 elapsed_us=4369552
+title_begin vertices=17277 batches=43 textures=20 bones=31 fps=60.000
+title_state name=title_skip_out clip=0 frame=28 input=0100
+title_state name=title_skip_in clip=2 frame=35 input=0000
+title_state name=title_wait_start clip=2 frame=42 input=0000
+title_state name=title_start_accepted clip=2 frame=92 input=1000
+game_load status=absent
+title_state name=main_menu clip=2 frame=105 input=0000
+menu_page name=new_confirm input=0100
+menu_page name=name_choices input=0100
+menu_page name=name_confirm input=0100
+game_new name=WES seed=02168a81 trainer_id=54cad25b money=10000 party=2 replace_authorized=0 disk_write=0
+title_end result=0 frames=218 state=main_menu clip=2
+render_recovery scene=title event=drained frames=218 elapsed_us=118 ready=1 exit=0 input=0000 counters=1119,1119 build=story-review
+render_gpu submitted=218 fill=218 command=218 transfer=218 words=5164 draws=42 vertices=17247 models=0 textures=0 bytes=0
+game_link floor=928 name=openingdemo
+movie_begin name=openingdemo frames=1926 fps=30000/1001 audio=unavailable mix=stereo result=d880a7fa
+movie_end name=openingdemo result=0 displayed=1795 skipped=131 elapsed_us=64288966
+opening_complete flag=08d0 floor=1 spawn=0 fade_script=05960008
+field_models floor=1 models=11 cpu_resident_bytes=50041380
+platform_memory stage=outskirt_ready heap_bytes=96034816 linear_heap_bytes=33554432 linear_free_bytes=14234112
+story_start key=1 script=01000000 argc=0
+field_begin floor=1 previous=928 spawn=0 new=1 maps=4 npcs=7 models=11 arrival=1 duration=5.000
+story_native task=1 script=01000000 pc=000000f9 id=68 argc=3 a=00000001,00000000,00000040,00000000,00000000,00000000
+story_presentation native=68 status=unrendered reason=field_audio_backend_pending
+story_native task=1 script=01000000 pc=0000019a id=69 argc=3 a=00000022,00000000,0000007f,00000000,00000000,00000000
+story_presentation native=69 status=unrendered reason=field_audio_backend_pending
+story_end key=1 result=1
+field_tick floor=1 phase=0 menu=0 control=0 message=00000 input=0000 stick=0,0 xyz=5.0000,0.0000,7.0000 yaw=3.1416 motion=0 sample=0.00 hits=0 time=64 draws=208 command_words=25368 gpu_bytes=17445256
+story_start key=2 script=01000001 argc=0
+story_native task=2 script=01000001 pc=0000025e id=5d argc=0 a=00000000,00000000,00000000,00000000,00000000,00000000
+story_native task=2 script=01000001 pc=0000037d id=64 argc=2 a=00000003,00000000,00000000,00000000,00000000,00000000
+story_native task=2 script=01000001 pc=000003c4 id=64 argc=2 a=00000002,00000001,00000000,00000000,00000000,00000000
+story_native task=2 script=01000001 pc=00000413 id=76 argc=2 a=0000000b,00000001,00000000,00000000,00000000,00000000
+story_native task=2 script=01000001 pc=00000438 id=72 argc=2 a=00e21000,00000001,00000000,00000000,00000000,00000000
+story_end key=2 result=1
+story_start key=3 script=01000002 argc=0
+story_native task=3 script=01000002 pc=000006fd id=6d argc=2 a=0000007f,00000000,00000000,00000000,00000000,00000000
+story_presentation native=6d status=unrendered reason=field_audio_backend_pending
+story_native task=3 script=01000002 pc=0000075a id=33 argc=5 a=0000001d,00000002,00000000,00000000,00000001,00000000
+story_native task=3 script=01000002 pc=00000800 id=03 argc=6 a=01000014,00000000,00000000,00000000,00000000,00000000
+story_start key=4 script=01000014 argc=4
+story_native task=3 script=01000002 pc=0000085e id=d1 argc=1 a=05960015,00000000,00000000,00000000,00000000,00000000
+story_start key=5 script=05960015 argc=4
+story_native task=4 script=01000014 pc=00000213 id=9d argc=1 a=41200000,00000000,00000000,00000000,00000000,00000000
+story_end key=5 result=1
+story_end key=3 result=1
+story_prepared floor=1
+field_tick floor=1 phase=1 menu=0 control=0 message=00000 input=0000 stick=0,0 xyz=5.0000,0.0000,7.0000 yaw=3.1416 motion=0 sample=10.37 hits=0 time=65 draws=201 command_words=24488 gpu_bytes=17445256
+field_tick floor=1 phase=1 menu=0 control=0 message=00000 input=0000 stick=0,0 xyz=5.0000,0.0000,7.0000 yaw=3.1416 motion=0 sample=19.09 hits=0 time=66 draws=200 command_words=24276 gpu_bytes=17445256
+field_tick floor=1 phase=1 menu=0 control=0 message=00000 input=0000 stick=0,0 xyz=5.0000,0.0000,7.0000 yaw=3.1416 motion=0 sample=27.80 hits=0 time=67 draws=200 command_words=24276 gpu_bytes=17445256
+field_tick floor=1 phase=1 menu=0 control=0 message=00000 input=0000 stick=0,0 xyz=5.0000,0.0000,7.0000 yaw=3.1416 motion=0 sample=36.51 hits=0 time=69 draws=200 command_words=24276 gpu_bytes=17445256
+field_tick floor=1 phase=1 menu=0 control=0 message=00000 input=0000 stick=0,0 xyz=5.0000,0.0000,7.0000 yaw=3.1416 motion=0 sample=45.22 hits=0 time=70 draws=200 command_words=24276 gpu_bytes=17445256
+field_arrival camera_end=1 actors_closed=1
+field_tick floor=1 phase=2 menu=0 control=0 message=00000 input=0000 stick=0,0 xyz=5.0000,0.0000,7.0000 yaw=3.1416 motion=0 sample=48.22 hits=0 time=71 draws=148 command_words=18172 gpu_bytes=17445256
+field_arrival_complete flag=0af8 camera_mode=0 target=0:100
+story_start key=6 script=0100000e argc=4
+story_start key=7 script=0100000b argc=0
+story_native task=6 script=0100000e pc=00003574 id=33 argc=5 a=0000001d,00000002,00000000,00000000,00000001,00000000
+story_native task=7 script=0100000b pc=00002cc7 id=5d argc=0 a=00000000,00000000,00000000,00000000,00000000,00000000
+field_tick floor=1 phase=3 menu=0 control=1 message=00000 input=0000 stick=0,0 xyz=5.0000,0.0000,7.0000 yaw=3.1416 motion=0 sample=10.63 hits=0 time=72 draws=161 command_words=19812 gpu_bytes=17445256
+field_tick floor=1 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,0 xyz=5.0000,0.0000,7.0000 yaw=3.1416 motion=0 sample=10.32 hits=0 time=73 draws=160 command_words=19604 gpu_bytes=17445256
+field_tick floor=1 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,0 xyz=5.0000,0.0000,7.0000 yaw=3.1416 motion=0 sample=18.56 hits=0 time=74 draws=160 command_words=19604 gpu_bytes=17445256
+story_native task=4 script=01000014 pc=0000023e id=68 argc=3 a=00000004,00000000,0000007f,00000000,00000000,00000000
+story_end key=4 result=0
+field_tick floor=1 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,0 xyz=5.0000,0.0000,7.0000 yaw=3.1416 motion=0 sample=26.80 hits=0 time=75 draws=160 command_words=19604 gpu_bytes=17445256
+field_tick floor=1 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,0 xyz=5.0000,0.0000,7.0000 yaw=3.1416 motion=0 sample=35.03 hits=0 time=76 draws=160 command_words=19604 gpu_bytes=17445256
+field_tick floor=1 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,113 xyz=5.0000,0.0000,4.3610 yaw=3.1416 motion=2 sample=8.96 hits=0 time=78 draws=160 command_words=19604 gpu_bytes=17445256
+field_tick floor=1 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,0 xyz=5.0000,0.0000,1.1877 yaw=3.1416 motion=0 sample=8.61 hits=0 time=79 draws=160 command_words=19604 gpu_bytes=17445256
+field_tick floor=1 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,0 xyz=5.0000,0.0000,1.1877 yaw=3.1416 motion=0 sample=16.84 hits=0 time=80 draws=160 command_words=19604 gpu_bytes=17445256
+field_tick floor=1 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,0 xyz=5.0000,0.0000,-0.9221 yaw=3.1416 motion=0 sample=8.61 hits=0 time=81 draws=160 command_words=19604 gpu_bytes=17445256
+field_tick floor=1 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,0 xyz=5.0000,0.0000,-0.9221 yaw=3.1416 motion=0 sample=16.84 hits=0 time=82 draws=160 command_words=19604 gpu_bytes=17445256
+field_tick floor=1 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,0 xyz=5.0000,0.0000,-0.9221 yaw=3.1416 motion=0 sample=25.07 hits=0 time=83 draws=160 command_words=19604 gpu_bytes=17445256
+field_tick floor=1 phase=4 menu=0 control=1 message=00000 input=0000 stick=-113,0 xyz=3.4188,0.0000,-0.9221 yaw=4.7124 motion=2 sample=25.74 hits=0 time=84 draws=160 command_words=19604 gpu_bytes=17445256
+field_tick floor=1 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,0 xyz=0.2464,0.0000,-0.9221 yaw=4.7124 motion=0 sample=8.61 hits=0 time=85 draws=160 command_words=19604 gpu_bytes=17445256
+field_tick floor=1 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,0 xyz=0.2464,0.0000,-0.9221 yaw=4.7124 motion=0 sample=16.84 hits=0 time=86 draws=160 command_words=19604 gpu_bytes=17445256
+story_native task=7 script=0100000b pc=00002e85 id=33 argc=5 a=00000000,00000064,00000000,00000000,00000001,00000000
+story_native task=7 script=0100000b pc=00002ec0 id=33 argc=5 a=0000001d,00000002,00000000,00000000,00000001,00000000
+story_native task=7 script=0100000b pc=00001554 id=88 argc=0 a=00000000,00000000,00000000,00000000,00000000,00000000
+story_native task=7 script=0100000b pc=00001573 id=24 argc=1 a=00000003,00000000,00000000,00000000,00000000,00000000
+story_native task=7 script=0100000b pc=0000159e id=28 argc=3 a=c2a0fae1,40bae148,417a8f5c,00000000,00000000,00000000
+story_native task=7 script=0100000b pc=000015c9 id=29 argc=3 a=3e8f5c29,bf666666,00000000,00000000,00000000,00000000
+story_native task=7 script=0100000b pc=000015e2 id=20 argc=0 a=00000000,00000000,00000000,00000000,00000000,00000000
+story_native task=7 script=0100000b pc=0000160b id=4c argc=2 a=0000001d,00000000,00000000,00000000,00000000,00000000
+story_native task=7 script=0100000b pc=00001634 id=4c argc=2 a=0000001d,00000001,00000000,00000000,00000000,00000000
+story_native task=7 script=0100000b pc=0000165d id=4c argc=2 a=0000001d,00000003,00000000,00000000,00000000,00000000
+story_native task=7 script=0100000b pc=000016a0 id=03 argc=6 a=01000004,00000000,00000000,00000000,00000000,00000000
+story_start key=8 script=01000004 argc=4
+story_native task=8 script=01000004 pc=00000c75 id=3b argc=5 a=0000001d,00000000,c1700000,41800000,c2340000,00000000
+field_tick floor=1 phase=4 menu=0 control=0 message=00000 input=0000 stick=0,0 xyz=-0.1694,0.0000,-0.9221 yaw=4.7124 motion=0 sample=17.16 hits=1 time=87 draws=160 command_words=19604 gpu_bytes=17445256
+story_native task=8 script=01000004 pc=00000cb9 id=30 argc=4 a=00000000,0000001d,00000000,40000000,00000000,00000000
+story_native task=8 script=01000004 pc=00000cf7 id=32 argc=3 a=0000001d,00000000,00000001,00000000,00000000,00000000
+story_native task=8 script=01000004 pc=00000d26 id=48 argc=3 a=0000001d,00000000,00000002,00000000,00000000,00000000
+story_native task=8 script=01000004 pc=00000d61 id=49 argc=5 a=0000001d,00000000,c1700000,00000000,41900000,00000000
+story_native task=8 script=01000004 pc=00000d9c id=49 argc=5 a=0000001d,00000000,c1f00000,00000000,41900000,00000000
+story_native task=8 script=01000004 pc=00000dcb id=4a argc=3 a=0000001d,00000000,00000000,00000000,00000000,00000000
+story_native task=8 script=01000004 pc=00000dfa id=3e argc=3 a=0000001d,00000000,00000001,00000000,00000000,00000000
+field_tick floor=1 phase=4 menu=0 control=0 message=00000 input=0000 stick=0,0 xyz=-0.1694,0.0000,-0.9221 yaw=4.7124 motion=0 sample=19.35 hits=1 time=88 draws=165 command_words=20284 gpu_bytes=17445256
+story_native task=7 script=0100000b pc=000016f5 id=03 argc=6 a=01000005,00000000,00000000,00000000,00000000,00000000
+story_start key=9 script=01000005 argc=4
+story_native task=7 script=0100000b pc=0000171b id=06 argc=1 a=00000009,00000000,00000000,00000000,00000000,00000000
+story_native task=9 script=01000005 pc=00000e65 id=32 argc=3 a=0000001d,00000001,00000001,00000000,00000000,00000000
+story_native task=9 script=01000005 pc=00000ea0 id=3b argc=5 a=0000001d,00000001,c1700000,41800000,c2340000,00000000
+story_native task=9 script=01000005 pc=00000ee1 id=3d argc=6 a=0000001d,00000001,00000001,c1700000,00000000,41900000
+story_native task=9 script=01000005 pc=00000f10 id=3e argc=3 a=0000001d,00000001,00000001,00000000,00000000,00000000
+field_tick floor=1 phase=4 menu=0 control=0 message=00000 input=0000 stick=0,0 xyz=-0.1694,0.0000,-0.9221 yaw=4.7124 motion=0 sample=6.27 hits=1 time=90 draws=169 command_words=20804 gpu_bytes=17445256
+field_tick floor=1 phase=4 menu=0 control=0 message=00000 input=0000 stick=0,0 xyz=-0.1694,0.0000,-0.9221 yaw=4.7124 motion=0 sample=14.31 hits=1 time=91 draws=169 command_words=20804 gpu_bytes=17445256
+field_tick floor=1 phase=4 menu=0 control=0 message=00000 input=0000 stick=0,0 xyz=-0.1694,0.0000,-0.9221 yaw=4.7124 motion=0 sample=2.36 hits=1 time=92 draws=169 command_words=20804 gpu_bytes=17445256
+story_native task=8 script=01000004 pc=00000e35 id=3c argc=5 a=0000001d,00000000,00000000,42b40000,00000000,00000000
+story_end key=8 result=0
+story_native task=9 script=01000005 pc=00000f4b id=3c argc=5 a=0000001d,00000001,00000000,43870000,00000000,00000000
+story_end key=9 result=0
+story_native task=7 script=0100000b pc=0000173e id=06 argc=1 a=00000000,00000000,00000000,00000000,00000000,00000000
+story_native task=7 script=0100000b pc=0000176c id=24 argc=1 a=00000003,00000000,00000000,00000000,00000000,00000000
+story_native task=7 script=0100000b pc=00001797 id=28 argc=3 a=c14a147b,4211e148,c2585c29,00000000,00000000,00000000
+story_native task=7 script=0100000b pc=000017c2 id=29 argc=3 a=be99999a,40400000,00000000,00000000,00000000,00000000
+story_native task=7 script=0100000b pc=000017fd id=33 argc=5 a=0000001d,00000000,00000010,00000000,00000000,00000000
+story_native task=7 script=0100000b pc=0000182c id=35 argc=3 a=0000001d,00000000,00000001,00000000,00000000,00000000
+field_tick floor=1 phase=4 menu=0 control=0 message=00000 input=0000 stick=0,0 xyz=-0.1694,0.0000,-0.9221 yaw=4.7124 motion=0 sample=10.47 hits=1 time=93 draws=169 command_words=20804 gpu_bytes=17445256
+story_native task=7 script=0100000b pc=00001867 id=33 argc=5 a=0000001d,00000000,00000001,00000000,00000001,00000000
+story_native task=7 script=0100000b pc=00001896 id=36 argc=3 a=0000001d,00000000,0000515d,00000000,00000000,00000000
+story_message script=0100000b pc=00001896 id=0515d
+field_tick floor=1 phase=4 menu=0 control=0 message=0515d input=0000 stick=0,0 xyz=-0.1694,0.0000,-0.9221 yaw=4.7124 motion=0 sample=18.47 hits=1 time=94 draws=169 command_words=20804 gpu_bytes=17445256
+field_tick floor=1 phase=4 menu=0 control=0 message=0515d input=0000 stick=0,0 xyz=-0.1694,0.0000,-0.9221 yaw=4.7124 motion=0 sample=6.38 hits=1 time=95 draws=169 command_words=20804 gpu_bytes=17445256
+field_tick floor=1 phase=4 menu=0 control=0 message=0515d input=0000 stick=0,0 xyz=-0.1694,0.0000,-0.9221 yaw=4.7124 motion=0 sample=14.30 hits=1 time=96 draws=169 command_words=20804 gpu_bytes=17445256
+story_native task=7 script=0100000b pc=000018bf id=37 argc=2 a=0000001d,00000000,00000000,00000000,00000000,00000000
+field_tick floor=1 phase=4 menu=0 control=0 message=00000 input=0100 stick=0,0 xyz=-0.1694,0.0000,-0.9221 yaw=4.7124 motion=0 sample=13.11 hits=1 time=97 draws=169 command_words=20804 gpu_bytes=17445256
+story_native task=7 script=0100000b pc=00001909 id=33 argc=5 a=0000001d,00000001,00000010,00000000,00000000,00000000
+story_native task=7 script=0100000b pc=00001938 id=35 argc=3 a=0000001d,00000001,00000001,00000000,00000000,00000000
+field_tick floor=1 phase=4 menu=0 control=0 message=00000 input=0000 stick=0,0 xyz=-0.1694,0.0000,-0.9221 yaw=4.7124 motion=0 sample=1.17 hits=1 time=98 draws=169 command_words=20804 gpu_bytes=17445256
+story_native task=7 script=0100000b pc=00001973 id=33 argc=5 a=0000001d,00000001,00000001,00000000,00000001,00000000
+story_native task=7 script=0100000b pc=000019a2 id=36 argc=3 a=0000001d,00000001,00005146,00000000,00000000,00000000
+story_message script=0100000b pc=000019a2 id=05146
+field_tick floor=1 phase=4 menu=0 control=0 message=05146 input=0000 stick=0,0 xyz=-0.1694,0.0000,-0.9221 yaw=4.7124 motion=0 sample=9.12 hits=1 time=99 draws=169 command_words=20804 gpu_bytes=17445256
+field_tick floor=1 phase=4 menu=0 control=0 message=05146 input=0000 stick=0,0 xyz=-0.1694,0.0000,-0.9221 yaw=4.7124 motion=0 sample=17.01 hits=1 time=100 draws=169 command_words=20804 gpu_bytes=17445256
+field_tick floor=1 phase=4 menu=0 control=0 message=05146 input=0000 stick=0,0 xyz=-0.1694,0.0000,-0.9221 yaw=4.7124 motion=0 sample=4.91 hits=1 time=101 draws=169 command_words=20804 gpu_bytes=17445256
+field_tick floor=1 phase=4 menu=0 control=0 message=05146 input=0100 stick=0,0 xyz=-0.1694,0.0000,-0.9221 yaw=4.7124 motion=0 sample=12.80 hits=1 time=103 draws=169 command_words=20804 gpu_bytes=17445256
+field_tick floor=1 phase=4 menu=0 control=0 message=05146 input=0000 stick=0,0 xyz=-0.1694,0.0000,-0.9221 yaw=4.7124 motion=0 sample=0.77 hits=1 time=104 draws=169 command_words=20804 gpu_bytes=17445256
+story_native task=7 script=0100000b pc=000019cb id=37 argc=2 a=0000001d,00000001,00000000,00000000,00000000,00000000
+field_tick floor=1 phase=4 menu=0 control=0 message=00000 input=0100 stick=0,0 xyz=-0.1694,0.0000,-0.9221 yaw=4.7124 motion=0 sample=9.90 hits=1 time=104 draws=169 command_words=20804 gpu_bytes=17445256
+story_native task=7 script=0100000b pc=000019f9 id=24 argc=1 a=00000003,00000000,00000000,00000000,00000000,00000000
+story_native task=7 script=0100000b pc=00001a24 id=28 argc=3 a=c2ec0000,415e3d71,42c80a3d,00000000,00000000,00000000
+story_native task=7 script=0100000b pc=00001a4f id=29 argc=3 a=3d23d70a,bf866666,00000000,00000000,00000000,00000000
+story_native task=7 script=0100000b pc=00001a92 id=03 argc=6 a=01000006,00000000,00000000,00000000,00000000,00000000
+story_start key=10 script=01000006 argc=4
+story_native task=7 script=0100000b pc=00001ad8 id=03 argc=6 a=01000007,00000000,00000000,00000000,00000000,00000000
+story_start key=11 script=01000007 argc=4
+story_native task=7 script=0100000b pc=00001afe id=06 argc=1 a=0000000a,00000000,00000000,00000000,00000000,00000000
+story_native task=11 script=01000007 pc=00001296 id=3b argc=5 a=0000001d,00000001,40a00000,00000000,427c0000,00000000
+story_native task=11 script=01000007 pc=000012e9 id=3d argc=6 a=0000001d,00000001,00000001,c2080000,00000000,427c0000
+story_native task=11 script=01000007 pc=00001318 id=3e argc=3 a=0000001d,00000001,00000001,00000000,00000000,00000000
+story_native task=10 script=01000006 pc=00000f9f id=3d argc=6 a=0000001d,00000000,00000001,c2100000,00000000,42100000
+story_native task=10 script=01000006 pc=00000fce id=3e argc=3 a=0000001d,00000000,00000001,00000000,00000000,00000000
+field_tick floor=1 phase=4 menu=0 control=0 message=00000 input=0000 stick=0,0 xyz=-0.1694,0.0000,-0.9221 yaw=4.7124 motion=0 sample=18.04 hits=1 time=105 draws=169 command_words=20804 gpu_bytes=17445256
+story_native task=10 script=01000006 pc=00000ffd id=44 argc=3 a=0000001d,00000000,00000000,00000000,00000000,00000000
+story_native task=10 script=01000006 pc=0000102c id=3e argc=3 a=0000001d,00000000,00000001,00000000,00000000,00000000
+story_native task=10 script=01000006 pc=00001067 id=33 argc=5 a=0000001d,00000000,00000006,00000000,00000000,00000000
+story_native task=10 script=01000006 pc=000010a2 id=33 argc=5 a=0000001d,00000002,00000001,00000000,00000000,00000000
+story_native task=10 script=01000006 pc=000010d1 id=35 argc=3 a=0000001d,00000000,00000001,00000000,00000000,00000000
+field_tick floor=1 phase=4 menu=0 control=0 message=00000 input=0000 stick=0,0 xyz=-0.1694,0.0000,-0.9221 yaw=4.7124 motion=0 sample=6.12 hits=1 time=107 draws=169 command_words=20804 gpu_bytes=17445256
+story_native task=11 script=01000007 pc=00001347 id=44 argc=3 a=0000001d,00000001,43340000,00000000,00000000,00000000
+story_native task=11 script=01000007 pc=00001376 id=3e argc=3 a=0000001d,00000001,00000001,00000000,00000000,00000000
+story_native task=11 script=01000007 pc=000013b1 id=33 argc=5 a=0000001d,00000001,00000008,00000000,00000000,00000000
+story_native task=11 script=01000007 pc=000013ec id=33 argc=5 a=0000001d,00000002,00000001,00000000,00000000,00000000
+story_native task=11 script=01000007 pc=0000141b id=35 argc=3 a=0000001d,00000001,00000001,00000000,00000000,00000000
+field_tick floor=1 phase=4 menu=0 control=0 message=00000 input=0000 stick=0,0 xyz=-0.1694,0.0000,-0.9221 yaw=4.7124 motion=0 sample=14.20 hits=1 time=108 draws=169 command_words=20804 gpu_bytes=17445256
+story_native task=10 script=01000006 pc=00001110 id=46 argc=5 a=0000001d,00000000,0000001d,00000002,00000001,00000000
+story_native task=10 script=01000006 pc=0000114b id=3b argc=5 a=0000001d,00000000,c1400000,00000000,41800000,00000000
+story_native task=10 script=01000006 pc=00001186 id=3c argc=5 a=0000001d,00000000,00000000,42b40000,00000000,00000000
+story_native task=10 script=01000006 pc=000011c1 id=33 argc=5 a=0000001d,00000000,00000007,00000000,00000001,00000000
+story_native task=10 script=01000006 pc=000011fc id=33 argc=5 a=0000001d,00000002,00000001,00000000,00000000,00000000
+story_native task=10 script=01000006 pc=0000122b id=35 argc=3 a=0000001d,00000000,00000001,00000000,00000000,00000000
+story_native task=10 script=01000006 pc=0000125a id=35 argc=3 a=0000001d,00000002,00000001,00000000,00000000,00000000
+field_tick floor=1 phase=4 menu=0 control=0 message=00000 input=0000 stick=0,0 xyz=-0.1694,0.0000,-0.9221 yaw=4.7124 motion=0 sample=2.46 hits=1 time=109 draws=169 command_words=20804 gpu_bytes=17445256
+story_native task=11 script=01000007 pc=0000144a id=35 argc=3 a=0000001d,00000002,00000001,00000000,00000000,00000000
+field_tick floor=1 phase=4 menu=0 control=0 message=00000 input=0000 stick=0,0 xyz=-0.1694,0.0000,-0.9221 yaw=4.7124 motion=0 sample=11.06 hits=1 time=110 draws=169 command_words=20804 gpu_bytes=17445256
+story_end key=10 result=0
+story_native task=7 script=0100000b pc=00001b21 id=06 argc=1 a=0000000b,00000000,00000000,00000000,00000000,00000000
+story_native task=11 script=01000007 pc=00001489 id=46 argc=5 a=0000001d,00000001,0000001d,00000002,00000001,00000000
+story_native task=11 script=01000007 pc=000014c4 id=3b argc=5 a=0000001d,00000001,41700000,00000000,41600000,00000000
+story_native task=11 script=01000007 pc=000014ff id=3c argc=5 a=0000001d,00000001,00000000,43870000,00000000,00000000
+story_native task=11 script=01000007 pc=0000153a id=33 argc=5 a=0000001d,00000001,00000009,00000000,00000001,00000000
+story_end key=11 result=0
+story_native task=7 script=0100000b pc=00001b4c id=68 argc=3 a=0000005a,00000000,0000007f,00000000,00000000,00000000
+story_native task=7 script=0100000b pc=00001b87 id=33 argc=5 a=0000001d,00000002,00000002,00000000,00000000,00000000
+story_native task=7 script=0100000b pc=00001bb6 id=35 argc=3 a=0000001d,00000002,00000001,00000000,00000000,00000000
+field_tick floor=1 phase=4 menu=0 control=0 message=00000 input=0000 stick=0,0 xyz=-0.1694,0.0000,-0.9221 yaw=4.7124 motion=0 sample=19.98 hits=1 time=111 draws=169 command_words=20804 gpu_bytes=17445256
+field_tick floor=1 phase=4 menu=0 control=0 message=00000 input=0000 stick=0,0 xyz=-0.1694,0.0000,-0.9221 yaw=4.7124 motion=0 sample=9.17 hits=1 time=112 draws=169 command_words=20804 gpu_bytes=17445256
+field_tick floor=1 phase=4 menu=0 control=0 message=00000 input=0000 stick=0,0 xyz=-0.1694,0.0000,-0.9221 yaw=4.7124 motion=0 sample=18.36 hits=1 time=113 draws=169 command_words=20804 gpu_bytes=17445256
+field_tick floor=1 phase=4 menu=0 control=0 message=00000 input=0000 stick=0,0 xyz=-0.1694,0.0000,-0.9221 yaw=4.7124 motion=0 sample=7.55 hits=1 time=115 draws=169 command_words=20804 gpu_bytes=17445256
+story_native task=7 script=0100000b pc=00001be5 id=32 argc=3 a=0000001d,00000000,00000000,00000000,00000000,00000000
+story_native task=7 script=0100000b pc=00001c14 id=32 argc=3 a=0000001d,00000001,00000000,00000000,00000000,00000000
+story_native task=7 script=0100000b pc=00001c43 id=32 argc=3 a=0000001d,00000002,00000000,00000000,00000000,00000000
+story_native task=7 script=0100000b pc=00001c62 id=4e argc=1 a=000003da,00000000,00000000,00000000,00000000,00000000
+story_flag id=03da value=1
+story_native task=7 script=0100000b pc=00001c8b id=4d argc=2 a=0000001d,00000000,00000000,00000000,00000000,00000000
+story_native task=7 script=0100000b pc=00001cb4 id=4d argc=2 a=0000001d,00000001,00000000,00000000,00000000,00000000
+story_native task=7 script=0100000b pc=00001cdd id=4d argc=2 a=0000001d,00000003,00000000,00000000,00000000,00000000
+story_native task=7 script=0100000b pc=00001cf6 id=21 argc=0 a=00000000,00000000,00000000,00000000,00000000,00000000
+story_native task=7 script=0100000b pc=00001d1b id=76 argc=2 a=0000000a,00000000,00000000,00000000,00000000,00000000
+story_native task=7 script=0100000b pc=00001d40 id=b3 argc=2 a=3f800000,00000001,00000000,00000000,00000000,00000000
+field_tick floor=1 phase=4 menu=0 control=0 message=00000 input=0000 stick=0,0 xyz=-0.1694,0.0000,-0.9221 yaw=4.7124 motion=0 sample=14.77 hits=1 time=116 draws=154 command_words=18844 gpu_bytes=17445256
+story_native task=7 script=0100000b pc=00002eec id=24 argc=1 a=00000000,00000000,00000000,00000000,00000000,00000000
+story_native task=7 script=0100000b pc=00002f11 id=25 argc=2 a=00000000,00000064,00000000,00000000,00000000,00000000
+field_tick floor=1 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,0 xyz=-0.1694,0.0000,-0.9221 yaw=4.7124 motion=0 sample=37.90 hits=1 time=117 draws=154 command_words=18844 gpu_bytes=17445256
+field_tick floor=1 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,0 xyz=-0.1694,0.0000,-0.9221 yaw=4.7124 motion=0 sample=40.99 hits=1 time=118 draws=154 command_words=18844 gpu_bytes=17445256
+field_tick floor=1 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,0 xyz=-0.1694,0.0000,-0.9221 yaw=4.7124 motion=0 sample=44.09 hits=1 time=119 draws=154 command_words=18844 gpu_bytes=17445256
+field_tick floor=1 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,0 xyz=-0.1694,0.0000,-0.9221 yaw=4.7124 motion=0 sample=47.19 hits=1 time=120 draws=154 command_words=18844 gpu_bytes=17445256
+field_tick floor=1 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,-113 xyz=-0.1694,0.0000,-0.4377 yaw=0.0000 motion=2 sample=7.89 hits=1 time=121 draws=154 command_words=18844 gpu_bytes=17445256
+field_tick floor=1 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,0 xyz=-0.1694,0.0000,2.0060 yaw=0.0000 motion=0 sample=23.73 hits=1 time=122 draws=154 command_words=18844 gpu_bytes=17445256
+field_tick floor=1 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,0 xyz=-0.1694,0.0000,2.0060 yaw=0.0000 motion=0 sample=26.82 hits=1 time=123 draws=154 command_words=18844 gpu_bytes=17445256
+field_tick floor=1 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,0 xyz=-0.1694,0.0000,2.9793 yaw=0.0000 motion=0 sample=39.50 hits=1 time=124 draws=154 command_words=18844 gpu_bytes=17445256
+field_tick floor=1 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,113 xyz=-0.1694,0.0000,2.4949 yaw=3.1416 motion=2 sample=7.89 hits=1 time=125 draws=154 command_words=18844 gpu_bytes=17445256
+field_tick floor=1 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,0 xyz=-0.1694,0.0000,2.0054 yaw=3.1416 motion=0 sample=55.27 hits=1 time=126 draws=154 command_words=18844 gpu_bytes=17445256
+field_tick floor=1 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,0 xyz=-0.1694,0.0000,2.9787 yaw=0.0000 motion=0 sample=7.95 hits=1 time=127 draws=154 command_words=18844 gpu_bytes=17445256
+field_tick floor=1 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,0 xyz=-0.1694,0.0000,2.9787 yaw=0.0000 motion=0 sample=11.05 hits=1 time=128 draws=154 command_words=18844 gpu_bytes=17445256
+field_tick floor=1 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,0 xyz=-0.1694,0.0000,2.0057 yaw=3.1416 motion=0 sample=23.73 hits=1 time=129 draws=154 command_words=18844 gpu_bytes=17445256
+field_tick floor=1 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,0 xyz=-0.1694,0.0000,2.0057 yaw=3.1416 motion=0 sample=26.83 hits=1 time=130 draws=154 command_words=18844 gpu_bytes=17445256
+field_tick floor=1 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,0 xyz=-0.1694,0.0000,2.9789 yaw=0.0000 motion=0 sample=39.50 hits=1 time=131 draws=154 command_words=18844 gpu_bytes=17445256
+field_tick floor=1 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,113 xyz=-0.1694,0.0000,2.4945 yaw=3.1416 motion=2 sample=7.89 hits=1 time=132 draws=154 command_words=18844 gpu_bytes=17445256
+field_tick floor=1 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,0 xyz=-0.1694,0.0000,2.0051 yaw=3.1416 motion=0 sample=55.27 hits=1 time=134 draws=154 command_words=18844 gpu_bytes=17445256
+field_tick floor=1 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,0 xyz=-0.1694,0.0000,2.9782 yaw=0.0000 motion=0 sample=7.96 hits=1 time=135 draws=154 command_words=18844 gpu_bytes=17445256
+field_tick floor=1 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,0 xyz=-0.1694,0.0000,2.9782 yaw=0.0000 motion=0 sample=11.05 hits=1 time=136 draws=154 command_words=18844 gpu_bytes=17445256
+field_tick floor=1 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,0 xyz=-0.1694,0.0000,2.4938 yaw=3.1416 motion=0 sample=31.62 hits=1 time=137 draws=154 command_words=18844 gpu_bytes=17445256
+field_tick floor=1 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,0 xyz=-0.1694,0.0000,2.4938 yaw=3.1416 motion=0 sample=34.71 hits=1 time=138 draws=154 command_words=18844 gpu_bytes=17445256
+field_tick floor=1 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,0 xyz=-0.1694,0.0000,2.4938 yaw=3.1416 motion=0 sample=37.81 hits=1 time=139 draws=154 command_words=18844 gpu_bytes=17445256
+field_tick floor=1 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,0 xyz=-1.6314,0.0000,2.4938 yaw=4.7124 motion=0 sample=7.96 hits=1 time=140 draws=154 command_words=18844 gpu_bytes=17445256
+field_tick floor=1 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,0 xyz=-1.6314,0.0000,2.4938 yaw=4.7124 motion=0 sample=11.05 hits=1 time=141 draws=154 command_words=18844 gpu_bytes=17445256
+field_tick floor=1 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,0 xyz=-1.6314,0.0000,2.4938 yaw=4.7124 motion=0 sample=14.15 hits=1 time=142 draws=154 command_words=18844 gpu_bytes=17445256
+field_tick floor=1 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,113 xyz=-1.6314,0.0000,2.0094 yaw=3.1416 motion=2 sample=7.89 hits=1 time=143 draws=154 command_words=18844 gpu_bytes=17445256
+field_tick floor=1 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,113 xyz=-1.6314,0.9318,-1.9005 yaw=3.1416 motion=2 sample=3.54 hits=1 time=144 draws=154 command_words=18844 gpu_bytes=17445256
+field_tick floor=1 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,0 xyz=-1.6314,1.3341,-3.1457 yaw=3.1416 motion=0 sample=39.46 hits=1 time=145 draws=154 command_words=18844 gpu_bytes=17445256
+story_door source=4 script=05960004
+story_start key=12 script=05960004 argc=4
+story_native task=12 script=05960004 pc=000002c9 id=7d argc=3 a=00000002,00000000,00000001,00000000,00000000,00000000
+story_end key=12 result=1
+story_start key=13 script=05960009 argc=0
+story_start key=14 script=01000003 argc=0
+field_tick floor=1 phase=4 menu=0 control=0 message=00000 input=0000 stick=0,113 xyz=-1.6314,1.4853,-3.6301 yaw=3.1416 motion=2 sample=15.86 hits=1 time=146 draws=154 command_words=18844 gpu_bytes=17445256
+story_native task=13 script=05960009 pc=00000ebb id=1c argc=2 a=00000003,3f000000,00000000,00000000,00000000,00000000
+story_end key=13 result=1
+story_native task=14 script=01000003 pc=00000912 id=99 argc=1 a=000001f4,00000000,00000000,00000000,00000000,00000000
+story_presentation native=99 status=unrendered reason=field_audio_backend_pending
+story_end key=14 result=1
+story_floor_link from=1 to=2 spawn=0 post_complete=1
+render_recovery scene=field event=drained frames=563 elapsed_us=164 ready=1 exit=0 input=0000 counters=10497,10497 build=story-review
+render_gpu submitted=781 fill=781 command=781 transfer=781 words=19052 draws=155 vertices=62280 models=0 textures=0 bytes=0
+field_end result=2 error=
+field_models floor=2 models=9 cpu_resident_bytes=35444448
+platform_memory stage=shop_ready heap_bytes=96034816 linear_heap_bytes=33554432 linear_free_bytes=14508928
+story_start key=1 script=01000000 argc=0
+field_begin floor=2 previous=1 spawn=0 new=0 maps=2 npcs=5 models=9 arrival=0 duration=0.000
+story_native task=1 script=01000000 pc=000000b7 id=5e argc=0 a=00000000,00000000,00000000,00000000,00000000,00000000
+story_native task=1 script=01000000 pc=000000f9 id=68 argc=3 a=00000004,00000000,00000040,00000000,00000000,00000000
+story_presentation native=68 status=unrendered reason=field_audio_backend_pending
+story_native task=1 script=01000000 pc=0000011e id=6d argc=2 a=00000050,000003e8,00000000,00000000,00000000,00000000
+story_presentation native=6d status=unrendered reason=field_audio_backend_pending
+story_native task=1 script=01000000 pc=00000149 id=69 argc=3 a=00000029,00000000,0000007f,00000000,00000000,00000000
+story_presentation native=69 status=unrendered reason=field_audio_backend_pending
+story_end key=1 result=1
+field_tick floor=2 phase=0 menu=0 control=0 message=00000 input=0000 stick=0,0 xyz=-5.3580,0.0000,2.4780 yaw=3.1416 motion=0 sample=0.00 hits=0 time=147 draws=115 command_words=14492 gpu_bytes=17694848
+story_start key=2 script=01000001 argc=0
+story_native task=2 script=01000001 pc=00000177 id=d3 argc=0 a=00000000,00000000,00000000,00000000,00000000,00000000
+story_flag id=0a05 value=1
+story_native task=2 script=01000001 pc=000001e6 id=64 argc=2 a=00000004,00000001,00000000,00000000,00000000,00000000
+story_end key=2 result=1
+story_start key=3 script=01000002 argc=0
+story_native task=3 script=01000002 pc=00000226 id=68 argc=3 a=00000004,00000000,00000050,00000000,00000000,00000000
+story_native task=3 script=01000002 pc=00000245 id=5d argc=0 a=00000000,00000000,00000000,00000000,00000000,00000000
+story_native task=3 script=01000002 pc=000002a5 id=42 argc=5 a=0000001e,00000000,ffffffea,00000008,fffffff4,00000000
+story_presentation native=42 status=unrendered reason=procedural_head_aim
+story_native task=3 script=01000002 pc=000002e0 id=42 argc=5 a=0000001e,00000001,ffffffea,00000008,fffffff4,00000000
+story_native task=3 script=01000002 pc=0000031b id=42 argc=5 a=0000001e,00000002,ffffffea,00000008,fffffff4,00000000
+story_native task=3 script=01000002 pc=00000356 id=42 argc=5 a=0000001e,00000003,ffffffea,00000008,fffffff4,00000000
+story_native task=3 script=01000002 pc=00000391 id=42 argc=5 a=0000001e,00000004,ffffffea,00000008,fffffff4,00000000
+story_native task=3 script=01000002 pc=000003cc id=3b argc=5 a=0000001e,00000001,c24acccd,00000000,c0a66666,00000000
+story_native task=3 script=01000002 pc=000003f7 id=7f argc=3 a=4288a3d7,42923d71,bf800000,00000000,00000000,00000000
+story_end key=3 result=0
+story_prepared floor=2
+story_start key=4 script=01000005 argc=4
+story_start key=5 script=01000007 argc=4
+story_start key=6 script=01000009 argc=4
+story_start key=7 script=0100000b argc=4
+story_start key=8 script=0100000d argc=4
+story_start key=9 script=01000004 argc=0
+story_native task=4 script=01000005 pc=00000dbd id=40 argc=3 a=0000001e,00000000,00000008,00000000,00000000,00000000
+story_native task=4 script=01000005 pc=00000dfc id=33 argc=5 a=0000001e,00000000,00000002,00000000,00000001,00000000
+story_native task=6 script=01000009 pc=000012c9 id=40 argc=3 a=0000001e,00000002,00000008,00000000,00000000,00000000
+story_native task=6 script=01000009 pc=00001308 id=33 argc=5 a=0000001e,00000002,00000003,00000000,00000001,00000000
+story_native task=7 script=0100000b pc=00001568 id=40 argc=3 a=0000001e,00000003,00000008,00000000,00000000,00000000
+story_native task=7 script=0100000b pc=000015a7 id=33 argc=5 a=0000001e,00000003,00000003,00000000,00000001,00000000
+story_native task=8 script=0100000d pc=000017f6 id=40 argc=3 a=0000001e,00000004,00000008,00000000,00000000,00000000
+story_native task=8 script=0100000d pc=00001835 id=33 argc=5 a=0000001e,00000004,0000000b,00000000,00000001,00000000
+story_native task=9 script=01000004 pc=00000a96 id=5d argc=0 a=00000000,00000000,00000000,00000000,00000000,00000000
+story_native task=9 script=01000004 pc=00000ada id=4e argc=1 a=00000ace,00000000,00000000,00000000,00000000,00000000
+story_flag id=0ace value=1
+story_native task=9 script=01000004 pc=00000af9 id=4e argc=1 a=00000a05,00000000,00000000,00000000,00000000,00000000
+story_flag id=0a05 value=1
+story_native task=9 script=01000004 pc=00000b18 id=e4 argc=0 a=00000000,00000000,00000000,00000000,00000000,00000000
+story_native task=9 script=01000004 pc=00000b50 id=2a argc=4 a=0000001e,00e51800,00000000,00000000,00000000,00000000
+field_tick floor=2 phase=4 menu=0 control=0 message=00000 input=0000 stick=0,0 xyz=-5.3580,0.0000,2.4780 yaw=3.1416 motion=0 sample=14.56 hits=0 time=148 draws=132 command_words=16588 gpu_bytes=17694848
+story_native task=9 script=01000004 pc=00000b8a id=68 argc=3 a=0000001c,00000000,0000007f,00000000,00000000,00000000
+story_native task=9 script=01000004 pc=00000ba9 id=b6 argc=1 a=00000002,00000000,00000000,00000000,00000000,00000000
+story_flag id=0a05 value=1
+field_tick floor=2 phase=4 menu=0 control=0 message=00000 input=0000 stick=0,0 xyz=-5.3580,0.0000,2.4780 yaw=3.1416 motion=0 sample=15.27 hits=0 time=149 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=0 control=0 message=00000 input=0000 stick=0,0 xyz=-5.3580,0.0000,2.4780 yaw=3.1416 motion=0 sample=15.96 hits=0 time=150 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=0 control=0 message=00000 input=0000 stick=0,0 xyz=-5.3580,0.0000,2.4780 yaw=3.1416 motion=0 sample=16.65 hits=0 time=151 draws=132 command_words=16588 gpu_bytes=17694848
+story_message script=01000004 pc=00000ba9 id=0426e
+field_tick floor=2 phase=4 menu=0 control=0 message=0426e input=0000 stick=0,0 xyz=-5.3580,0.0000,2.4780 yaw=3.1416 motion=0 sample=17.34 hits=0 time=152 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=0 control=0 message=0426e input=0000 stick=0,0 xyz=-5.3580,0.0000,2.4780 yaw=3.1416 motion=0 sample=18.00 hits=0 time=153 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=0 control=0 message=0426e input=0000 stick=0,0 xyz=-5.3580,0.0000,2.4780 yaw=3.1416 motion=0 sample=18.66 hits=0 time=154 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=0 control=0 message=0426e input=0000 stick=0,0 xyz=-5.3580,0.0000,2.4780 yaw=3.1416 motion=0 sample=19.32 hits=0 time=155 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=0 control=0 message=0426e input=0100 stick=0,0 xyz=-5.3580,0.0000,2.4780 yaw=3.1416 motion=0 sample=34.49 hits=0 time=155 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=0 control=0 message=0426e input=0000 stick=0,0 xyz=-5.3580,0.0000,2.4780 yaw=3.1416 motion=0 sample=35.09 hits=0 time=156 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=0 control=0 message=0426e input=0100 stick=0,0 xyz=-5.3580,0.0000,2.4780 yaw=3.1416 motion=0 sample=5.41 hits=0 time=157 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=0 control=0 message=0426e input=0000 stick=0,0 xyz=-5.3580,0.0000,2.4780 yaw=3.1416 motion=0 sample=6.06 hits=0 time=158 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=0 control=0 message=0426e input=0100 stick=0,0 xyz=-5.3580,0.0000,2.4780 yaw=3.1416 motion=0 sample=36.40 hits=0 time=158 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=0 control=0 message=0426e input=0000 stick=0,0 xyz=-5.3580,0.0000,2.4780 yaw=3.1416 motion=0 sample=37.01 hits=0 time=159 draws=132 command_words=16588 gpu_bytes=17694848
+story_native task=9 script=01000004 pc=00000bda id=8a argc=4 a=0000001c,000003e8,00000000,000000ff,00000000,00000000
+story_presentation native=8a status=unrendered reason=field_audio_backend_pending
+story_native task=9 script=01000004 pc=00000c09 id=68 argc=3 a=00000004,00000000,00000050,00000000,00000000,00000000
+field_tick floor=2 phase=4 menu=0 control=0 message=00000 input=0100 stick=0,0 xyz=-5.3580,0.0000,2.4780 yaw=3.1416 motion=0 sample=7.32 hits=0 time=160 draws=132 command_words=16588 gpu_bytes=17694848
+story_native task=9 script=01000004 pc=00000c37 id=2e argc=1 a=00000001,00000000,00000000,00000000,00000000,00000000
+story_native task=9 script=01000004 pc=00000c56 id=24 argc=1 a=00000000,00000000,00000000,00000000,00000000,00000000
+story_native task=9 script=01000004 pc=00000c7b id=25 argc=2 a=00000000,00000064,00000000,00000000,00000000,00000000
+story_native task=9 script=01000004 pc=00000c9a id=4e argc=1 a=000003db,00000000,00000000,00000000,00000000,00000000
+story_flag id=03db value=1
+field_tick floor=2 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,0 xyz=-5.3580,0.0000,2.4780 yaw=3.1416 motion=0 sample=8.03 hits=0 time=161 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,0 xyz=-5.3580,0.0000,2.4780 yaw=3.1416 motion=0 sample=8.71 hits=0 time=162 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,0 xyz=-5.3580,0.0000,2.4780 yaw=3.1416 motion=0 sample=9.37 hits=0 time=163 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,0 xyz=-5.3580,0.0000,2.4780 yaw=3.1416 motion=0 sample=10.01 hits=0 time=164 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,0 xyz=-5.3580,0.0000,2.4780 yaw=3.1416 motion=0 sample=10.67 hits=0 time=165 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,0 xyz=-3.5153,0.0000,2.4780 yaw=1.5708 motion=0 sample=30.35 hits=0 time=166 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,0 xyz=-3.5153,0.0000,2.4780 yaw=1.5708 motion=0 sample=31.00 hits=0 time=167 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,0 xyz=-3.5153,0.0000,2.4780 yaw=1.5708 motion=0 sample=31.65 hits=0 time=168 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,113 xyz=-3.4818,0.0000,0.6519 yaw=3.1416 motion=2 sample=30.35 hits=1 time=169 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,0 xyz=-3.3592,0.0000,0.4059 yaw=3.1416 motion=0 sample=45.48 hits=2 time=170 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,113 xyz=-3.2857,0.0000,0.0988 yaw=3.1416 motion=2 sample=15.16 hits=3 time=171 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,0 xyz=-3.2857,0.0000,0.0988 yaw=3.1416 motion=0 sample=0.66 hits=3 time=172 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,0 xyz=-3.2856,0.0000,-0.3591 yaw=3.1416 motion=0 sample=15.18 hits=4 time=173 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,0 xyz=-3.2856,0.0000,-0.3591 yaw=3.1416 motion=0 sample=15.83 hits=4 time=174 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,0 xyz=-3.2856,0.0000,-0.3591 yaw=3.1416 motion=0 sample=16.49 hits=4 time=175 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=0 control=1 message=00000 input=0000 stick=113,0 xyz=-2.3642,0.0000,-0.3591 yaw=1.5708 motion=2 sample=15.16 hits=4 time=176 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=0 control=1 message=00000 input=0000 stick=113,0 xyz=-0.5508,0.0000,-0.2579 yaw=1.5708 motion=2 sample=7.94 hits=12 time=177 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,0 xyz=-0.3454,0.0000,-0.1290 yaw=1.5708 motion=0 sample=45.49 hits=13 time=178 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=0 control=1 message=00000 input=0000 stick=113,0 xyz=-0.0574,0.0000,-0.0426 yaw=1.5708 motion=2 sample=15.16 hits=16 time=179 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,0 xyz=1.7854,0.0000,-0.0426 yaw=1.5708 motion=0 sample=30.35 hits=16 time=180 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,0 xyz=1.7854,0.0000,-0.0426 yaw=1.5708 motion=0 sample=31.00 hits=16 time=181 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,0 xyz=1.7854,0.0000,-0.0426 yaw=1.5708 motion=0 sample=31.65 hits=16 time=182 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,0 xyz=1.7854,0.0000,-0.0426 yaw=1.5708 motion=0 sample=32.30 hits=16 time=183 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,0 xyz=1.7854,0.0000,-0.0426 yaw=1.5708 motion=0 sample=32.95 hits=16 time=184 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,0 xyz=1.7854,0.0000,-0.0426 yaw=1.5708 motion=0 sample=33.60 hits=16 time=185 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,0 xyz=1.7854,0.0000,-0.0426 yaw=1.5708 motion=0 sample=34.25 hits=16 time=186 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,0 xyz=2.7067,0.0000,-0.0426 yaw=1.5708 motion=0 sample=15.19 hits=16 time=187 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,0 xyz=2.7067,0.0000,-0.0426 yaw=1.5708 motion=0 sample=15.84 hits=16 time=188 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=0 control=1 message=00000 input=0004 stick=0,0 xyz=2.7067,0.0000,0.0253 yaw=0.0000 motion=2 sample=15.15 hits=17 time=189 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,0 xyz=2.7067,0.0000,0.0253 yaw=0.0000 motion=0 sample=0.66 hits=17 time=190 draws=132 command_words=16588 gpu_bytes=17694848
+story_talk actor=4 script=0100000e
+story_start key=10 script=0100000e argc=4
+field_tick floor=2 phase=4 menu=0 control=0 message=00000 input=0100 stick=0,0 xyz=2.7067,0.0000,0.0253 yaw=0.2980 motion=0 sample=0.00 hits=17 time=190 draws=132 command_words=16588 gpu_bytes=17694848
+story_native task=10 script=0100000e pc=000018ba id=36 argc=3 a=0000001e,00000004,0000514a,00000000,00000000,00000000
+story_message script=0100000e pc=000018ba id=0514a
+field_tick floor=2 phase=4 menu=0 control=0 message=0514a input=0000 stick=0,0 xyz=2.7067,0.0000,0.0253 yaw=0.2980 motion=0 sample=0.62 hits=17 time=191 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=0 control=0 message=0514a input=0000 stick=0,0 xyz=2.7067,0.0000,0.0253 yaw=0.2980 motion=0 sample=1.19 hits=17 time=192 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=0 control=0 message=0514a input=0000 stick=0,0 xyz=2.7067,0.0000,0.0253 yaw=0.2980 motion=0 sample=1.76 hits=17 time=193 draws=132 command_words=16588 gpu_bytes=17694848
+story_native task=10 script=0100000e pc=000018d9 id=0b argc=0 a=00000000,00000000,00000000,00000000,00000000,00000000
+field_tick floor=2 phase=4 menu=0 control=0 message=0514a input=0100 stick=0,0 xyz=2.7067,0.0000,0.0253 yaw=0.2980 motion=0 sample=47.19 hits=17 time=194 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=0 control=0 message=0514a input=0000 stick=0,0 xyz=2.7067,0.0000,0.0253 yaw=0.2980 motion=0 sample=47.85 hits=17 time=195 draws=132 command_words=16588 gpu_bytes=17694848
+story_choice answer=0
+story_native task=10 script=0100000e pc=0000190f id=36 argc=3 a=0000001e,00000004,0000514c,00000000,00000000,00000000
+story_message script=0100000e pc=0000190f id=0514c
+field_tick floor=2 phase=4 menu=0 control=0 message=0514c input=0100 stick=0,0 xyz=2.7067,0.0000,0.0253 yaw=0.2980 motion=0 sample=18.19 hits=17 time=195 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=0 control=0 message=0514c input=0000 stick=0,0 xyz=2.7067,0.0000,0.0253 yaw=0.2980 motion=0 sample=18.86 hits=17 time=196 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=0 control=0 message=0514c input=0000 stick=0,0 xyz=2.7067,0.0000,0.0253 yaw=0.2980 motion=0 sample=19.49 hits=17 time=197 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=0 control=0 message=0514c input=0000 stick=0,0 xyz=2.7067,0.0000,0.0253 yaw=0.2980 motion=0 sample=20.13 hits=17 time=198 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=0 control=0 message=0514c input=0100 stick=0,0 xyz=2.7067,0.0000,0.0253 yaw=0.2980 motion=0 sample=5.60 hits=17 time=199 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=0 control=0 message=0514c input=0000 stick=0,0 xyz=2.7067,0.0000,0.0253 yaw=0.2980 motion=0 sample=6.17 hits=17 time=200 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=0 control=0 message=0514c input=0100 stick=0,0 xyz=2.7067,0.0000,0.0253 yaw=0.2980 motion=0 sample=36.46 hits=17 time=201 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=0 control=0 message=0514c input=0000 stick=0,0 xyz=2.7067,0.0000,0.0253 yaw=0.2980 motion=0 sample=37.04 hits=17 time=202 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=0 control=0 message=0514c input=0100 stick=0,0 xyz=2.7067,0.0000,0.0253 yaw=0.2980 motion=0 sample=7.33 hits=17 time=202 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=0 control=0 message=0514c input=0000 stick=0,0 xyz=2.7067,0.0000,0.0253 yaw=0.2980 motion=0 sample=7.94 hits=17 time=203 draws=132 command_words=16588 gpu_bytes=17694848
+story_native task=10 script=0100000e pc=0000192e id=4e argc=1 a=000003dc,00000000,00000000,00000000,00000000,00000000
+story_flag id=03dc value=1
+story_end key=10 result=1
+story_talk_complete task=10
+field_tick floor=2 phase=4 menu=0 control=1 message=00000 input=0100 stick=0,0 xyz=2.7067,0.0000,0.0253 yaw=0.2980 motion=0 sample=38.24 hits=17 time=204 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,0 xyz=2.7067,0.0000,0.0253 yaw=0.2980 motion=0 sample=38.91 hits=17 time=205 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,0 xyz=2.7067,0.0000,0.0253 yaw=0.2980 motion=0 sample=39.57 hits=17 time=206 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,0 xyz=2.7067,0.0000,0.0253 yaw=0.2980 motion=0 sample=40.22 hits=17 time=207 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=1 control=1 message=00000 input=0400 stick=0,0 xyz=2.7067,0.0000,0.0253 yaw=0.2980 motion=0 sample=10.55 hits=17 time=207 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=1 control=1 message=00000 input=0000 stick=0,0 xyz=2.7067,0.0000,0.0253 yaw=0.2980 motion=0 sample=10.55 hits=17 time=208 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=1 control=1 message=00000 input=0000 stick=0,0 xyz=2.7067,0.0000,0.0253 yaw=0.2980 motion=0 sample=10.55 hits=17 time=209 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=1 control=1 message=00000 input=0004 stick=0,0 xyz=2.7067,0.0000,0.0253 yaw=0.2980 motion=0 sample=10.55 hits=17 time=211 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=1 control=1 message=00000 input=0000 stick=0,0 xyz=2.7067,0.0000,0.0253 yaw=0.2980 motion=0 sample=10.55 hits=17 time=212 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=1 control=1 message=00000 input=0004 stick=0,0 xyz=2.7067,0.0000,0.0253 yaw=0.2980 motion=0 sample=10.55 hits=17 time=212 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=1 control=1 message=00000 input=0000 stick=0,0 xyz=2.7067,0.0000,0.0253 yaw=0.2980 motion=0 sample=10.55 hits=17 time=213 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=3 control=1 message=00000 input=0100 stick=0,0 xyz=2.7067,0.0000,0.0253 yaw=0.2980 motion=0 sample=10.55 hits=17 time=213 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=3 control=1 message=00000 input=0000 stick=0,0 xyz=2.7067,0.0000,0.0253 yaw=0.2980 motion=0 sample=10.55 hits=17 time=214 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=3 control=1 message=00000 input=0000 stick=0,0 xyz=2.7067,0.0000,0.0253 yaw=0.2980 motion=0 sample=10.55 hits=17 time=215 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=3 control=1 message=00000 input=0008 stick=0,0 xyz=2.7067,0.0000,0.0253 yaw=0.2980 motion=0 sample=10.55 hits=17 time=216 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=3 control=1 message=00000 input=0000 stick=0,0 xyz=2.7067,0.0000,0.0253 yaw=0.2980 motion=0 sample=10.55 hits=17 time=217 draws=132 command_words=16588 gpu_bytes=17694848
+game_save status=ok name=WES count=1 floor=2 previous=1 spawn=0 time=218 time_bits=435a5800
+field_tick floor=2 phase=4 menu=5 control=1 message=00000 input=0100 stick=0,0 xyz=2.7067,0.0000,0.0253 yaw=0.2980 motion=0 sample=10.55 hits=17 time=218 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=5 control=1 message=00000 input=0000 stick=0,0 xyz=2.7067,0.0000,0.0253 yaw=0.2980 motion=0 sample=10.55 hits=17 time=219 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=5 control=1 message=00000 input=0000 stick=0,0 xyz=2.7067,0.0000,0.0253 yaw=0.2980 motion=0 sample=10.55 hits=17 time=220 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=5 control=1 message=00000 input=0000 stick=0,0 xyz=2.7067,0.0000,0.0253 yaw=0.2980 motion=0 sample=10.55 hits=17 time=221 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=1 control=1 message=00000 input=0100 stick=0,0 xyz=2.7067,0.0000,0.0253 yaw=0.2980 motion=0 sample=10.55 hits=17 time=221 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=1 control=1 message=00000 input=0000 stick=0,0 xyz=2.7067,0.0000,0.0253 yaw=0.2980 motion=0 sample=10.55 hits=17 time=222 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=0 control=1 message=00000 input=0200 stick=0,0 xyz=2.7067,0.0000,0.0253 yaw=0.2980 motion=0 sample=10.55 hits=17 time=223 draws=132 command_words=16588 gpu_bytes=17694848
+field_tick floor=2 phase=4 menu=0 control=1 message=00000 input=0000 stick=0,0 xyz=2.7067,0.0000,0.0253 yaw=0.2980 motion=0 sample=11.20 hits=17 time=224 draws=132 command_words=16588 gpu_bytes=17694848
+render_recovery scene=field event=drained frames=305 elapsed_us=21016 ready=1 exit=1 input=0000 counters=15584,15584 build=story-review
+render_gpu submitted=1086 fill=1390 command=1086 transfer=1086 words=16588 draws=132 vertices=40284 models=0 textures=0 bytes=0
+field_end result=1 error=
+boot_end result=1 error=

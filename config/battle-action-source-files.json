@@ -1,0 +1,33 @@
+{
+  "commit": "51bfe4314a218dfaf9592fc80723c50498d0ee55",
+  "files": [
+    {
+      "sha256": "cfd768bfa86adc1ed507a2e3eb65ffcc741b09768ca89c99659b1ecd6007418c",
+      "path": "src/game/fight_action_range_801F0898.c"
+    },
+    {
+      "sha256": "8d252fba2c9ebadf23f7c52ee31a7c5ec1ce48c7f3b1c64243cb85a94755418e",
+      "path": "src/game/fight_action_exact_801F108C.c"
+    },
+    {
+      "sha256": "10b4f185688e7db9f5380d0718a9a6956981b8a919087d6b1f71d930f9d381eb",
+      "path": "src/game/fight_action_exact_8020D784.c"
+    },
+    {
+      "sha256": "32da02079dac801f7a6cbf84d6b00608cef8480061e577a280ad9b2c67d12514",
+      "path": "src/game/fight_action_exact_8020D844.c"
+    },
+    {
+      "sha256": "5d46dc1ca755c106823e797d69d4d75659fc435ae18211f0234df3d03d9e4b66",
+      "path": "src/game/fight_action_exact_8020D868.c"
+    },
+    {
+      "sha256": "1443a7f72d5273afc743d24605df3d7ae45cb4042fd2f089f4abed3c5d6c123f",
+      "path": "src/game/fight_kouka_exact_8020D968.c"
+    },
+    {
+      "sha256": "da46b8f3d557e62bd41de62442b6a9fc0a6ae25f3e710e000a1a22d75a765eac",
+      "path": "include/game/fight_action.h"
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "source_commit": "d2af94a8f1b3f0afaa54abe4870ba65052c9b91f",
+  "fresh_process": true,
+  "game_load": "WES floor1 previous0x03a0 spawn0 save_count1",
+  "original_opening_replayed": false,
+  "arrival_replayed": false,
+  "field_control_ready": true,
+  "controller_movement": true,
+  "party_menu_opened": true,
+  "save_writes": 0,
+  "all_sd_inputs_unchanged": true,
+  "saved_gci_sha256": "b11f0e319d5ca801787ce3fbcd19063e127771a875f231e829f7cb917a5a8c94"
+}

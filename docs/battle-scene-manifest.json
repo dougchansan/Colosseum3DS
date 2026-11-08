@@ -1,0 +1,1146 @@
+{
+  "schema": 1,
+  "source_commit": "51bfe4314a218dfaf9592fc80723c50498d0ee55",
+  "common_sha1": "e816761813900aa0fd4f87d012b3b2a19d2f003e",
+  "archives": [
+    {
+      "file": "GSfsys.toc",
+      "bytes": 288704,
+      "sha256": "ec9b61b55df903c39c8aa1a69035776cd7d4d1a33c8078aced9991d63030cc4e"
+    },
+    {
+      "file": "S1_out_bf.fsys",
+      "bytes": 763328,
+      "sha256": "84517ddbc9052d2e94a56811e58ff087cfa019a8ed780f5fcc7882329f77b0f7"
+    },
+    {
+      "file": "pkx_blacky.fsys",
+      "bytes": 157664,
+      "sha256": "09b6ef44ca716b8e7ef22095ab9fa3e031ffece461addf61e9fb16047a9cf156"
+    },
+    {
+      "file": "pkx_eifie.fsys",
+      "bytes": 146336,
+      "sha256": "06a655259f37aa8d8f8c9b3beec901047777d70d6416ec28fde7a888bb11a968"
+    },
+    {
+      "file": "pkx_ziguzaguma.fsys",
+      "bytes": 213024,
+      "sha256": "24ccb04ff36ff68690b313245a39008326590631f55f2ca41c29cb1707e41bbf"
+    },
+    {
+      "file": "pkx_ken_a1.fsys",
+      "bytes": 172800,
+      "sha256": "fc49f3711bcf218e6ff2b3fa855af79603e90a36b81c6c1dfda63fc8f7bdb7a8"
+    },
+    {
+      "file": "pkx_rider_m_a1.fsys",
+      "bytes": 101536,
+      "sha256": "f2dda1ba513913247e5c101281de67ebea97b5fd4f59ecea53cd8c18a939c6a5"
+    }
+  ],
+  "arena": {
+    "battle_floor": 5,
+    "floor": 200,
+    "floor_record": 148,
+    "group": 1385,
+    "archive": "S1_out_bf.fsys",
+    "resource": 229114368,
+    "bgm_sound_id": 0,
+    "environment_sound_id": 0,
+    "introduction_wzx_id": 0,
+    "member_sha256": "425ea435bc7205c992f5585be82f3731e0df7f1917fab0bee6941dc5042a3a43"
+  },
+  "audio": {
+    "encounter_bgm_sound_id": 1095,
+    "effective_bgm_sound_id": 1095,
+    "bgm_resolution": "nonzero encounter override (fightEncountGetBgmSndDataId)",
+    "wipe_id": 9,
+    "introduction_wzx_id": 0
+  },
+  "moves": [
+    {
+      "move": 44,
+      "wzx_id": 44,
+      "attack_entry": 2,
+      "hit_entry": 8,
+      "default_roots": [
+        {
+          "kind": 1,
+          "group": 182,
+          "resource": 55255040,
+          "archive": "wzx_kamituku_attack.fsys",
+          "archive_bytes": 25632,
+          "archive_sha256": "3a5a0667e61bed6508a0bff68cec95316a08804288b82f80a1761c7afa4ce193",
+          "member_bytes": 30556,
+          "member_sha256": "0cb9912dcbe7c4626d63789a34cfe1a36e869a0878454b8cde878434814216f7",
+          "sequence_motion_entry": 2
+        },
+        {
+          "kind": 2,
+          "group": 567,
+          "resource": 81993728,
+          "archive": "wzx_kamituku_damage.fsys",
+          "archive_bytes": 117856,
+          "archive_sha256": "9626a36b5b609302940e8c74a147d0e590fd0b08c06726999a0489ce98dc41ef",
+          "member_bytes": 196392,
+          "member_sha256": "4ed0fd1739bb6fcb2caac0c49e4a53db1e0d39680cfd1495653e146a8aacd9ed",
+          "sequence_motion_entry": 8
+        }
+      ],
+      "effects_playback": "unsupported"
+    },
+    {
+      "move": 290,
+      "wzx_id": 290,
+      "attack_entry": 1,
+      "hit_entry": 8,
+      "default_roots": [
+        {
+          "kind": 1,
+          "group": 1365,
+          "resource": 212344832,
+          "archive": "wzx_himitunochikara_attack.fsys",
+          "archive_bytes": 416,
+          "archive_sha256": "f100477f21e83ab2422cbc57181b0c7f3e6d1b9b307558ae22ba6cfb64b089e4",
+          "member_bytes": 580,
+          "member_sha256": "6d8f2690b8681aa07f4e40a03ddb00bda2ce91064b0baf14cebad9efd14c959e",
+          "sequence_motion_entry": 1
+        },
+        {
+          "kind": 2,
+          "group": 1366,
+          "resource": 212410368,
+          "archive": "wzx_himitunochikara_damage.fsys",
+          "archive_bytes": 3040,
+          "archive_sha256": "862c5016eb8c589ca589f790388a51f01241b8ccf25837055032902bbb23c4da",
+          "member_bytes": 5160,
+          "member_sha256": "18339f2f11812c4e1713244331b312b420be80a821902c2e73c0f1d5a9e80c0c",
+          "sequence_motion_entry": 8
+        }
+      ],
+      "effects_playback": "unsupported"
+    },
+    {
+      "move": 269,
+      "wzx_id": 269,
+      "attack_entry": 0,
+      "hit_entry": null,
+      "default_roots": [
+        {
+          "kind": 1,
+          "group": 725,
+          "resource": 92545024,
+          "archive": "wzx_chohatu_attack.fsys",
+          "archive_bytes": 68608,
+          "archive_sha256": "d6ed6d3e2f0150706796aee06dc5d1de74b7161fd92262c2ea4130beca6493ff",
+          "member_bytes": 130136,
+          "member_sha256": "c4d34acc37bdb37c11ea5232574080c54587b73035008ce25449a7d71eb73a50",
+          "sequence_motion_entry": 0
+        },
+        {
+          "kind": 2,
+          "group": 735,
+          "resource": 93200384,
+          "archive": "wzx_chohatu_damage.fsys",
+          "archive_bytes": 71136,
+          "archive_sha256": "db671d1e6dc49009365189eb28fbc93cfb13a28bb58f7f2e35db4677b599dd30",
+          "member_bytes": 132392,
+          "member_sha256": "d01c035a42d3764bb0f89166b942eb949bd5b0dd9b914e49f5a8a2321110e098",
+          "sequence_motion_entry": 0
+        }
+      ],
+      "effects_playback": "unsupported"
+    },
+    {
+      "move": 289,
+      "wzx_id": 289,
+      "attack_entry": 1,
+      "hit_entry": null,
+      "default_roots": [
+        {
+          "kind": 1,
+          "group": 741,
+          "resource": 93593600,
+          "archive": "wzx_yokodori_attack.fsys",
+          "archive_bytes": 70720,
+          "archive_sha256": "09572b802354a36e436f8bcb9e7e798bb95436665ffb276172ded7701018555e",
+          "member_bytes": 129944,
+          "member_sha256": "08407085591c9c8d291dcdde146d5b2dbfc03cba7728c041cf7f5dc9ff057e60",
+          "sequence_motion_entry": 1
+        },
+        {
+          "kind": 2,
+          "group": 742,
+          "resource": 93659136,
+          "archive": "wzx_yokodori_damage.fsys",
+          "archive_bytes": 70752,
+          "archive_sha256": "68c039b7cd04c9295b341e526fac3ec446aaef8be8d93e3a89bea572d95474d1",
+          "member_bytes": 130120,
+          "member_sha256": "f6276258c6575dd4849e05892cde9e40edec09de73c82b370b89388663f011f5",
+          "sequence_motion_entry": 0
+        },
+        {
+          "kind": 3,
+          "group": 1642,
+          "resource": 290463744,
+          "archive": "wzx_yokodori_special.fsys",
+          "archive_bytes": 56928,
+          "archive_sha256": "fd7710220160ac1f86ba8f8cb9d435401262d56c9a52355ef15c9038811e4f0c",
+          "member_bytes": 110228,
+          "member_sha256": "53548372d8dfbdf5f397f97d3754dc4aca2edfbe43ffb7ca534a7ee58c6145c7",
+          "sequence_motion_entry": 0
+        }
+      ],
+      "effects_playback": "unsupported"
+    },
+    {
+      "move": 93,
+      "wzx_id": 93,
+      "attack_entry": 1,
+      "hit_entry": 8,
+      "default_roots": [
+        {
+          "kind": 1,
+          "group": 972,
+          "resource": 122888192,
+          "archive": "wzx_nenriki_attack.fsys",
+          "archive_bytes": 72832,
+          "archive_sha256": "ce7df34845f8cc5520242dec14538ee2c1c662e9b4217cc1002393eff3c0885d",
+          "member_bytes": 103516,
+          "member_sha256": "c4c0c0c2a678a891ed71b92aa2212977a1e24adb985bc6a5c155fe2184b9f8bb",
+          "sequence_motion_entry": 1
+        },
+        {
+          "kind": 2,
+          "group": 631,
+          "resource": 86581248,
+          "archive": "wzx_nenriki_damage.fsys",
+          "archive_bytes": 72960,
+          "archive_sha256": "b4bc2e6b2c5332cf2afc7a8cbfa26d86f9b37b69625be4d0de2143c64b1c3920",
+          "member_bytes": 104184,
+          "member_sha256": "a1a0a4114c68a1b4c92d7952fb8bed60503b041f8eee85f033ef32f64d696d04",
+          "sequence_motion_entry": 8
+        }
+      ],
+      "effects_playback": "unsupported"
+    },
+    {
+      "move": 216,
+      "wzx_id": 216,
+      "attack_entry": 2,
+      "hit_entry": 8,
+      "default_roots": [
+        {
+          "kind": 1,
+          "group": 1063,
+          "resource": 128589824,
+          "archive": "wzx_ongaeshi_attack.fsys",
+          "archive_bytes": 416,
+          "archive_sha256": "2a5454490fd9fd733ff65e7d07c890d56c91842f8f38482c790c9431b43b9d1d",
+          "member_bytes": 580,
+          "member_sha256": "b69262dd1efae51a01a074f2d1e6068875849c6a7126a36cc6ec4d82dc4c8962",
+          "sequence_motion_entry": 2
+        },
+        {
+          "kind": 2,
+          "group": 680,
+          "resource": 89661440,
+          "archive": "wzx_ongaeshi_damage.fsys",
+          "archive_bytes": 82976,
+          "archive_sha256": "780d7836514e75fbf359cf7c7d2767b37e3a46cbfe040ddc2b935cc24af0ea6c",
+          "member_bytes": 247272,
+          "member_sha256": "beb0794b3291dbdaa5df98d1e41acae9940907a84c949df85511a104f7ff1109",
+          "sequence_motion_entry": 8
+        }
+      ],
+      "effects_playback": "unsupported"
+    },
+    {
+      "move": 115,
+      "wzx_id": 115,
+      "attack_entry": 0,
+      "hit_entry": null,
+      "default_roots": [
+        {
+          "kind": 3,
+          "group": 990,
+          "resource": 123936768,
+          "archive": "wzx_reflector_special.fsys",
+          "archive_bytes": 86016,
+          "archive_sha256": "9dee2c130b67525fe0074f1f1cb3c97325a040d45b57e2f7e862b7fc9cabc753",
+          "member_bytes": 121312,
+          "member_sha256": "28b205cba86a2ce4b5e81f1a9224f0593ce033220773284f3efabcf885a570ac",
+          "sequence_motion_entry": 0
+        }
+      ],
+      "effects_playback": "unsupported"
+    },
+    {
+      "move": 270,
+      "wzx_id": 270,
+      "attack_entry": 1,
+      "hit_entry": null,
+      "default_roots": [
+        {
+          "kind": 1,
+          "group": 1104,
+          "resource": 131145728,
+          "archive": "wzx_tedasuke_attack.fsys",
+          "archive_bytes": 18144,
+          "archive_sha256": "f5f4edcc6719095983efd8d8554b6296aadf0a7c397a0ed809f0dddf8465e433",
+          "member_bytes": 24580,
+          "member_sha256": "ee757390c9918e1fef6bdcddb822a9e28061dfc6d86924d15595374906b24fbc",
+          "sequence_motion_entry": 1
+        },
+        {
+          "kind": 3,
+          "group": 1577,
+          "resource": 278732800,
+          "archive": "wzx_tedasuke_special.fsys",
+          "archive_bytes": 18144,
+          "archive_sha256": "ce08e3c2b652b72535f58f8fe8b0f80c0bf08d49ab8cf0a6b6830162a9f1b74f",
+          "member_bytes": 24584,
+          "member_sha256": "4592960fba632153381e77330919c3e83937490360ad8292aeaca2835d101a6c",
+          "sequence_motion_entry": 0
+        }
+      ],
+      "effects_playback": "unsupported"
+    },
+    {
+      "move": 33,
+      "wzx_id": 33,
+      "attack_entry": 2,
+      "hit_entry": 8,
+      "default_roots": [
+        {
+          "kind": 1,
+          "group": 932,
+          "resource": 120463360,
+          "archive": "wzx_taiatari_attack.fsys",
+          "archive_bytes": 352,
+          "archive_sha256": "88581c56940803646d4a15b1e83b56b3b9cdf56d22308e870297d55b9da291b4",
+          "member_bytes": 408,
+          "member_sha256": "5754c2ac8e4e3caef0bad6486d7cb6a06f91869daae4e2e336a969fb65318439",
+          "sequence_motion_entry": 2
+        },
+        {
+          "kind": 2,
+          "group": 560,
+          "resource": 61087744,
+          "archive": "wzx_taiatari_damage.fsys",
+          "archive_bytes": 67008,
+          "archive_sha256": "181cc398a3dddde92b3b60eccc1b7d904eef2cb2479d9f2c54aad292892974cc",
+          "member_bytes": 92092,
+          "member_sha256": "c144e8784d610c38960b67b5dcb4c1776ff25ec0195df0e0b3c4b2ea06951f97",
+          "sequence_motion_entry": 8
+        }
+      ],
+      "effects_playback": "unsupported"
+    },
+    {
+      "move": 45,
+      "wzx_id": 45,
+      "attack_entry": 1,
+      "hit_entry": null,
+      "default_roots": [
+        {
+          "kind": 1,
+          "group": 939,
+          "resource": 120922112,
+          "archive": "wzx_nakigoe_attack.fsys",
+          "archive_bytes": 248960,
+          "archive_sha256": "3f171e90d3725c2e9172f980ee0e5ae234ce00dbf9e6ab4cf251df676ae63af8",
+          "member_bytes": 431540,
+          "member_sha256": "85862ce50519fc694b179761e5038bab74f4bb2ce9c15b7102a0b0937ef8f82e",
+          "sequence_motion_entry": 1
+        }
+      ],
+      "effects_playback": "unsupported"
+    },
+    {
+      "move": 39,
+      "wzx_id": 39,
+      "attack_entry": 0,
+      "hit_entry": null,
+      "default_roots": [
+        {
+          "kind": 1,
+          "group": 937,
+          "resource": 120791040,
+          "archive": "wzx_shippowofuru_attack.fsys",
+          "archive_bytes": 51616,
+          "archive_sha256": "821c575cf7a6c12d67238f80fb139e7d810052ed721aaefabab3350f08255ea1",
+          "member_bytes": 139068,
+          "member_sha256": "f3dabf6dfd082f2c10f333dcc1afed34f1ea54c454e850f04fe8429a0f6030dc",
+          "sequence_motion_entry": 0
+        }
+      ],
+      "effects_playback": "unsupported"
+    },
+    {
+      "move": 165,
+      "wzx_id": 165,
+      "attack_entry": 2,
+      "hit_entry": 8,
+      "default_roots": [
+        {
+          "kind": 1,
+          "group": 1023,
+          "resource": 126099456,
+          "archive": "wzx_waruagaki_attack.fsys",
+          "archive_bytes": 62752,
+          "archive_sha256": "bbe222a33612bbfb60f2b82ae35d8074d901bd053c3ace7f5a7990c0a437d69a",
+          "member_bytes": 103332,
+          "member_sha256": "0ba4c65f82b1e0b7e52afc85f4ffec6abb4ba2315abb92bf9d257f517429b464",
+          "sequence_motion_entry": 2
+        },
+        {
+          "kind": 2,
+          "group": 666,
+          "resource": 88743936,
+          "archive": "wzx_waruagaki_damage.fsys",
+          "archive_bytes": 27008,
+          "archive_sha256": "93a273d8628132d3071c06ada3ae68520538795c8c09d5b743218df175ee7466",
+          "member_bytes": 50888,
+          "member_sha256": "adfdcb97a75e5ef68c443da8199b97379f31825bb4ab340ab15d0d5c5037d49a",
+          "sequence_motion_entry": 8
+        }
+      ],
+      "effects_playback": "unsupported"
+    }
+  ],
+  "descriptor": {
+    "file": "scene.c3v",
+    "bytes": 1280,
+    "sha256": "2c3eddcca1ab8a620429072b569695a7908dba32e7937dcbb488191cba20452c"
+  },
+  "runtime_records": [
+    {
+      "file": "arena0_0.c3t",
+      "actor_slot": 4294967295,
+      "shared_from": 4294967295,
+      "idle_clip": 0,
+      "roles": [
+        0,
+        4294967295,
+        4294967295,
+        4294967295,
+        4294967295,
+        4294967295,
+        4294967295,
+        4294967295,
+        4294967295
+      ],
+      "transform": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "file": "arena1_0.c3t",
+      "actor_slot": 4294967295,
+      "shared_from": 4294967295,
+      "idle_clip": 0,
+      "roles": [
+        0,
+        4294967295,
+        4294967295,
+        4294967295,
+        4294967295,
+        4294967295,
+        4294967295,
+        4294967295,
+        4294967295
+      ],
+      "transform": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "file": "arena2_0.c3t",
+      "actor_slot": 4294967295,
+      "shared_from": 4294967295,
+      "idle_clip": 0,
+      "roles": [
+        0,
+        4294967295,
+        4294967295,
+        4294967295,
+        4294967295,
+        4294967295,
+        4294967295,
+        4294967295,
+        4294967295
+      ],
+      "transform": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "file": "pokemon197_0.c3t",
+      "actor_slot": 0,
+      "shared_from": 4294967295,
+      "idle_clip": 0,
+      "roles": [
+        0,
+        5,
+        2,
+        3,
+        1,
+        0,
+        4294967295,
+        4294967295,
+        4294967295
+      ],
+      "transform": [
+        -3.5,
+        0.0,
+        -2.625,
+        1.5707963267948966,
+        1.0
+      ]
+    },
+    {
+      "file": "pokemon196_0.c3t",
+      "actor_slot": 1,
+      "shared_from": 4294967295,
+      "idle_clip": 1,
+      "roles": [
+        1,
+        3,
+        3,
+        2,
+        0,
+        1,
+        4294967295,
+        4294967295,
+        4294967295
+      ],
+      "transform": [
+        -3.5,
+        0.0,
+        2.625,
+        1.5707963267948966,
+        1.0
+      ]
+    },
+    {
+      "file": "pokemon288_0.c3t",
+      "actor_slot": 2,
+      "shared_from": 4294967295,
+      "idle_clip": 0,
+      "roles": [
+        0,
+        4,
+        1,
+        2,
+        3,
+        0,
+        4294967295,
+        4294967295,
+        4294967295
+      ],
+      "transform": [
+        3.5,
+        0.0,
+        2.625,
+        -1.5707963267948966,
+        1.0
+      ]
+    },
+    {
+      "file": "pokemon288_0.c3t",
+      "actor_slot": 3,
+      "shared_from": 5,
+      "idle_clip": 0,
+      "roles": [
+        0,
+        4,
+        1,
+        2,
+        3,
+        0,
+        4294967295,
+        4294967295,
+        4294967295
+      ],
+      "transform": [
+        3.5,
+        0.0,
+        -2.625,
+        -1.5707963267948966,
+        1.0
+      ]
+    },
+    {
+      "file": "trainer1_0.c3t",
+      "actor_slot": 4,
+      "shared_from": 4294967295,
+      "idle_clip": 1,
+      "roles": [
+        1,
+        4294967295,
+        4294967295,
+        4294967295,
+        4294967295,
+        4294967295,
+        4294967295,
+        9,
+        6
+      ],
+      "transform": [
+        -5.6875,
+        0.0,
+        0.0,
+        1.5707963267948966,
+        1.0
+      ]
+    },
+    {
+      "file": "trainer10_0.c3t",
+      "actor_slot": 5,
+      "shared_from": 4294967295,
+      "idle_clip": 1,
+      "roles": [
+        1,
+        4294967295,
+        4294967295,
+        4294967295,
+        4294967295,
+        4294967295,
+        4294967295,
+        9,
+        6
+      ],
+      "transform": [
+        5.6875,
+        0.0,
+        0.0,
+        -1.5707963267948966,
+        1.0
+      ]
+    }
+  ],
+  "unsupported": [
+    "battle camera sequence",
+    "effects and particles",
+    "UI/font",
+    "audio decoding"
+  ],
+  "actors": [
+    {
+      "species": 197,
+      "pkx": 197,
+      "group": 163,
+      "archive": "pkx_blacky.fsys",
+      "resource": 54009344,
+      "name_id": 1197,
+      "voice": 766,
+      "source_dol_offset": 3597580,
+      "member_sha256": "ccd881b07f406e776f7de9494b0ba6d580ed020e9d9934ac31fbebfffd1b60a3",
+      "dat_sha256": "aa42a851487fd960edd73bf4aabd94e2132f92ffa70d0b289d4cc89129894968",
+      "packs": [
+        "pokemon197_0.c3t"
+      ]
+    },
+    {
+      "species": 196,
+      "pkx": 196,
+      "group": 272,
+      "archive": "pkx_eifie.fsys",
+      "resource": 62332416,
+      "name_id": 1196,
+      "voice": 765,
+      "source_dol_offset": 3597568,
+      "member_sha256": "777c2694db6e1f5329adcd16da2d2a859ff8329092f508d55f13efdd1081d18e",
+      "dat_sha256": "1978f873e7095c4895591f999f0dd18c032db63ea7f03f1293a0a181c8c2f752",
+      "packs": [
+        "pokemon196_0.c3t"
+      ]
+    },
+    {
+      "species": 288,
+      "pkx": 288,
+      "group": 558,
+      "archive": "pkx_ziguzaguma.fsys",
+      "resource": 80027136,
+      "name_id": 1263,
+      "voice": 832,
+      "source_dol_offset": 3598672,
+      "member_sha256": "f709f45f73f35c3f104b519146753f53597276a3801337d79e464f9529f9b856",
+      "dat_sha256": "79c7a67b56e0f139ca0fad027bb9ce86161ad2448982e3f06fe2963e2c185994",
+      "packs": [
+        "pokemon288_0.c3t"
+      ]
+    },
+    {
+      "trainer": 1,
+      "sequence": 1,
+      "group": 157,
+      "resource": 51125760,
+      "name_id": 60672,
+      "archive": "pkx_ken_a1.fsys",
+      "source_dol_offset": 3594316,
+      "member_sha256": "9b5cff3e2789cf82d4baef92de38ce21f04cedb3a1c8323b618aab5577f91b21",
+      "dat_sha256": "ed27ed42bdf858c1316adc7d546cd2588c184af2cdd02bb86bd09623b2817e23",
+      "packs": [
+        "trainer1_0.c3t"
+      ]
+    },
+    {
+      "trainer": 10,
+      "sequence": 38,
+      "group": 731,
+      "resource": 92937728,
+      "name_id": 61353,
+      "archive": "pkx_rider_m_a1.fsys",
+      "source_dol_offset": 3594760,
+      "member_sha256": "b8bbf16f7ff055deb2da9134a5dec7b9356e4391b0f5d5d16ce85a3e0bfefc31",
+      "dat_sha256": "4937f5fbdaa27e4e56654fb360d7598771d6ce26dd2b13567f9cfd679aeb60db",
+      "packs": [
+        "trainer10_0.c3t"
+      ]
+    }
+  ],
+  "packs": [
+    {
+      "file": "arena0_0.c3t",
+      "bytes": 12294400,
+      "sha256": "12a4ca0fc1568ff79943b6f3f66048d65e6c1100c0f606a89408969fc4a23b10",
+      "vertices": 25296,
+      "batches": 46,
+      "textures": 4,
+      "texture_rgba_bytes": 9437440,
+      "format_version": 3,
+      "sampled_bones": 2,
+      "sample_fps": 120,
+      "clips": [
+        {
+          "source_clip": 0,
+          "samples": 359,
+          "authored_end": 179.0,
+          "loop": true
+        }
+      ]
+    },
+    {
+      "file": "arena1_0.c3t",
+      "bytes": 1510168,
+      "sha256": "dadd4d142a14002ed20b5396b26df7e3bc1e6bfc79aeb5dca8ccca81bbb3a6c2",
+      "vertices": 9600,
+      "batches": 1,
+      "textures": 1,
+      "texture_rgba_bytes": 1048576,
+      "format_version": 3,
+      "sampled_bones": 1,
+      "sample_fps": 120,
+      "clips": [
+        {
+          "source_clip": 0,
+          "samples": 1,
+          "authored_end": 0,
+          "loop": true
+        }
+      ]
+    },
+    {
+      "file": "arena2_0.c3t",
+      "bytes": 4135024,
+      "sha256": "cc96d2002958a499a9f96c1336cf5af12910f14b81edc0fb552edafe04d763b8",
+      "vertices": 7344,
+      "batches": 31,
+      "textures": 4,
+      "texture_rgba_bytes": 655360,
+      "format_version": 3,
+      "sampled_bones": 2,
+      "sample_fps": 2.0,
+      "clips": [
+        {
+          "source_clip": 0,
+          "samples": 1001,
+          "authored_end": 30000.0,
+          "loop": true
+        }
+      ]
+    },
+    {
+      "file": "pokemon197_0.c3t",
+      "bytes": 3932104,
+      "sha256": "aa50977b39cfec0655dd7ec853ddac1050a1266bbd3dbada77cebedfc3bdc30a",
+      "vertices": 2346,
+      "batches": 15,
+      "textures": 5,
+      "texture_rgba_bytes": 76032,
+      "format_version": 3,
+      "sampled_bones": 28,
+      "sample_fps": 120,
+      "clips": [
+        {
+          "source_clip": 0,
+          "samples": 119,
+          "authored_end": 59.0,
+          "loop": true
+        },
+        {
+          "source_clip": 1,
+          "samples": 281,
+          "authored_end": 140.0,
+          "loop": false
+        },
+        {
+          "source_clip": 2,
+          "samples": 299,
+          "authored_end": 149.0,
+          "loop": false
+        },
+        {
+          "source_clip": 3,
+          "samples": 299,
+          "authored_end": 149.0,
+          "loop": false
+        },
+        {
+          "source_clip": 4,
+          "samples": 119,
+          "authored_end": 59.0,
+          "loop": false
+        },
+        {
+          "source_clip": 5,
+          "samples": 161,
+          "authored_end": 80.0,
+          "loop": false
+        },
+        {
+          "source_clip": 6,
+          "samples": 9,
+          "authored_end": 4.0,
+          "loop": false
+        },
+        {
+          "source_clip": 7,
+          "samples": 17,
+          "authored_end": 8.0,
+          "loop": false
+        },
+        {
+          "source_clip": 8,
+          "samples": 17,
+          "authored_end": 8.0,
+          "loop": false
+        }
+      ]
+    },
+    {
+      "file": "pokemon196_0.c3t",
+      "bytes": 3997504,
+      "sha256": "23cf55ad4c639c634ddbf7a7c7b6ae54df1867e5432d695ed4c848a75d29496c",
+      "vertices": 2220,
+      "batches": 19,
+      "textures": 10,
+      "texture_rgba_bytes": 125440,
+      "format_version": 3,
+      "sampled_bones": 48,
+      "sample_fps": 120,
+      "clips": [
+        {
+          "source_clip": 0,
+          "samples": 249,
+          "authored_end": 124.0,
+          "loop": false
+        },
+        {
+          "source_clip": 1,
+          "samples": 181,
+          "authored_end": 90.0,
+          "loop": true
+        },
+        {
+          "source_clip": 2,
+          "samples": 177,
+          "authored_end": 88.0,
+          "loop": false
+        },
+        {
+          "source_clip": 3,
+          "samples": 251,
+          "authored_end": 125.0,
+          "loop": false
+        },
+        {
+          "source_clip": 4,
+          "samples": 9,
+          "authored_end": 4.0,
+          "loop": false
+        },
+        {
+          "source_clip": 5,
+          "samples": 17,
+          "authored_end": 8.0,
+          "loop": false
+        },
+        {
+          "source_clip": 6,
+          "samples": 17,
+          "authored_end": 8.0,
+          "loop": false
+        }
+      ]
+    },
+    {
+      "file": "pokemon288_0.c3t",
+      "bytes": 5247600,
+      "sha256": "95821f9afa59e887f09dc7f98b83dcf8b4f5dbc645ba2307e91443e612013cdc",
+      "vertices": 2679,
+      "batches": 21,
+      "textures": 10,
+      "texture_rgba_bytes": 221952,
+      "format_version": 3,
+      "sampled_bones": 28,
+      "sample_fps": 120,
+      "clips": [
+        {
+          "source_clip": 0,
+          "samples": 99,
+          "authored_end": 49.0,
+          "loop": true
+        },
+        {
+          "source_clip": 1,
+          "samples": 367,
+          "authored_end": 183.0,
+          "loop": false
+        },
+        {
+          "source_clip": 2,
+          "samples": 359,
+          "authored_end": 179.0,
+          "loop": false
+        },
+        {
+          "source_clip": 3,
+          "samples": 329,
+          "authored_end": 164.0,
+          "loop": false
+        },
+        {
+          "source_clip": 4,
+          "samples": 241,
+          "authored_end": 120.0,
+          "loop": false
+        },
+        {
+          "source_clip": 5,
+          "samples": 15,
+          "authored_end": 7.0,
+          "loop": false
+        },
+        {
+          "source_clip": 6,
+          "samples": 13,
+          "authored_end": 6.0,
+          "loop": false
+        },
+        {
+          "source_clip": 7,
+          "samples": 13,
+          "authored_end": 6.0,
+          "loop": false
+        }
+      ]
+    },
+    {
+      "file": "trainer1_0.c3t",
+      "bytes": 5675168,
+      "sha256": "95296918b8d7f364e53084e57757a1ef0d18508be501b48beada9282ec76f204",
+      "vertices": 5466,
+      "batches": 24,
+      "textures": 8,
+      "texture_rgba_bytes": 722944,
+      "format_version": 3,
+      "sampled_bones": 59,
+      "sample_fps": 120,
+      "clips": [
+        {
+          "source_clip": 0,
+          "samples": 21,
+          "authored_end": 10.0,
+          "loop": false
+        },
+        {
+          "source_clip": 1,
+          "samples": 61,
+          "authored_end": 30.0,
+          "loop": true
+        },
+        {
+          "source_clip": 2,
+          "samples": 71,
+          "authored_end": 35.0,
+          "loop": false
+        },
+        {
+          "source_clip": 3,
+          "samples": 61,
+          "authored_end": 30.0,
+          "loop": false
+        },
+        {
+          "source_clip": 4,
+          "samples": 61,
+          "authored_end": 30.0,
+          "loop": false
+        },
+        {
+          "source_clip": 5,
+          "samples": 61,
+          "authored_end": 30.0,
+          "loop": false
+        },
+        {
+          "source_clip": 6,
+          "samples": 61,
+          "authored_end": 30.0,
+          "loop": false
+        },
+        {
+          "source_clip": 7,
+          "samples": 31,
+          "authored_end": 15.0,
+          "loop": false
+        },
+        {
+          "source_clip": 8,
+          "samples": 61,
+          "authored_end": 30.0,
+          "loop": false
+        },
+        {
+          "source_clip": 9,
+          "samples": 61,
+          "authored_end": 30.0,
+          "loop": false
+        },
+        {
+          "source_clip": 10,
+          "samples": 293,
+          "authored_end": 146.0,
+          "loop": false
+        },
+        {
+          "source_clip": 11,
+          "samples": 61,
+          "authored_end": 30.0,
+          "loop": false
+        }
+      ]
+    },
+    {
+      "file": "trainer10_0.c3t",
+      "bytes": 1944184,
+      "sha256": "d6c3bea225cb57088390ef2e0c1fd8413315fb7f2d78c1c1cd13316e3587eb91",
+      "vertices": 4245,
+      "batches": 9,
+      "textures": 5,
+      "texture_rgba_bytes": 524288,
+      "format_version": 3,
+      "sampled_bones": 27,
+      "sample_fps": 120,
+      "clips": [
+        {
+          "source_clip": 0,
+          "samples": 21,
+          "authored_end": 10.0,
+          "loop": false
+        },
+        {
+          "source_clip": 1,
+          "samples": 61,
+          "authored_end": 30.0,
+          "loop": true
+        },
+        {
+          "source_clip": 2,
+          "samples": 71,
+          "authored_end": 35.0,
+          "loop": false
+        },
+        {
+          "source_clip": 3,
+          "samples": 61,
+          "authored_end": 30.0,
+          "loop": false
+        },
+        {
+          "source_clip": 4,
+          "samples": 61,
+          "authored_end": 30.0,
+          "loop": false
+        },
+        {
+          "source_clip": 5,
+          "samples": 61,
+          "authored_end": 30.0,
+          "loop": false
+        },
+        {
+          "source_clip": 6,
+          "samples": 61,
+          "authored_end": 30.0,
+          "loop": false
+        },
+        {
+          "source_clip": 7,
+          "samples": 31,
+          "authored_end": 15.0,
+          "loop": false
+        },
+        {
+          "source_clip": 8,
+          "samples": 61,
+          "authored_end": 30.0,
+          "loop": false
+        },
+        {
+          "source_clip": 9,
+          "samples": 61,
+          "authored_end": 30.0,
+          "loop": false
+        }
+      ]
+    }
+  ],
+  "scope": "Source resources and pose-role qualification only; original WZX effects, particles, camera sequences and audio playback remain unsupported.",
+  "role_proof": {
+    "wzx_header": "version2 at member+0x68; PKX entry selector u32 at member+0x70",
+    "dispatch": "fn_801DC46C -> fn_801DC5F0 -> wazaSequenceStart/fn_801DD100 -> PokemonMotionStart",
+    "pokemon_entries": {
+      "idle": 0,
+      "physical": 2,
+      "special": 1,
+      "hit": 8,
+      "faint": 10,
+      "sendout": 0
+    },
+    "trainer_entries": {
+      "idle": 0,
+      "win": 5,
+      "loss": 10
+    },
+    "ball_roots": "All ball IDs1..12: DOL0x364AF0 stride48; downin field+16 selects kind10, open/out +8/+12 kind0",
+    "trainer_outcome": "special sequence IDs0x59 win/0x5A lose through DOL0x36F7C8 stride12 select kinds5/10",
+    "override_scope": "No default variant species override matches for PKX196/197/288 across these twelve moves; nonzero variants remain unsupported."
+  }
+}

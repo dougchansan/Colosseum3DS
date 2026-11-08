@@ -1,0 +1,137 @@
+{
+  "source_commit": "d2af94a8f1b3f0afaa54abe4870ba65052c9b91f",
+  "baseline_pr2": "07d4df55cb25ae4ce4ade12904f2cf1348cd418f",
+  "scope": "Native New3DS executable under supplied Azahar; original-data New Game, complete opening/arrival, movement, explicit Save and fresh-process Continue. No physical hardware or complete-game claim.",
+  "files": [
+    {
+      "file": "new-game-run.json",
+      "bytes": 22011,
+      "sha256": "ba83c81fc1570b69ad66c108d9a059fcb66c2382012b9903034516b62eab23b0"
+    },
+    {
+      "file": "new-game-trace.log",
+      "bytes": 6779,
+      "sha256": "9289c01215ffc179ab35868b261068d6de2e2e59de9931b240adb94d07b0021b"
+    },
+    {
+      "file": "new-game-input.csv",
+      "bytes": 839,
+      "sha256": "4a8fd3e9c3189d1a63c353b4c3dadc6c85b40965d834f6d0e89b50616bfa6eb6"
+    },
+    {
+      "file": "continue-run.json",
+      "bytes": 13546,
+      "sha256": "e53b4d5017fc568b1dca674614717a49d7e4cc25ab847a386aad4694e068e1ff"
+    },
+    {
+      "file": "continue-trace.log",
+      "bytes": 3406,
+      "sha256": "1f1d0656e55b95682470628bc899c28431f30799bdc0a765162d2dc0f4dead48"
+    },
+    {
+      "file": "continue-input.csv",
+      "bytes": 440,
+      "sha256": "b493e19c28c96351d7c867480ded7ac05961a46e8b6226faee9114464d3f17be"
+    },
+    {
+      "file": "save-verification.json",
+      "bytes": 412,
+      "sha256": "17dfb54baeb3a038e191021a76efaf2f36dcd7ca310974375ea3b16327ec387a"
+    },
+    {
+      "file": "continue-verification.json",
+      "bytes": 457,
+      "sha256": "993c25445efedc6ce09be3d18ba9e07af89bad52e035b3924f164b73de609f4d"
+    },
+    {
+      "file": "builds.json",
+      "bytes": 508,
+      "sha256": "a71dc55a3cf6d25e220cd451d4e4fec5cd9dc0dbfa88150a6bd7655c40fbb554"
+    },
+    {
+      "file": "original-inputs.json",
+      "bytes": 4706,
+      "sha256": "74881885bfbc487c30cded807ec13f24594803f3d75f94ccd80f61e5fb481561"
+    },
+    {
+      "file": "field-probe.json",
+      "bytes": 32012,
+      "sha256": "0af6c2429800655686100858177dec47b865f730ac38dde9e6a82c098c3a16ae"
+    },
+    {
+      "file": "outskirt-assets.json",
+      "bytes": 41901,
+      "sha256": "0636404de7e31a3b9abbef83af609f43d553e230d5a0cb082d02a1067fd470df"
+    },
+    {
+      "file": "main-menu.png",
+      "bytes": 119157,
+      "sha256": "12eb3dec270889b7e069b70c4a1b3338475e264e281ffdd9f49771f3ef1412c8"
+    },
+    {
+      "file": "wes-confirmation.png",
+      "bytes": 116180,
+      "sha256": "9651181cd2258bea080dd5bf59165afc586bd6d567399479feede27308b851e6"
+    },
+    {
+      "file": "hideout-movie.png",
+      "bytes": 94210,
+      "sha256": "d09657f2427876dcfbace08b4ddf7c15c5ffe9d60db81fb3a6831252cd339093"
+    },
+    {
+      "file": "bike-arrival.png",
+      "bytes": 95676,
+      "sha256": "12d67e65adf0cd0c3f4ac0aecb5c246d9332891ce308e25b5ff50549eea0b620"
+    },
+    {
+      "file": "outskirt-wes.png",
+      "bytes": 100770,
+      "sha256": "39de135ba2fd283f9f4fe5523064d3656582d91ec47663adcb1507d500071546"
+    },
+    {
+      "file": "starter-party.png",
+      "bytes": 93493,
+      "sha256": "85160ee923d3eef1471c4d9e3bc1a343016b527d584102ea5704553f6a46fbf4"
+    },
+    {
+      "file": "saved-game.png",
+      "bytes": 93624,
+      "sha256": "53e226f120adc777b6e845e084601e8ad84114e5c4caa081faa21b52ec481228"
+    },
+    {
+      "file": "continue-confirmation.png",
+      "bytes": 118624,
+      "sha256": "740c05fd9942ebc1ae28c0a784763b04828daa4668139adbcde7b15920f490ca"
+    },
+    {
+      "file": "continued-field.png",
+      "bytes": 100759,
+      "sha256": "3174ffc77741b451a5d1eed3ad358f910fb5d982c974c3e695179e341e6ecf88"
+    },
+    {
+      "file": "continued-party.png",
+      "bytes": 99475,
+      "sha256": "c29581274602fb00d267829e07a40288cd4f5a14db674d4e1b46b4bcd65870f0"
+    },
+    {
+      "file": "arrival-material-run.json",
+      "bytes": 2452,
+      "sha256": "72c7d9b7d2dcfee316390d97b5af538d225032866d640f4a268dd6ed0347b150"
+    },
+    {
+      "file": "arrival-fade-run.json",
+      "bytes": 2442,
+      "sha256": "295edd00212fe8504b1b932db92d0cbc31d17e37a80d20bc93a2626dd5f48fb3"
+    },
+    {
+      "file": "stage-material-c3t3-run.json",
+      "bytes": 2447,
+      "sha256": "a3d0f47cb6b49cb2c0322e9da723a1f609f733f4a4fe639a5801c3764cfcc31c"
+    },
+    {
+      "file": "title-combiner-c3t3-run.json",
+      "bytes": 2446,
+      "sha256": "4a7f891954c9ee92bef08893393e961822d719cfc7615b75b55f0edf0cecf378"
+    }
+  ]
+}

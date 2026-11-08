@@ -6,6 +6,7 @@ Protocol reference: xzn/ntrviewer-hr commit
 This independently implemented subset excludes input, KCP, audio and lossless.
 """
 import argparse
+from contextlib import nullcontext
 import datetime
 import io
 import json
@@ -85,14 +86,17 @@ class Assembler:
 def atomic_bytes(path, data):
     temporary = path.with_name(path.name + ".tmp")
     temporary.write_bytes(data)
-    for attempt in range(5):
+    for attempt in range(6):
         try:
             temporary.replace(path)
             return
-        except PermissionError:
-            if attempt == 4:
+        except OSError as exc:
+            # Windows readers can briefly deny atomic replacement. Retry only
+            # those native codes; write failures and POSIX permission errors
+            # remain fatal. Never unlink the previous published destination.
+            if getattr(exc, "winerror", None) not in (5, 32) or attempt == 5:
                 raise
-            time.sleep(0.01)
+            time.sleep(0.01 * (attempt + 1))
 
 
 class DecodeError(ValueError):
@@ -158,7 +162,7 @@ def freshness(images, now):
     return passed, ages
 
 
-def capture(host, bind, output, duration=15):
+def capture(host, bind, output, duration=15, listen_only=False):
     if not 0 < duration <= 15:
         raise ValueError("duration must be in (0, 15] seconds")
     socket.inet_aton(host)
@@ -170,28 +174,32 @@ def capture(host, bind, output, duration=15):
     report = {"source": SOURCE, "host": host, "bind": bind, "duration_seconds": duration,
               "view_only": True, "input_packets_sent": 0, "udp_packets": 0,
               "decode_errors": 0, "status": "failed"}
+    report["listen_only"] = listen_only
     started = time.monotonic()
     deadline = started + duration
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp:
             udp.bind((bind, 8001))
-            with socket.create_connection((host, 8000), timeout=2, source_address=(bind, 0)) as tcp:
-                tcp.settimeout(0.5)
-                report["local_source_address"] = tcp.getsockname()[0]
+            connection = nullcontext(None) if listen_only else socket.create_connection(
+                (host, 8000), timeout=2, source_address=(bind, 0))
+            with connection as tcp:
                 sequence = 0
-                tcp.sendall(header(sequence, 0))
-                sequence += 1
-                tcp.sendall(header(sequence, 901, (257, 70, 2 * 1024 * 1024, 1404036572, 8001, 0, 0)))
-                sequence += 1
+                if tcp is not None:
+                    tcp.settimeout(0.5)
+                    report["local_source_address"] = tcp.getsockname()[0]
+                    tcp.sendall(header(sequence, 0))
+                    sequence += 1
+                    tcp.sendall(header(sequence, 901, (257, 70, 2 * 1024 * 1024, 1404036572, 8001, 0, 0)))
+                    sequence += 1
                 next_heartbeat = time.monotonic() + 0.25
                 buffered = b""
                 while time.monotonic() < deadline:
                     now = time.monotonic()
-                    if now >= next_heartbeat:
+                    if tcp is not None and now >= next_heartbeat:
                         tcp.sendall(header(sequence, 0))
                         sequence += 1
                         next_heartbeat = now + 0.25
-                    ready, _, _ = select.select([tcp, udp], [], [], min(0.1, max(0, deadline - now)))
+                    ready, _, _ = select.select([udp] if tcp is None else [tcp, udp], [], [], min(0.1, max(0, deadline - now)))
                     if tcp in ready:
                         chunk = tcp.recv(65536)
                         if not chunk:
@@ -240,10 +248,11 @@ def main(argv=None):
     parser.add_argument("--bind", required=True, help="Local source IPv4 address, e.g. 192.168.50.47")
     parser.add_argument("--output", required=True, type=Path, help="New private output directory")
     parser.add_argument("--duration", type=float, default=15)
+    parser.add_argument("--listen-only", action="store_true", help="Receive an already-running stream without TCP control or any sends")
     args = parser.parse_args(argv)
     if not 0 < args.duration <= 15:
         parser.error("duration must be in (0, 15] seconds")
-    report = capture(args.host, args.bind, args.output, args.duration)
+    report = capture(args.host, args.bind, args.output, args.duration, args.listen_only)
     print(json.dumps(report, indent=2))
     return 0 if report["status"] == "passed" else 1
 

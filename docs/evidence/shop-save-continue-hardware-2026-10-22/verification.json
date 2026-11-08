@@ -1,0 +1,130 @@
+{
+  "tested_source": "d04e7758220567c2fc21f5799f4870412cc8cbd9",
+  "configuration": "normal full native PR6 foundation, no probes, existing35pack unchanged",
+  "executable_bytes": 381732,
+  "executable_sha256": "34e9995d5e97d9981bdbd6e152584b53c1a05367982d31e13cc5b9b5229c1069",
+  "build_identity_policy": "Later qualification/evidence commits do not relabel this deployed binary",
+  "initial_save_state": "Successful FTP parent listing proved primary, backup and temporary files absent",
+  "backup_verification": "Downloaded files matched FTP SIZE and local readback SHA256; saved primary backed up before Continue",
+  "completed_save": "No completed-save original was loaded, installed or modified",
+  "save_actions": 1,
+  "additional_save_in_load_only_run": false,
+  "gci_before_after_sha256": "7e1cb3159756293bf938fd922fe45e82448d1b667f6833a48da351af3cbd0f23",
+  "gci_bytes": 393280,
+  "decoded_state_identical": true,
+  "whole_gci_identical": true,
+  "slot_checksums_verified": true,
+  "whole_party_matches_independent_fresh_seed": true,
+  "arrival_departure_tv_flags": {
+    "0af8": 1,
+    "03da": 1,
+    "03db": 1
+  },
+  "checkpoint_scope": "First shop checkpoint after TV, before Willie talk; earlier complete fresh-route acceptance remains valid separately",
+  "willie_talk_flag_03dc": 0,
+  "encounter_flag_03dd": 0,
+  "victory_flag_03de": 0,
+  "opening_and_tv_replay_on_continue": false,
+  "continue_primary_not_backup": true,
+  "clean_exit_both_runs": true,
+  "ntr_continuity": true,
+  "installed_assets": {
+    "count": 35,
+    "bytes": 428164858,
+    "regenerated": 0,
+    "retransferred": 0,
+    "current_size_checks": 35,
+    "current_metadata_hash_checks": 11,
+    "other_hash_authority": "Prior full console hash-readback; files not replaced by this check",
+    "four_reference_graphics_differences_retained": true
+  },
+  "earlier_fresh_route_acceptance_preserved": true,
+  "limits": [
+    "Not lid-sleep or audible-audio acceptance",
+    "Not battle or victory acceptance",
+    "NTR/recording delivery rates are not gameplay performance"
+  ],
+  "files": [
+    {
+      "file": ".gitattributes",
+      "bytes": 101,
+      "sha256": "9a3d2c185d522490f793e3ac90818bea584854cd664f5d484cf5c68444559e94"
+    },
+    {
+      "file": "clean-exit.png",
+      "bytes": 133757,
+      "sha256": "b9405ca4cd9330acb82f9fc2efe8e1a60df680864835c44f62d32034164bd5e8"
+    },
+    {
+      "file": "continue-confirmation.png",
+      "bytes": 119670,
+      "sha256": "23eecb3b91637075940b247ccb40d8a873b8dd30dc7d6efb9fe58b2f25af4ff9"
+    },
+    {
+      "file": "continue-trace.log",
+      "bytes": 25283,
+      "sha256": "c50a96c6c5f6602fe02c3e36239fc303838643ffe98591b80edac587c3f1ab17"
+    },
+    {
+      "file": "continued-shop.png",
+      "bytes": 97356,
+      "sha256": "8389fc7491325b279263a703629826a8e3aabb5307b1417e1eaeb66ead4359da"
+    },
+    {
+      "file": "continued-state.json",
+      "bytes": 955,
+      "sha256": "ba55c6a1537723706ff8755806412dd09d219086322b3e02d27ec0130b1b7726"
+    },
+    {
+      "file": "explicit-save.mp4",
+      "bytes": 79952,
+      "sha256": "ee39ef3a628e1601104821fe3c3c2c0593f8a4835570d69ffaef37268980f02e"
+    },
+    {
+      "file": "fresh-process-continue.mp4",
+      "bytes": 119200,
+      "sha256": "3b984c8079792f582b80d0b96d0fe498ad0608ddaff33cee823271289f24d595"
+    },
+    {
+      "file": "installed-assets.json",
+      "bytes": 14439,
+      "sha256": "8db3645f71dfbe545791a82cc104b70bc646492541ea05b2efdf9856763cdcf3"
+    },
+    {
+      "file": "party-before-save.png",
+      "bytes": 94965,
+      "sha256": "c11a03e8622836d039fc784ca817ed4fc4f5159657e33e78dea3261caf80a8e1"
+    },
+    {
+      "file": "README.md",
+      "bytes": 5505,
+      "sha256": "22d67be977b735d9ac83183a6d232900713b0aef421e3d3327bb4b7f304b3f9f"
+    },
+    {
+      "file": "recordings.json",
+      "bytes": 1363,
+      "sha256": "a13d2859b2578715fc56479a18ab9c8cd22bac76eb9aad24dc9dcd0c5ac2cfec"
+    },
+    {
+      "file": "save-confirmation.png",
+      "bytes": 98999,
+      "sha256": "2932c76c6ee0473ffd44e75767a68f876f24f4bc857805f904e62a952062e5c5"
+    },
+    {
+      "file": "save-result.png",
+      "bytes": 95470,
+      "sha256": "c3c6a9dfb82767ebd3b05160f08df0d2d539f423cc0b11265dad775929683dd0"
+    },
+    {
+      "file": "save-trace.log",
+      "bytes": 229868,
+      "sha256": "d36ddd4cba7b30d4a4efa2c7551c77d3a062b0aea0ede798b1e77f19e5b049b7"
+    },
+    {
+      "file": "saved-state.json",
+      "bytes": 955,
+      "sha256": "ba55c6a1537723706ff8755806412dd09d219086322b3e02d27ec0130b1b7726"
+    }
+  ],
+  "artifact_hash_policy": "Canonical LF for text reports; raw device trace and binary bytes retained by scoped attributes"
+}

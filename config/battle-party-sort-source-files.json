@@ -1,0 +1,49 @@
+{
+  "commit": "51bfe4314a218dfaf9592fc80723c50498d0ee55",
+  "files": [
+    {
+      "path": "include/game/pokemon_data.h",
+      "sha256": "e92811673afba62df19788d78199e3a3996a85dcad4d2e4fc851c060be712c70"
+    },
+    {
+      "path": "src/game/pokemon_data.c",
+      "sha256": "e40fc24c972135df30f2507b00054185c84bb15dcbf9c5c0b121bfa0c7ee7a45"
+    },
+    {
+      "path": "src/game/gamedata.c",
+      "sha256": "2e04c7a259dcadc78edd7adfcd281ce941c8180af837f786c4672847b8b52da8"
+    },
+    {
+      "path": "src/game/fight_range_80211A00.c",
+      "sha256": "fd9637901db913df32bae06fef5478fb152dfcb212a82349e099d8ca2d1f338a"
+    },
+    {
+      "path": "src/game/fight_range_exact_80233DB0.c",
+      "sha256": "087e9e8ec64c1aef70291833902084b8ca416f1044de31218428e3b02f93d3df"
+    },
+    {
+      "path": "src/game/fight_trainer_range_801F7F80.c",
+      "sha256": "29aaf8e5dbd3666f685043396def52d974285b2a2cd1388da7845b47ba9f5f2f"
+    },
+    {
+      "path": "src/game/fight_trainer_db_range_801FBD10.c",
+      "sha256": "9fcc27c3ac276eb922f7365a807a4894d5345f879c2bf9cf5303896476b3412d"
+    },
+    {
+      "path": "src/game/pokemon_range_8011F5FC.c",
+      "sha256": "e5ad2f1745cea73925404e7feef6cac9a3fb1e2bc4ab87fa42e8022f531b1003"
+    },
+    {
+      "path": "src/game/pokemon_get_status_exact_8012640C.c",
+      "sha256": "295ff83903d644add435e7beaf8888c35eed1e05d518329b416303fd3cff4682"
+    },
+    {
+      "path": "src/game/hero_savedata_exact_80129280.c",
+      "sha256": "22b3936eb1b63b858a435a14773b5ede7439e4aece37aa4f32c8e56f82cc84c0"
+    },
+    {
+      "path": "src/game/gs_colsys.c",
+      "sha256": "5b9bb5ec1c6ebb3561ed34a18bc0745c305430bfd6136ed3b9e5d966b55f8951"
+    }
+  ]
+}

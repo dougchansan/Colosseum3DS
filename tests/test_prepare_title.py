@@ -1,0 +1,146 @@
+"""Synthetic title conversion checks. No originals, Blender or parser required."""
+import importlib.util
+import math
+from pathlib import Path
+import struct
+import tempfile
+from types import SimpleNamespace as Obj
+import unittest
+from unittest.mock import patch
+
+SPEC = importlib.util.spec_from_file_location("prepare_title",Path(__file__).resolve().parents[1]/"tools/prepare_title.py")
+TITLE = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(TITLE)
+
+
+def key(frame,value,mode="LINEAR",slope_in=0,slope_out=0):
+    return Obj(frame=frame,value=value,interpolation=mode,slope_in=slope_in,slope_out=slope_out)
+
+
+class TitlePreparationTests(unittest.TestCase):
+    def fixture(self):
+        vertex=(1.,2.,3.,0.,1.,0.,.25,.75,11,22,33,255,0)
+        batch=(0,3,0,1,4,3,0,0,*([1.]*9),50.,1.,1.,0,0,7,7,0,3,0,0)
+        light=(4,0,1.,1.,1.,0.,0.,0.,0.,0.,0.,0.,1.,1.,0.,0.)
+        matrix=(1.,0.,0.,0.,0.,1.,0.,0.,0.,0.,1.,0.)
+        material=(1.,1.,0.,0.,1.,1.,0.,0.,0.,1.,1.,1.)
+        camera=(0.,0.,5.,0.,0.,0.,0.,45.,.1,100.,4/3,0.)
+        frame=struct.pack("<36f",*matrix,*material,*camera)
+        return dict(bones=1,vertices=[vertex]*3,batches=[batch],textures=[(8,8,bytes([255])*256,0,1)],
+                    clips=[(0,2,1,0)],lights=[light],frames=frame*2,fps=60.)
+
+    def test_canonical_little_endian_layout(self):
+        data=TITLE.encode_pack(**self.fixture())
+        self.assertEqual(struct.unpack_from("<4s9I",data),(b"C3T1",1,len(data),1,3,1,1,1,2,1))
+        self.assertEqual(struct.unpack_from("<f9I",data,40),(60.,128,248,360,384,400,464,752,144,256))
+        self.assertEqual(data[80:112],bytes.fromhex(TITLE.ARCHIVE_SHA256))
+        self.assertEqual(data[112:128],bytes(16))
+        self.assertEqual(struct.unpack_from("<6I",data,360),(8,8,752,256,0,1))
+        self.assertEqual(struct.unpack_from("<4I",data,384),(0,2,1,0))
+        self.assertEqual(len(data),1008)
+
+    def test_curve_endpoints_constant_linear_and_duplicate_keys(self):
+        keys=[key(0,1,"CONSTANT"),key(4,2),key(8,6)]
+        self.assertEqual(TITLE.curve_value(keys,-10),1)
+        self.assertEqual(TITLE.curve_value(keys,3),1)
+        self.assertEqual(TITLE.curve_value(keys,6),4)
+        self.assertEqual(TITLE.curve_value(keys,20),6)
+        self.assertEqual(TITLE.curve_value([],2,7),7)
+        self.assertEqual(TITLE.curve_value([key(0,1),key(0,3),key(1,5)],0),3)
+
+    def test_original_actor_clip_ids_fit_bounded_table(self):
+        data=self.fixture()
+        frame=data["frames"][:144]
+        data["clips"]=[(i,1,i%2,0) for i in range(32)]
+        data["frames"]=frame*32
+        packed=TITLE.encode_pack(**data)
+        self.assertEqual(struct.unpack_from("<II",packed,28),(32,32))
+        self.assertEqual(struct.unpack_from("<4I",packed,384+31*16),(31,1,1,0))
+        data["clips"].append((32,1,0,0));data["frames"]+=frame
+        with self.assertRaises(ValueError):TITLE.encode_pack(**data)
+
+    def test_c3t2_c3t3_c3t4_extension_layouts(self):
+        for version,stride in ((2,160),(3,192),(4,192)):
+            data=self.fixture()
+            data["format_version"]=version
+            data["vertices"]=[tuple(vertex)+(.2,.4) for vertex in data["vertices"]]
+            batch=list(data["batches"][0]);batch[5]=0
+            batch[3]=1024|256 if version==2 else 8192
+            batch[27]=0 if version==2 else .5
+            data["batches"]=[tuple(batch)]
+            frame=data["frames"][:144]
+            extra=(1.,1.,0.,0.)
+            if version>=3:extra+=(.2,.3,.4,.5,7.,8.,9.,0.)
+            data["frames"]=(frame[:96]+struct.pack("<%df"%len(extra),*extra)+frame[96:])*2
+            if version==4:
+                light=list(data["lights"][0]);light[0]=7;data["lights"]=[(*light,3,87.5,0,0)]
+            packed=TITLE.encode_pack(**data)
+            frame_offset=504 if version==4 else 488
+            self.assertEqual(packed[:4],{2:b"C3T2",3:b"C3T3",4:b"C3T4"}[version])
+            self.assertEqual(struct.unpack_from("<7I",packed,44),(128,272,384,408,424,frame_offset,frame_offset+stride*2))
+            self.assertEqual(struct.unpack_from("<I",packed,72)[0],stride)
+            self.assertAlmostEqual(struct.unpack_from("<f",packed,128+40)[0],.2)
+            if version>=3:
+                self.assertEqual(struct.unpack_from("<f",packed,272+108)[0],.5)
+                self.assertEqual(struct.unpack_from("<3f",packed,frame_offset+48+80),(7,8,9))
+                if version==4:self.assertEqual(struct.unpack_from("<IfII",packed,424+64),(3,87.5,0,0))
+                bad=list(data["batches"][0]);bad[27]=1.01;data["batches"]=[tuple(bad)]
+                with self.assertRaises(ValueError):TITLE.encode_pack(**data)
+
+    def test_hsd_asymmetric_slopes_belong_to_the_right_key(self):
+        keys=[key(0,0,"BEZIER",999,999),key(2,10,"CONSTANT",3,-1)]
+        # Hermite midpoint: 0.5*10 + 0.125*2*3 - 0.125*2*(-1).
+        self.assertAlmostEqual(TITLE.curve_value(keys,1),6)
+        self.assertEqual(TITLE.curve_value(keys,0),0)
+        self.assertEqual(TITLE.curve_value(keys,2),10)
+
+    def test_light_validation_rejects_unrepresented_spot_and_nonfinite_parameters(self):
+        for offset,value in ((0,7),(2,math.nan),(13,0),(14,1.5),(15,1)):
+            data=self.fixture();light=list(data['lights'][0]);light[offset]=value;data['lights']=[tuple(light)]
+            with self.subTest(offset=offset),self.assertRaises(ValueError):TITLE.encode_pack(**data)
+
+    def test_native_material_alpha_and_tev_quantization(self):
+        self.assertEqual(TITLE.material_alpha(0),1)
+        self.assertEqual(TITLE.material_alpha(1),0)
+        self.assertEqual(TITLE.material_alpha(2),0)
+        self.assertEqual(TITLE.material_alpha(-1),1)
+        self.assertEqual(TITLE.tev_byte(.5),127/255)
+        self.assertEqual(TITLE.tev_byte(2),1)
+        self.assertEqual(TITLE.tev_byte(-1),0)
+
+    def test_uv_inverse_scale_repeat_and_negative_translation(self):
+        self.assertEqual(TITLE.texture_transform((2,4,1),(.25,-.5,0),(8,4)),(4,1,-1,.5))
+        with self.assertRaises(ValueError):
+            TITLE.texture_transform((0,1,1),(0,0,0),(1,1))
+
+    def test_node_and_branch_visibility_are_distinct(self):
+        bones=[Obj(parent_index=None,is_hidden=False),Obj(parent_index=0,is_hidden=True),
+               Obj(parent_index=1,is_hidden=True),Obj(parent_index=0,is_hidden=False)]
+        tracks=[{}, {12:[key(0,1)]}, {11:[key(0,0)]},{}]
+        self.assertEqual(TITLE.visibility_at(bones,tracks,0),[True,True,False,True])
+        tracks=[{11:[key(0,0)]},{},{},{}]
+        self.assertEqual(TITLE.visibility_at(bones,tracks,0),[False,False,False,True])
+
+    def test_rejects_bad_source_before_decompression(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/"title.fsys"
+            path.write_bytes(b"FSYS")
+            with patch.object(TITLE.hashlib,"sha256",side_effect=AssertionError("size must reject first")):
+                with self.assertRaises(ValueError): TITLE.admit_archive(path)
+            path.write_bytes(bytes(TITLE.ARCHIVE_BYTES))
+            with self.assertRaisesRegex(ValueError,"differs from the reviewed"):
+                TITLE.admit_archive(path)
+
+    def test_rejects_invalid_pack_counts_extents_and_floats(self):
+        for name,value in (("bones",65),("fps",math.nan),("frames",b""),("clips",[(1,2,1,0)]),
+                           ("textures",[(9,8,bytes(288),0,0)])):
+            with self.subTest(name=name),self.assertRaises(ValueError):
+                data=self.fixture();data[name]=value;TITLE.encode_pack(**data)
+        data=self.fixture();bad=list(data["vertices"][0]);bad[0]=math.inf;data["vertices"]=[bad]*3
+        with self.assertRaises(ValueError): TITLE.encode_pack(**data)
+        data=self.fixture();frame=bytearray(data["frames"]);struct.pack_into("<f",frame,0,math.nan);data["frames"]=frame
+        with self.assertRaises(ValueError): TITLE.encode_pack(**data)
+
+
+if __name__=="__main__":
+    unittest.main()

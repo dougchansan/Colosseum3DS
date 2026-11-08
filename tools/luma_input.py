@@ -21,7 +21,7 @@ import time
 HID_BITS = {"A": 0, "B": 1, "SELECT": 2, "START": 3,
             "RIGHT": 4, "LEFT": 5, "UP": 6, "DOWN": 7,
             "R": 8, "L": 9, "X": 10, "Y": 11}
-BUTTONS = tuple(HID_BITS) + ("ZL", "ZR")
+BUTTONS = tuple(HID_BITS) + ("ZL", "ZR", "HOME")
 NEUTRAL = struct.pack("<5I", 0xfff, 0x02000000, 0x007ff7ff, 0x80800081, 0)
 
 
@@ -54,6 +54,7 @@ def packet(buttons=(), circle_pad=(0, 0), c_stick=(0, 0)):
             raise ValueError("Analog axes must be finite values in [-1, 1]")
     hid = 0xfff
     cpp = 0x80800081
+    special = 0
     for button in buttons:
         if button in HID_BITS:
             hid &= ~(1 << HID_BITS[button])
@@ -61,6 +62,8 @@ def packet(buttons=(), circle_pad=(0, 0), c_stick=(0, 0)):
             cpp |= 1 << 10
         elif button == "ZR":
             cpp |= 1 << 9
+        elif button == "HOME":
+            special = 1
         else:
             raise ValueError("Unsupported button: " + button)
     circle = 0x007ff7ff
@@ -74,8 +77,8 @@ def packet(buttons=(), circle_pad=(0, 0), c_stick=(0, 0)):
             rounded = math.copysign(math.floor(abs(scaled) + 0.5), scaled)
             return min(255, max(1, int(rounded / 32767) + 128))
         cpp = (component(y - x) << 24) | (component(x + y) << 16) | (cpp & 0xffff)
-    # Touch is neutral; special HOME/POWER bits are always zero.
-    return struct.pack("<5I", hid, 0x02000000, circle, cpp, 0)
+    # Touch and POWER remain neutral; HOME is an explicit, separately named action.
+    return struct.pack("<5I", hid, 0x02000000, circle, cpp, special)
 
 
 def send_action(host, buttons, duration, evidence, bind=None, circle_pad=(0, 0), c_stick=(0, 0)):

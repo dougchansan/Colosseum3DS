@@ -1,0 +1,323 @@
+{
+  "files": [
+    {
+      "file": "gs_logo.c3v",
+      "bytes": 19968064,
+      "installed_sha256": "b9fabb1bc42e8525379eb5c7e2e3fa4896ab9332d94b55109d6b40028d2e7783",
+      "reference_sha256": "b9fabb1bc42e8525379eb5c7e2e3fa4896ab9332d94b55109d6b40028d2e7783",
+      "matches_emulator_reference": true,
+      "size_rechecked": true,
+      "hash_evidence": "Prior full staged/final readback; file not replaced in this check"
+    },
+    {
+      "file": "menu.c3u",
+      "bytes": 1260,
+      "installed_sha256": "322f6201e1a4af9e56eec2b7b55a18d630c59f4235c913a6c2d53ebeded251f1",
+      "reference_sha256": "322f6201e1a4af9e56eec2b7b55a18d630c59f4235c913a6c2d53ebeded251f1",
+      "matches_emulator_reference": true,
+      "size_rechecked": true,
+      "hash_evidence": "Current metadata readback verified"
+    },
+    {
+      "file": "newgame.c3g",
+      "bytes": 176722,
+      "installed_sha256": "6bfdc9ffd1ce16303801ade262d64a6e8cffcb5907c87a920b195427527b0903",
+      "reference_sha256": "6bfdc9ffd1ce16303801ade262d64a6e8cffcb5907c87a920b195427527b0903",
+      "matches_emulator_reference": true,
+      "size_rechecked": true,
+      "hash_evidence": "Current metadata readback verified"
+    },
+    {
+      "file": "openingdemo.c3v",
+      "bytes": 304066812,
+      "installed_sha256": "f5cf0716ce6331166a5a97058c48105c691bb9482d039b6c1005b9378813afee",
+      "reference_sha256": "f5cf0716ce6331166a5a97058c48105c691bb9482d039b6c1005b9378813afee",
+      "matches_emulator_reference": true,
+      "size_rechecked": true,
+      "hash_evidence": "Prior full staged/final readback; file not replaced in this check"
+    },
+    {
+      "file": "outskirt.c3a",
+      "bytes": 2688,
+      "installed_sha256": "a2c0a8a989795154435cbbbfd09605bb858c1cbbcef718708406026671f0a678",
+      "reference_sha256": "a2c0a8a989795154435cbbbfd09605bb858c1cbbcef718708406026671f0a678",
+      "matches_emulator_reference": true,
+      "size_rechecked": true,
+      "hash_evidence": "Current metadata readback verified"
+    },
+    {
+      "file": "outskirt.c3f",
+      "bytes": 21656,
+      "installed_sha256": "45e9c8b4be3afc26c783d087d3348217ce555d852ba570168ca5459c2ad0b82e",
+      "reference_sha256": "45e9c8b4be3afc26c783d087d3348217ce555d852ba570168ca5459c2ad0b82e",
+      "matches_emulator_reference": true,
+      "size_rechecked": true,
+      "hash_evidence": "Current metadata readback verified"
+    },
+    {
+      "file": "outskirt.c3s",
+      "bytes": 158626,
+      "installed_sha256": "8f44a587630b3123885a3d393d21e9f3ec2e4e9a173710fe9351cef706e93b13",
+      "reference_sha256": "8f44a587630b3123885a3d393d21e9f3ec2e4e9a173710fe9351cef706e93b13",
+      "matches_emulator_reference": true,
+      "size_rechecked": true,
+      "hash_evidence": "Current metadata readback verified"
+    },
+    {
+      "file": "outskirt_arrival0.c3t",
+      "bytes": 3519720,
+      "installed_sha256": "28ff3752722e28f4b3c442a09630a8d0028910031af9ef17c4d068acaffad86f",
+      "reference_sha256": "28ff3752722e28f4b3c442a09630a8d0028910031af9ef17c4d068acaffad86f",
+      "matches_emulator_reference": true,
+      "size_rechecked": true,
+      "hash_evidence": "Prior full staged/final readback; file not replaced in this check"
+    },
+    {
+      "file": "outskirt_arrival1.c3t",
+      "bytes": 1113808,
+      "installed_sha256": "aa21929fd770f260709e11fba541873c7d0c298ca842467f66d78cfc1ee7afaa",
+      "reference_sha256": "aa21929fd770f260709e11fba541873c7d0c298ca842467f66d78cfc1ee7afaa",
+      "matches_emulator_reference": true,
+      "size_rechecked": true,
+      "hash_evidence": "Prior full staged/final readback; file not replaced in this check"
+    },
+    {
+      "file": "outskirt_map0.c3t",
+      "bytes": 12053184,
+      "installed_sha256": "350097e53d1833d6dc70b1fb504c6ea6e89e14c69ab61292caf6fa1f5106cadf",
+      "reference_sha256": "350097e53d1833d6dc70b1fb504c6ea6e89e14c69ab61292caf6fa1f5106cadf",
+      "matches_emulator_reference": true,
+      "size_rechecked": true,
+      "hash_evidence": "Prior full staged/final readback; file not replaced in this check"
+    },
+    {
+      "file": "outskirt_map1.c3t",
+      "bytes": 7751912,
+      "installed_sha256": "f337f2eacb25e6f11b230ef51f38a9e8b4a445031105fcdff90ebd89778a3944",
+      "reference_sha256": "f337f2eacb25e6f11b230ef51f38a9e8b4a445031105fcdff90ebd89778a3944",
+      "matches_emulator_reference": true,
+      "size_rechecked": true,
+      "hash_evidence": "Prior full staged/final readback; file not replaced in this check"
+    },
+    {
+      "file": "outskirt_map2.c3t",
+      "bytes": 4765944,
+      "installed_sha256": "497355ef80631b9b1e086372dfc4065f9f45ba900c0b4f8c3f0f518b899df735",
+      "reference_sha256": "497355ef80631b9b1e086372dfc4065f9f45ba900c0b4f8c3f0f518b899df735",
+      "matches_emulator_reference": true,
+      "size_rechecked": true,
+      "hash_evidence": "Prior full staged/final readback; file not replaced in this check"
+    },
+    {
+      "file": "outskirt_map3.c3t",
+      "bytes": 3406456,
+      "installed_sha256": "7152f7fb7a9d2deecaf5362e75c6770d34b3bf8110d4655a299b2e1bb66bc3ba",
+      "reference_sha256": "8e88bb441d49d0ce716650eca41ecdc15116d427419e86faa55feafe62328ad8",
+      "matches_emulator_reference": false,
+      "size_rechecked": true,
+      "hash_evidence": "Prior full staged/final readback; file not replaced in this check"
+    },
+    {
+      "file": "outskirt_npc0.c3t",
+      "bytes": 1548720,
+      "installed_sha256": "db3b283a959a47782b418017eaeede62d13ab429ae04317072419204a295ed6a",
+      "reference_sha256": "f51107b47126841f76f2f78b5bcfa1231d110010e4cb8cd82d47ee03d0a97b82",
+      "matches_emulator_reference": false,
+      "size_rechecked": true,
+      "hash_evidence": "Prior full staged/final readback; file not replaced in this check"
+    },
+    {
+      "file": "outskirt_npc1.c3t",
+      "bytes": 1867448,
+      "installed_sha256": "a6889da20b9d99ef03489c60c83175ed51f9ffe559f791ae609a939dcb256ac7",
+      "reference_sha256": "84517adb9f625ecb783c6151e6ecaafaf27cfccd0163396aeb2b6c5ec94be78a",
+      "matches_emulator_reference": false,
+      "size_rechecked": true,
+      "hash_evidence": "Prior full staged/final readback; file not replaced in this check"
+    },
+    {
+      "file": "outskirt_npc2.c3t",
+      "bytes": 4042296,
+      "installed_sha256": "41107b1fd28aff2043316502e7efba12b725e6bed1ece589fcb463ec6625104f",
+      "reference_sha256": "41107b1fd28aff2043316502e7efba12b725e6bed1ece589fcb463ec6625104f",
+      "matches_emulator_reference": true,
+      "size_rechecked": true,
+      "hash_evidence": "Prior full staged/final readback; file not replaced in this check"
+    },
+    {
+      "file": "outskirt_npc3.c3t",
+      "bytes": 1120896,
+      "installed_sha256": "3e8ab13632f57769f2a1583a284f5b1d22e0c4c5b5d6dcf10058a749ddfb9cde",
+      "reference_sha256": "3e8ab13632f57769f2a1583a284f5b1d22e0c4c5b5d6dcf10058a749ddfb9cde",
+      "matches_emulator_reference": true,
+      "size_rechecked": true,
+      "hash_evidence": "Prior full staged/final readback; file not replaced in this check"
+    },
+    {
+      "file": "outskirt_shop.c3s",
+      "bytes": 150634,
+      "installed_sha256": "b7cf10edb43673774f776c61a030beb46aba55dd7c42ef38a136bd3f7d781d36",
+      "reference_sha256": "b7cf10edb43673774f776c61a030beb46aba55dd7c42ef38a136bd3f7d781d36",
+      "matches_emulator_reference": true,
+      "size_rechecked": true,
+      "hash_evidence": "Current metadata readback verified"
+    },
+    {
+      "file": "outskirt_wes.c3t",
+      "bytes": 621280,
+      "installed_sha256": "0ca314cf2cabc2624a5722535020fd6c2a45897073001c2d35736cdafe17ef16",
+      "reference_sha256": "0ca314cf2cabc2624a5722535020fd6c2a45897073001c2d35736cdafe17ef16",
+      "matches_emulator_reference": true,
+      "size_rechecked": true,
+      "hash_evidence": "Prior full staged/final readback; file not replaced in this check"
+    },
+    {
+      "file": "shop.c3a",
+      "bytes": 1328,
+      "installed_sha256": "536f123f1e294fb509d26d876b54513abb862f0769be20c86e45969816748ad2",
+      "reference_sha256": "536f123f1e294fb509d26d876b54513abb862f0769be20c86e45969816748ad2",
+      "matches_emulator_reference": true,
+      "size_rechecked": true,
+      "hash_evidence": "Current metadata readback verified"
+    },
+    {
+      "file": "shop.c3f",
+      "bytes": 5680,
+      "installed_sha256": "717f6c1f16a84bcad8eb32b1df9b92cb30fb0745824966a2fa03d5245aaf08e2",
+      "reference_sha256": "717f6c1f16a84bcad8eb32b1df9b92cb30fb0745824966a2fa03d5245aaf08e2",
+      "matches_emulator_reference": true,
+      "size_rechecked": true,
+      "hash_evidence": "Current metadata readback verified"
+    },
+    {
+      "file": "shop.c3l",
+      "bytes": 7276,
+      "installed_sha256": "21a861fc9e857df1e27d42d20235af91337c3b157333312857601251c9cd417a",
+      "reference_sha256": "21a861fc9e857df1e27d42d20235af91337c3b157333312857601251c9cd417a",
+      "matches_emulator_reference": true,
+      "size_rechecked": true,
+      "hash_evidence": "Current metadata readback verified"
+    },
+    {
+      "file": "shop_camera.c3c",
+      "bytes": 26508,
+      "installed_sha256": "23a55c9d0c7726dc1df3a478c005e7fb56705cc2f5ce9251564dff231d51433a",
+      "reference_sha256": "23a55c9d0c7726dc1df3a478c005e7fb56705cc2f5ce9251564dff231d51433a",
+      "matches_emulator_reference": true,
+      "size_rechecked": true,
+      "hash_evidence": "Current metadata readback verified"
+    },
+    {
+      "file": "shop_map0.c3t",
+      "bytes": 10710032,
+      "installed_sha256": "e624b55a87c8310c7c76d116fe172961cec753c37a49f0cf03097c8f39f80940",
+      "reference_sha256": "e624b55a87c8310c7c76d116fe172961cec753c37a49f0cf03097c8f39f80940",
+      "matches_emulator_reference": true,
+      "size_rechecked": true,
+      "hash_evidence": "Prior full staged/final readback; file not replaced in this check"
+    },
+    {
+      "file": "shop_map1.c3t",
+      "bytes": 4786368,
+      "installed_sha256": "c5ffe1ed8d37d96b7967e4e31f914846818fc84d6efb1d3e73501233b7c52086",
+      "reference_sha256": "c5ffe1ed8d37d96b7967e4e31f914846818fc84d6efb1d3e73501233b7c52086",
+      "matches_emulator_reference": true,
+      "size_rechecked": true,
+      "hash_evidence": "Prior full staged/final readback; file not replaced in this check"
+    },
+    {
+      "file": "shop_npc0.c3t",
+      "bytes": 2151584,
+      "installed_sha256": "3022689555b52ae127ca654b66e423bc471726360f6967f092a1816b434d1fff",
+      "reference_sha256": "3022689555b52ae127ca654b66e423bc471726360f6967f092a1816b434d1fff",
+      "matches_emulator_reference": true,
+      "size_rechecked": true,
+      "hash_evidence": "Prior full staged/final readback; file not replaced in this check"
+    },
+    {
+      "file": "shop_npc1.c3t",
+      "bytes": 595648,
+      "installed_sha256": "02d678533d56eb22a1d5d7954b3a3d4cde1e86b604f4adf8d6b91f2ffef99a97",
+      "reference_sha256": "02d678533d56eb22a1d5d7954b3a3d4cde1e86b604f4adf8d6b91f2ffef99a97",
+      "matches_emulator_reference": true,
+      "size_rechecked": true,
+      "hash_evidence": "Prior full staged/final readback; file not replaced in this check"
+    },
+    {
+      "file": "shop_npc2.c3t",
+      "bytes": 846208,
+      "installed_sha256": "13d82131aabab26a57b02045d6502539a2913c0849d2105bf5aee0dedf646fc0",
+      "reference_sha256": "13d82131aabab26a57b02045d6502539a2913c0849d2105bf5aee0dedf646fc0",
+      "matches_emulator_reference": true,
+      "size_rechecked": true,
+      "hash_evidence": "Prior full staged/final readback; file not replaced in this check"
+    },
+    {
+      "file": "shop_npc3.c3t",
+      "bytes": 808752,
+      "installed_sha256": "3f3e23016ed15c949da7b4f328341f76b305dc53e8da7f8878d83b622d00f438",
+      "reference_sha256": "3f3e23016ed15c949da7b4f328341f76b305dc53e8da7f8878d83b622d00f438",
+      "matches_emulator_reference": true,
+      "size_rechecked": true,
+      "hash_evidence": "Prior full staged/final readback; file not replaced in this check"
+    },
+    {
+      "file": "shop_npc4.c3t",
+      "bytes": 1120816,
+      "installed_sha256": "c4d9b5181809d2589a8cf7a787fe9d1edf608584cab32156935d828b15500ee0",
+      "reference_sha256": "c4d9b5181809d2589a8cf7a787fe9d1edf608584cab32156935d828b15500ee0",
+      "matches_emulator_reference": true,
+      "size_rechecked": true,
+      "hash_evidence": "Prior full staged/final readback; file not replaced in this check"
+    },
+    {
+      "file": "shop_tv.c3t",
+      "bytes": 9891096,
+      "installed_sha256": "b695ee76a01eaa41196ed8e17aef38805a42fea29284b0976b1249562405683a",
+      "reference_sha256": "b695ee76a01eaa41196ed8e17aef38805a42fea29284b0976b1249562405683a",
+      "matches_emulator_reference": true,
+      "size_rechecked": true,
+      "hash_evidence": "Prior full staged/final readback; file not replaced in this check"
+    },
+    {
+      "file": "shop_wes.c3t",
+      "bytes": 661072,
+      "installed_sha256": "f5aca543dd80297bccf8ba1be35fe168666603d4f3a63582b9b518ecd872b67f",
+      "reference_sha256": "f5aca543dd80297bccf8ba1be35fe168666603d4f3a63582b9b518ecd872b67f",
+      "matches_emulator_reference": true,
+      "size_rechecked": true,
+      "hash_evidence": "Prior full staged/final readback; file not replaced in this check"
+    },
+    {
+      "file": "title.c3t",
+      "bytes": 18353048,
+      "installed_sha256": "0019ee50b41ba3b59fe7f783cdf15b04c67cb378777f1491dd4c1a9d862b69d2",
+      "reference_sha256": "f6fc95010631de9897a041b5cc6d46232bfd6b0bd3e784ad7065f5024cb9d166",
+      "matches_emulator_reference": false,
+      "size_rechecked": true,
+      "hash_evidence": "Prior full staged/final readback; file not replaced in this check"
+    },
+    {
+      "file": "tpc.c3v",
+      "bytes": 11840672,
+      "installed_sha256": "ab205a7479a2fd81b4b7d266af6285e0ac381d29ccdc6402a5135545656fdf2a",
+      "reference_sha256": "ab205a7479a2fd81b4b7d266af6285e0ac381d29ccdc6402a5135545656fdf2a",
+      "matches_emulator_reference": true,
+      "size_rechecked": true,
+      "hash_evidence": "Prior full staged/final readback; file not replaced in this check"
+    },
+    {
+      "file": "willie.c3b",
+      "bytes": 644,
+      "installed_sha256": "873052ebb92bcf11f2dc9deed182362bf941020adcc945bd994c38c7ea0f4319",
+      "reference_sha256": "873052ebb92bcf11f2dc9deed182362bf941020adcc945bd994c38c7ea0f4319",
+      "matches_emulator_reference": true,
+      "size_rechecked": true,
+      "hash_evidence": "Current metadata readback verified"
+    }
+  ],
+  "count": 35,
+  "total_bytes": 428164858,
+  "retransferred_assets": 0,
+  "regenerated_assets": 0
+}

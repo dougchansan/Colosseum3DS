@@ -1,0 +1,171 @@
+{
+  "schema": 1,
+  "format": "C3M1",
+  "source_game": "GC6E01",
+  "source_revision": 0,
+  "source_main_dol_sha1": "870e8b9693ca780782d80f22a6a4572d8ba9458f",
+  "source_archive": "pkx_eievui.fsys",
+  "source_archive_sha256": "fe69d7d79f7871610c07ff8875925cdbe4459b4e547f34e253452c3dcad0afef",
+  "source_member": "eievui.pkx",
+  "source_dat_sha256": "d4ae46e8fc0050aeb6742d74e587534feb2d7f31b74eba2474ed5a6bbe267ace",
+  "parser_commit": "dc71de837978a6a2fe8c5082f2840cfafb135235",
+  "parser_license": "GPL-3.0",
+  "blender_version": "5.0.1",
+  "animation": "pkx_eievui_0_Idle",
+  "frames": 41,
+  "fps": 30.0,
+  "preview_loop": true,
+  "source_loop_flag": false,
+  "bones": 66,
+  "vertices": 1944,
+  "triangles": 648,
+  "batches": 11,
+  "textures": [
+    {
+      "name": "tex_3A28",
+      "source_size": [
+        32,
+        32
+      ],
+      "size": [
+        32,
+        32
+      ],
+      "resampled_nearest": false
+    },
+    {
+      "name": "tex_3988",
+      "source_size": [
+        32,
+        32
+      ],
+      "size": [
+        32,
+        32
+      ],
+      "resampled_nearest": false
+    },
+    {
+      "name": "tex_38E8",
+      "source_size": [
+        32,
+        32
+      ],
+      "size": [
+        32,
+        32
+      ],
+      "resampled_nearest": false
+    },
+    {
+      "name": "tex_3848",
+      "source_size": [
+        64,
+        144
+      ],
+      "size": [
+        64,
+        256
+      ],
+      "resampled_nearest": true
+    },
+    {
+      "name": "tex_37A8",
+      "source_size": [
+        64,
+        32
+      ],
+      "size": [
+        64,
+        32
+      ],
+      "resampled_nearest": false
+    },
+    {
+      "name": "tex_3708",
+      "source_size": [
+        32,
+        64
+      ],
+      "size": [
+        32,
+        64
+      ],
+      "resampled_nearest": false
+    },
+    {
+      "name": "tex_3668",
+      "source_size": [
+        32,
+        32
+      ],
+      "size": [
+        32,
+        32
+      ],
+      "resampled_nearest": false
+    },
+    {
+      "name": "tex_35C8",
+      "source_size": [
+        32,
+        32
+      ],
+      "size": [
+        32,
+        32
+      ],
+      "resampled_nearest": false
+    },
+    {
+      "name": "tex_3528",
+      "source_size": [
+        32,
+        32
+      ],
+      "size": [
+        32,
+        32
+      ],
+      "resampled_nearest": false
+    }
+  ],
+  "omitted_hidden_meshes": [
+    "11",
+    "12",
+    "13",
+    "14",
+    "15",
+    "16",
+    "17"
+  ],
+  "nontrivial_pose_max_delta": 1.2206479161977768,
+  "bounds": [
+    -0.25057196509837476,
+    -0.002426337454580027,
+    -0.2645823742156191,
+    0.2632106954801525,
+    0.3255978357300944,
+    0.1886485360884338
+  ],
+  "bake_fidelity": {
+    "method": "All frames: evaluated Blender pose/edit-rest inverse versus direct GX world/IR-rest inverse",
+    "frames_checked": 41,
+    "visible_weighted_bones_checked": 37,
+    "tolerance": 0.0001,
+    "max_matrix_coefficient_error": 1.4454126358032227e-06,
+    "max_vertex_position_error_meters": 1.6157668576460421e-07
+  },
+  "pack_bytes": 299112,
+  "pack_sha256": "20aeca58879947b2ee58a2537a5365e858bd6b3f04aaad898eae56972592f625",
+  "offline_seconds": 1.442731699993601,
+  "offline_host_peak_working_set_bytes": 231530496,
+  "limitations": [
+    "Preview rate is explicit (default 30 fps); source animation timing is not independently measured.",
+    "Unlit, double-sided, single-texture preview; source lighting, specular, GX combiners and MObj effects are simplified.",
+    "Texture alpha uses alpha testing; translucency and source fragment blend equations are not reproduced.",
+    "Material animation tracks are frozen at the source base texture; skeletal animation is baked.",
+    "Non-power-of-two images are nearest-neighbor resampled to powers of two, preserving their UV domain.",
+    "Skin matrices are sampled at integer source frames; runtime linearly interpolates matrix coefficients."
+  ]
+}

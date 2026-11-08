@@ -1,0 +1,3 @@
+# Synthetic save-format probe only; A writes once after startup verification.
+# start_frame,duration_frames,libretro_mask,left_x,left_y,right_x,right_y
+120,20,0x0100,0,0,0,0

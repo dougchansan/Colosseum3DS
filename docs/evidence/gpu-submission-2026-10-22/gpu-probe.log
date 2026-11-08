@@ -1,0 +1,28 @@
+gpu_probe_build gpu-probe-de start=0 batch_limit=64
+render_recovery scene=gpu-probe-transition event=drained frames=0 elapsed_us=8 ready=1 exit=0 input=0000 counters=0,0 build=gpu-probe-de
+render_gpu submitted=0 fill=0 command=0 transfer=0 words=0 draws=0 vertices=0 models=0 textures=0 bytes=0
+gpu_probe stage=0 name=clear event=before-submit submitted=0 fill=0 command=0 transfer=0 words=0 draws=0 vertices=0 vblank=0,0
+gpu_probe stage=0 name=clear event=submitted submitted=1 fill=1 command=0 transfer=1 words=0 draws=0 vertices=0 vblank=0,0
+gpu_probe stage=0 name=clear event=completed submitted=1 fill=1 command=0 transfer=1 words=0 draws=0 vertices=0 vblank=1,1
+gpu_probe stage=1 name=array event=before-submit submitted=1 fill=1 command=0 transfer=1 words=0 draws=0 vertices=0 vblank=91,91
+gpu_probe stage=1 name=array event=submitted submitted=2 fill=2 command=1 transfer=2 words=312 draws=1 vertices=6 vblank=91,91
+gpu_probe stage=1 name=array event=completed submitted=2 fill=2 command=1 transfer=2 words=312 draws=1 vertices=6 vblank=91,91
+gpu_probe stage=2 name=array-fade event=before-submit submitted=2 fill=2 command=1 transfer=2 words=312 draws=1 vertices=6 vblank=181,181
+gpu_probe stage=2 name=array-fade event=submitted submitted=3 fill=3 command=2 transfer=3 words=412 draws=2 vertices=9 vblank=181,181
+gpu_probe stage=2 name=array-fade event=completed submitted=3 fill=3 command=2 transfer=3 words=412 draws=2 vertices=9 vblank=182,182
+render_recovery scene=gpu-probe-transition event=drained frames=3 elapsed_us=82 ready=1 exit=0 input=0000 counters=501,501 build=gpu-probe-de
+render_gpu submitted=3 fill=3 command=2 transfer=3 words=412 draws=2 vertices=9 models=0 textures=0 bytes=0
+gpu_probe stage=3 name=title-array event=before-submit submitted=3 fill=3 command=2 transfer=3 words=412 draws=2 vertices=9 vblank=512,512
+gpu_probe stage=3 name=title-array event=submitted submitted=4 fill=4 command=3 transfer=4 words=5044 draws=41 vertices=17241 vblank=516,516
+gpu_probe stage=3 name=title-array event=completed submitted=4 fill=4 command=3 transfer=4 words=5044 draws=41 vertices=17241 vblank=516,516
+gpu_probe stage=4 name=title-fade event=before-submit submitted=4 fill=4 command=3 transfer=4 words=5044 draws=41 vertices=17241 vblank=606,606
+gpu_probe stage=4 name=title-fade event=submitted submitted=5 fill=5 command=4 transfer=5 words=5212 draws=42 vertices=17244 vblank=610,610
+gpu_probe stage=4 name=title-fade event=completed submitted=5 fill=5 command=4 transfer=5 words=5212 draws=42 vertices=17244 vblank=610,610
+render_recovery scene=gpu-probe-transition event=drained frames=5 elapsed_us=118 ready=1 exit=0 input=0000 counters=700,700 build=gpu-probe-de
+render_gpu submitted=5 fill=5 command=4 transfer=5 words=5212 draws=42 vertices=17244 models=0 textures=0 bytes=0
+gpu_probe stage=5 name=scene-return event=before-submit submitted=5 fill=5 command=4 transfer=5 words=5212 draws=42 vertices=17244 vblank=700,700
+gpu_probe stage=5 name=scene-return event=submitted submitted=6 fill=6 command=5 transfer=6 words=244 draws=1 vertices=6 vblank=700,700
+gpu_probe stage=5 name=scene-return event=completed submitted=6 fill=6 command=5 transfer=6 words=244 draws=1 vertices=6 vblank=701,701
+render_recovery scene=gpu-probe-exit event=drained frames=6 elapsed_us=82 ready=1 exit=1 input=0000 counters=791,791 build=gpu-probe-de
+render_gpu submitted=6 fill=6 command=5 transfer=6 words=244 draws=1 vertices=6 models=0 textures=0 bytes=0
+gpu_probe_end complete=1 stages=6 error=

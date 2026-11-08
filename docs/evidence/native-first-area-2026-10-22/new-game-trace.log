@@ -1,0 +1,70 @@
+boot_build d2af94a8f1b3 core=0
+movie_begin name=tpc frames=75 fps=30000/1001 audio=unavailable mix=stereo result=d880a7fa
+movie_end name=tpc result=0 displayed=71 skipped=4 elapsed_us=2531916
+movie_begin name=gs_logo frames=130 fps=30000/1001 audio=no_embedded_track mix=stereo result=00000000
+movie_end name=gs_logo result=0 displayed=122 skipped=8 elapsed_us=4369553
+title_begin vertices=17277 batches=43 textures=20 bones=31 fps=60.000
+title_state name=title_skip_out clip=0 frame=26 input=0100
+title_state name=title_skip_in clip=2 frame=32 input=0000
+title_state name=title_wait_start clip=2 frame=38 input=0000
+title_state name=title_start_accepted clip=2 frame=86 input=1000
+game_load status=absent
+title_state name=main_menu clip=2 frame=98 input=0000
+menu_page name=new_confirm input=0100
+menu_page name=name_choices input=0100
+menu_page name=name_confirm input=0100
+game_new name=WES seed=0239bcc4 trainer_id=43c70b96 money=10000 party=2 replace_authorized=0 disk_write=0
+title_end result=0 frames=205 state=main_menu clip=2
+game_link floor=928 name=openingdemo
+movie_begin name=openingdemo frames=1926 fps=30000/1001 audio=unavailable mix=stereo result=d880a7fa
+movie_end name=openingdemo result=0 displayed=1795 skipped=131 elapsed_us=64288939
+opening_complete flag=08d0 floor=1 spawn=0 fade_script=05960008
+field_begin floor=1 previous=928 spawn=0 new=1 maps=4 walk=136 walls=244 arrival=1 duration=5.000
+field_tick phase=0 menu=0 input=0000 stick=0,0 xyz=5.0000,0.0000,7.0000 yaw=3.1416 motion=0 sample=0.00 hits=0 time=64
+field_tick phase=0 menu=0 input=0000 stick=0,0 xyz=5.0000,0.0000,7.0000 yaw=3.1416 motion=0 sample=0.00 hits=0 time=65
+field_tick phase=0 menu=0 input=0000 stick=0,0 xyz=5.0000,0.0000,7.0000 yaw=3.1416 motion=0 sample=0.00 hits=0 time=66
+field_tick phase=0 menu=0 input=0000 stick=0,0 xyz=5.0000,0.0000,7.0000 yaw=3.1416 motion=0 sample=0.00 hits=0 time=67
+field_tick phase=0 menu=0 input=0000 stick=0,0 xyz=5.0000,0.0000,7.0000 yaw=3.1416 motion=0 sample=0.00 hits=0 time=68
+field_arrival camera_end=1 actors_closed=1
+field_tick phase=1 menu=0 input=0000 stick=0,0 xyz=5.0000,0.0000,7.0000 yaw=3.1416 motion=0 sample=0.00 hits=0 time=69
+field_arrival_complete flag=0af8 camera_mode=0 target=0:100
+field_tick phase=2 menu=0 input=0000 stick=0,0 xyz=5.0000,0.0000,7.0000 yaw=3.1416 motion=0 sample=0.00 hits=0 time=70
+field_control_ready name=WES floor=1
+field_tick phase=3 menu=0 input=0000 stick=0,0 xyz=5.0000,0.0000,7.0000 yaw=3.1416 motion=0 sample=22.06 hits=0 time=71
+field_tick phase=3 menu=0 input=0000 stick=0,0 xyz=5.0000,0.0000,7.0000 yaw=3.1416 motion=0 sample=26.24 hits=0 time=73
+field_tick phase=3 menu=0 input=0000 stick=0,0 xyz=5.0000,0.0000,7.0000 yaw=3.1416 motion=0 sample=30.42 hits=0 time=74
+field_tick phase=3 menu=0 input=0000 stick=0,0 xyz=5.0000,0.0000,7.0000 yaw=3.1416 motion=0 sample=34.60 hits=0 time=75
+field_tick phase=3 menu=0 input=0000 stick=113,0 xyz=8.9423,0.0000,7.0000 yaw=1.5708 motion=2 sample=30.18 hits=0 time=76
+field_tick phase=3 menu=0 input=0000 stick=113,0 xyz=12.8845,0.0000,7.0000 yaw=1.5708 motion=2 sample=26.36 hits=0 time=77
+field_tick phase=3 menu=0 input=0000 stick=113,0 xyz=16.8268,0.0000,7.0000 yaw=1.5708 motion=2 sample=22.54 hits=0 time=78
+field_tick phase=3 menu=0 input=0000 stick=0,0 xyz=19.6502,0.0000,7.0000 yaw=1.5708 motion=0 sample=15.04 hits=0 time=79
+field_tick phase=3 menu=0 input=0000 stick=0,0 xyz=19.6502,0.0000,7.0000 yaw=1.5708 motion=0 sample=19.22 hits=0 time=80
+field_tick phase=3 menu=0 input=0000 stick=0,0 xyz=19.6502,0.0000,7.0000 yaw=1.5708 motion=0 sample=23.40 hits=0 time=81
+field_tick phase=3 menu=0 input=0000 stick=-38,0 xyz=18.7144,0.0000,7.0000 yaw=4.7124 motion=1 sample=50.14 hits=0 time=82
+field_tick phase=3 menu=0 input=0000 stick=-38,0 xyz=17.5166,0.0000,7.0000 yaw=4.7124 motion=1 sample=54.32 hits=0 time=83
+field_tick phase=3 menu=0 input=0000 stick=0,0 xyz=17.3854,0.0000,7.0000 yaw=4.7124 motion=0 sample=57.15 hits=0 time=84
+field_tick phase=3 menu=1 input=0400 stick=0,0 xyz=17.3854,0.0000,7.0000 yaw=4.7124 motion=0 sample=57.15 hits=0 time=84
+field_tick phase=3 menu=1 input=0000 stick=0,0 xyz=17.3854,0.0000,7.0000 yaw=4.7124 motion=0 sample=57.15 hits=0 time=85
+field_tick phase=3 menu=1 input=0004 stick=0,0 xyz=17.3854,0.0000,7.0000 yaw=4.7124 motion=0 sample=57.15 hits=0 time=86
+field_tick phase=3 menu=1 input=0000 stick=0,0 xyz=17.3854,0.0000,7.0000 yaw=4.7124 motion=0 sample=57.15 hits=0 time=87
+field_tick phase=3 menu=2 input=0100 stick=0,0 xyz=17.3854,0.0000,7.0000 yaw=4.7124 motion=0 sample=57.15 hits=0 time=88
+field_tick phase=3 menu=2 input=0000 stick=0,0 xyz=17.3854,0.0000,7.0000 yaw=4.7124 motion=0 sample=57.15 hits=0 time=89
+field_tick phase=3 menu=1 input=0200 stick=0,0 xyz=17.3854,0.0000,7.0000 yaw=4.7124 motion=0 sample=57.15 hits=0 time=90
+field_tick phase=3 menu=1 input=0000 stick=0,0 xyz=17.3854,0.0000,7.0000 yaw=4.7124 motion=0 sample=57.15 hits=0 time=91
+field_tick phase=3 menu=1 input=0004 stick=0,0 xyz=17.3854,0.0000,7.0000 yaw=4.7124 motion=0 sample=57.15 hits=0 time=92
+field_tick phase=3 menu=1 input=0000 stick=0,0 xyz=17.3854,0.0000,7.0000 yaw=4.7124 motion=0 sample=57.15 hits=0 time=93
+field_tick phase=3 menu=3 input=0100 stick=0,0 xyz=17.3854,0.0000,7.0000 yaw=4.7124 motion=0 sample=57.15 hits=0 time=94
+field_tick phase=3 menu=3 input=0000 stick=0,0 xyz=17.3854,0.0000,7.0000 yaw=4.7124 motion=0 sample=57.15 hits=0 time=95
+field_tick phase=3 menu=3 input=0008 stick=0,0 xyz=17.3854,0.0000,7.0000 yaw=4.7124 motion=0 sample=57.15 hits=0 time=96
+field_tick phase=3 menu=3 input=0000 stick=0,0 xyz=17.3854,0.0000,7.0000 yaw=4.7124 motion=0 sample=57.15 hits=0 time=97
+game_save status=ok name=WES count=1 floor=1 previous=928 spawn=0 time=98 time_bits=42c53073
+field_tick phase=3 menu=5 input=0100 stick=0,0 xyz=17.3854,0.0000,7.0000 yaw=4.7124 motion=0 sample=57.15 hits=0 time=98
+field_tick phase=3 menu=5 input=0000 stick=0,0 xyz=17.3854,0.0000,7.0000 yaw=4.7124 motion=0 sample=57.15 hits=0 time=99
+field_tick phase=3 menu=5 input=0000 stick=0,0 xyz=17.3854,0.0000,7.0000 yaw=4.7124 motion=0 sample=57.15 hits=0 time=100
+field_tick phase=3 menu=1 input=0200 stick=0,0 xyz=17.3854,0.0000,7.0000 yaw=4.7124 motion=0 sample=57.15 hits=0 time=101
+field_tick phase=3 menu=1 input=0000 stick=0,0 xyz=17.3854,0.0000,7.0000 yaw=4.7124 motion=0 sample=57.15 hits=0 time=102
+field_tick phase=3 menu=0 input=0200 stick=0,0 xyz=17.3854,0.0000,7.0000 yaw=4.7124 motion=0 sample=57.15 hits=0 time=103
+field_tick phase=3 menu=0 input=0000 stick=0,0 xyz=17.3854,0.0000,7.0000 yaw=4.7124 motion=0 sample=1.33 hits=0 time=104
+field_tick phase=3 menu=0 input=0000 stick=0,0 xyz=17.3854,0.0000,7.0000 yaw=4.7124 motion=0 sample=5.51 hits=0 time=105
+field_end result=1 error=
+boot_end result=1 error=

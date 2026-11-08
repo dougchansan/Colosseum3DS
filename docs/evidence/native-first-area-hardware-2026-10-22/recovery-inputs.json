@@ -1,0 +1,103 @@
+[
+  {
+    "port": 4950,
+    "buttons": [
+      "X"
+    ],
+    "duration_seconds": 0.15,
+    "circle_pad": [
+      0,
+      0
+    ],
+    "c_stick": [
+      0,
+      0
+    ],
+    "started_utc": "2026-10-22T06:11:14.989546+00:00",
+    "hold_sent": 9,
+    "release_attempted": 3,
+    "release_sent": 3,
+    "release_errors": [],
+    "status": "sent",
+    "receipt_verified": false,
+    "cancelled": false,
+    "limits": "UDP sends only; console receipt and visible response require observation",
+    "observation_source": "recovery-X-control/input.json"
+  },
+  {
+    "port": 4950,
+    "buttons": [
+      "A"
+    ],
+    "duration_seconds": 0.15,
+    "circle_pad": [
+      0,
+      0
+    ],
+    "c_stick": [
+      0,
+      0
+    ],
+    "started_utc": "2026-10-22T06:11:34.552009+00:00",
+    "hold_sent": 9,
+    "release_attempted": 3,
+    "release_sent": 3,
+    "release_errors": [],
+    "status": "sent",
+    "receipt_verified": false,
+    "cancelled": false,
+    "limits": "UDP sends only; console receipt and visible response require observation",
+    "observation_source": "recovery-A-control.json"
+  },
+  {
+    "port": 4950,
+    "buttons": [
+      "START",
+      "SELECT"
+    ],
+    "duration_seconds": 0.15,
+    "circle_pad": [
+      0,
+      0
+    ],
+    "c_stick": [
+      0,
+      0
+    ],
+    "started_utc": "2026-10-22T06:11:51.967566+00:00",
+    "hold_sent": 9,
+    "release_attempted": 3,
+    "release_sent": 3,
+    "release_errors": [],
+    "status": "sent",
+    "receipt_verified": false,
+    "cancelled": false,
+    "limits": "UDP sends only; console receipt and visible response require observation",
+    "observation_source": "recovery-exit-control.json"
+  },
+  {
+    "port": 4950,
+    "buttons": [
+      "X"
+    ],
+    "duration_seconds": 0.15,
+    "circle_pad": [
+      0,
+      0
+    ],
+    "c_stick": [
+      0,
+      0
+    ],
+    "started_utc": "2026-10-22T06:13:11.212531+00:00",
+    "hold_sent": 9,
+    "release_attempted": 3,
+    "release_sent": 3,
+    "release_errors": [],
+    "status": "sent",
+    "receipt_verified": false,
+    "cancelled": false,
+    "limits": "UDP sends only; console receipt and visible response require observation",
+    "observation_source": "recovery-X-after-exit/input.json"
+  }
+]
