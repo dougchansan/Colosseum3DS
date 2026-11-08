@@ -165,3 +165,16 @@ Then connect active-fighter (FightOutPokemon) entry and its animation/input
 continuations. Only original turn/result/post-processing and a validated
 session commit may later resume native98 and advance the story. The old
 nonpersistent preview remains isolated throughout that work.
+
+## Isolated session at the encounter handoff (2026-11-08)
+
+`src/battle_entry_session.c` now owns a two-side entry session that runs this
+action through `c3_battle_frame_create_flow` with the original action tables,
+in `_fightInitialize` order (buff 5, then buff 4), against the real
+constructors. `src/battle_entry_pack.c` builds its inputs from the private
+C3E1 table pack (`tools/prepare_battle_entry.py`) and the live save body (read
+only). On the console, `platform/3ds/battle_entry_console.c` runs it at the
+encounter-10 handoff inside the preview state guard and traces the results.
+See the [hardware evidence](evidence/trainer-entry-hardware-2026-11-08/README.md).
+The entry-built records are not yet consumed by combat, and nothing is
+registered with native98.
