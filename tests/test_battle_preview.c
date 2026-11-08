@@ -227,6 +227,51 @@ static void typed_contract(void)
     CHECK(moves&&hits);
     for(unsigned i=0;i<4;++i)CHECK(visual[i]==b.mons[i].hp);
 }
+/* Original 312-byte record carrying a roster-path opponent's battle fields. */
+static void record_from_mon(uint8_t *v,const C3BattlePreviewMon *m)
+{
+    memset(v,0,C3_BATTLE_POKEMON_SIZE);put16(v,m->species);v[0x60]=m->level;
+    put16(v+0x8a,m->hp);put16(v+0xb0,m->friendship);
+    static const unsigned order[]={C3_STAT_HP,C3_STAT_ATTACK,C3_STAT_DEFENSE,C3_STAT_SP_ATTACK,C3_STAT_SP_DEFENSE,C3_STAT_SPEED};
+    for(unsigned j=0;j<6;++j)put16(v+0x8c+2*j,m->stats[order[j]]);
+    for(unsigned j=0;j<4;++j){put16(v+0x78+4*j,m->moves[j].id);v[0x7a+4*j]=m->moves[j].pp;v[0x7b+4*j]=m->moves[j].pp_ups;}
+}
+static void records_contract(void)
+{
+    C3BattlePreview roster,b,copy;C3BattlePreviewTables t;C3BattleInitTables i;C3BattleRequest r;char e[192];
+    static uint8_t opp[2][C3_BATTLE_POKEMON_SIZE],bad[C3_BATTLE_POKEMON_SIZE];
+    fixture(&r,&i,&t);begin(&roster,&t,&i,&r,77);
+    for(unsigned k=0;k<2;++k)record_from_mon(opp[k],&roster.mons[2+k]);
+    const uint8_t *records[4]={r.player_party[0],r.player_party[1],opp[0],opp[1]};
+    C3BattleRng rng;uint16_t v;c3_battle_rng_init(&rng,0x12345678u);
+    for(unsigned k=0;k<354;++k)CHECK(c3_battle_rng_next16(&rng,&v));
+    CHECK(c3_battle_preview_begin_records(&b,&r,records,&rng,&t,e));CHECK(!e[0]);
+    /* Same battle fields as the roster path; turns continue from the given RNG. */
+    for(unsigned k=0;k<4;++k)CHECK(!memcmp(&b.mons[k],&roster.mons[k],sizeof b.mons[k]));
+    CHECK(!memcmp(&b.rng,&rng,sizeof rng)&&b.seed==rng.seed&&!b.opponent_trainer_id);
+    CHECK(b.event_count==2&&b.events[0].kind==C3_PREVIEW_EVENT_INTRO&&b.events[1].kind==C3_PREVIEW_EVENT_SEND_OUT);
+    CHECK(!memcmp(&r,&b.original_request,sizeof r));
+    /* Deterministic replay from the handed-off state. */
+    copy=b;C3BattlePreviewCommand c[2]={command(&b,&t,0,0),command(&b,&t,1,0)};
+    CHECK(c3_battle_preview_turn(&b,&t,c,e));CHECK(c3_battle_preview_turn(&copy,&t,c,e));
+    CHECK(!memcmp(&b,&copy,sizeof b));CHECK(b.rng.draws>rng.draws);
+    /* Rejections leave the output untouched. */
+    copy=b;
+    memcpy(bad,r.player_party[0],sizeof bad);bad[0x60]^=1;records[0]=bad;
+    CHECK(!c3_battle_preview_begin_records(&b,&r,records,&rng,&t,e));CHECK(strstr(e,"differs"));CHECK(!memcmp(&b,&copy,sizeof b));
+    records[0]=r.player_party[0];
+    memcpy(bad,opp[0],sizeof bad);put16(bad+0x88,1);records[2]=bad;
+    CHECK(!c3_battle_preview_begin_records(&b,&r,records,&rng,&t,e));CHECK(strstr(e,"Zigzagoon"));CHECK(!memcmp(&b,&copy,sizeof b));
+    memcpy(bad,opp[0],sizeof bad);put16(bad+0x78,1);
+    CHECK(!c3_battle_preview_begin_records(&b,&r,records,&rng,&t,e));CHECK(strstr(e,"Opponent move"));
+    memcpy(bad,opp[0],sizeof bad);put16(bad,197);
+    CHECK(!c3_battle_preview_begin_records(&b,&r,records,&rng,&t,e));
+    memcpy(bad,opp[0],sizeof bad);bad[0x64]=1;
+    CHECK(!c3_battle_preview_begin_records(&b,&r,records,&rng,&t,e));CHECK(strstr(e,"status"));
+    records[2]=NULL;CHECK(!c3_battle_preview_begin_records(&b,&r,records,&rng,&t,e));records[2]=opp[0];
+    CHECK(!c3_battle_preview_begin_records(&b,&r,records,NULL,&t,e));
+    CHECK(!memcmp(&b,&copy,sizeof b));
+}
 static void private_run(const char *directory)
 {
     char path[1024],error[192];C3GameState state={0};C3BattleData d;C3BattleRequest r;C3BattleInitTables i;C3BattlePreviewTables t;C3BattlePreview b;
@@ -246,4 +291,4 @@ static void private_run(const char *directory)
     CHECK(b.outcome!=C3_PREVIEW_RUNNING);CHECK(!memcmp(body,before,n));free(before);c3_game_state_free(&state);
 }
 int main(int argc,char **argv)
-{typed_contract();damage();reject_and_replay();effects_and_completion();menu_control();if(argc==2)private_run(argv[1]);printf("Battle preview: %u checks passed; no retail AI, GSVM completion or save writes\n",checks);return 0;}
+{typed_contract();damage();reject_and_replay();effects_and_completion();menu_control();records_contract();if(argc==2)private_run(argv[1]);printf("Battle preview: %u checks passed; no retail AI, GSVM completion or save writes\n",checks);return 0;}

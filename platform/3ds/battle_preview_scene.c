@@ -3,6 +3,7 @@
 #include "game_ui_views.h"
 #include "n3ds_platform.h"
 #include "battle_stage.h"
+#include "battle_entry_console.h"
 #include "battle_audio_player.h"
 #include "render_recovery.h"
 #include "colosseum3ds/battle_preview_menu.h"
@@ -27,7 +28,7 @@ static void trace_turn(FILE *f,const C3BattlePreview *b)
         fprintf(f,"preview_event index=%u hp=%u,%u,%u,%u draws=%llu text=%s\n",i,e->hp[0],e->hp[1],e->hp[2],e->hp[3],(unsigned long long)e->draws,e->text);}
     fflush(f);
 }
-int c3_battle_preview_scene_run(const C3BattleRequest *request,FILE *trace)
+int c3_battle_preview_scene_run(const C3BattleRequest *request,const uint8_t *entry_body,size_t entry_bytes,FILE *trace)
 {
     C3BattlePreview *battle=calloc(1,sizeof *battle);C3BattleInitTables init;C3BattlePreviewTables tables;
     C3BattlePreviewMenu menu;C3N3dsInput input={0};char error[192]={0};int result=0,dirty=1;
@@ -38,10 +39,19 @@ int c3_battle_preview_scene_run(const C3BattleRequest *request,FILE *trace)
     c3_battle_preview_menu_init(&menu);
     if(!battle)snprintf(error,sizeof error,"Preview allocation failed.");
     else if(c3_battle_init_load(&init,BOOT_ROOT "willie.c3i",error)&&
-            c3_battle_preview_load(&tables,BOOT_ROOT "willie.c3p",error)&&
-            c3_battle_preview_begin(battle,request,&init,&tables,0x12345678u,error)){
-        if(trace){fprintf(trace,"preview_begin build=%s seed=12345678 enemy_policy=uniform_legal experimental=1\n",C3_BUILD_ID);fflush(trace);}
-        trace_turn(trace,battle);
+            c3_battle_preview_load(&tables,BOOT_ROOT "willie.c3p",error)){
+        /* Original trainer entry first: when its private pack is present the
+         * battle starts from the entry-built FightPokemon and session RNG.
+         * Only an absent pack falls back to the preview roster initializer;
+         * a failed entry is reported, never silently replaced. */
+        int entry=entry_body?c3_battle_entry_console_run(10,entry_body,entry_bytes,trace,request,&tables,battle,error):0;
+        const char *source=entry>0?"entry_fightpokemon":"roster_initializer";
+        if(entry==0&&!c3_battle_preview_begin(battle,request,&init,&tables,0x12345678u,error))entry=-1;
+        if(entry>=0){
+            if(trace){fprintf(trace,"preview_begin build=%s seed=%08lx rng_draws=%llu source=%s enemy_policy=uniform_legal experimental=1\n",
+                C3_BUILD_ID,(unsigned long)battle->seed,(unsigned long long)battle->rng.draws,source);fflush(trace);}
+            trace_turn(trace,battle);
+        }
     }
     if(!stage&&!error[0])snprintf(error,sizeof error,"Battle stage allocation failed.");
     uint64_t load_start=c3_n3ds_time_us();
@@ -172,7 +182,9 @@ int c3_battle_preview_from_game_state(const C3GameState *state,FILE *trace)
         uint8_t *before=malloc(bytes);
         if(before) {
             memcpy(before,body,bytes);
-            int result=c3_battle_preview_scene_run(&request,trace);
+            /* The original trainer entry runs inside the scene, within this
+             * state guard, and seeds the battle; nothing is authoritative. */
+            int result=c3_battle_preview_scene_run(&request,body,bytes,trace);
             size_t after_bytes=0;const uint8_t *after=c3_game_state_body(state,&after_bytes);
             int unchanged=after&&after_bytes==bytes&&!memcmp(before,after,bytes);
             if(trace){
@@ -207,7 +219,7 @@ int c3_battle_preview_probe_run(void)
         size_t bytes;const uint8_t *body=c3_game_state_body(&state,&bytes);const uint32_t args[]={10,1,0};
         if(c3_battle_request(&request,&data,args,body,bytes,error)){
             if(trace){fprintf(trace,"preview_probe source=synthetic_entry real_tables=1 fresh_game=1 persisted_save_loaded=0 build=%s\n",C3_BUILD_ID);fflush(trace);}
-            result=c3_battle_preview_scene_run(&request,trace)<0?1:0;
+            result=c3_battle_preview_scene_run(&request,NULL,0,trace)<0?1:0;
         }
     }
     if(error[0]){consoleClear();printf("BATTLE PREVIEW PROBE\n\n%s\n\nSTART + SELECT: exit\n",error);c3_n3ds_wait_for_exit();}
