@@ -170,8 +170,8 @@ C3BattleFrameResult c3_battle_frame_step(C3BattleActionFrame *f)
             f->synchronous.call(f->synchronous.user,&f->action):1;
     }
     f->in_call=0;
-    if(!queue_valid(f->queue) || reply.state<C3_BATTLE_ROUTINE_RETURN ||
-       reply.state>C3_BATTLE_ROUTINE_ERROR ||
+    if(!queue_valid(f->queue) || /* Unsigned compare also rejects negative values where the enum is signed. */
+       (unsigned)reply.state>(unsigned)C3_BATTLE_ROUTINE_ERROR ||
        (reply.state==C3_BATTLE_ROUTINE_YIELD &&
         (reply.wait<=C3_BATTLE_WAIT_NONE || reply.wait>C3_BATTLE_WAIT_CHILD)) ||
        (reply.state!=C3_BATTLE_ROUTINE_YIELD && reply.wait!=C3_BATTLE_WAIT_NONE)){
