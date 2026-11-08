@@ -2,6 +2,7 @@
  * Needs C3_ENTRY_PACK and C3_ENTRY_NEWGAME for the entry; without them only
  * argument refusals run. */
 #include "colosseum3ds/battle_state.h"
+#include "colosseum3ds/battle_script.h"
 #include "colosseum3ds/game_state.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -29,6 +30,44 @@ static uint8_t *read_file(const char *path,size_t *n)
     uint8_t *d=malloc((size_t)len);CHECK(d&&fread(d,1,(size_t)len,f)==(size_t)len);fclose(f);*n=(size_t)len;return d;
 }
 static uint32_t be32(const uint8_t *p){return (uint32_t)p[0]<<24|(uint32_t)p[1]<<16|(uint32_t)p[2]<<8|p[3];}
+
+/* First condition row of a category, and where its slot lives. */
+static uint16_t first_of(const C3BattleState *s,uint16_t category,uint8_t *index)
+{
+    for(uint16_t id=1;id<s->conditions.count;++id){const uint8_t *r=s->conditions.rows+id*C3_CONDITION_ROW_BYTES;
+        if(((uint16_t)r[8]<<8|r[9])==category){*index=r[1];return id;}}
+    return 0;
+}
+static void put16(uint8_t *p,uint16_t v){p[0]=(uint8_t)(v>>8);p[1]=(uint8_t)v;}
+static void conditions(C3BattleState *s,uint32_t fo,uint32_t fp)
+{
+    static const struct{uint16_t category;uint32_t slot_base_kind;}cases[]={{0xD8,0},{0xCD,1},{0x7C,2},{0xC8,3}};
+    for(unsigned i=0;i<4;++i){
+        uint8_t index=0;uint16_t id=first_of(s,cases[i].category,&index);CHECK(id);
+        uint32_t base=cases[i].slot_base_kind==0?fo+0x15C:cases[i].slot_base_kind==1?fp+0x13C:
+            cases[i].slot_base_kind==2?fp+4+0x64:fp+4+0xE8;
+        uint8_t *slot=c3_battle_arena_bytes(&s->arena,base+index*16u,2);CHECK(slot);
+        uint8_t saved[2];memcpy(saved,slot,2);
+        int fault=0;
+        CHECK(!c3_battle_condition_check(s,fo,id,&fault)&&!fault);         /* not set on the real record */
+        put16(slot,id);
+        CHECK(c3_battle_condition_check(s,fo,id,&fault)&&!fault);
+        put16(slot,(uint16_t)(id+1));                                     /* a different condition */
+        CHECK(!c3_battle_condition_check(s,fo,id,&fault));
+        memcpy(slot,saved,2);
+        printf("condition category %#x id %u slot %u ok\n",cases[i].category,id,index);
+    }
+    /* FightWaza conditions (category 0x2A, kind 6) via the generic slot test;
+     * fn_802026E4 itself returns 0 for that category. */
+    uint8_t index=0;uint16_t id=first_of(s,0x2A,&index);CHECK(id);
+    uint32_t fw=fo+0x49C;uint8_t *slot=c3_battle_arena_bytes(&s->arena,fw+8+index*16u,2);CHECK(slot);
+    put16(slot,id);int fault=0;
+    CHECK(c3_battle_condition_present(s,fw,id,&fault)&&!fault);
+    CHECK(!c3_battle_condition_check(s,fo,id,&fault));
+    put16(slot,0);
+    CHECK(!c3_battle_condition_check(s,fo,0,&fault));                     /* id 0 */
+    CHECK(!c3_battle_condition_check(s,fo,500,&fault));                   /* beyond the table */
+}
 
 static void original(const char *pack_path,const char *newgame)
 {
@@ -102,6 +141,14 @@ static void original(const char *pack_path,const char *newgame)
     CHECK(c3_battle_fight_out_check_fight_out(s,fo,NULL));
     int fault=0;
     CHECK(!c3_battle_pokemon_check_valid(s,0x80001000u,&fault)&&fault); /* outside the arena */
+    const char *script_pack=getenv("C3_SCRIPT_PACK");
+    if(script_pack){
+        size_t sn;uint8_t *sb=read_file(script_pack,&sn);C3BattleScriptPack sp;char se[C3_SCRIPT_ERROR_SIZE];
+        CHECK(c3_battle_script_pack_decode(&sp,sb,sn,se)&&sp.condition_count==86);
+        s->conditions=(C3BattleDataRows){sp.conditions,sp.condition_count,C3_CONDITION_ROW_BYTES};
+        conditions(s,fo,fp);
+        free(sb);
+    }
     free(s);free(e);c3_game_state_free(&game);free(pack);free(bytes);
 }
 

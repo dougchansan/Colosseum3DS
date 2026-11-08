@@ -25,21 +25,23 @@ static int pack_fail(char *e,const char *m){if(e)snprintf(e,C3_SCRIPT_ERROR_SIZE
 
 int c3_battle_script_pack_decode(C3BattleScriptPack *out,const uint8_t *b,size_t n,char *e)
 {
-    static const struct{char tag[5];uint32_t base,len;}want[4]={
+    enum{SECTIONS=6};
+    static const struct{char tag[5];uint32_t base,len;}want[SECTIONS]={
         {"SCR ",C3_SCRIPT_REGION_BASE,C3_SCRIPT_REGION_BYTES},{"EFF ",0x80379BFFu,C3_SCRIPT_EFFECTS*4u},
-        {"WSD ",C3_SCRIPT_WSD_BASE,C3_SCRIPT_WSD_BYTES},{"WDT ",C3_SCRIPT_WDT_BASE,C3_SCRIPT_WDT_BYTES}};
+        {"WSD ",C3_SCRIPT_WSD_BASE,C3_SCRIPT_WSD_BYTES},{"WDT ",C3_SCRIPT_WDT_BASE,C3_SCRIPT_WDT_BYTES},
+        {"CNC ",0x80478B48u,4},{"CND ",0x8035BBA8u,C3_CONDITION_TABLE_BYTES}};
     static const uint8_t dol_sha1[20]={0x87,0x0e,0x8b,0x96,0x93,0xca,0x78,0x07,0x82,0xd8,
         0x0f,0x22,0xa6,0xa4,0x57,0x2d,0x8b,0xa9,0x45,0x8f};
-    uint8_t digest[20];size_t expect=64+4*12;const uint8_t *data[4];
+    uint8_t digest[20];size_t expect=64+SECTIONS*12;const uint8_t *data[SECTIONS];
     if(!out||!b)return pack_fail(e,"Missing move-script pack.");
-    for(unsigned i=0;i<4;++i)expect+=want[i].len;
-    if(n!=expect||memcmp(b,"C3W1",4)||be32(b+4)!=1||be32(b+8)!=n||be32(b+12)!=4||memcmp(b+16,dol_sha1,20))
+    for(unsigned i=0;i<SECTIONS;++i)expect+=want[i].len;
+    if(n!=expect||memcmp(b,"C3W1",4)||be32(b+4)!=2||be32(b+8)!=n||be32(b+12)!=SECTIONS||memcmp(b+16,dol_sha1,20))
         return pack_fail(e,"Unsupported or damaged move-script pack.");
     for(unsigned i=56;i<64;++i)if(b[i])return pack_fail(e,"Unsupported or damaged move-script pack.");
     c3_save_codec_sha1(digest,b+64,(uint32_t)(n-64));
     if(memcmp(digest,b+36,20))return pack_fail(e,"Move-script pack checksum mismatch.");
-    size_t at=64+4*12;
-    for(unsigned i=0;i<4;++i){const uint8_t *d=b+64+12*i;
+    size_t at=64+SECTIONS*12;
+    for(unsigned i=0;i<SECTIONS;++i){const uint8_t *d=b+64+12*i;
         if(memcmp(d,want[i].tag,4)||be32(d+4)!=want[i].base||be32(d+8)!=want[i].len)
             return pack_fail(e,"Move-script pack sections are out of order.");
         data[i]=b+at;at+=want[i].len;}
@@ -51,6 +53,9 @@ int c3_battle_script_pack_decode(C3BattleScriptPack *out,const uint8_t *b,size_t
             return pack_fail(e,"Move-script effect pointer is outside the script region.");
     }
     memcpy(next.wsd,data[2],sizeof next.wsd);memcpy(next.wdt,data[3],sizeof next.wdt);
+    next.condition_count=be32(data[4]);next.conditions=data[5];
+    if(next.condition_count>C3_CONDITION_TABLE_BYTES/C3_CONDITION_ROW_BYTES)
+        return pack_fail(e,"Condition count exceeds the condition table.");
     *out=next;if(e)e[0]=0;return 1;
 }
 

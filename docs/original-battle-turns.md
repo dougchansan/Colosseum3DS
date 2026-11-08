@@ -141,6 +141,15 @@ interpreter yet.
   0x120). All four entry-built battlers are valid and in battle after
   send-out.
 
+- Conditions: the DOL-table pack (now version 2) adds the condition table
+  `lbl_8035BBA8` (86 rows) and its count. `c3_battle_condition_present`
+  lowers the generic slot test `fn_8011B67C` (row kind/slot/selector through
+  `statusGetStatus`, Pokemon/FightPokemon/FightOutPokemon and FightWaza) and
+  `c3_battle_condition_check` the category dispatch `fn_802026E4`
+  (Pokemon slots at PokemonBios `+0x64`/`+0xE8`, FightPokemon `+0x13C`,
+  FightOutPokemon `+0x15C` x52). Real rows of every category are exercised on
+  the entry-built records.
+
 ## Increments
 
 1. **Execution and end of turn through original code.** A minimal

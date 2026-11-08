@@ -33,12 +33,16 @@
 #define C3_SCRIPT_WDT_BYTES 0xA6u
 #define C3_SCRIPT_MAX_DEPTH 4u
 #define C3_SCRIPT_ERROR_SIZE 160u
+#define C3_CONDITION_ROW_BYTES 0x14u
+#define C3_CONDITION_TABLE_BYTES 0x6B8u
 
 typedef struct {
     const uint8_t *script;                  /* borrowed: C3_SCRIPT_REGION_BYTES */
     uint32_t effects[C3_SCRIPT_EFFECTS];    /* GameCube script addresses */
     uint8_t wsd[C3_SCRIPT_WSD_BYTES];
     uint8_t wdt[C3_SCRIPT_WDT_BYTES];
+    const uint8_t *conditions;              /* borrowed condition rows (0x14 each) */
+    uint32_t condition_count;               /* lbl_80478B48 */
 } C3BattleScriptPack;
 
 /* Validates header, digest, section order/bases/lengths and every effect

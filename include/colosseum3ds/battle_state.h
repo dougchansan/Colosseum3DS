@@ -30,6 +30,8 @@ typedef struct {
     uint16_t result;          /* lbl_8047B5D8: 0 while the battle runs */
     C3BattleSpeciesTable species;
     C3BattleDataRows moves, floors;
+    C3BattleDataRows conditions; /* lbl_8035BBA8 rows (0x14), set by the caller
+                                    from the battle DOL-table pack */
 } C3BattleState;
 
 /* Copy and relocate a DONE entry session's trainer records. The pack's
@@ -53,4 +55,19 @@ int c3_battle_fight_pokemon_check_valid(const C3BattleState *state, uint32_t fig
 int c3_battle_fight_pokemon_check_fight_out(const C3BattleState *state, uint32_t fight_pokemon, int *fault);
 int c3_battle_fight_out_check_valid(const C3BattleState *state, uint32_t fight_out, int *fault);
 int c3_battle_fight_out_check_fight_out(const C3BattleState *state, uint32_t fight_out, int *fault);
+
+/* fn_8011B67C: is condition `id` stored in its slot of `object`? The
+ * condition row gives the status kind (+0), slot index (+1) and record
+ * selector (+8); the slot is statusGetStatus(kind, object, 0, selector, 0)
+ * + index * 16 and holds the condition ID as a u16. Kinds 5 (Pokemon /
+ * FightPokemon / FightOutPokemon) and 6 (FightWaza) are served; kind 0 and
+ * kinds above 9 read as absent (statusGetStatus returns 0); kinds 1-4 and
+ * 7-9 are original paths not modelled yet: absent, and *fault is set. */
+int c3_battle_condition_present(const C3BattleState *state, uint32_t object,
+                                uint16_t id, int *fault);
+/* fn_802026E4 on a FightOutPokemon: categories 0x7C/0xC8 test its Pokemon
+ * (PokemonBios +0x64 / +0xE8), 0xCD its FightPokemon, 0xD8 itself; other
+ * categories return 0, as in the original. */
+int c3_battle_condition_check(const C3BattleState *state, uint32_t fight_out,
+                              uint16_t id, int *fault);
 #endif

@@ -113,3 +113,54 @@ int c3_battle_fight_out_check_fight_out(const C3BattleState *s,uint32_t fo,int *
     if((int32_t)status(s,fo,0x120,fault)==1)return 0;
     return c3_battle_fight_pokemon_check_fight_out(s,status(s,fo,0xD6,fault),fault);
 }
+
+/* ---- conditions (field_range_80117E58.c, fight_range_80201764.c) -------- */
+
+static const uint8_t *condition_row(const C3BattleState *s,uint16_t id)
+{
+    const C3BattleDataRows *r=&s->conditions;
+    return r->rows&&id<r->count?r->rows+(uint32_t)id*r->stride:NULL;
+}
+static uint16_t condition_category(const C3BattleState *s,uint16_t id)  /* fn_80119ED0 */
+{const uint8_t *row=condition_row(s,id);return row?be16(row+8):0;}
+
+/* statusGetStatus(kind, object, 0, selector, 0) for the condition arrays. */
+static uint32_t condition_base(const C3BattleState *s,uint8_t kind,uint32_t object,uint16_t selector,int *fault)
+{
+    uint32_t v=0;
+    if(!object||kind==0||kind>9)return 0;                        /* statusGetStatus: 0 */
+    if(kind==5){
+        if(selector==0x7C)return object+0x64;                    /* fn_8011F474: condition[16] */
+        if(selector==0xC8)return object+0xE8;                    /* fn_8011EDC4: attest2[16] */
+        if(c3_battle_fight_status_get(&s->arena,object,selector,0,&v))return v;
+    }else if(kind==6){
+        if(c3_battle_waza_status_get(&s->arena,&s->moves,object,0,selector,0,&v))return v;
+    }
+    if(fault)*fault=1;                                           /* kinds 1-4, 7-9: not modelled */
+    return 0;
+}
+int c3_battle_condition_present(const C3BattleState *s,uint32_t object,uint16_t id,int *fault)
+{
+    if(!s||!id)return 0;
+    const uint8_t *row=condition_row(s,id);
+    uint8_t kind=row?row[0]:0,index=row?row[1]:0;              /* fn_80119F10, fn_80119E90 */
+    uint32_t base=condition_base(s,kind,object,condition_category(s,id),fault);
+    if(!base)return 0;
+    const uint8_t *slot=bytes(s,base+(uint32_t)index*16u,2,fault);
+    if(!slot)return 0;
+    uint16_t stored=be16(slot);                                  /* fn_8011A090 */
+    return stored!=0&&stored==id;
+}
+int c3_battle_condition_check(const C3BattleState *s,uint32_t fo,uint16_t id,int *fault)
+{
+    if(!s)return 0;
+    uint16_t category=condition_category(s,id);
+    if(category==0x7C||category==0xC8||category==0xCD){
+        uint32_t fp=fo?status(s,fo,0xD6,fault):0;
+        if(category==0xCD)return c3_battle_condition_present(s,fp,id,fault);
+        uint32_t poke=fp?status(s,fp,0xCC,fault):0;
+        return c3_battle_condition_present(s,poke,id,fault);      /* fn_80121ADC */
+    }
+    if(category!=0xD8)return 0;
+    return c3_battle_condition_present(s,fo,id,fault);
+}

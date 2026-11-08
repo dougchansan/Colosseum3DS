@@ -503,7 +503,7 @@ battle-fight-out-check: build/test_battle_fight_out
 test: battle-fight-out-check
 
 # Battle state from the trainer entry and the original validity checks.
-BATTLE_STATE_SOURCES = $(sort src/battle_state.c $(BATTLE_FIGHT_OUT_SOURCES))
+BATTLE_STATE_SOURCES = $(sort src/battle_state.c src/battle_script.c $(BATTLE_FIGHT_OUT_SOURCES))
 build/test_battle_state: tests/test_battle_state.c $(BATTLE_STATE_SOURCES) $(HEADERS) $(BATTLE_STATUS_TABLES) $(BATTLE_ENTRY_SESSION_GENERATED) | build
 	$(CC) $(CPPFLAGS) -Isrc -Ibuild $(CFLAGS) tests/test_battle_state.c $(BATTLE_STATE_SOURCES) $(LDFLAGS) -lm -o $@
 

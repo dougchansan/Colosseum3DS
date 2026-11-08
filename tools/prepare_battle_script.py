@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Prepare the private move-script pack (C3W1) from the canonical GC6E01 main.dol.
+"""Prepare the private battle DOL-table pack (C3W1) from the canonical GC6E01 main.dol.
 
 The pack holds original bytes only: the move-script bytecode region, the
-move-effect -> script table (lbl_80379BFF) and the initial bytes of the two
-initialized-data windows that script operands address. It holds no battle
-state or results. Keep it private: it is original game data and must never be
-added to the source checkout.
+move-effect -> script table (lbl_80379BFF), the initial bytes of the two
+initialized-data windows that script operands address, and the condition
+table (lbl_8035BBA8) with its count (lbl_80478B48). It holds no battle state
+or results. Keep it private: it is original game data and must never be added
+to the source checkout.
 
 Layout (big-endian): 64-byte header
   +0  "C3W1"   +4 version   +8 total bytes   +12 section count
@@ -20,7 +21,7 @@ from pathlib import Path
 
 DOL_SHA1 = "870e8b9693ca780782d80f22a6a4572d8ba9458f"
 DOL_BYTES = 3779808
-VERSION = 1
+VERSION = 2
 HEADER_BYTES = 64
 EFFECT_COUNT = 214
 SECTIONS = (
@@ -28,7 +29,10 @@ SECTIONS = (
     (b"EFF ", 0x80379BFF, EFFECT_COUNT * 4),          # effect -> script pointers
     (b"WSD ", 0x80478D78, 0x10),                      # .sdata script work bytes
     (b"WDT ", 0x8038FF5A, 0x80390000 - 0x8038FF5A),   # .data script variables
+    (b"CNC ", 0x80478B48, 4),                         # .sdata condition count
+    (b"CND ", 0x8035BBA8, 0x6B8),                     # condition rows (0x14 each)
 )
+CONDITION_ROW = 0x14
 
 
 def u32(data, offset):
@@ -53,6 +57,9 @@ def make_pack(dol):
         target = u32(blobs[1], 4 * i)
         if not scr_base <= target < scr_base + scr_len:
             raise ValueError(f"Effect {i} script pointer {target:#x} is outside the script region")
+    count = u32(blobs[4], 0)
+    if count * CONDITION_ROW > len(blobs[5]):
+        raise ValueError(f"Condition count {count} exceeds the condition table")
     directory = b"".join(struct.pack(">4sII", tag, base, length) for tag, base, length in SECTIONS)
     payload = directory + b"".join(blobs)
     header = bytearray(HEADER_BYTES)
