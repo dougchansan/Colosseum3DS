@@ -27,4 +27,11 @@ int c3_battle_runtime_trainer_create(
     uint8_t backing[C3_BATTLE_RUNTIME_TRAINER_BYTES],
     const uint8_t source_hero[C3_BATTLE_TRAINER_BYTES],uint16_t trainer_id,
     uint32_t controller_id,uint32_t sequence_identity);
+
+/* Original fightOutPokemonInit (fight_out_pokemon_exact_80206A04.c) on one
+ * 0x6E0-byte FightOutPokemon record: the same compiled source the trainer
+ * constructor runs for its slots. NULL is the source no-op. Failure (busy
+ * shared state or an unexpected accessor path) leaves the record unchanged. */
+#define C3_BATTLE_FIGHT_OUT_POKEMON_RECORD 0x6E0u
+int c3_battle_fight_out_pokemon_init(uint8_t record[C3_BATTLE_FIGHT_OUT_POKEMON_RECORD]);
 #endif

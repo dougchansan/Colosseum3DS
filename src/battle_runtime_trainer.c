@@ -162,3 +162,12 @@ int c3_battle_runtime_trainer_create(u8 backing[C3_BATTLE_RUNTIME_TRAINER_BYTES]
     int ok=!boundary_error;if(ok)memcpy(backing,staged,sizeof(staged));
     boundary_error=0;atomic_flag_clear_explicit(&in_use,memory_order_release);return ok;
 }
+int c3_battle_fight_out_pokemon_init(u8 record[C3_BATTLE_FIGHT_OUT_POKEMON_RECORD])
+{
+    if(!record)return 1;
+    if(atomic_flag_test_and_set_explicit(&in_use,memory_order_acquire))return 0;
+    u8 staged[C3_BATTLE_FIGHT_OUT_POKEMON_RECORD];memcpy(staged,record,sizeof(staged));boundary_error=0;
+    c3r_src_fightOutPokemonInit(staged);
+    int ok=!boundary_error;if(ok)memcpy(record,staged,sizeof(staged));
+    boundary_error=0;atomic_flag_clear_explicit(&in_use,memory_order_release);return ok;
+}

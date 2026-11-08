@@ -96,7 +96,25 @@ opcodes, the FightOutPokemon status model behind `statusGet/SetStatus`, and
 targets are the next lowering steps; nothing on the console calls the
 interpreter yet.
 
-## Increments
+## Battle records
+
+- `src/battle_status.c` serves `pokemonGetStatus`/`pokemonSetStatus` for the
+  FightPokemon/FightOutPokemon selectors 0xCB–0x123 from a table generated
+  from the pinned accessors (`tools/prepare_battle_status_fields.py`): 65
+  value fields and 11 address-of fields, with getter/setter agreement
+  asserted. The move fields 0xDA–0xE4 and 0x123 are computed and still to be
+  lowered. Records live in an arena addressed by synthetic guest addresses
+  (`0x90000000`+), so stored record pointers and pointer arithmetic behave as
+  on the GameCube, with every access bounds-checked.
+- Each trainer record holds two active FightOutPokemon (0x6E0 bytes) at
+  `+0x1314` and one more of that size at `+0x20D4`.
+- `src/battle_fight_out.c` lowers `fightOutPokemonCreate` (send-out
+  construction): the trainer module's compiled original `fightOutPokemonInit`,
+  the FightPokemon links, and types/ability from the species rows via
+  `pokemonGetTokuseiDataId`. Over the real entry, Umbreon/Espeon/Zigzagoon get
+  types 17/17, 14/14, 0/0 and abilities 28, 28, 53
+  (`tests/test_battle_fight_out.c`).
+
 
 1. **Execution and end of turn through original code.** A minimal
    FightFloor/FightOutPokemon state built by `fightOutPokemonCreate` from the

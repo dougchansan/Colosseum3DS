@@ -34,5 +34,7 @@ int c3_battle_fight_status_set(C3BattleArena *arena, uint32_t object,
                                uint32_t selector, uint32_t index, uint32_t value);
 
 #define C3_FIGHT_OUT_POKEMON_BYTES 0x6E0u
-#define C3_RUNTIME_FIGHT_OUT_OFFSET 0x1314u /* three FightOutPokemon per trainer */
+#define C3_RUNTIME_FIGHT_OUT_OFFSET 0x1314u /* two active FightOutPokemon per trainer
+                                              (trainer field 0x46); another record
+                                              of this size sits at +0x20D4 (0x47) */
 #endif

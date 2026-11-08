@@ -489,4 +489,15 @@ all: build/test_battle_status
 battle-status-check: build/test_battle_status
 	./build/test_battle_status
 test: battle-status-check
+
+# fightOutPokemonCreate over the arena; private run with C3_ENTRY_PACK/C3_ENTRY_NEWGAME.
+BATTLE_FIGHT_OUT_SOURCES = $(sort src/battle_fight_out.c src/battle_status.c $(BATTLE_ENTRY_SESSION_SOURCES))
+build/test_battle_fight_out: tests/test_battle_fight_out.c $(BATTLE_FIGHT_OUT_SOURCES) $(HEADERS) build/battle_status_fields.inc $(BATTLE_ENTRY_SESSION_GENERATED) | build
+	$(CC) $(CPPFLAGS) -Isrc -Ibuild $(CFLAGS) tests/test_battle_fight_out.c $(BATTLE_FIGHT_OUT_SOURCES) $(LDFLAGS) -lm -o $@
+
+all: build/test_battle_fight_out
+.PHONY: battle-fight-out-check
+battle-fight-out-check: build/test_battle_fight_out
+	./build/test_battle_fight_out
+test: battle-fight-out-check
 test: battle-runtime-trainer-check
