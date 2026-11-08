@@ -20,8 +20,15 @@ pinned to the locally validated digest recorded in the workflow. The private
 verifier retains its original pinned GHCR image and read-only source mount;
 original game bytes are never uploaded as artifacts.
 
-Jobs require a private repository, and PR jobs require a head branch from this
-same repository. The runner has its own registration and working directory;
+The host, capture and ARM jobs run whether the repository is public or private.
+PR jobs require a head branch from this same repository, so fork PRs never reach
+the local runner through these job conditions. Because a fork PR could edit the
+workflow itself, keep the repository's fork-PR workflow approval set to require
+approval for all outside contributors. Logs and the uploaded build artifact are
+public when the repository is public: they contain only tracked-source output,
+and original game bytes never enter these jobs. The manual private-input
+verifier still requires a private repository. The runner has its own
+registration and working directory;
 existing runners registered to other repositories are left unchanged. Keep its
 registration credentials and machine paths out of Git.
 
