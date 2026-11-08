@@ -70,11 +70,11 @@ ifneq ($(C3_BOOT_ONLY),1)
 export _3DSXFLAGS += --romfs=$(CURDIR)/$(BUILD)/romfs
 endif
 
-.PHONY: all clean prepare-gekko prepare-save prepare-battle-action prepare-battle-rng prepare-battle-damage prepare-battle-rules prepare-battle-pokemon prepare-battle-trainer prepare-battle-fight-pokemon prepare-battle-party-sort prepare-battle-runtime-trainer
+.PHONY: all clean prepare-gekko prepare-save prepare-battle-action prepare-battle-rng prepare-battle-damage prepare-battle-rules prepare-battle-pokemon prepare-battle-trainer prepare-battle-fight-pokemon prepare-battle-party-sort prepare-battle-runtime-trainer prepare-battle-status-fields
 ifeq ($(C3_BOOT_ONLY),1)
-all: prepare-save prepare-battle-action prepare-battle-rng prepare-battle-damage prepare-battle-rules prepare-battle-pokemon prepare-battle-trainer prepare-battle-fight-pokemon prepare-battle-party-sort prepare-battle-runtime-trainer | $(BUILD)
+all: prepare-save prepare-battle-action prepare-battle-rng prepare-battle-damage prepare-battle-rules prepare-battle-pokemon prepare-battle-trainer prepare-battle-fight-pokemon prepare-battle-party-sort prepare-battle-runtime-trainer prepare-battle-status-fields | $(BUILD)
 else
-all: prepare-save prepare-battle-action prepare-battle-rng prepare-battle-damage prepare-battle-rules prepare-battle-pokemon prepare-battle-trainer prepare-battle-fight-pokemon prepare-battle-party-sort prepare-battle-runtime-trainer prepare-gekko $(BUILD)/romfs/p5_material.shbin
+all: prepare-save prepare-battle-action prepare-battle-rng prepare-battle-damage prepare-battle-rules prepare-battle-pokemon prepare-battle-trainer prepare-battle-fight-pokemon prepare-battle-party-sort prepare-battle-runtime-trainer prepare-battle-status-fields prepare-gekko $(BUILD)/romfs/p5_material.shbin
 endif
 	$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile.3ds
 
@@ -83,6 +83,9 @@ prepare-save:
 
 prepare-battle-action:
 	$(PYTHON) tools/prepare_battle_action.py
+
+prepare-battle-status-fields:
+	$(PYTHON) tools/prepare_battle_status_fields.py
 
 prepare-battle-damage:
 	$(PYTHON) tools/prepare_battle_damage.py

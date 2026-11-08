@@ -476,4 +476,17 @@ all: build/test_battle_script
 battle-script-check: build/test_battle_script
 	./build/test_battle_script
 test: battle-script-check
+
+# FightPokemon/FightOutPokemon status accessors (field table generated from source).
+build/battle_status_fields.inc: tools/prepare_battle_status_fields.py vendor/colosseum/src/game/pokemon_get_status_exact_8012640C.c vendor/colosseum/src/game/pokemon_range_8011F5FC.c vendor/colosseum/src/game/fight_trainer_db_range_801FBD10.c | build
+	python3 tools/prepare_battle_status_fields.py --output $@
+
+build/test_battle_status: tests/test_battle_status.c src/battle_status.c include/colosseum3ds/battle_status.h build/battle_status_fields.inc | build
+	$(CC) $(CPPFLAGS) -Isrc -Ibuild $(CFLAGS) tests/test_battle_status.c src/battle_status.c $(LDFLAGS) -o $@
+
+all: build/test_battle_status
+.PHONY: battle-status-check
+battle-status-check: build/test_battle_status
+	./build/test_battle_status
+test: battle-status-check
 test: battle-runtime-trainer-check
