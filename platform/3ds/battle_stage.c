@@ -84,11 +84,11 @@ int c3_battle_stage_load(C3BattleStage *s,const char *root,const uint16_t hp[4],
         float span=sqrtf(axis[0]*axis[0]+axis[1]*axis[1]);
         if(isfinite(span)&&span>.5f){
             axis[0]/=span;axis[1]/=span;
-            /* Back 6.3 m keeps both player Pokemon inside the 30-degree lens at
-             * the 5:3 top-screen width; height 4.0 puts the opponents near
-             * frame centre and the player's pair in the lower third. */
-            s->camera.eye[0]=player[0]-axis[0]*6.3f;s->camera.eye[1]=player[1]+4.0f;s->camera.eye[2]=player[2]-axis[1]*6.3f;
-            s->camera.target[0]=player[0]+axis[0]*span*.86f;s->camera.target[1]=player[1]+.7f;s->camera.target[2]=player[2]+axis[1]*span*.86f;
+            /* Back 7.5 keeps both player Pokemon whole inside the 30-degree
+             * lens at the 5:3 top-screen width (lower left/right); height 3.2
+             * keeps the opponent trainer visible above the player's trainer. */
+            s->camera.eye[0]=player[0]-axis[0]*7.5f;s->camera.eye[1]=player[1]+3.2f;s->camera.eye[2]=player[2]-axis[1]*7.5f;
+            s->camera.target[0]=player[0]+axis[0]*span*.75f;s->camera.target[1]=player[1]+.9f;s->camera.target[2]=player[2]+axis[1]*span*.75f;
         }
     }
 #endif
