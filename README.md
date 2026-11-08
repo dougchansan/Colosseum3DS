@@ -1,26 +1,45 @@
 # Colosseum3DS
 
+The [graphical bottom-screen UI](docs/bottom-screen-ui.md) now uses privately
+prepared original menu artwork and fonts for title/menu flow, dialogue, saves
+and battle controls. See that guide for `ui.c3ui` preparation and verification.
+The [in-game menu/P★DA](docs/ingame-pda.md) adds original UI artwork and live
+save-backed Mail, Strategy Memo, Snag List, inventory actions and trainer pages,
+plus original model previews and ringtone audition. See [in-game menu preparation](docs/ingame-pda.md).
+
 A native **New Nintendo 3DS / New 3DS XL / New 2DS XL** port project for
 Pokémon Colosseum, based on Count-Sheep's decompilation and the maintainer's
 private GC6E01 build inputs.
 
-**Current milestone: native boot, New Game, opening movie and Outskirt Stand.**
+**Current milestone: native boot, New Game, and the first Outskirt Stand visit.**
 With privately prepared GC6E01 assets, this branch plays the two original boot
 videos, renders the live 3D title, and opens a native main menu. New Game creates
 the source-defined initial state, offers WES/SETH/THOMAS or a custom name, then
 plays the original hideout movie and the Outskirt Stand bike arrival. Wes can
 move around the original map with source collision data. The native pause menu
 shows the party and explicitly saves the game; Continue reloads the saved party,
-progress and area entrance. This is a limited first-area implementation, with
-NPC dialogue, battles and subsequent story progression still unported.
+progress and area entrance. The original exterior/shop scripts now run through
+a bounded GSVM adapter, with original NPC dialogue, choices, door events, and
+the animated TV news scene. The first Willie encounter retains the original
+battle request and current party, but **combat execution is not implemented**;
+the script stays pending at that boundary. Later areas remain unavailable.
+See the [first-visit implementation and acceptance record](docs/native-first-visit.md).
 See [native boot, reproduction and current limits](docs/native-boot.md),
 the [connected emulator validation](docs/native-first-area-validation.md), and
-the [local-agent hardware handoff](docs/native-first-area-handoff.md).
+the [local-agent hardware handoff](docs/native-story-handoff.md).
+
+The [recorded fresh-game acceptance](docs/evidence/native-story-2026-10-22/README.md)
+reached the shop, completed Willie's conversation and saved WES. A second
+native process continued that same new save, left the shop and reached the
+original encounter-10 request. Both runs used actual controller input and
+completed without detected guest faults; the combat backend remains pending.
+The preserved completed save was not installed or used for either run.
 
 Both full and focused `.3dsx` builds compile with devkitARM GCC 16.1.0. Host,
 sanitizer and connected emulator checks pass. Earlier physical-device
-checkpoints establish the smoke-test and Eevee-preview behavior; this new
-boot/menu/first-area route still needs its own physical New 3DS acceptance,
+checkpoints establish the smoke-test and Eevee-preview behavior. PR #4's shader
+fix restores the normal title, HOME suspend/resume, and clean exit on hardware.
+The combined story/first-area build still needs physical New 3DS acceptance,
 including audio, frame timing, Save/Continue and sleep/resume.
 See the [earlier hardware checkpoint](docs/hardware-validation-2026-10-21.md)
 and [historical initial validation record](docs/VALIDATION.md).
@@ -47,6 +66,8 @@ physical poses, a 600-frame benchmark and tracked memory use.
 | Graphics | Original title, Outskirt Stand map, Wes motions and bike arrival through a bounded Citro3D material subset; existing GekkoCTR Eevee route retained |
 | Main menu | Native bottom-screen New Game/name selection, Continue, options and title return, following original menu semantics; battle choices report unavailable |
 | Game state and saves | Original initial body layout, starters, items, flags and other subsystems; original slot codec and verified `.tmp`/`.bak` storage; explicit area-entrance checkpoint and reload |
+| First-visit scripts | Original GSVM banks and messages, exterior/shop lifecycle, NPC interaction, choices, door events, and the original animated TV scene |
+| First battle boundary | Original encounter-10 records and current-party snapshot; GSVM remains pending because the combat backend is not ported |
 | Data | Streaming, bounded FSYS reader and LZSS decoder with explicit big-endian fields and caller-owned output buffers |
 | Input provenance | Pinned private build reference, canonical hash verifier and local extracted-disc preparation tool |
 | Validation | Host regression tests, malformed-data tests, sanitizer job, and a devkitARM cross-build workflow |
@@ -106,6 +127,7 @@ Controls for this bring-up application:
 - A/B/START advances the title entrance. At PRESS START, A/START opens the main menu after loading the card.
 - D-pad/Circle Pad navigates the main menu, A confirms and B returns. New Game offers the original name choices.
 - The opening movie and bike arrival play to completion. In the field, Circle Pad/D-pad moves Wes, and X/START opens the pause menu.
+- A talks to a nearby NPC or inspects an original interaction surface. A/B advances dialogue; directional input and A answer choices.
 - The pause menu shows the party, saves after confirmation, or returns to the main menu. Continue resumes at the recorded area entrance, not an arbitrary coordinate.
 - START + SELECT exits every route.
 - Menus currently use native bottom-screen text; the original window/sprite UI is still unported.
@@ -156,8 +178,9 @@ directory; decoded member support is available to subsequent loaders.
    ARM cannot run the original PPC REL code or its `_prolog` functions.
 3. Extend the working title/first-area/Eevee subsets to the original HSD runtime
    needed by later scenes, with measured resource use.
-4. Implement the Outskirt Stand NPC/event graph and first battle, original
-   menu rendering and MusyX music. Preserve supported save data during that work.
+4. Complete the original battle state/action flow and validated result writeback
+   after the current Outskirt Stand event adapter, then port original menu
+   rendering and MusyX music. Preserve supported save data during that work.
 5. Profile on physical New 3DS hardware before setting a performance target.
 
 See [porting decisions and blockers](docs/PORTING.md),

@@ -19,17 +19,48 @@ uint32_t C3D_FrameCounter(int screen);
 #define WATCHDOG_US UINT64_C(3000000)
 #define HEARTBEAT_US UINT64_C(1000000)
 
+static void (*pause_callback)(int);
+static bool callback_paused;
+
+static void set_paused(bool paused)
+{
+    if (callback_paused == paused) return;
+    callback_paused = paused;
+    if (pause_callback) pause_callback(paused ? 1 : 0);
+}
+
+void c3_render_recovery_set_pause_callback(void (*callback)(int))
+{
+    if (pause_callback == callback) {
+        if (!callback) callback_paused = false;
+        return;
+    }
+    if (pause_callback && callback_paused) pause_callback(0);
+    pause_callback = callback;
+    if (!callback) callback_paused = false;
+    else if (callback_paused) callback(1);
+}
+
 static void record(FILE *trace, const char *scene, const char *event,
                    unsigned frames, uint64_t elapsed, bool ready, bool exiting,
                    uint16_t pressed)
 {
     if (!trace) return;
+    C3TitleRenderSnapshot gpu;
+    c3_stage_renderer_snapshot(&gpu);
     fprintf(trace, "render_recovery scene=%s event=%s frames=%u elapsed_us=%llu "
             "ready=%u exit=%u input=%04x counters=%lu,%lu build=%.12s\n",
             scene, event, frames, (unsigned long long)elapsed, (unsigned)ready,
             (unsigned)exiting, (unsigned)pressed,
             (unsigned long)C3D_FrameCounter(0), (unsigned long)C3D_FrameCounter(1),
             C3_BUILD_ID);
+    fprintf(trace, "render_gpu submitted=%lu fill=%lu command=%lu transfer=%lu "
+            "words=%lu draws=%lu vertices=%lu models=%lu textures=%lu bytes=%lu\n",
+            (unsigned long)gpu.submissions, (unsigned long)gpu.memory_fills,
+            (unsigned long)gpu.command_lists, (unsigned long)gpu.display_transfers,
+            (unsigned long)gpu.last_command_words, (unsigned long)gpu.last_draw_calls,
+            (unsigned long)gpu.last_vertices, (unsigned long)gpu.scene_models,
+            (unsigned long)gpu.scene_textures, (unsigned long)gpu.gpu_buffer_bytes);
     fflush(trace);
 }
 
@@ -40,6 +71,11 @@ static void display(const char *scene, uint64_t elapsed, bool ready,
     printf("Colosseum3DS | render recovery\nBuild %.12s | %s\n\n", C3_BUILD_ID, scene);
     printf("Rendering paused: GPU %s\nWait %.1f seconds | PAD %04X\n\n",
            ready ? "ready" : "busy", (double)elapsed / 1000000.0, (unsigned)pressed);
+    C3TitleRenderSnapshot gpu;
+    c3_stage_renderer_snapshot(&gpu);
+    printf("Submit %lu | fill %lu draw %lu tx %lu\n",
+           (unsigned long)gpu.submissions, (unsigned long)gpu.memory_fills,
+           (unsigned long)gpu.command_lists, (unsigned long)gpu.display_transfers);
     if (exiting || draining) {
         printf("%s\nWaiting for GPU before releasing\nscene memory.\n\n",
                exiting ? "Exit requested." : "Changing scene.");
@@ -71,10 +107,12 @@ C3RenderRecoveryResult c3_render_recover(FILE *trace, const char *scene,
         uint64_t elapsed = now >= started ? now - started : 0;
         if (ready && (draining || pending_exit)) {
             record(trace, scene, "drained", submitted_frames, elapsed, true, pending_exit, 0);
+            set_paused(false);
             return pending_exit ? C3_RECOVERY_EXIT : C3_RECOVERY_DRAINED;
         }
         if (!paused && elapsed >= WATCHDOG_US) {
             paused = true;
+            set_paused(true);
             deferred = 0;
             record(trace, scene, "timeout", submitted_frames, elapsed, ready, pending_exit, 0);
             next_display = 0;
@@ -82,6 +120,7 @@ C3RenderRecoveryResult c3_render_recover(FILE *trace, const char *scene,
         if (ready && !draining && (!paused || retry)) {
             if (paused) record(trace, scene, "resume", submitted_frames, elapsed, true, false, 0);
             else if (deferred) c3_n3ds_defer_buttons(deferred);
+            set_paused(false);
             return paused ? C3_RECOVERY_RESUME_PAUSED : C3_RECOVERY_RESUME;
         }
 

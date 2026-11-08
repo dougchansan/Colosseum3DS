@@ -1,0 +1,27 @@
+{
+  "schema": 1,
+  "scope": "two ordinary Willie temporary pre-catch constructors",
+  "full_party_qualified": false,
+  "full_battle_qualified": false,
+  "dol_sha1": "870e8b9693ca780782d80f22a6a4572d8ba9458f",
+  "common_rel_sha1": "e816761813900aa0fd4f87d012b3b2a19d2f003e",
+  "library_sha256": "826106faed9a0b10a824df98fe10e42ffbef8cf8bdd440378eacf6ab9a04a3a5",
+  "observation_sha256": "d719ad266750b1f86d2c83ccd8121d7ecec3572a058a8bd34c3180d12066d607",
+  "matched": 2,
+  "cases": [
+    {
+      "roster_id": 238,
+      "matched_bytes": 312,
+      "draws": 147,
+      "seed_before": "0x38cd1d69",
+      "seed_after": "0x008d26d2"
+    },
+    {
+      "roster_id": 239,
+      "matched_bytes": 312,
+      "draws": 237,
+      "seed_before": "0x008d26d2",
+      "seed_after": "0x471708e9"
+    }
+  ]
+}

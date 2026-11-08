@@ -1,0 +1,56 @@
+[
+  {
+    "file": "Colosseum3DS-fresh-WES-Outskirt-save.mp4",
+    "bytes": 10284182,
+    "sha256": "2660f3eaf3c23d3edfe17f0d1e19bd803fb310e3d6f8011d7ed04eb9f1755a4c",
+    "duration_seconds": 273.066667,
+    "video_frames": 8192,
+    "width": 400,
+    "height": 480,
+    "playback_fps": "30/1",
+    "audio": false,
+    "source_recording": {
+      "file": "story-proof-fresh-1.mp4",
+      "sha256": "ce2f2201c4302d2d4ee13d9558b47870e5192e7eb2b9aa81c409e4023c304d4e",
+      "bytes": 10355194,
+      "duration_seconds": 350.0,
+      "video_frames": 10500
+    },
+    "edit": {
+      "start_seconds": 0,
+      "requested_end_seconds": 273,
+      "method": "ffmpeg -t END -c copy",
+      "description": "Only trailing idle frames after native clean exit removed. H.264 packets stream-copied; no overlays, generated frames, motion interpolation or playback-speed edits."
+    },
+    "native_executable_sha256": "fe5567d2d60835044d08ae4e335d3d47e95b20cad60914ae501fedadb9f36a63",
+    "run_record": "fresh-run.json",
+    "scope": "Actual native New 3DS executable in Azahar; sampled every two frontend frames. No hardware performance or physical-console success is implied."
+  },
+  {
+    "file": "Colosseum3DS-Continue-Willie-battle-boundary.mp4",
+    "bytes": 1221477,
+    "sha256": "665915d81579e595034b128eaec54521351794703e54f368afb2b6a794ac6ab1",
+    "duration_seconds": 83.066667,
+    "video_frames": 2492,
+    "width": 400,
+    "height": 480,
+    "playback_fps": "30/1",
+    "audio": false,
+    "source_recording": {
+      "file": "story-proof-continue-1.mp4",
+      "sha256": "f1a381f662bf69b8d901196918bec0ea2cfd8a99459e2e718f1aa749c91a25fb",
+      "bytes": 1298661,
+      "duration_seconds": 166.66666666666666,
+      "video_frames": 5000
+    },
+    "edit": {
+      "start_seconds": 0,
+      "requested_end_seconds": 83,
+      "method": "ffmpeg -t END -c copy",
+      "description": "Only trailing idle frames after native clean exit removed. H.264 packets stream-copied; no overlays, generated frames, motion interpolation or playback-speed edits."
+    },
+    "native_executable_sha256": "fe5567d2d60835044d08ae4e335d3d47e95b20cad60914ae501fedadb9f36a63",
+    "run_record": "continue-run.json",
+    "scope": "Actual native New 3DS executable in Azahar; sampled every two frontend frames. No hardware performance or physical-console success is implied."
+  }
+]

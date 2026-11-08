@@ -93,5 +93,6 @@ int main(void)
         if(!okay){gfxFlushBuffers();gfxSwapBuffers();gspWaitForVBlank();}
     }
     while(!c3_stage_renderer_try_shutdown()){aptMainLoop();svcSleepThread(1000000);}
+    c3_stage_renderer_fini();
     gfxExit();return okay?0:1;
 }

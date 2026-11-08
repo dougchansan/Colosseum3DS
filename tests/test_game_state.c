@@ -127,6 +127,43 @@ static void retail_checks(const char *pack_path,const char *directory)
     c3_game_state_free(&state);c3_game_state_free(&reload);CHECK(unlink(path)==0);
 }
 
+/* An optional user-supplied GCI is only read. Exercise the production codec
+ * and game-state service in a fresh temporary directory, checking the entire
+ * imported body instead of assuming it resembles our new-game fixture. */
+static void import_checks(const char *card_path,const char *pack_path,const char *directory)
+{
+    C3GameState state={0},reload={0};C3GameSummary before,after;
+    char error[C3_GAME_ERROR_SIZE],path[1024];size_t image_size,again_size,length;
+    unsigned char *image=read_file(card_path,&image_size),*again,*expected;
+    const unsigned char *body;
+    C3SaveInfo info;
+    CHECK(c3_save_inspect(image,image_size,&info)==C3_SAVE_OK);
+    CHECK(c3_game_state_decode(&state,image,image_size,pack_path,error));
+    CHECK(c3_game_state_summary(&state,&before));
+    body=c3_game_state_body(&state,&length);CHECK(length==C3_SAVE_BODY_SIZE);
+    expected=malloc(length);CHECK(expected!=NULL);memcpy(expected,body,length);
+    CHECK(before.saved_count<0x7fffffffu);
+    w32(expected+0x10,before.saved_count+1u);
+    memset(expected+4,0,4);memset(expected+0x18,0,4);
+    snprintf(path,sizeof path,"%s/import-roundtrip.gci",directory);
+    CHECK(c3_game_state_save(&state,path,error));
+    CHECK(c3_game_state_load(&reload,path,pack_path,error));
+    CHECK(c3_game_state_summary(&reload,&after));
+    CHECK(after.saved_count==before.saved_count+1u);
+    CHECK(after.floor==before.floor && after.previous_floor==before.previous_floor && after.spawn==before.spawn);
+    CHECK(!memcmp(expected,c3_game_state_body(&reload,NULL),length));
+    again=read_file(path,&again_size);
+    CHECK(c3_save_inspect(again,again_size,&info)==C3_SAVE_OK);free(again);
+    again=read_file(card_path,&again_size);
+    CHECK(image_size==again_size && !memcmp(image,again,image_size));
+    printf("Imported GCI: name=%s floor=%u previous=%u spawn=%u party=%u count=%u; "
+           "all %zu body bytes preserved except original save bookkeeping; input unchanged\n",
+           before.name,before.floor,before.previous_floor,before.spawn,before.party_count,
+           before.saved_count,length);
+    free(expected);free(image);free(again);
+    c3_game_state_free(&state);c3_game_state_free(&reload);CHECK(unlink(path)==0);
+}
+
 int main(int argc,char **argv)
 {
     C3GameState state={0},loaded={0};C3GameSummary summary;
@@ -139,6 +176,34 @@ int main(int argc,char **argv)
     write_file(packpath,pack,PACK_SIZE);
     CHECK(c3_game_state_new(&state,NULL,0x12345678,packpath,error));
     CHECK(c3_game_state_summary(&state,&summary) && !strcmp(summary.name,"WES"));
+    CHECK(summary.party[0].experience==0x4a6fu && summary.party[1].experience==0x3ff4u);
+    CHECK(!summary.party[0].shadow_id && !summary.party[1].shadow_id);
+    uint32_t exp_progress,exp_range;
+    CHECK(c3_game_pokemon_experience(&summary.party[0],&exp_progress,&exp_range));
+    CHECK(exp_progress==1479 && exp_range==2107);
+    CHECK(c3_game_pokemon_experience(&summary.party[1],&exp_progress,&exp_range));
+    CHECK(exp_progress==747 && exp_range==1951);
+    C3GamePokemon exp_pokemon={.species=197};
+    for(unsigned level=1;level<100;++level){
+        exp_pokemon.level=(uint8_t)level;exp_pokemon.experience=level*level*level;
+        CHECK(c3_game_pokemon_experience(&exp_pokemon,&exp_progress,&exp_range));CHECK(!exp_progress&&exp_range>0);
+        exp_pokemon.experience+=(exp_range/2u);
+        CHECK(c3_game_pokemon_experience(&exp_pokemon,&exp_progress,&exp_range));CHECK(exp_progress==exp_range/2u);
+    }
+    exp_pokemon.experience=UINT32_MAX;
+    CHECK(c3_game_pokemon_experience(&exp_pokemon,&exp_progress,&exp_range)&&exp_progress==exp_range);
+    exp_pokemon.experience=0;
+    CHECK(c3_game_pokemon_experience(&exp_pokemon,&exp_progress,&exp_range)&&!exp_progress);
+    exp_pokemon.level=100;
+    CHECK(c3_game_pokemon_experience(&exp_pokemon,&exp_progress,&exp_range)&&!exp_progress&&!exp_range);
+    exp_pokemon.level=0;CHECK(!c3_game_pokemon_experience(&exp_pokemon,&exp_progress,&exp_range));
+    exp_pokemon.level=101;CHECK(!c3_game_pokemon_experience(&exp_pokemon,&exp_progress,&exp_range));
+    exp_pokemon.level=26;exp_pokemon.species=288;
+    CHECK(!c3_game_pokemon_experience(&exp_pokemon,&exp_progress,&exp_range));
+    exp_pokemon.species=197;exp_pokemon.shadow_id=1;
+    CHECK(!c3_game_pokemon_experience(&exp_pokemon,&exp_progress,&exp_range));
+    CHECK(!c3_game_pokemon_experience(NULL,&exp_progress,&exp_range));
+    CHECK(!c3_game_pokemon_experience(&exp_pokemon,NULL,&exp_range));
     CHECK(summary.trainer_id==0x1c465252 && summary.saved_count==0);
     before=c3_game_state_body(&state,&length);CHECK(length==C3_SAVE_BODY_SIZE);
     CHECK(!c3_game_state_new(&state,"TOOLONG8",1,packpath,error));CHECK(c3_game_state_body(&state,NULL)==before);
@@ -185,14 +250,24 @@ int main(int argc,char **argv)
      * typed mutation and disk save retain it exactly. It is not game progress. */
     image=read_file(savepath,&length);bodycopy=malloc(C3_SAVE_BODY_SIZE);CHECK(bodycopy!=NULL);
     memcpy(bodycopy,c3_game_state_body(&loaded,NULL),C3_SAVE_BODY_SIZE);bodycopy[0x1ded0]=0xa5;
+    bodycopy[1]=2; /* Imported provenance differs from a freshly created 03. */
     { unsigned char padding[20]={0};CHECK(c3_save_update(image,length,bodycopy,C3_SAVE_BODY_SIZE,padding,NULL)==C3_SAVE_OK); }
     CHECK(c3_game_state_decode(&loaded,image,length,NULL,error));
+    CHECK(c3_game_state_body(&loaded,NULL)[1]==2);
+    {
+        unsigned char padding[20]={0};const unsigned char *kept=c3_game_state_body(&loaded,NULL);
+        bodycopy[1]=0;
+        CHECK(c3_save_update(image,length,bodycopy,C3_SAVE_BODY_SIZE,padding,NULL)==C3_SAVE_OK);
+        CHECK(!c3_game_state_decode(&loaded,image,length,NULL,error));
+        CHECK(c3_game_state_body(&loaded,NULL)==kept);
+    }
     CHECK(!c3_game_state_get_flag(&loaded,31,&value));
     CHECK(c3_game_state_set_floor(&loaded,2,1,1));
     CHECK(c3_game_state_save(&loaded,savepath,error));
     CHECK(c3_game_state_body(&loaded,NULL)[0x1ded0]==0xa5);
     CHECK(c3_game_state_load(&state,savepath,NULL,error));
     CHECK(c3_game_state_body(&state,NULL)[0x1ded0]==0xa5);
+    CHECK(c3_game_state_body(&state,NULL)[1]==2);
     before=c3_game_state_body(&state,NULL);
     image[0]^=1;CHECK(!c3_game_state_decode(&state,image,length,NULL,error));CHECK(c3_game_state_body(&state,NULL)==before);
     snprintf(extra,sizeof extra,"%s/synthetic.gci.tmp",directory);write_file(extra,"pending",7);
@@ -211,6 +286,7 @@ int main(int argc,char **argv)
     CHECK(unlink(savepath)==0);snprintf(extra,sizeof extra,"%s/synthetic.gci.bak",directory);CHECK(unlink(extra)==0);
     CHECK(unlink(packpath)==0);
     if (argc>1) retail_checks(argv[1],directory);
+    if (argc>2) import_checks(argv[2],argv[1],directory);
     CHECK(rmdir(directory)==0);
     printf("game-state checks: %u passed%s\n",checks,argc>1?" (including private retail data)":" (synthetic fixtures only)");
     return 0;

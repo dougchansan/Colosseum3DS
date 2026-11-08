@@ -17,6 +17,10 @@ typedef enum {
     C3_RECOVER_EXIT
 } C3RenderRecoveryMode;
 
+/* Optional scene-owned hook: 1 at the watchdog pause, 0 before returning.
+ * Clearing/replacing a paused hook first releases the previous owner. */
+void c3_render_recovery_set_pause_callback(void (*callback)(int));
+
 /* Cooperatively wait for a busy renderer, or safely drain it for exit. Keeps
  * polling input while APT/HID return. No gameplay or save writes occur here.
  * RESUME_PAUSED means reset the scene's delta-time baseline. DRAINED and EXIT

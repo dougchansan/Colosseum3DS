@@ -116,7 +116,7 @@ def member(archive, identity):
 
 
 def rel_data(data, module):
-    section, count = {125: (4,11), 131: (3,10)}[module]
+    section, count = {5: (3,10), 125: (4,11), 131: (3,10)}[module]
     if u32(data, 0) != module or u32(data, 12) != count:
         raise ValueError("Unexpected original REL identity or section count")
     table = u32(data, 16)
@@ -156,12 +156,14 @@ def collision(data):
     return walks, walls
 
 
-def field_metadata(map_rel, common_rel, collision_data, camera, actor_vertices=0):
-    local, common = rel_data(map_rel, 131), rel_data(common_rel, 125)
+def field_metadata(map_rel, common_rel, collision_data, camera, actor_vertices=0,
+                   *, module=131, spawn_table=0x12C, spawn_count=5, floor=1,
+                   map_resource=0x00E20200, map_pack_count=4, arrival_pack_count=2):
+    local, common = rel_data(map_rel, module), rel_data(common_rel, 125)
     # _prolog in exact REL131 publishes five FieldPointRecords at data+12C.
     spawns = []
-    for index in range(5):
-        at = 0x12C + index * 16
+    for index in range(spawn_count):
+        at = spawn_table + index * 16
         direction, zero, x, y, z = struct.unpack(">hH3f", extent(local, at, 16))
         if zero or not all(math.isfinite(v) for v in (x,y,z)):
             raise ValueError("Invalid original floor entrance")
@@ -183,7 +185,7 @@ def field_metadata(map_rel, common_rel, collision_data, camera, actor_vertices=0
     wall_offset=walk_offset+len(walks)*56
     total=wall_offset+len(walls)*56
     header=bytearray(256)
-    struct.pack_into("<4s15I",header,0,b"C3F1",1,total,256,1,0x00E20200,
+    struct.pack_into("<4s15I",header,0,b"C3F1",1,total,256,floor,map_resource,
                      len(spawns),len(walks),len(walls),spawn_offset,walk_offset,
                      wall_offset,56,24,0,0)
     # GSmodelGetFrameCount returns end_frame + 1, proved by the original DOL.
@@ -191,7 +193,7 @@ def field_metadata(map_rel, common_rel, collision_data, camera, actor_vertices=0
     struct.pack_into("<11f",header,96,*camera)
     struct.pack_into("<4f",header,140,camera[1]-camera[4],camera[2]-camera[5],0,1.4)
     struct.pack_into("<6I",header,156,0,actor_vertices,0xFFFFFFFF,0,1,2)
-    struct.pack_into("<2I",header,180,4,2)
+    struct.pack_into("<2I",header,180,map_pack_count,arrival_pack_count)
     out=bytes(header)+b"".join(struct.pack("<4f2I",*row) for row in spawns)
     out+=b"".join(struct.pack("<12f4H",*row) for row in walks+walls)
     if len(out)!=total or total>512*1024:
@@ -200,7 +202,7 @@ def field_metadata(map_rel, common_rel, collision_data, camera, actor_vertices=0
                  "source_units_to_pack":SCALE,"wes_motion_indices":[1,2,3],
                  "wes_frame_counts":[31,31,18],"wes_walk_distance":walk*SCALE,
                  "wes_run_distance":run*SCALE,"wes_radius":radius*SCALE,
-                 "map_pack_count":4,"arrival_pack_count":2}
+                 "map_pack_count":map_pack_count,"arrival_pack_count":arrival_pack_count}
 
 
 def prepare(disc, output, parser):
@@ -248,7 +250,7 @@ def prepare(disc, output, parser):
                   "limitations":["The field pack carries original geometry, animation and collision; story progression requires the separately implemented GSVM entry sequence.",
                                  "Only the map, Wes and the original bike arrival actors are included; the general NPC, dialogue, battle and field-event systems are not included in this pack.",
                                  "Source particle generators and recorded type40 particle callbacks are not synthesized by this geometry pack.",
-                                 "Wes exports source idle, walk and run poses; runtime transitions are separate from the original general animation-blend system.",
+                                 "Wes exports source idle, walk, run and motion zero at pack clips 0,1,2,3; runtime transitions are separate from the original general animation-blend system.",
                                  "Geometry and camera curves are sampled at 60 Hz; the slow sky uses 1001 samples across its original 29999/30-second period.",
                                  "The source separate BGM and event SFX are not embedded in geometry packs.",
                                  "GX filtering, lighting and blending use the native PICA material implementation; the separate specular pass has a clamp-order approximation at fractionally filtered alpha edges of the bike's otherwise binary-alpha texture."]}

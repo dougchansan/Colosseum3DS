@@ -1,0 +1,14 @@
+{
+  "boot-trace.log": {
+    "bytes": 422964,
+    "sha256": "6d22df6c65362df42ef84f6b5e172c2253d4dd0a1c4d15e03ec667d0ec01015a"
+  },
+  "saves/pokemon_colosseum.gci": {
+    "bytes": 393280,
+    "sha256": "7e1cb3159756293bf938fd922fe45e82448d1b667f6833a48da351af3cbd0f23"
+  },
+  "Colosseum3DS.3dsx": {
+    "bytes": 426624,
+    "sha256": "9d64014f970b09939d8ec05a80911c5b4cc80b5763e34a50c1b55f3d88b7b344"
+  }
+}

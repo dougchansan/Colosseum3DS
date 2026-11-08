@@ -1,0 +1,291 @@
+[
+ {
+  "file": "tackle-umbreon-impact.png",
+  "source_step": "run2-7898cf1/062-t1-look5.png",
+  "utc": "2026-11-08T05:07:13.772957+00:00",
+  "fresh": true,
+  "counters": {
+   "top": 4553,
+   "bottom": 4556
+  },
+  "ages": {
+   "top": 0.094739,
+   "bottom": 0.065168
+  },
+  "bytes": 152462,
+  "sha256": "6b99cce11268001f58340f6c3e61eb910a86ac28673f5a103905557242801385",
+  "caption": "Run 2 turn 1: Tackle dust impact on Umbreon"
+ },
+ {
+  "file": "reflect-barrier.png",
+  "source_step": "run-7898cf1/061-t1-look2.png",
+  "utc": "2026-11-08T04:53:50.892119+00:00",
+  "fresh": true,
+  "counters": {
+   "top": 7187,
+   "bottom": 7191
+  },
+  "ages": {
+   "top": 0.063723,
+   "bottom": 0.043655
+  },
+  "bytes": 117074,
+  "sha256": "5e8254b320460031216cd46c6dac54b6648ba0c268005e520a6e24e737cfbd25",
+  "caption": "Run 1 turn 1: Reflect barrier on player side"
+ },
+ {
+  "file": "tail-whip-ring.png",
+  "source_step": "run2-7898cf1/096-t2-look5.png",
+  "utc": "2026-11-08T05:08:07.367918+00:00",
+  "fresh": true,
+  "counters": {
+   "top": 5439,
+   "bottom": 5442
+  },
+  "ages": {
+   "top": 0.021056,
+   "bottom": 0.046129
+  },
+  "bytes": 151065,
+  "sha256": "7b420f7a85b3ce33823d16bf7b86ecd25ae7f740ba8dc84b0d3709327f0b45b2",
+  "caption": "Run 2 turn 2: Tail Whip cyan ring on Zigzagoon B"
+ },
+ {
+  "file": "umbreon-green-defense.png",
+  "source_step": "run2-7898cf1/098-t2-look7.png",
+  "utc": "2026-11-08T05:08:09.370050+00:00",
+  "fresh": true,
+  "counters": {
+   "top": 5473,
+   "bottom": 5477
+  },
+  "ages": {
+   "top": 0.067794,
+   "bottom": 0.041592
+  },
+  "bytes": 168760,
+  "sha256": "1465996996349bf412d33a5657512d23150c88cb6030ad8671d93a9b5ecd37e5",
+  "caption": "Run 2 turn 2: green Defense-down on Umbreon"
+ },
+ {
+  "file": "espeon-green-defense.png",
+  "source_step": "run2-7898cf1/100-t2-look9.png",
+  "utc": "2026-11-08T05:08:11.334921+00:00",
+  "fresh": true,
+  "counters": {
+   "top": 5507,
+   "bottom": 5511
+  },
+  "ages": {
+   "top": 0.076328,
+   "bottom": 0.051785
+  },
+  "bytes": 161660,
+  "sha256": "7bb0855145a2f3ec4507d7cf0a34086016e344cfb615b711d047b9e767dcba80",
+  "caption": "Run 2 turn 2: green Defense-down on Espeon"
+ },
+ {
+  "file": "growl-glow.png",
+  "source_step": "run2-7898cf1/105-t2-look14.png",
+  "utc": "2026-11-08T05:08:16.334482+00:00",
+  "fresh": true,
+  "counters": {
+   "top": 5594,
+   "bottom": 5598
+  },
+  "ages": {
+   "top": 0.057665,
+   "bottom": 0.036057
+  },
+  "bytes": 124148,
+  "sha256": "e36a12c98600c6266f1f55ca07913e2e4bfdc44fea782627ee3ce8b413140670",
+  "caption": "Run 2 turn 2: Growl glow on Zigzagoon A (note floor-level clip)"
+ },
+ {
+  "file": "umbreon-red-attack.png",
+  "source_step": "run2-7898cf1/107-t2-look16.png",
+  "utc": "2026-11-08T05:08:18.328586+00:00",
+  "fresh": true,
+  "counters": {
+   "top": 5628,
+   "bottom": 5632
+  },
+  "ages": {
+   "top": 0.059394,
+   "bottom": 0.047374
+  },
+  "bytes": 168183,
+  "sha256": "544148597be1cfea13bd6d918e0cf8adc7b228a6f871df52568ccca1e7e0079b",
+  "caption": "Run 2 turn 2: red Attack-down on Umbreon"
+ },
+ {
+  "file": "espeon-red-attack.png",
+  "source_step": "run2-7898cf1/109-t2-look18.png",
+  "utc": "2026-11-08T05:08:20.311443+00:00",
+  "fresh": true,
+  "counters": {
+   "top": 5663,
+   "bottom": 5666
+  },
+  "ages": {
+   "top": 0.040914,
+   "bottom": 0.073492
+  },
+  "bytes": 167457,
+  "sha256": "bb71c89745c0474b3c8bda4b080b7067f54d12b82ba65f417133e92d4a52f63c",
+  "caption": "Run 2 turn 2: red Attack-down on Espeon"
+ },
+ {
+  "file": "confusion-caster.png",
+  "source_step": "run-7898cf1/121-t3-look1.png",
+  "utc": "2026-11-08T04:56:34.085797+00:00",
+  "fresh": true,
+  "counters": {
+   "top": 9881,
+   "bottom": 9882
+  },
+  "ages": {
+   "top": 0.027093,
+   "bottom": 0.017541
+  },
+  "bytes": 127308,
+  "sha256": "734a039e81b94582e863991bad3e675f0a2cc218e2ecd21c1050d63097e69cd1",
+  "caption": "Run 1 turn 3: Confusion caster sphere"
+ },
+ {
+  "file": "confusion-damage.png",
+  "source_step": "run-7898cf1/124-t3-look4.png",
+  "utc": "2026-11-08T04:56:36.928819+00:00",
+  "fresh": true,
+  "counters": {
+   "top": 9929,
+   "bottom": 9929
+  },
+  "ages": {
+   "top": 0.050287,
+   "bottom": 0.076884
+  },
+  "bytes": 133609,
+  "sha256": "bd3d4cbb9b3a744ee1b002b8e2994522fae7d1c48bc70a812de837d883945abe",
+  "caption": "Run 1 turn 3: Confusion damage sparkles on Zigzagoon B"
+ },
+ {
+  "file": "bite-damage.png",
+  "source_step": "run-7898cf1/134-t3-look15.png",
+  "utc": "2026-11-08T04:56:46.531381+00:00",
+  "fresh": true,
+  "counters": {
+   "top": 10096,
+   "bottom": 10096
+  },
+  "ages": {
+   "top": 0.023065,
+   "bottom": 0.051359
+  },
+  "bytes": 126214,
+  "sha256": "bae4ee03a11780ce36b52d147710f9de9527cc814a89e9982dc888e3540a2034",
+  "caption": "Run 1 turn 3: Bite damage shards on Zigzagoon A"
+ },
+ {
+  "file": "zigzagoon-a-fainted.png",
+  "source_step": "run-7898cf1/140-t3-look21.png",
+  "utc": "2026-11-08T04:56:52.217969+00:00",
+  "fresh": true,
+  "counters": {
+   "top": 10195,
+   "bottom": 10195
+  },
+  "ages": {
+   "top": 0.069946,
+   "bottom": 0.028137
+  },
+  "bytes": 162339,
+  "sha256": "a8e6de2df32c30e10811d9de34e3c0f87d126b64bd4cf6fcb25a580b4c24199a",
+  "caption": "Run 1 turn 3: Zigzagoon A fainted"
+ },
+ {
+  "file": "espeon-tackle-after-faint.png",
+  "source_step": "run2-7898cf1/158-t3-look23.png",
+  "utc": "2026-11-08T05:09:25.519252+00:00",
+  "fresh": true,
+  "counters": {
+   "top": 6756,
+   "bottom": 6758
+  },
+  "ages": {
+   "top": 0.071554,
+   "bottom": 0.050013
+  },
+  "bytes": 165316,
+  "sha256": "1317c438ec42e4efde0cdba08c4bed18b542691a75cea11b11020b1a6680a788",
+  "caption": "Run 2 turn 3: post-faint Tackle impact core on Espeon"
+ },
+ {
+  "file": "preview-win.png",
+  "source_step": "run-7898cf1/182-t4-look15.png",
+  "utc": "2026-11-08T04:58:27.041238+00:00",
+  "fresh": true,
+  "counters": {
+   "top": 11769,
+   "bottom": 11768
+  },
+  "ages": {
+   "top": 0.057578,
+   "bottom": 0.025356
+  },
+  "bytes": 170853,
+  "sha256": "c4af0bcbb8ad8566438acc76d4fbe63a29f37df0d8605e7852969ec18cccc9de",
+  "caption": "Run 1 turn 4: preview WIN (no rewards/save/flags)"
+ },
+ {
+  "file": "field-return.png",
+  "source_step": "run2-7898cf1/212-win-return.png",
+  "utc": "2026-11-08T05:10:58.887615+00:00",
+  "fresh": true,
+  "counters": {
+   "top": 8301,
+   "bottom": 8304
+  },
+  "ages": {
+   "top": 0.072188,
+   "bottom": 0.048631
+  },
+  "bytes": 152335,
+  "sha256": "a6ee4122fb0ab17fb413ca4b97d653ba35be755f5914571a8b7f07c9192d0b6f",
+  "caption": "Run 2: return to pending encounter-10 field state"
+ },
+ {
+  "file": "reentry-fresh.png",
+  "source_step": "run2-7898cf1/214-reenter.png",
+  "utc": "2026-11-08T05:11:11.543871+00:00",
+  "fresh": true,
+  "counters": {
+   "top": 8528,
+   "bottom": 8531
+  },
+  "ages": {
+   "top": 0.092799,
+   "bottom": 0.060632
+  },
+  "bytes": 164775,
+  "sha256": "c01811ab065b0b7820d3ffe1d945f228caa288b879420af5eb3f0c654eec2b18",
+  "caption": "Run 2: reentry restores fresh preview state"
+ },
+ {
+  "file": "relaunch-save-unchanged.png",
+  "source_step": "run-7898cf1/208-relaunch-continue.png",
+  "utc": "2026-11-08T05:00:53.016542+00:00",
+  "fresh": true,
+  "counters": {
+   "top": 14264,
+   "bottom": 14261
+  },
+  "ages": {
+   "top": 0.081017,
+   "bottom": 0.045924
+  },
+  "bytes": 149314,
+  "sha256": "502ca2398d9db602f35dd76af9a6c2b9a87c6ce24f2a7e20029804f690685176",
+  "caption": "Run 1: relaunch Continue shows unchanged save 0:17"
+ }
+]

@@ -115,8 +115,16 @@ def solve_ik_lower(upper, target, upper_length, scale):
     return result
 
 
+def constant_material_byte(keys):
+    if not keys or any(not math.isfinite(k.value) or k.value != keys[0].value or
+                       (getattr(k, "slope_in", 0) or 0) != 0 or
+                       (getattr(k, "slope_out", 0) or 0) != 0 for k in keys):
+        raise ValueError("Only constant effect material RGB tracks are admitted")
+    return int(255 * min(1.0, max(0.0, keys[0].value)))
+
+
 class Model:
-    def __init__(self, model, raw):
+    def __init__(self, model, raw, allow_image_swaps=False, constant_material_colors=False):
         self.model, self.raw = model, raw
         self.joints = title.tree_nodes(raw.root_joint)
         self.meshes = raw_meshes(raw)
@@ -137,6 +145,8 @@ class Model:
                 bone = model.bones[bone.parent_index]
             self.invbind.append(np.asarray(bone.inverse_bind_matrix) if bone.inverse_bind_matrix else np.eye(4))
         self.tracks, self.materials, self.ends, self.particle_events = [], [], [], []
+        self.image_swaps = []
+        self.constant_material_colors = {}
         for root in raw.animated_joints or []:
             nodes = title.tree_nodes(root)
             if len(nodes) != len(model.bones):
@@ -153,7 +163,7 @@ class Model:
             nodes = title.tree_nodes(root)
             if len(nodes) != len(model.bones):
                 raise ValueError("Incomplete HSD material animation tree")
-            mapping = {}
+            mapping, swaps = {}, {}
             for joint, node in zip(self.joints, nodes):
                 dobj, anim = joint.property, node.animation
                 while anim:
@@ -161,13 +171,47 @@ class Model:
                         raise ValueError("Unsupported animated field material topology")
                     tex_tracks, ta = {}, anim.texture_animation
                     while ta:
-                        if ta.id in tex_tracks or ta.image_table_count or ta.palette_table_count:
+                        if ta.id in tex_tracks or ta.palette_table_count:
                             raise ValueError("Texture image/palette swaps exceed field subset")
-                        tex_tracks[ta.id] = title.channels(ta.animation, set(range(2,10)) | {12,13,14,16,17,18})
+                        if ta.image_table_count:
+                            if (not allow_image_swaps or ta.id != 0 or
+                                not 1 <= ta.image_table_count <= 32 or
+                                len(ta.image_table or []) != ta.image_table_count or
+                                any(image is None for image in ta.image_table)):
+                                raise ValueError("Unreviewed field texture image table")
+                            swaps[(dobj.address,ta.id)] = ta.image_table
+                        channels = title.channels(ta.animation, set(range(2,10)) | set(range(12,24)) |
+                                                  ({1} if ta.image_table_count else set()))
+                        if ta.image_table_count and (1 not in channels or
+                            any(key.value < 0 or key.value >= ta.image_table_count for key in channels[1])):
+                            raise ValueError("Image animation references an invalid source image")
+                        # Interior map exports include zero-valued curves for
+                        # the unused TEV alpha/TEV1 registers. build_mesh still
+                        # admits only the reviewed RGB expression (alpha A-D
+                        # all ZERO, active 0x40000077). Do not silently admit
+                        # a new animated combiner through these unused fields.
+                        for channel in (15,19,20,21,22,23):
+                            if channel in channels and any(key.value != 0 for key in channels[channel]):
+                                raise ValueError("Nonzero unused TEV register animation")
+                        tex_tracks[ta.id] = channels
                         ta = ta.next
-                    mapping[dobj.address] = (title.channels(anim.animation, {10}), tex_tracks)
+                    material_tracks = title.channels(anim.animation, set(range(1, 11)) if constant_material_colors else {10})
+                    for channel, keys in material_tracks.items():
+                        if channel == 10:
+                            continue
+                        # HSD MObjUpdateFunc clamps, multiplies by 255, then
+                        # truncates to u8. Only constant, equal-across-clips RGB
+                        # tracks may be folded into immutable batch colors.
+                        value = constant_material_byte(keys)
+                        identity = (dobj.address, channel)
+                        previous = self.constant_material_colors.get(identity, value)
+                        if previous != value:
+                            raise ValueError("Material RGB differs between effect clips")
+                        self.constant_material_colors[identity] = value
+                    mapping[dobj.address] = ({k:v for k,v in material_tracks.items() if k == 10}, tex_tracks)
                     dobj, anim = dobj.next, anim.next
             self.materials.append(mapping)
+            self.image_swaps.append(swaps)
         self.upper, self.lower, self.effector = {}, {}, {}
         for constraint in model.ik_constraints:
             if constraint.chain_length != 3 or constraint.pole_target_bone or not constraint.target_bone:
@@ -203,7 +247,7 @@ class Model:
             return self._cache[key]
         bones = self.model.bones
         tracks = self.tracks[clip] if self.tracks else [{} for _ in bones]
-        local, accumulated = [], []
+        local, accumulated, scales = [], [], []
         for bone, track in zip(bones, tracks):
             position = [title.curve_value(track.get(5+i), frame, bone.position[i]/UNITS)*UNITS for i in range(3)]
             rotation = [title.curve_value(track.get(1+i), frame, bone.rotation[i]) for i in range(3)]
@@ -211,8 +255,12 @@ class Model:
             parent_scale = accumulated[bone.parent_index] if bone.parent_index is not None else None
             accumulated.append((parent_scale if bone.flags & 8 else scale*parent_scale)
                                if parent_scale is not None else scale)
-            local.append(srt_matrix(scale, rotation, position, parent_scale))
-        world, active = {}, set()
+            scales.append(scale)
+            # Compose aligned scale in world space below. The local a_j/a_i
+            # correction divides by zero when an authored parent collapses;
+            # its inverse scale cancels algebraically against the parent.
+            local.append(srt_matrix((1., 1., 1.), rotation, position))
+        world, carriers, active = {}, {}, set()
         def matrix(index):
             if index in world:
                 return world[index]
@@ -220,7 +268,19 @@ class Model:
                 raise ValueError("Cyclic HSD field constraint")
             active.add(index)
             parent = bones[index].parent_index
-            value = matrix(parent) @ local[index] if parent is not None else local[index].copy()
+            value = local[index].copy()
+            if parent is not None:
+                parent_world = matrix(parent)
+                carrier = carriers[parent] @ local[index][:3, :3]
+                value[:3, 3] = (parent_world @ local[index][:, 3])[:3]
+                value[:3, :3] = carrier * (accumulated[parent] * scales[index])
+            else:
+                carrier = local[index][:3, :3].copy()
+                value[:3, :3] = carrier * scales[index]
+            # CLASSICAL_SCALING excludes this joint's scale from the
+            # accumulated correction used by its children, not its world.
+            carriers[index] = (carrier * scales[index] if parent is not None and bones[index].flags & 8
+                               else carrier)
             if index in self.upper:
                 upper, lower, end, target, a, b, flip = self.upper[index]
                 origin = matrix(parent)[:3,3] if parent is not None else np.zeros(3)
@@ -240,6 +300,10 @@ class Model:
                 value[:3,3] = lower_world[:3,3] + normalized(lower_world[:3,0])*b*accumulated[lower][0]
             elif index in self.copy_position:
                 value[:3,3] = matrix(self.copy_position[index])[:3,3]
+            if index in self.upper or index in self.lower:
+                if np.any(accumulated[index] == 0):
+                    raise ValueError("Singular HSD IK scale")
+                carriers[index] = value[:3, :3] / accumulated[index]
             world[index] = value
             active.remove(index)
             return value
@@ -252,8 +316,11 @@ class Model:
         if descriptor[0] == "rigid":
             return world[descriptor[1]]
         _, owner, weights = descriptor
-        if not self.model.bones[owner].flags & 2:
-            raise ValueError("Only reviewed skeleton-root envelopes are admitted")
+        # The parser already bakes the owner's rest coordinate matrix into
+        # each vertex. For non-root owners that constant right-side matrix
+        # cancels in _sample_descriptor's D(t) @ inverse(D(rest)). The same
+        # cancellation removes the constant inverse bind for a single weight.
+        # Retain the blended inverse binds for multi-weight envelopes.
         if weights[0][1] == 1:
             if len(weights) != 1:
                 raise ValueError("Malformed single-weight envelope")
@@ -305,7 +372,35 @@ def validate_envelope_indices(model, mesh, pobj):
         raise ValueError("Pinned IR skin weights differ from original matrix indices")
 
 
-def build_mesh(model, mesh_index):
+def pixel_engine_flags(pe, flags):
+    """Admit the original title/first-area PE states without losing Z writes.
+
+    HSD state.c:fn_801B29E4 overrides the render mode with PEDesc. Bit0
+    enables color writes, 0x10 depth comparisons, and 0x20 depth writes;
+    bit8 only selects early versus late comparison. The supported native
+    framebuffer does not carry GX destination alpha.
+    """
+    state = (pe.flags, pe.type, pe.source_factor, pe.destination_factor, pe.z_comp)
+    modes = {(25,1,4,1,3):title.ADDITIVE | title.TRANSLUCENT,
+             (25,1,1,1,3):ADDITIVE_ONE | title.TRANSLUCENT,
+             (25,3,4,5,3):SUBTRACT | title.TRANSLUCENT,
+             (25,1,4,5,3):title.TRANSLUCENT,
+             (49,1,4,5,3):title.TRANSLUCENT,
+             (57,0,4,5,3):0}
+    if state not in modes:
+        raise ValueError("Unreviewed field pixel-engine state: " + str(state))
+    flags &= ~(title.ADDITIVE | ADDITIVE_ONE | SUBTRACT | title.TRANSLUCENT | title.NO_DEPTH_WRITE)
+    flags |= modes[state]
+    if not pe.flags & 0x20:
+        flags |= title.NO_DEPTH_WRITE
+    return flags
+
+
+def build_mesh(model, mesh_index, max_envelope_weights=3, source_materials=False):
+    if source_materials:
+        from prepare_pda_mask_layers import build_mask_mesh
+        masked=build_mask_mesh(model,mesh_index,build_mesh,max_envelope_weights)
+        if masked is not None:return masked
     from shared.IR.enums import SkinType
     ir = model.model
     mesh = ir.meshes[mesh_index]
@@ -321,11 +416,28 @@ def build_mesh(model, mesh_index):
     while tex:
         raw_textures.append(tex)
         tex = tex.next
+    if source_materials and any(t.flags&(1<<24) for t in raw_textures):
+        raise ValueError("Original GX emboss bump mapping requires NBT/light-generated UVs and unclamped signed intermediate support")
+    source_reflection_only=(source_materials and len(raw_textures)==1 and raw_textures[0].flags==0x30081 and not raw_textures[0].tev)
+    if source_reflection_only:
+        reflection_texture=copy.copy(raw_textures[0]);reflection_texture.source=5
+        neutral=copy.copy(raw_textures[0]);neutral.flags=0x40010;neutral.blending=1.;neutral.source=4
+        neutral.scale=(1.,1.,1.);neutral.rotation=(0.,0.,0.);neutral.translation=(0.,0.,0.)
+        raw_textures=[neutral,reflection_texture]
     if len(raw_textures) > 2:
         raise ValueError("Field material has more than two texture layers")
+    source_blend = (source_materials and len(raw_textures)==2 and
+                    raw_textures[0].flags==0x30010 and raw_textures[0].blending==1 and
+                    not raw_textures[0].tev and not raw_textures[1].tev and
+                    raw_textures[1].flags==0x30010)
+    source_normal_pair=(source_materials and len(raw_textures)==2 and
+                        [t.flags for t in raw_textures]==[0x30081,0x670081] and
+                        raw_textures[0].tev is None and raw_textures[1].tev is not None and
+                        raw_textures[1].tev.active==0 and raw_textures[1].blending==1 and
+                        not mesh.uv_layers)
     dual = len(raw_textures) == 2 and raw_textures[1].flags == 0x40010
     reflection = len(raw_textures) == 2 and raw_textures[1].flags == 0x30081
-    if len(raw_textures)==2 and not (dual or reflection):
+    if len(raw_textures)==2 and not (dual or reflection or source_blend or source_normal_pair):
         raise ValueError("Unreviewed second field texture expression")
     if dual:
         if len(mesh.uv_layers) != 2 or [t.source for t in raw_textures] != [4,5]:
@@ -336,7 +448,7 @@ def build_mesh(model, mesh_index):
             if tex.tev.tev0.asRGBList() != [0,0,0] or tex.tev.konst.asRGBList() != [127/255]*3:
                 raise ValueError("Dual texture gradient constants changed")
     if reflection:
-        if (len(mesh.uv_layers)!=1 or raw_textures[0].flags!=0x40010 or
+        if ((len(mesh.uv_layers)!=1 and not source_reflection_only) or raw_textures[0].flags not in ((0x40010,0x30010) if source_materials else (0x40010,)) or
             raw_textures[0].tev or raw_textures[1].tev or
             [t.source for t in raw_textures]!=[4,5]):
             raise ValueError("Unreviewed normal-generated reflection material")
@@ -355,6 +467,14 @@ def build_mesh(model, mesh_index):
     if raw_textures:
         dobj_copy.mobject.texture = copy.copy(raw_textures[0])
         dobj_copy.mobject.texture.next = None
+        if source_normal_pair:
+            dobj_copy.mobject.texture.flags=0x40010
+        if source_materials and dobj_copy.mobject.texture.wrap_t==2:
+            dobj_copy.mobject.texture.wrap_t=0
+        if source_materials and raw_textures[0].flags==0x30010 and raw_textures[0].blending==1 and (reflection or source_blend):
+            # BLEND with factor1 ignores incoming material diffuse entirely.
+            # MODULATE by white is the same expression in the native subset.
+            dobj_copy.mobject.texture.flags=0x40010
     pe = dobj.mobject.pixel_engine_data
     dobj_copy.mobject.pixel_engine_data = None
     # C3T already carries the separate specular material. The title itself
@@ -362,24 +482,40 @@ def build_mesh(model, mesh_index):
     dobj_copy.mobject.render_mode &= ~8
     vertices, batches, textures, _ = title.geometry(ir_copy, [(bone,dobj_copy,pobj)])
     batch = list(batches[0])
+    if source_materials and raw_textures and raw_textures[0].wrap_t==2:
+        tex0=textures[batch[2]];textures[batch[2]]=(*tex0[:4],2)
+    if source_reflection_only:
+        textures[batch[2]]=(8,8,b"\xff"*256,0,0)
+    if source_materials and raw_textures and raw_textures[0].flags==0x30010 and raw_textures[0].blending==1 and (reflection or source_blend):
+        batch[8:11]=[1.,1.,1.]
+    for channel in range(1, 10):
+        value = model.constant_material_colors.get((dobj.address, channel))
+        if value is not None:
+            # HSD channels 1..3 ambient, 4..6 diffuse, 7..9 specular.
+            index = (11 + channel - 1 if channel <= 3 else
+                     8 + channel - 4 if channel <= 6 else 14 + channel - 7)
+            batch[index] = value / 255.0
     batch[6] = dobj.mobject.render_mode
     if dobj.mobject.render_mode & 8:
         batch[3] |= title.SPECULAR
     if pe:
-        state = (pe.flags,pe.type,pe.source_factor,pe.destination_factor,pe.z_comp)
-        flags = {(25,1,4,1,3):title.ADDITIVE, (25,1,1,1,3):ADDITIVE_ONE,
-                 (25,3,4,5,3):SUBTRACT}.get(state)
-        if flags is None:
-            raise ValueError("Unreviewed field pixel-engine state: " + str(state))
-        batch[3] |= flags | title.NO_DEPTH_WRITE | title.TRANSLUCENT
+        batch[3] = pixel_engine_flags(pe, batch[3])
         batch[20:26] = [pe.reference_0,pe.reference_1,pe.alpha_component_0,
                        pe.alpha_component_1,pe.alpha_op,pe.z_comp]
-    if dual or reflection:
-        textures.append(_texture(raw_textures[1],mesh.material.texture_layers[1].image))
+    if dual or reflection or source_blend or source_normal_pair:
+        textures.append(_texture(raw_textures[1],mesh.material.texture_layers[0 if source_reflection_only else 1].image))
         batch[3] |= DUAL_MODULATE if dual else REFLECTION_BLEND
+        if source_blend:batch[3] |= 16384
+        if source_normal_pair:batch[3] |= 65536
         batch[26] = 1
-        if reflection:
+        if reflection or source_blend:
             batch[27] = raw_textures[1].blending
+        if source_normal_pair:batch[27]=raw_textures[0].blending
+    if source_materials:
+        # HSD_TExpSetupTev converts F32 constants to int(255*x), then clamps
+        # to u8. Original Slugma's authored factor2 therefore becomes255.
+        batch[19]=max(0,min(255,int(255*batch[19])))/255.
+        batch[27]=max(0,min(255,int(255*batch[27])))/255.
     assignments = dict(mesh.bone_weights.assignments) if weighted else {}
     descriptors, loops, offset = [], [], 0
     for face in mesh.faces:
@@ -390,7 +526,13 @@ def build_mesh(model, mesh_index):
                     if position not in assignments:
                         raise ValueError("Skin vertex has no original envelope")
                     weights = tuple((model.names[name],float(weight)) for name,weight in assignments[position])
-                    if not 1 <= len(weights) <= 3 or abs(sum(w for _,w in weights)-1)>1e-5:
+                    if source_materials and weights and weights[0][1]==1.:
+                        # HSD's single-weight fast path, also used by the
+                        # pinned parser, ignores trailing envelope entries.
+                        weights=weights[:1]
+                    if (not 1 <= len(weights) <= max_envelope_weights or
+                        any(not math.isfinite(w) or w<0 for _,w in weights) or
+                        abs(sum(w for _,w in weights)-1)>1e-5):
                         raise ValueError("Invalid source field envelope weights")
                     descriptors.append(("skin",bone,weights))
                 else:
@@ -400,7 +542,7 @@ def build_mesh(model, mesh_index):
     if len(vertices) != len(descriptors):
         raise ValueError("Triangulated field envelope mapping differs")
     vertices = [tuple(v) + ((mesh.uv_layers[1].uvs[loop][0],1-mesh.uv_layers[1].uvs[loop][1])
-                            if dual else (0.,0.)) for v,loop in zip(vertices,loops)]
+                            if dual or source_blend else (0.,0.)) for v,loop in zip(vertices,loops)]
     return {"model":model,"index":mesh_index,"bone":bone,"dobj":dobj,"textures":textures,
             "raw_textures":raw_textures,"vertices":vertices,"batch":batch,"descriptors":descriptors}
 
@@ -422,6 +564,47 @@ def texture_affine(scale, translation, repeat, rotation):
     return (matrix[0,0],matrix[1,1],*offset),(matrix[0,1],matrix[1,0])
 
 
+def expand_image_swaps(meshes):
+    """Represent an admitted texture-image track with visible mesh variants.
+
+    The original GSmodel links the TIMG track to its skeletal clock. Source
+    image/palette bytes are decoded by the pinned parser; only the selected
+    variant is visible. This needs no mutable GPU texture or new C3T material.
+    """
+    from importer.phases.describe.helpers.materials import _build_ir_image
+    result=[]
+    for mesh in meshes:
+        model,dobj=mesh["model"],mesh["dobj"]
+        entries=[s.get((dobj.address,0)) for s in model.image_swaps]
+        nonempty=[e for e in entries if e is not None]
+        if not nonempty:
+            result.append(mesh)
+            continue
+        table=nonempty[0]
+        if len(mesh["raw_textures"])!=1:
+            raise ValueError("Multiple image tables or layers are unreviewed")
+        def decoded(images):
+            textures=[]
+            for image in images:
+                texture=copy.copy(mesh["raw_textures"][0]);texture.image=image
+                ir_image=_build_ir_image(texture)
+                if ir_image is None:
+                    raise ValueError("Source image animation has no decoded pixels")
+                textures.append(_texture(texture,ir_image))
+            return textures
+        textures=decoded(table)
+        # Trainer clips duplicate equivalent image tables at different DAT
+        # addresses. Compare decoded dimensions/pixels/wrap, not addresses.
+        if any(decoded(images)!=textures for images in nonempty[1:]):
+            raise ValueError("Multiple distinct image tables are unreviewed")
+        for index,texture in enumerate(textures):
+            variant=dict(mesh)
+            variant["textures"]=[texture]
+            variant["image_variant"]=index
+            result.append(variant)
+    return result
+
+
 def material_state(mesh, clip, frame, visible):
     model, dobj = mesh["model"], mesh["dobj"]
     mapping = model.materials[clip] if clip < len(model.materials) else {}
@@ -438,6 +621,9 @@ def material_state(mesh, clip, frame, visible):
         scale = [title.curve_value(tracks.get(4+i),frame,tex.scale[i]) for i in range(2)]
         translation = [title.curve_value(tracks.get(2+i),frame,tex.translation[i]) for i in range(2)]+[tex.translation[2]]
         transform,cross=texture_affine(scale,translation,(tex.repeat_s,tex.repeat_t),rotation)
+        if tex.wrap_t==2:
+            # HSD MakeTextureMtx centers mirrored T by one complete tile.
+            transform=(*transform[:3],transform[3]+1.)
         transforms.append(transform)
         crosses.append(cross)
         if index == 0:
@@ -452,7 +638,13 @@ def material_state(mesh, clip, frame, visible):
         transforms.append((1.,1.,0.,0.))
         crosses.append((0.,0.))
     alpha = title.material_alpha(title.curve_value(mat_track[10],frame)) if 10 in mat_track else dobj.mobject.material.alpha
-    return (*transforms[0],alpha,float(visible[mesh["bone"]]),*tev0,*konst,*transforms[1],*crosses[0],*crosses[1])
+    draw_visible=visible[mesh["bone"]] and (clip, frame) not in mesh.get("collapsed_samples", set())
+    if "image_variant" in mesh:
+        image_track=tex_tracks.get(0,{}).get(1)
+        if not image_track:
+            raise ValueError("Image variant has no source TIMG track")
+        draw_visible=draw_visible and int(title.curve_value(image_track,frame))==mesh["image_variant"]
+    return (*transforms[0],alpha,float(draw_visible),*tev0,*konst,*transforms[1],*crosses[0],*crosses[1])
 
 
 def _sample_descriptor(model, descriptor, states, attachment=None):
@@ -462,7 +654,25 @@ def _sample_descriptor(model, descriptor, states, attachment=None):
         result = attachment @ result
     if not np.isfinite(result).all():
         raise ValueError("Nonfinite sampled field transform")
-    if np.min(np.abs(np.linalg.det(result[:,:3,:3])))<1e-9:
+    # A rigid part authored at exactly zero scale contributes no surface.
+    # prepare_pack_set hides its batch at these samples; provide an invertible
+    # unused normal matrix instead of serializing a singular GPU transform.
+    collapsed = np.all(result[:, :3, :3] == 0, axis=(1, 2))
+    if descriptor[0] == "rigid":
+        result[collapsed, :3, :3] = np.eye(3)
+    else:
+        approvals = getattr(model, "_collapsed_world_descriptors", {})
+        for index in np.flatnonzero(collapsed):
+            if descriptor not in approvals.get(id(states[index][0]), set()):
+                raise ValueError("Singular sampled field transform")
+    # Exactly collapsed skin tracks stay zero. Their proven no-surface batches
+    # are hidden at those samples; the native reader supplies an unused normal
+    # while retaining exact interpolation from the neighboring visible tick.
+    # A uniformly tiny authored mesh (Espeon's auxiliary rigid part) can
+    # have a tiny determinant without being ill-conditioned. Compare its
+    # singular values, preserving scale while rejecting collapsed axes.
+    singular = np.linalg.svd(result[:,:3,:3], compute_uv=False)
+    if np.any((singular[:, -1] <= singular[:, 0] * 1e-9) & ~collapsed):
         raise ValueError("Singular sampled field transform")
     if np.max(np.abs(result-np.eye(4)))<1e-7:
         result[:] = np.eye(4)
@@ -470,12 +680,16 @@ def _sample_descriptor(model, descriptor, states, attachment=None):
 
 
 def prepare_pack_set(meshes, schedules, fps, camera_frames, lights, archive_hash, output, prefix,
-                     attachment=None, expected_count=None, format_version=2):
+                     attachment=None, expected_count=None, format_version=2, retained_parts=()):
     """Sample once, compact equal affine tracks, then partition at native bounds.
 
     schedules is a list of (source_clip, authored_frame_sequence, loop). Every
     model in a map group uses the same clock; independent clocks get a new set.
+    retained_parts adds original non-mesh JObj world matrices after render
+    tracks, with an explicit source part to sampled bone map in the report.
     """
+    if retained_parts and expected_count!=1:
+        raise ValueError("Retained source parts require one explicit model pack")
     frames = [(clip,frame) for clip,sequence,_loop in schedules for frame in sequence]
     models = list(dict.fromkeys(mesh["model"] for mesh in meshes))
     states = {model:[model.world(clip if model.tracks else 0,frame) for clip,frame in frames] for model in models}
@@ -491,8 +705,13 @@ def prepare_pack_set(meshes, schedules, fps, camera_frames, lights, archive_hash
                 signatures[key] = signature
         material_tracks[id(mesh)] = []
         for i,(clip,frame) in enumerate(frames):
-            material = material_state(mesh,clip,frame,states[model][i][1])
-            if format_version==3:
+            world, visible = states[model][i]
+            if (all(descriptor[0] == "rigid" for descriptor in mesh["descriptors"]) and
+                np.all(np.asarray(world[mesh["bone"]])[:3, :3] == 0)):
+                visible = list(visible)
+                visible[mesh["bone"]] = False
+            material = material_state(mesh,clip,frame,visible)
+            if format_version>=3:
                 source_joint = states[model][i][0][mesh["bone"]]
                 if attachment is not None:
                     source_joint = attachment[i] @ source_joint
@@ -541,12 +760,30 @@ def prepare_pack_set(meshes, schedules, fps, camera_frames, lights, archive_hash
                     bone_ids[signature]=len(bone_tracks)
                     bone_tracks.append(matrix_tracks[key])
                 vertices.append((*vertex[:12],bone_ids[signature],*vertex[13:]))
+        part_records=[]
+        seen_parts=set()
+        for model,part_index,joint_index in retained_parts:
+            if (model not in models or not isinstance(part_index,int) or not 0<=part_index<65536 or
+                not isinstance(joint_index,int) or not 0<=joint_index<len(model.joints) or
+                part_index in seen_parts):
+                raise ValueError("Invalid retained original part mapping")
+            seen_parts.add(part_index)
+            track=np.asarray([world[joint_index] for world,_ in states[model]])
+            if attachment is not None:
+                track=attachment @ track
+            if (not np.isfinite(track).all() or
+                np.min(np.abs(np.linalg.det(track[:,:3,:3])))<1e-9 or len(bone_tracks)>=64):
+                raise ValueError("Retained original part exceeds sampled transform limits")
+            part_records.append({"source_part":part_index,"source_joint":joint_index,
+                "source_joint_address":f"{model.joints[joint_index].address:08x}",
+                "sampled_bone":len(bone_tracks),"transform":"model-space-world"})
+            bone_tracks.append(track[:,:3,:].astype("<f4"))
         sampled=bytearray()
         for index in range(len(frames)):
             for track in bone_tracks:
                 sampled.extend(track[index].tobytes())
             for mesh in chunk:
-                sampled.extend(struct.pack("<24f" if format_version==3 else "<16f",*material_tracks[id(mesh)][index]))
+                sampled.extend(struct.pack("<24f" if format_version>=3 else "<16f",*material_tracks[id(mesh)][index]))
             sampled.extend(struct.pack("<12f",*camera_frames[index]))
         clips,first=[],0
         for _clip,sequence,loop in schedules:
@@ -561,10 +798,13 @@ def prepare_pack_set(meshes, schedules, fps, camera_frames, lights, archive_hash
                 "texture_rgba_bytes":sum(len(texture[2]) for texture in textures),
                 "format_version":format_version,
                 "sampled_bones":len(bone_tracks),"sample_fps":fps,
+                "retained_parts":part_records,
                 "source_meshes":[{"hsd_root_address":mesh["model"].raw.root_joint.address,
                                   "mesh_index":mesh["index"],"owner_joint":mesh["bone"],
+                                  "texture_index":batches[i][2],
+                                  "image_variant":mesh.get("image_variant"),
                                   "source_render_mode":"%08x"%mesh["dobj"].mobject.render_mode}
-                                 for mesh in chunk],
+                                 for i,mesh in enumerate(chunk)],
                 "clips":[{"source_clip":c,"samples":len(s),"authored_end":s[-1],"loop":l}
                          for c,s,l in schedules]}
         reports.append(report)
@@ -578,6 +818,30 @@ def sample_sequence(end, samples_per_frame=2):
     if count<1 or abs(count-end*samples_per_frame)>1e-5:
         raise ValueError("Animation end does not align with the sampled clock")
     return [sample/samples_per_frame for sample in range(count+1)]
+
+
+def wes_motion_schedules(model):
+    """Keep locomotion at pack 0/1/2; append the original event pose at 3.
+
+    Source motion zero is an authored ten-frame animation, not an idle alias.
+    The source general motion native chooses looping again at runtime.
+    """
+    if model.ends[:4] != [10,30,30,17]:
+        raise ValueError("Original Wes motion mapping changed")
+    return [(i,sample_sequence(model.ends[i]),True) for i in (1,2,3,0)]
+
+
+def prepare_wes(archive, output, prefix, camera, lights, format_version=2):
+    from prepare_outskirt import PROFILES
+    _,raw,scene=load_scene(archive,0x00F70400)
+    model=Model(scene.models[0],raw.models[0])
+    meshes=[build_mesh(model,i) for i in range(len(model.meshes))]
+    schedules=wes_motion_schedules(model)
+    samples=sum(len(sequence) for _,sequence,_ in schedules)
+    reports=prepare_pack_set(meshes,schedules,60,[camera]*samples,lights,
+        PROFILES["field_common.fsys"][1],output,prefix,expected_count=1,
+        format_version=format_version)
+    return reports,sum(len(mesh["vertices"]) for mesh in meshes)
 
 
 def fixed_lights(raw, data):
@@ -617,17 +881,11 @@ def prepare_geometry(archives, output):
     sky_reports=prepare_pack_set(sky,[(0,sky_frames,True)],30000/29999,[fixed]*1001,lights,
                                  source_hash,output,"outskirt_map3",expected_count=1)
     reports+=sky_reports
-    _,wes_raw,wes_scene=load_scene(archives["field_common.fsys"],0x00F70400)
-    wes=Model(wes_scene.models[0],wes_raw.models[0])
-    if wes.ends[1:4] != [30,30,17]:
-        raise ValueError("Original Wes animation ends changed")
-    wes_meshes=[build_mesh(wes,i) for i in range(len(wes.meshes))]
-    schedules=[(i,sample_sequence(wes.ends[i]),True) for i in (1,2,3)]
-    samples=sum(len(sequence) for _,sequence,_ in schedules)
-    reports+=prepare_pack_set(wes_meshes,schedules,60,[fixed]*samples,lights,
-                               PROFILES["field_common.fsys"][1],output,"outskirt_wes",expected_count=1)
+    wes_reports,actor_vertices=prepare_wes(archives["field_common.fsys"],output,
+                                         "outskirt_wes",fixed,lights)
+    reports+=wes_reports
     reports+=prepare_arrival(archives,output,lights,source_hash)
-    return reports,fixed[:11],sum(len(mesh["vertices"]) for mesh in wes_meshes)
+    return reports,fixed[:11],actor_vertices
 
 
 def prepare_arrival(archives,output,lights,source_hash):

@@ -1,0 +1,142 @@
+boot_build 7898cf137e26 core=0
+game_load status=ok name=WES floor=2 previous=1 spawn=0 count=1 backup=0 supported=1
+render_recovery scene=title event=drained frames=475 elapsed_us=287 ready=1 exit=0 input=0000 counters=2336,2336 build=7898cf137e26
+story_flag id=0a05 value=1
+story_flag id=03dc value=1
+render_recovery scene=field event=drained frames=88 elapsed_us=31089 ready=1 exit=0 input=0000 counters=3627,3627 build=7898cf137e26
+field_end result=2 error=
+story_flag id=03dd value=1
+render_recovery scene=field-to-battle event=drained frames=754 elapsed_us=31738 ready=1 exit=0 input=0000 counters=9575,9575 build=7898cf137e26
+preview_begin build=7898cf137e26 seed=12345678 enemy_policy=uniform_legal experimental=1
+preview_turn turn=0 seed=2c53ded8 draws=352 outcome=1 save_writes=0 gsvm_resumed=0
+preview_event index=0 hp=89,69,52,52 draws=352 text=Nonpersistent battle preview. No retail AI or story result.
+preview_event index=1 hp=89,69,52,52 draws=352 text=WILLIE sends out two ZIGZAGOON!
+wzx_bite_admitted model=1 floor_color=1 sound_request=85 attack_binding=accepted_local_72_142_165
+wzx_damage_admitted source=04E32000 model_part=12 sampled_bone=11 generator=3 model_tick=0 hp_sound_tick=22 owner_start=22 owner_end=380
+wzx_tail_whip_admitted controller=yaw_only drawable=original center_null=position_only camera=source
+wzx_growl_admitted model=source part58=one_shot particle_part9=22 source_ids=18,93,111,112 app_srt=qualified camera=source
+wzx_stat_down_admitted special=0x29 targets=0,1 particle_part=0 camera=source
+wzx_stat_down_admitted special=0x27 targets=0,1 particle_part=0 camera=source
+wzx_tackle_admitted attacker=288_entry2_clip4 defenders=197_entry8_clip3,196_entry8_clip2 camera=source normal=170,100 minimum=298,176
+preview_ui page=1 actor=0 slot=0 target=2 event=1 input=0100
+preview_ui page=3 actor=1 slot=2 target=2 event=1 input=0100
+preview_turn turn=1 seed=7c853675 draws=363 outcome=1 save_writes=0 gsvm_resumed=0
+preview_event index=0 hp=89,69,52,52 draws=352 text=TURN 1
+preview_event index=1 hp=89,69,52,52 draws=357 text=UMBREON used SNATCH!
+preview_event index=2 hp=89,69,52,52 draws=357 text=UMBREON is waiting to SNATCH a move.
+preview_event index=3 hp=89,69,52,52 draws=357 text=ESPEON used REFLECT!
+preview_event index=4 hp=89,69,52,52 draws=357 text=UMBREON snatched REFLECT!
+preview_event index=5 hp=89,69,52,52 draws=357 text=REFLECT protects WES's team.
+preview_event index=6 hp=89,69,52,52 draws=357 text=ZIGZAGOON A used TACKLE!
+preview_event index=7 hp=86,69,52,52 draws=360 text=UMBREON loses 3 HP.
+preview_event index=8 hp=86,69,52,52 draws=360 text=ZIGZAGOON B used TACKLE!
+preview_event index=9 hp=83,69,52,52 draws=363 text=UMBREON loses 3 HP.
+preview_event index=10 hp=83,69,52,52 draws=363 text=Turn complete.
+preview_ui page=0 actor=1 slot=2 target=2 event=0 input=0100
+wzx_reflect_instance_complete event=6 owner=1 cue=1
+wzx_reflect_instance_complete event=6 owner=0 cue=2
+wzx_tackle_start event=9 owner=2 target=0 attack130=4A2 stop133=defender_mode2
+wzx_tackle_defender_start source_tick=133 units=20 handoff_units=20 target=0 bodymap2=42 flags_raw=2 bank_flags=1 position_flags=1 anchor_source=-32.480164,3.874979,-26.250000 reset_except=1 owner_flags=admitted_normal hp_gate=0 cue=4
+wzx_tackle_complete event=9 target=0 units=298040 emitted=134 peak=133 draws=964 audio=finished family_cancelled=1 camera_restored=1
+wzx_tackle_start event=11 owner=3 target=0 attack130=4A2 stop133=defender_mode2
+wzx_tackle_defender_start source_tick=133 units=20 handoff_units=20 target=0 bodymap2=42 flags_raw=2 bank_flags=1 position_flags=1 anchor_source=-32.480164,3.874979,-26.250000 reset_except=1 owner_flags=admitted_normal hp_gate=0 cue=6
+wzx_tackle_complete event=11 target=0 units=298040 emitted=134 peak=133 draws=964 audio=finished family_cancelled=1 camera_restored=1
+preview_ui page=1 actor=0 slot=0 target=2 event=10 input=0100
+preview_ui page=3 actor=1 slot=2 target=2 event=10 input=0100
+preview_turn turn=2 seed=1b13b0ac draws=372 outcome=1 save_writes=0 gsvm_resumed=0
+preview_event index=0 hp=83,69,52,52 draws=363 text=TURN 2
+preview_event index=1 hp=83,69,52,52 draws=368 text=UMBREON used SNATCH!
+preview_event index=2 hp=83,69,52,52 draws=368 text=UMBREON is waiting to SNATCH a move.
+preview_event index=3 hp=83,69,52,52 draws=368 text=ESPEON used REFLECT!
+preview_event index=4 hp=83,69,52,52 draws=368 text=UMBREON snatched REFLECT!
+preview_event index=5 hp=83,69,52,52 draws=368 text=But REFLECT is already active.
+preview_event index=6 hp=83,69,52,52 draws=368 text=ZIGZAGOON B used TAIL WHIP!
+preview_event index=7 hp=83,69,52,52 draws=369 text=UMBREON's Defense fell.
+preview_event index=8 hp=83,69,52,52 draws=370 text=ESPEON's Defense fell.
+preview_event index=9 hp=83,69,52,52 draws=370 text=ZIGZAGOON A used GROWL!
+preview_event index=10 hp=83,69,52,52 draws=371 text=UMBREON's Attack fell.
+preview_event index=11 hp=83,69,52,52 draws=372 text=ESPEON's Attack fell.
+preview_event index=12 hp=83,69,52,52 draws=372 text=Turn complete.
+preview_ui page=0 actor=1 slot=2 target=2 event=0 input=0100
+wzx_tail_whip_start event=20 owner=3 dispatcher=attack_once spread_targets=coordinator
+wzx_tail_whip_complete event=20 owner=3 units=168720 controller_done=1 effect_done=1 audio_done=1 cue=7 owner_restored=1
+wzx_stat_down_start event=21 target=0 special=0x29 stat=2 delta=-1 cue=8
+wzx_stat_down_complete event=21 target=0 units=118000 emitted=369 peak=232 cosmetic_draws=1772 audio=finished cleanup_audio=finished cue=8 color_restored=1 camera_restored=1
+wzx_stat_down_start event=22 target=1 special=0x29 stat=2 delta=-1 cue=9
+wzx_stat_down_complete event=22 target=1 units=180000 emitted=369 peak=232 cosmetic_draws=1772 audio=finished cleanup_audio=finished cue=9 color_restored=1 camera_restored=1
+wzx_growl_start event=23 owner=2 dispatcher=attack_once stop_tick=230
+wzx_growl_resources_start units=130020 original_part9=22 model_xyz=4.05237,0.06427,2.60744 emitter_source=40.47456,0.52205,25.85322
+wzx_growl_complete event=23 owner=2 units=230000 emitted=26 peak=25 cosmetic_draws=200 family_cancelled=1 audio_status=stopped cue=10 owner_released=1 motion_continues_at_half_rate=1 camera_restored=1
+wzx_stat_down_start event=24 target=0 special=0x27 stat=1 delta=-1 cue=11
+wzx_stat_down_complete event=24 target=0 units=118000 emitted=369 peak=232 cosmetic_draws=1772 audio=finished cleanup_audio=finished cue=11 color_restored=1 camera_restored=1
+wzx_stat_down_start event=25 target=1 special=0x27 stat=1 delta=-1 cue=12
+wzx_stat_down_complete event=25 target=1 units=180000 emitted=369 peak=232 cosmetic_draws=1772 audio=finished cleanup_audio=finished cue=12 color_restored=1 camera_restored=1
+preview_ui page=1 actor=0 slot=0 target=2 event=12 input=0100
+preview_ui page=2 actor=0 slot=0 target=2 event=12 input=0100
+preview_ui page=1 actor=1 slot=0 target=2 event=12 input=0100
+preview_ui page=2 actor=1 slot=0 target=2 event=12 input=0100
+preview_ui page=3 actor=1 slot=0 target=3 event=12 input=0100
+preview_turn turn=3 seed=783b002d draws=387 outcome=1 save_writes=0 gsvm_resumed=0
+preview_event index=0 hp=83,69,52,52 draws=372 text=TURN 3
+preview_event index=1 hp=83,69,52,52 draws=377 text=ESPEON used CONFUSION!
+preview_event index=2 hp=83,69,52,1 draws=380 text=ZIGZAGOON B loses 51 HP.
+preview_event index=3 hp=83,69,52,1 draws=381 text=UMBREON used BITE!
+preview_event index=4 hp=83,69,52,1 draws=384 text=A critical hit!
+preview_event index=5 hp=83,69,0,1 draws=384 text=ZIGZAGOON A loses 52 HP.
+preview_event index=6 hp=83,69,0,1 draws=384 text=ZIGZAGOON A fainted!
+preview_event index=7 hp=83,69,0,1 draws=384 text=ZIGZAGOON B used TACKLE!
+preview_event index=8 hp=83,64,0,1 draws=387 text=ESPEON loses 5 HP.
+preview_event index=9 hp=83,64,0,1 draws=387 text=Turn complete.
+preview_ui page=0 actor=1 slot=0 target=3 event=0 input=0100
+wzx_confusion_complete phase=0 units=217020 emitted=26 peak=24 cosmetic_draws=134 audio_done=1 cues=13,0,0,0
+wzx_confusion_complete phase=1 units=402000 emitted=738 peak=652 cosmetic_draws=3302 audio_done=1 cues=15,14,16,0
+wzx_bite_start event=30 start_tick=142 stop_tick=165 source_part=59 audio=prepared
+wzx_bite_model_start tick=142 sound85=requested
+wzx_bite_stop tick=165 model_hidden=1 floor_restored=1
+wzx_damage_begin event=30 owner=2 attack_stop_tick=165
+wzx_damage_particles_start tick=0 generator=3 cosmetic_rng=separate
+wzx_damage_hp_gate tick=22 sound=86 playback=requested
+wzx_damage_complete tick=380 particles=82 peak=81 cosmetic_draws=325 hp_faint_gate=released
+wzx_tackle_start event=34 owner=3 target=1 attack130=4A2 stop133=defender_mode2
+wzx_tackle_defender_start source_tick=133 units=20 handoff_units=20 target=1 bodymap2=62 flags_raw=2 bank_flags=1 position_flags=1 anchor_source=-33.683205,3.640747,25.402126 reset_except=1 owner_flags=admitted_normal hp_gate=0 cue=20
+wzx_tackle_complete event=34 target=1 units=176000 emitted=134 peak=133 draws=964 audio=finished family_cancelled=1 camera_restored=1
+preview_ui page=1 actor=0 slot=0 target=3 event=9 input=0100
+preview_ui page=2 actor=0 slot=0 target=3 event=9 input=0100
+preview_ui page=1 actor=1 slot=0 target=3 event=9 input=0100
+preview_ui page=2 actor=1 slot=0 target=3 event=9 input=0100
+preview_ui page=3 actor=1 slot=0 target=3 event=9 input=0100
+preview_turn turn=4 seed=b3b225c0 draws=392 outcome=2 save_writes=0 gsvm_resumed=0
+preview_event index=0 hp=83,64,0,1 draws=387 text=TURN 4
+preview_event index=1 hp=83,64,0,1 draws=389 text=ESPEON used CONFUSION!
+preview_event index=2 hp=83,64,0,0 draws=392 text=ZIGZAGOON B loses 1 HP.
+preview_event index=3 hp=83,64,0,0 draws=392 text=ZIGZAGOON B fainted!
+preview_event index=4 hp=83,64,0,0 draws=392 text=Turn complete.
+preview_event index=5 hp=83,64,0,0 draws=392 text=Preview result: WIN. No rewards, save, or story flags were written.
+preview_ui page=0 actor=1 slot=0 target=3 event=0 input=0100
+wzx_confusion_complete phase=0 units=214800 emitted=26 peak=24 cosmetic_draws=134 audio_done=1 cues=21,0,0,0
+wzx_confusion_complete phase=1 units=402000 emitted=738 peak=652 cosmetic_draws=3302 audio_done=1 cues=23,22,24,0
+preview_ui page=4 actor=1 slot=0 target=3 event=5 input=0100
+render_recovery scene=battle event=drained frames=1861 elapsed_us=419 ready=1 exit=0 input=0000 counters=25656,25656 build=7898cf137e26
+preview_exit app_exit=0 error= save_writes=0 gsvm_resumed=0
+preview_state_guard bytes=122832 unchanged=1 before_sha1=28996d22a943dd2ff90ee48b6b3f691129056f69 after_sha1=28996d22a943dd2ff90ee48b6b3f691129056f69 play_time_advanced=0
+render_recovery scene=battle-to-field event=drained frames=0 elapsed_us=157 ready=1 exit=0 input=0000 counters=25660,25660 build=7898cf137e26
+render_recovery scene=field-to-battle event=drained frames=818 elapsed_us=31676 ready=1 exit=0 input=0000 counters=26411,26411 build=7898cf137e26
+preview_begin build=7898cf137e26 seed=12345678 enemy_policy=uniform_legal experimental=1
+preview_turn turn=0 seed=2c53ded8 draws=352 outcome=1 save_writes=0 gsvm_resumed=0
+preview_event index=0 hp=89,69,52,52 draws=352 text=Nonpersistent battle preview. No retail AI or story result.
+preview_event index=1 hp=89,69,52,52 draws=352 text=WILLIE sends out two ZIGZAGOON!
+wzx_bite_admitted model=1 floor_color=1 sound_request=85 attack_binding=accepted_local_72_142_165
+wzx_damage_admitted source=04E32000 model_part=12 sampled_bone=11 generator=3 model_tick=0 hp_sound_tick=22 owner_start=22 owner_end=380
+wzx_tail_whip_admitted controller=yaw_only drawable=original center_null=position_only camera=source
+wzx_growl_admitted model=source part58=one_shot particle_part9=22 source_ids=18,93,111,112 app_srt=qualified camera=source
+wzx_stat_down_admitted special=0x29 targets=0,1 particle_part=0 camera=source
+wzx_stat_down_admitted special=0x27 targets=0,1 particle_part=0 camera=source
+wzx_tackle_admitted attacker=288_entry2_clip4 defenders=197_entry8_clip3,196_entry8_clip2 camera=source normal=170,100 minimum=298,176
+preview_ui page=5 actor=0 slot=0 target=2 event=1 input=0400
+render_recovery scene=battle event=drained frames=54 elapsed_us=390 ready=1 exit=0 input=0000 counters=27368,27368 build=7898cf137e26
+preview_exit app_exit=0 error= save_writes=0 gsvm_resumed=0
+preview_state_guard bytes=122832 unchanged=1 before_sha1=a424caba1909ae5adcad303926487f8fc17541ec after_sha1=a424caba1909ae5adcad303926487f8fc17541ec play_time_advanced=0
+render_recovery scene=battle-to-field event=drained frames=0 elapsed_us=156 ready=1 exit=0 input=0000 counters=27372,27372 build=7898cf137e26
+render_recovery scene=field event=drained frames=918 elapsed_us=35713 ready=1 exit=1 input=0000 counters=28401,28401 build=7898cf137e26
+field_end result=1 error=
+boot_end result=1 error=

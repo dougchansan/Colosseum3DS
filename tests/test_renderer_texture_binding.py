@@ -22,10 +22,12 @@ class RendererTextureBindingTests(unittest.TestCase):
         cls.addClassCleanup(cls.temporary.cleanup)
         cls.directory = Path(cls.temporary.name)
         source = (ROOT / "platform/3ds/title_renderer.c").read_text()
+        validate = source[source.index("static bool valid_batch("):
+                          source.index("/* HSD reserves a ninth")]
         draw = source[source.index("int c3_stage_renderer_draw("):
                       source.index("int c3_title_renderer_draw(")]
         shutdown = source[source.index("void c3_title_renderer_shutdown("):]
-        (cls.directory / "title_renderer_draw.inc").write_text(draw + shutdown)
+        (cls.directory / "title_renderer_draw.inc").write_text(validate + draw + shutdown)
         cls.executable = cls.directory / "binding-test"
         result = subprocess.run(cls.compiler + cls.cflags + [
             "-I", str(ROOT / "include"), "-I", str(ROOT / "platform/3ds"),
@@ -40,6 +42,12 @@ class RendererTextureBindingTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertEqual(result.stdout, "")
 
+    def test_static_staging_keeps_draws_and_invalidates_camera_state(self):
+        result = subprocess.run([str(self.executable), "0", "1"],
+            env={**os.environ,"C3_TEST_STATIC":"1"},capture_output=True,text=True,timeout=10)
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+        self.assertIn("Static staging reuse",result.stdout)
+
     def test_busy_returns_and_retains_ownership_until_idle_teardown(self):
         result = subprocess.run([str(self.executable), "0", "1"],
             env={**os.environ, "C3_TEST_GPU_BUSY": "1"},
@@ -48,14 +56,59 @@ class RendererTextureBindingTests(unittest.TestCase):
         self.assertEqual(result.stdout,
             "BUSY returned; ownership retained; idle teardown verified\n")
 
+    def test_particle_command_overload_closes_frame(self):
+        result = subprocess.run([str(self.executable), "0", "1"],
+            env={**os.environ, "C3_TEST_PARTICLE_OVERLOAD": "1"},
+            capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
+        self.assertIn("overload closed acquired frame safely", result.stdout)
+
+    def test_confusion_shared_capture_order_and_busy_barrier(self):
+        result = subprocess.run([str(self.executable), "0", "1"],
+            env={**os.environ,"C3_TEST_CONFUSION":"1"},capture_output=True,text=True,timeout=10)
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+        self.assertIn("Confusion captures every model",result.stdout)
+
+    def test_capture_uses_source_classes_independent_of_custom_pe(self):
+        result=subprocess.run([str(self.executable),"0","1"],
+            env={**os.environ,"C3_TEST_CAPTURE_CLASSES":"1"},capture_output=True,text=True,timeout=10)
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+        self.assertIn("OPA TEXEDGE XLU independently of PE; main order unchanged",result.stdout)
+
+    def test_capture_unknown_source_class_fails_closed(self):
+        result=subprocess.run([str(self.executable),"0","1"],
+            env={**os.environ,"C3_TEST_CAPTURE_CLASSES":"1","C3_TEST_CAPTURE_CLASS_INVALID":"1"},
+            capture_output=True,text=True,timeout=10)
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+        self.assertIn("fails before geometry submission",result.stdout)
+
+    def test_non_capture_does_not_reclassify_legacy_materials(self):
+        result=subprocess.run([str(self.executable),"0","1"],
+            env={**os.environ,"C3_TEST_MAIN_UNKNOWN_CLASS":"1"},capture_output=True,text=True,timeout=10)
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+        self.assertEqual(result.stdout,"")
+
     def test_single_texture(self):
         self.check_draw(0, 1)
+
+    def test_tv_pass_has_no_feedback_and_never_enters_main_scene(self):
+        result = subprocess.run([str(self.executable), "0", "1"],
+            env={**os.environ, "C3_TEST_TV": "1"},
+            capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("disabled TV stays hidden", result.stdout)
 
     def test_dual_texture(self):
         self.check_draw(1024, 1)
 
     def test_reflection_texture(self):
         self.check_draw(8192, 1)
+
+    def test_original_npc_alpha_reference(self):
+        result = subprocess.run([str(self.executable), "0", "0.5"],
+            env={**os.environ, "C3_TEST_ALPHA_REF": "127"},
+            capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_fade_preserves_valid_texture_bindings(self):
         for flags in (0, 1024, 8192):

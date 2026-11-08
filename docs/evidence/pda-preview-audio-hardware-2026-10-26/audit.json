@@ -1,0 +1,173 @@
+{
+  "status": "passed-bounded-lifecycle",
+  "base_commit": "8b36f586dbdb5d77e7f0600b6d7ab1d433d98880",
+  "source_note": "Base8b36f58 plus the field_scene.c SDK-progress trace; embedded ID is8b36f586dbdb. Not a claim that the later evidence commit was run.",
+  "field_scene_sha256": "ff083e3ac226a50f9e5e89373b3b8ee61ef2c0024014a6d7dd4452a7a8283eb3",
+  "binary": {
+    "bytes": 678008,
+    "sha256": "2b9bde0216a2f5cf2f5478f0b9dc722eb55bc58587842e531556d46a8dc39074"
+  },
+  "field_sessions": 1,
+  "model_species": 197,
+  "save_before_sha256": "7e1cb3159756293bf938fd922fe45e82448d1b667f6833a48da351af3cbd0f23",
+  "save_after_sha256": "7e1cb3159756293bf938fd922fe45e82448d1b667f6833a48da351af3cbd0f23",
+  "audio": {
+    "Bell1": {
+      "sound_id": 13,
+      "sequence": 1,
+      "expected_frames": 45328,
+      "playing": {
+        "line": 442,
+        "channel": 4,
+        "sound": 13,
+        "sequence": 1,
+        "playing": 1,
+        "paused": 0,
+        "sample_position": 7509,
+        "wave_status": 2,
+        "explicit_stop": 0
+      },
+      "done": {
+        "line": 454,
+        "channel": 4,
+        "sound": 13,
+        "sequence": 1,
+        "playing": 0,
+        "paused": 0,
+        "sample_position": 45328,
+        "wave_status": 3,
+        "explicit_stop": 0
+      }
+    },
+    "Bell2": {
+      "sound_id": 14,
+      "sequence": 2,
+      "expected_frames": 58661,
+      "playing": {
+        "line": 646,
+        "channel": 4,
+        "sound": 14,
+        "sequence": 2,
+        "playing": 1,
+        "paused": 0,
+        "sample_position": 7352,
+        "wave_status": 2,
+        "explicit_stop": 0
+      },
+      "done": {
+        "line": 658,
+        "channel": 4,
+        "sound": 14,
+        "sequence": 2,
+        "playing": 0,
+        "paused": 0,
+        "sample_position": 58661,
+        "wave_status": 3,
+        "explicit_stop": 0
+      }
+    }
+  },
+  "lifecycle": [
+    {
+      "line": 24,
+      "text": "field_begin floor=2 previous=1 spawn=0 new=0 maps=2 npcs=5 models=9 arrival=0 duration=0.000"
+    },
+    {
+      "line": 114,
+      "text": "render_recovery scene=field-to-pda event=drained frames=263 elapsed_us=29672 ready=1 exit=0 input=0000 counters=6279,6279 build=8b36f586dbdb"
+    },
+    {
+      "line": 116,
+      "text": "pda_preview species=197 pid=<saved> trainer=<saved> vm_preserved=1"
+    },
+    {
+      "line": 268,
+      "text": "render_recovery scene=pda-to-field event=drained frames=1769 elapsed_us=26542 ready=1 exit=0 input=0000 counters=16079,16079 build=8b36f586dbdb"
+    },
+    {
+      "line": 1097,
+      "text": "field_end result=1 error="
+    },
+    {
+      "line": 1098,
+      "text": "boot_end result=1 error="
+    }
+  ],
+  "capture_freshness": {
+    "33-preview-rotated": {
+      "counters": {
+        "top": 76,
+        "bottom": 75
+      },
+      "screen_age_seconds": {
+        "top": 0.046999999998661224,
+        "bottom": 0
+      },
+      "decode_errors": 0
+    },
+    "35-field-restored": {
+      "counters": {
+        "top": 120,
+        "bottom": 121
+      },
+      "screen_age_seconds": {
+        "top": 0.062000000005355105,
+        "bottom": 0.031000000002677552
+      },
+      "decode_errors": 0
+    },
+    "54-tone-bell2": {
+      "counters": {
+        "top": 35,
+        "bottom": 36
+      },
+      "screen_age_seconds": {
+        "top": 0.39099999999598367,
+        "bottom": 0.4059999999954016
+      },
+      "decode_errors": 0
+    },
+    "65-control-refresh": {
+      "counters": {
+        "top": 45,
+        "bottom": 43
+      },
+      "screen_age_seconds": {
+        "top": 0.046000000002095476,
+        "bottom": 0.014999999999417923
+      },
+      "decode_errors": 0
+    }
+  },
+  "media": [
+    {
+      "file": "model-preview.png",
+      "bytes": 85644,
+      "sha256": "175fcc7c7a0e2adf7524b7ce512eec9b10dc1d9589397d35f36d889e36aae325"
+    },
+    {
+      "file": "field-restored.png",
+      "bytes": 157980,
+      "sha256": "97c45f7f911d00b0e5dd486f59c0e19a0c4f310608bda948577e4c59e9109bc4"
+    },
+    {
+      "file": "ringtone-menu.png",
+      "bytes": 151447,
+      "sha256": "34a9c6ed038783003a76da271f6d154839292bd9a2c62134071ba1de2799e777"
+    },
+    {
+      "file": "field-control.png",
+      "bytes": 143834,
+      "sha256": "2f509dc2d5fd74d253b72d2af5a29401bd1ef94486dcdfb535c365dd9578e9c2"
+    }
+  ],
+  "player_position_before": "-5.3580,0.0000,2.4780",
+  "player_position_after_movement": "-5.0946,0.0000,2.4780",
+  "limits": [
+    "SDK sample advancement/DONE proves buffer consumption, not recorded speaker output or retail DSP parity",
+    "one saved normal Umbreon tested; no all-model or shiny hardware qualification",
+    "automatic orbit remained active; C-stick injection recorded but independent manual gain not isolated",
+    "NTR reconnect/freshness failures excluded; fresh listen-only replacements used",
+    "HOME/sleep/performance remain unqualified"
+  ]
+}

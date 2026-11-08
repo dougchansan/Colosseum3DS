@@ -1,7 +1,10 @@
 #include "n3ds_platform.h"
+#include "stage_renderer.h"
+#include "bottom_screen.h"
 
 #include <3ds.h>
 #include <stdio.h>
+#include <malloc.h>
 #include <string.h>
 
 static bool graphics_started;
@@ -84,6 +87,7 @@ int c3_n3ds_init(char *error, size_t capacity)
     }
     /* This is a request to the system; it is not a measured clock-rate claim. */
     osSetSpeedupEnable(true);
+    c3_bottom_screen_init();
     if (capacity) error[0] = '\0';
     return 0;
 }
@@ -136,6 +140,20 @@ uint64_t c3_n3ds_active_time_us(void)
     return now - paused;
 }
 
+void c3_n3ds_log_memory(FILE *trace, const char *stage)
+{
+    if (!trace) return;
+    struct mallinfo memory = mallinfo();
+    fprintf(trace, "platform_memory stage=%s heap_bytes=%lu linear_heap_bytes=%lu linear_free_bytes=%lu\n",
+            stage ? stage : "unspecified",
+            (unsigned long)envGetHeapSize(), (unsigned long)envGetLinearHeapSize(),
+            (unsigned long)linearSpaceFree());
+    fprintf(trace, "platform_allocator stage=%s arena_bytes=%lu used_bytes=%lu free_in_arena_bytes=%lu\n",
+            stage ? stage : "unspecified", (unsigned long)memory.arena,
+            (unsigned long)memory.uordblks, (unsigned long)memory.fordblks);
+    fflush(trace);
+}
+
 const char *c3_n3ds_data_root(void)
 {
     return "sdmc:/3ds/Colosseum3DS/data";
@@ -155,6 +173,8 @@ void c3_n3ds_wait_for_exit(void)
 void c3_n3ds_shutdown(void)
 {
     if (graphics_started) {
+        c3_bottom_screen_close();
+        c3_stage_renderer_fini();
         aptUnhook(&clock_hook);
         osSetSpeedupEnable(false);
         gfxExit();

@@ -1,0 +1,112 @@
+{
+  "fresh": {
+    "controller_completed": true,
+    "guest_faults": 0,
+    "application_failures": 0,
+    "clean_exit": true,
+    "frames": 21000,
+    "executable_sha256": "fe5567d2d60835044d08ae4e335d3d47e95b20cad60914ae501fedadb9f36a63",
+    "core_sha256": "a447e9ecb7b4ef0a530d31eeb83a39edf4697f17bb3e44251f27a1d25fde7662",
+    "harness_sha256": "c2678d5f76f0ddf5ef475dbe69c31cc3193a19f4582d7d078089c61fb7fb7f75"
+  },
+  "continue": {
+    "controller_completed": true,
+    "guest_faults": 0,
+    "application_failures": 0,
+    "clean_exit": true,
+    "frames": 10000,
+    "executable_sha256": "fe5567d2d60835044d08ae4e335d3d47e95b20cad60914ae501fedadb9f36a63",
+    "core_sha256": "a447e9ecb7b4ef0a530d31eeb83a39edf4697f17bb3e44251f27a1d25fde7662",
+    "harness_sha256": "c2678d5f76f0ddf5ef475dbe69c31cc3193a19f4582d7d078089c61fb7fb7f75"
+  },
+  "gates": {
+    "new_game_wes_empty_save_folder": true,
+    "original_hideout_movie": {
+      "displayed": 1795,
+      "skipped": 131,
+      "total": 1926
+    },
+    "arrival": true,
+    "required_exterior_departure": true,
+    "walked_original_shop_door": true,
+    "original_tv_report": true,
+    "walked_to_willie_and_completed_dialogue": true,
+    "explicit_shop_save_count": 1,
+    "continued_same_save": true,
+    "intro_report_not_replayed": true,
+    "original_exit_and_challenge": true,
+    "encounter_10_waiting_backend": true,
+    "battle_result_written": false,
+    "victory_flag_written": false,
+    "save_unchanged_during_continue": true
+  },
+  "fresh_save": {
+    "bytes": 393280,
+    "sha256": "edaa632237050912a82d679a12cebff98b0b36bd92b876dd6bfdaa20beb53799",
+    "floor": 2,
+    "previous_floor": 1,
+    "spawn": 0,
+    "name": "WES",
+    "count": 1,
+    "private_file_not_committed": true
+  },
+  "completed_save": {
+    "sha256": "e16f2c42e8423cbae34fa5683752385054b8a18a72cbc791b9dac588d931124d",
+    "used_for_gameplay": false,
+    "installed_in_proof_sd": false,
+    "policy": "Retain unchanged for later-area tests after fresh-route physical confirmation."
+  },
+  "scope": "Native ARM executable in Azahar using actual controller input. No physical New 3DS first-visit, hardware performance, battle completion, or later-area acceptance is claimed.",
+  "screenshots": [
+    {
+      "file": "fresh-wes-outskirt.png",
+      "frontend_frame": 6840,
+      "sha256": "81105e5179eea2923a6110793f15482492a2dd28b997095b6654ac99f845ce1c"
+    },
+    {
+      "file": "original-departure-0515d.png",
+      "frontend_frame": 8100,
+      "sha256": "c8d89d7f54a95939cbe598e0493cae5e6eb68330cd17f012733f629135627a70"
+    },
+    {
+      "file": "original-shop-tv-0426e.png",
+      "frontend_frame": 12060,
+      "sha256": "215dd52db281ab47996e29221e0aaf749c0e839d997619b3f685b22b7ede20b6"
+    },
+    {
+      "file": "shop-control.png",
+      "frontend_frame": 12540,
+      "sha256": "5484ce386a1dc68235bdc79a972cc2978a01f00970b70d33493103144301c365"
+    },
+    {
+      "file": "willie-conversation-0514a.png",
+      "frontend_frame": 14340,
+      "sha256": "9996fddcd64da3fdf0e0f7dc0308a596c146650bfb7c0c069cb8f8d469ecac3f"
+    },
+    {
+      "file": "willie-conversation-0514c.png",
+      "frontend_frame": 14700,
+      "sha256": "48a79e5b8bc743c488a9ceabc873c3a2ae03461c4cd4e994c389ad2d7cbe372d"
+    },
+    {
+      "file": "saved-fresh-wes-shop.png",
+      "frontend_frame": 16020,
+      "sha256": "e652e87ea3d65eefd075e389a09d16cd632f0c6ea5a91023a1743abe8d70cf4f"
+    },
+    {
+      "file": "continued-fresh-wes-shop.png",
+      "frontend_frame": 2040,
+      "sha256": "f7ba1005e3ae9f369677526dd085c941fdfae5ec5a86a1aef1ac5177cb92c4b9"
+    },
+    {
+      "file": "outside-challenge-0513f.png",
+      "frontend_frame": 3960,
+      "sha256": "851e60ecc936ed9cdc890e26788173bd17462d122eb4ea5ce30a9cbf638a0603"
+    },
+    {
+      "file": "first-battle-pending.png",
+      "frontend_frame": 4800,
+      "sha256": "4ba197d86f7188232815a5685955545b8240fbcbf751b1e4534806501edb4577"
+    }
+  ]
+}

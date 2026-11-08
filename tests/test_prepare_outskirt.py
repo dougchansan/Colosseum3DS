@@ -112,6 +112,22 @@ class OutskirtPreparationTests(unittest.TestCase):
         self.assertEqual(geometry.sample_sequence(17)[-1]/30,17/30)
         with self.assertRaises(ValueError):geometry.sample_sequence(.2)
 
+    @unittest.skipUnless(np is not None,"NumPy is required for the offline numeric exporter")
+    def test_custom_pixel_engine_preserves_original_depth_write(self):
+        pe=Obj(flags=49,type=1,source_factor=4,destination_factor=5,z_comp=3)
+        base=geometry.title.CULL_BACK|geometry.title.LIT|geometry.title.NO_DEPTH_WRITE
+        flags=geometry.pixel_engine_flags(pe,base)
+        self.assertTrue(flags&geometry.title.TRANSLUCENT)
+        self.assertFalse(flags&geometry.title.NO_DEPTH_WRITE)
+        self.assertTrue(flags&geometry.title.LIT)
+        pe.flags=25
+        self.assertTrue(geometry.pixel_engine_flags(pe,base)&geometry.title.NO_DEPTH_WRITE)
+        pe.flags=57;pe.type=0
+        flags=geometry.pixel_engine_flags(pe,base|geometry.title.TRANSLUCENT)
+        self.assertFalse(flags&(geometry.title.TRANSLUCENT|geometry.title.NO_DEPTH_WRITE))
+        pe.flags=53 # Destination alpha is not represented by these packs.
+        with self.assertRaises(ValueError):geometry.pixel_engine_flags(pe,base)
+
 
 if __name__=="__main__":
     unittest.main()

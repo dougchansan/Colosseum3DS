@@ -1,0 +1,43 @@
+{
+  "gci_sha256": "7e1cb3159756293bf938fd922fe45e82448d1b667f6833a48da351af3cbd0f23",
+  "bytes": 393280,
+  "outer_generation": 1,
+  "save_count": 1,
+  "name": "WES",
+  "trainer_id": "04c15ef9",
+  "money": 10000,
+  "floor": 2,
+  "previous_floor": 1,
+  "spawn": 0,
+  "party": [
+    {
+      "species": 197,
+      "level": 26,
+      "hp": 89,
+      "max_hp": 89,
+      "personality": "7e14a072"
+    },
+    {
+      "species": 196,
+      "level": 25,
+      "hp": 69,
+      "max_hp": 69,
+      "personality": "c492107a"
+    }
+  ],
+  "party_sha256": "d39927649a5883bdd02f1236cc76b37f65963b29fd0350575b70a1897f66c036",
+  "party_matches_independent_fresh_seed": true,
+  "new_game_seed": "40ef40d5",
+  "flags": {
+    "0af8": 1,
+    "03da": 1,
+    "03db": 1,
+    "03dc": 0,
+    "03dd": 0,
+    "03de": 0,
+    "0a05": 1,
+    "0ace": 1
+  },
+  "body_sha256": "9467e7f9a511e6c60016f122226750f70c55e49a864dcc22df5464e6db37612e",
+  "slot_payload_checksums_verified": true
+}

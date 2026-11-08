@@ -43,6 +43,11 @@ int main(int argc,char **argv)
     C3FieldMap map={0};C3FieldPlayer player;C3TitleCamera camera;
     char error[192];size_t bytes;unsigned char *p=fixture(&bytes);
     CHECK(c3_field_parse(&map,p,bytes,error,sizeof error));
+    word(p+184,0);CHECK(c3_field_parse(&map,p,bytes,error,sizeof error));
+    CHECK(map.arrival_pack_count==0); /* Ordinary interiors have no arrival. */
+    word(p+184,7);CHECK(!c3_field_parse(&map,p,bytes,error,sizeof error));
+    CHECK(map.arrival_pack_count==0);
+    word(p+184,1);CHECK(c3_field_parse(&map,p,bytes,error,sizeof error));
     CHECK(map.floor==1 && map.spawn_count==1 && map.wall_count==2 && map.object_count==1);
     CHECK(c3_field_spawn(&map,0,&player));CHECK(!c3_field_spawn(&map,1,&player));
     CHECK(c3_field_move(&map,&player,0,127,0,0,1.0f/60));
@@ -62,9 +67,32 @@ int main(int argc,char **argv)
     CHECK(c3_field_spawn(&map,0,&player));
     for(unsigned i=0;i<10;++i)CHECK(c3_field_move(&map,&player,127,0,0,0,.25f));
     CHECK(player.position[0]<=1.601f && player.position[0]>1.59f && player.collision_count>0);
+    float before_push[3]={1.5f,0,0};
+    player.position[0]=2.2f;player.position[1]=player.position[2]=0;
+    CHECK(c3_field_resolve_position(&map,&player,before_push));
+    CHECK(player.position[0]<=1.601f && player.position[0]>1.59f);
+    /* Source scriptSetCol disables an object, including all of its wall faces.
+     * Retain a different ground object so this tests actual passage. */
+    CHECK(c3_field_set_object_enabled(&map,0,0));
+    CHECK(!c3_field_object_enabled(&map,0));
+    float disabled_height=123;
+    CHECK(!c3_field_ground(&map,player.position,&disabled_height));
+    CHECK(disabled_height==123);
+    map.walk[0].object=1;map.object_count=2;
+    CHECK(c3_field_object_enabled(&map,1));
+    CHECK(c3_field_spawn(&map,0,&player));
+    for(unsigned i=0;i<10;++i)CHECK(c3_field_move(&map,&player,127,0,0,0,.25f));
+    CHECK(player.position[0]>2.5f && player.collision_count==0);
+    CHECK(!c3_field_set_object_enabled(&map,2,0));
+    CHECK(!c3_field_set_object_enabled(&map,256,0));
+    CHECK(!c3_field_set_object_enabled(NULL,0,0));
+    CHECK(c3_field_set_object_enabled(&map,0,1));
+    CHECK(c3_field_object_enabled(&map,0));
+    map.walk[0].object=0;map.object_count=1;
     CHECK(c3_field_spawn(&map,0,&player));
     CHECK(c3_field_move(&map,&player,-127,0,0,0,10));
     CHECK(fabsf(player.position[0]+1.3f/18*15)<1e-4f);
+    CHECK(fabsf(player.animation_seconds-10.0f)<1e-6f);
     C3FieldPlayer before=player;
     CHECK(!c3_field_move(&map,&player,127,0,0,0,NAN));
     CHECK(!memcmp(&before,&player,sizeof player));
@@ -83,6 +111,8 @@ int main(int argc,char **argv)
     CHECK(!c3_field_parse(&map,p,bytes-1,error,sizeof error));
     real(p+64,1);CHECK(!c3_field_parse(&map,p,bytes,error,sizeof error));real(p+64,.1f);
     CHECK(c3_field_parse(&map,p,bytes,error,sizeof error));
+    p[280+52]=2;CHECK(c3_field_parse(&map,p,bytes,error,sizeof error));
+    CHECK(map.object_count==3 && c3_field_object_enabled(&map,2));
     free(p);c3_field_close(&map);
     if(argc>1) {
         CHECK(c3_field_load(&map,argv[1],error,sizeof error));
