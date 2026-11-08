@@ -451,4 +451,18 @@ all: build/test_battle_entry_session
 battle-entry-session-check: build/test_battle_entry_session
 	./build/test_battle_entry_session
 test: battle-entry-session-check
+
+# Entry-built FightPokemon starting the preview battle. Private comparison runs
+# only with C3_ENTRY_PACK, C3_ENTRY_NEWGAME and C3_PREVIEW_DIR set.
+BATTLE_ENTRY_PREVIEW_SOURCES = $(sort src/battle_entry_preview.c $(BATTLE_ENTRY_SESSION_SOURCES) \
+	src/battle_preview.c src/battle_presentation.c src/battle_damage.c $(BATTLE_INIT_SOURCES))
+build/test_battle_entry_preview: tests/test_battle_entry_preview.c $(BATTLE_ENTRY_PREVIEW_SOURCES) $(HEADERS) \
+	$(BATTLE_ENTRY_SESSION_GENERATED) build/battle_damage_original.inc build/battle_rng_source.h | build
+	$(CC) $(CPPFLAGS) -Isrc -Ibuild $(CFLAGS) tests/test_battle_entry_preview.c $(BATTLE_ENTRY_PREVIEW_SOURCES) $(LDFLAGS) -lm -o $@
+
+all: build/test_battle_entry_preview
+.PHONY: battle-entry-preview-check
+battle-entry-preview-check: build/test_battle_entry_preview
+	./build/test_battle_entry_preview
+test: battle-entry-preview-check
 test: battle-runtime-trainer-check

@@ -176,5 +176,25 @@ C3E1 table pack (`tools/prepare_battle_entry.py`) and the live save body (read
 only). On the console, `platform/3ds/battle_entry_console.c` runs it at the
 encounter-10 handoff inside the preview state guard and traces the results.
 See the [hardware evidence](evidence/trainer-entry-hardware-2026-11-08/README.md).
-The entry-built records are not yet consumed by combat, and nothing is
-registered with native98.
+Nothing is registered with native98.
+
+## Entry records start the preview battle (2026-11-08)
+
+The preview scene now runs the entry first and starts combat from its
+results: `c3_battle_entry_preview_begin` (`src/battle_entry_preview.c`) takes
+the first two FightPokemon of each side (player side 0, opponent side 1) and
+the session RNG, and `c3_battle_preview_begin_records` builds the four active
+mons from their 312-byte PokemonBios copies. The player records must equal the
+pending request's party bytes. When the entry pack is absent the preview keeps
+its roster initializer (`source=roster_initializer` in the trace); a failed
+entry is reported and never silently replaced.
+
+`tests/test_battle_entry_preview.c` runs the real entry over the private pack
+and plays the battle to an outcome; with `C3_ENTRY_SAVE` it replays a real GCI
+to predict a console run. On the New 3DS the battle matched that prediction
+event for event: see the
+[hardware evidence](evidence/entry-combat-hardware-2026-11-08/README.md).
+
+Still preview-owned, not original: the turn engine, enemy policy, the stage's
+model placement (entry grid values are traced, not applied), the session seed
+and zero-filled stack backing. No result, reward, flag or save write exists.

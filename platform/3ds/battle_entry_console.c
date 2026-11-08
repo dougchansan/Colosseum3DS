@@ -2,6 +2,7 @@
 #include "battle_entry_console.h"
 #include "n3ds_platform.h"
 #include "colosseum3ds/battle_entry_pack.h"
+#include "colosseum3ds/battle_entry_preview.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -80,13 +81,14 @@ static uint8_t *read_pack(size_t *size)
     else{free(data);data=NULL;*size=0;}
     fclose(f);return data;
 }
-int c3_battle_entry_console_run(uint16_t encounter_id,const uint8_t *body,size_t body_size,FILE *trace)
+int c3_battle_entry_console_run(uint16_t encounter_id,const uint8_t *body,size_t body_size,FILE *trace,
+    const C3BattleRequest *request,const C3BattlePreviewTables *tables,C3BattlePreview *battle,char *error_out)
 {
     size_t size=0;uint64_t start=c3_n3ds_time_us();
     uint8_t *bytes=read_pack(&size);
     if(!bytes){if(trace){fprintf(trace,"entry_session skipped reason=pack_unavailable\n");fflush(trace);}return 0;}
     C3BattleEntryPack *pack=malloc(sizeof *pack);C3BattleEntrySession *session=calloc(1,sizeof *session);
-    C3BattleEntrySessionConfig config;ConsoleScene scene={0};char error[C3_BATTLE_ERROR_SIZE]={0};int result=-1;
+    C3BattleEntrySessionConfig config;ConsoleScene scene={0};char error[C3_BATTLE_ERROR_SIZE]={0};int result=-1,entered=0;
     scene.trace=trace;
     if(!pack||!session)snprintf(error,sizeof error,"Entry session allocation failed");
     else if(c3_battle_entry_pack_decode(pack,bytes,size,error)&&
@@ -102,14 +104,17 @@ int c3_battle_entry_console_run(uint16_t encounter_id,const uint8_t *body,size_t
         else{
             int r;unsigned guard=0;
             while((r=c3_battle_entry_session_step(session))==1&&++guard<64){}
-            if(r==0&&!scene.unmapped)result=1;
+            if(r==0&&!scene.unmapped)result=entered=1;
             else snprintf(error,sizeof error,"Entry stopped at %s",r==0?"unmapped_resource":
                 session->failure?session->failure:guard>=64?"step_limit":"action_frame");
             if(result<0)c3_battle_entry_session_abort(session);
+            /* Hand the active FightPokemon and the session RNG to combat while
+             * the session (and the pack it borrows) is still alive. */
+            else if(!c3_battle_entry_preview_begin(battle,request,session,tables,error))result=-1;
         }
     }
     if(trace){
-        if(result==1){
+        if(entered){
             fprintf(trace,"entry_session result=%lu,%lu steps=%lu waits=%lu rng_seed=%08lx rng_draws=%llu entry_counter=%u loads=%u grids=%u shown=%u hidden=%u\n",
                 (unsigned long)session->source_result[0],(unsigned long)session->source_result[1],
                 (unsigned long)session->steps,(unsigned long)session->waits,(unsigned long)session->rng.seed,
@@ -123,11 +128,16 @@ int c3_battle_entry_console_run(uint16_t encounter_id,const uint8_t *body,size_t
                     fprintf(trace,"entry_fighter side=%u slot=%u species=%u level=%u hp=%u/%u personality=%08lx entry_id=%d\n",
                         side,j,be16(p),p[0x60],be16(p+0x8a),be16(p+0x8c),(unsigned long)be32(p+4),(int)(int16_t)be16(f+0x14c));}
             }
+            if(result==1)fprintf(trace,"entry_preview_begin source=entry_fightpokemon rng_seed=%08lx rng_draws=%llu hp=%u,%u,%u,%u\n",
+                (unsigned long)battle->rng.seed,(unsigned long long)battle->rng.draws,
+                battle->mons[0].hp,battle->mons[1].hp,battle->mons[2].hp,battle->mons[3].hp);
+            else fprintf(trace,"entry_preview_failed error=%s\n",error);
         }else fprintf(trace,"entry_session failed error=%s aborted=%u\n",error,scene.aborted);
         fprintf(trace,"entry_session_end wall_us=%llu save_writes=0 gsvm_resumed=0 authoritative=0\n",
             (unsigned long long)(c3_n3ds_time_us()-start));
         c3_n3ds_log_memory(trace,"entry_session");fflush(trace);
     }
+    if(result<0&&error_out)snprintf(error_out,C3_BATTLE_ERROR_SIZE,"%s",error[0]?error:"Trainer entry failed.");
     free(session);free(pack);free(bytes);
     return result;
 }
