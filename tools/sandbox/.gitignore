@@ -1,0 +1,15 @@
+/core/
+/include/
+/state/
+/runs/
+/harness
+/sd_probe.elf
+/sd_probe.3dsx
+/dependencies.json
+/__pycache__/
+/probe-build/
+/gpu-probe-build/
+/scene-probe-build/
+/shop-probe-build/
+/tv-corners-build/
+/tv-probe-build/

@@ -1,0 +1,21 @@
+{
+  "repository": "Count-Sheep/pkmn-colosseum",
+  "commit": "51bfe4314a218dfaf9592fc80723c50498d0ee55",
+  "hash_normalization": "CRLF converted to LF before SHA256; no other changes",
+  "functions": [
+    {
+      "path": "src/hsd/random.c",
+      "sha256": "5cbf926074e0efc33caafa312333cc7b62b7d4124eaea1af238952feb2ececd5",
+      "symbol": "fn_801ADCD8",
+      "address": "0x801ADCD8",
+      "authority": "Pinned reconstructed HSD source; no original PowerPC execution comparison in this change"
+    },
+    {
+      "path": "src/game/gs_math_range_800E09E8.c",
+      "sha256": "f1b57465550055f817be359aef3e56fca930f06cda9eae883b875899adccc498",
+      "symbol": "_fadeEffectGetRandom__FUl",
+      "address": "0x800E0C04",
+      "authority": "CANDIDATE source body selected by GS_MATH_RANDOM_CANDIDATE_800E0C04; not an original PowerPC oracle"
+    }
+  ]
+}

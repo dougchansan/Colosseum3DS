@@ -1,0 +1,19 @@
+{
+  "image": "recovery-X-after-exit.png",
+  "sampled_utc": 1792649591.3150733,
+  "frames": {
+    "top": {
+      "frame_id": 145,
+      "counter": 6,
+      "received_utc": "2026-10-22T06:13:11.291541+00:00"
+    },
+    "bottom": {
+      "frame_id": 144,
+      "counter": 5,
+      "received_utc": "2026-10-22T06:13:11.267821+00:00"
+    }
+  },
+  "image_sha256": "3f237379ffb5867cde50089264ba98a2b6d6517586b542bf115b343638a7c8e2",
+  "observation": "PAD0400 visible on recovery screen; X input received",
+  "collection_status": "passed; see private final capture for session freshness"
+}

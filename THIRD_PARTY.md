@@ -5,8 +5,11 @@
 at `51bfe4314a218dfaf9592fc80723c50498d0ee55`. Its `LICENSE` and `NOTICE` remain
 in that tree. The source authors describe the source as MIT-licensed, with
 separate exceptions documented in the upstream notice. This build compiles
-only the three files listed in `source-lock.json`; it does not link the
-upstream GPL semantic-oracle sidecar.
+the three translation units and five memory-card codec functions listed in
+`source-lock.json`; it does not link the upstream GPL semantic-oracle sidecar.
+The codec generator verifies the whole source file before extracting the
+original implementation, and records its native endian/workspace changes.
+See [save-format provenance](docs/save-format.md).
 
 The HSD RNG source in that snapshot records its Melee/sysdolphin reference.
 The FSYS/LZSS implementation in this repository is a bounded native adaptation
@@ -45,7 +48,17 @@ submodule.
 `vendor/hsd-importer` pins StarsMmd's Blender GameCube importer at
 `dc71de837978a6a2fe8c5082f2840cfafb135235`, also GPLv3. Its parsing, planning
 and skeletal bake helpers are used by the optional offline preparation tool,
-not linked into the ARM executable. Preserve its upstream license and notices.
-The required Blender runtime is an external tool. Neither source license grants
+not linked into the ARM executable. The title converter also uses its pure
+Python parser without Blender and verifies the required parser file identities
+against the pinned tree. Preserve its upstream license and notices.
+The Blender runtime for the Eevee tool is external. Neither source license grants
 permission to redistribute extracted Pokémon models, textures or animations;
-prepared `.c3m` packs remain local/private and are excluded from CI artifacts.
+prepared `.c3m`, `.c3t` and `.c3v` packs remain local/private and are excluded
+from CI artifacts. The title renderer's camera, lighting and material behavior
+is adapted from the pinned decomp's `cobj.c`, `lobj.c`, `state.c`, `mobj.c` and
+`tobj.c`; exact links and the supported subset are in [title-format.md](docs/title-format.md).
+
+`tools/sandbox` is a small optional libretro frontend. It extracts API/build
+headers and the Azahar core from separately supplied packages, records their
+hashes, and keeps these dependencies out of the repository and application
+artifact. It does not embed an emulator into the New 3DS application.

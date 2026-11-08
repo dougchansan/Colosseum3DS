@@ -1,0 +1,26 @@
+{
+  "host": "192.168.50.154",
+  "port": 4950,
+  "buttons": [
+    "HOME"
+  ],
+  "duration_seconds": 0.15,
+  "circle_pad": [
+    0,
+    0
+  ],
+  "c_stick": [
+    0,
+    0
+  ],
+  "started_utc": "2026-10-22T06:33:50.869676+00:00",
+  "hold_sent": 9,
+  "release_attempted": 3,
+  "release_sent": 3,
+  "release_errors": [],
+  "status": "sent",
+  "receipt_verified": false,
+  "cancelled": false,
+  "limits": "UDP sends only; console receipt and visible response require observation",
+  "local_source_address": "192.168.50.47"
+}

@@ -1,0 +1,700 @@
+{
+  "started_utc": "2026-10-22T02:47:19.089692+00:00",
+  "content": "/workspace/scratch/d8bf34fb7169/Colosseum3DS-boot/build-3ds-boot/Colosseum3DS.3dsx",
+  "content_sha256": "a7deda3e8550ea21d60f157a36b045a455abefd9e8d658bc282c9a921e974d2f",
+  "core_sha256": "a447e9ecb7b4ef0a530d31eeb83a39edf4697f17bb3e44251f27a1d25fde7662",
+  "harness_sha256": "b234e75dfe0c2486d6d28feb0ed083d38aa289ac1eff358fa3db55327dc148e9",
+  "harness_source_sha256": "4ec434373464cdc6e6a2337415899c97e6cae53f9c338d6713c839edb8c7461b",
+  "renderer": "OpenGL/llvmpipe",
+  "system_model": "New 3DS",
+  "state": "/workspace/scratch/d8bf34fb7169/emulator-sandbox/gameflow-state",
+  "sdmc": "/workspace/scratch/d8bf34fb7169/emulator-sandbox/gameflow-state/save/Azahar/sdmc",
+  "frame_limit": 8750,
+  "wall_limit_seconds": 150,
+  "capture_every": 100,
+  "sd_files_before": [
+    {
+      "path": "3ds/Colosseum3DS/boot/tpc.c3v",
+      "exists": true,
+      "bytes": 11840672,
+      "sha256": "ab205a7479a2fd81b4b7d266af6285e0ac381d29ccdc6402a5135545656fdf2a"
+    },
+    {
+      "path": "3ds/Colosseum3DS/boot/gs_logo.c3v",
+      "exists": true,
+      "bytes": 19968064,
+      "sha256": "b9fabb1bc42e8525379eb5c7e2e3fa4896ab9332d94b55109d6b40028d2e7783"
+    },
+    {
+      "path": "3ds/Colosseum3DS/boot/title.c3t",
+      "exists": true,
+      "bytes": 18353048,
+      "sha256": "f6fc95010631de9897a041b5cc6d46232bfd6b0bd3e784ad7065f5024cb9d166"
+    },
+    {
+      "path": "3ds/Colosseum3DS/boot/openingdemo.c3v",
+      "exists": true,
+      "bytes": 304066812,
+      "sha256": "f5cf0716ce6331166a5a97058c48105c691bb9482d039b6c1005b9378813afee"
+    },
+    {
+      "path": "3ds/Colosseum3DS/boot/newgame.c3g",
+      "exists": true,
+      "bytes": 176722,
+      "sha256": "6bfdc9ffd1ce16303801ade262d64a6e8cffcb5907c87a920b195427527b0903"
+    },
+    {
+      "path": "3ds/Colosseum3DS/boot/menu.c3u",
+      "exists": true,
+      "bytes": 1260,
+      "sha256": "322f6201e1a4af9e56eec2b7b55a18d630c59f4235c913a6c2d53ebeded251f1"
+    },
+    {
+      "path": "3ds/Colosseum3DS/boot/outskirt.c3f",
+      "exists": true,
+      "bytes": 21656,
+      "sha256": "45e9c8b4be3afc26c783d087d3348217ce555d852ba570168ca5459c2ad0b82e"
+    },
+    {
+      "path": "3ds/Colosseum3DS/boot/outskirt_arrival0.c3t",
+      "exists": true,
+      "bytes": 3519720,
+      "sha256": "28ff3752722e28f4b3c442a09630a8d0028910031af9ef17c4d068acaffad86f"
+    },
+    {
+      "path": "3ds/Colosseum3DS/boot/outskirt_arrival1.c3t",
+      "exists": true,
+      "bytes": 1113808,
+      "sha256": "aa21929fd770f260709e11fba541873c7d0c298ca842467f66d78cfc1ee7afaa"
+    },
+    {
+      "path": "3ds/Colosseum3DS/boot/outskirt_map0.c3t",
+      "exists": true,
+      "bytes": 12053184,
+      "sha256": "350097e53d1833d6dc70b1fb504c6ea6e89e14c69ab61292caf6fa1f5106cadf"
+    },
+    {
+      "path": "3ds/Colosseum3DS/boot/outskirt_map1.c3t",
+      "exists": true,
+      "bytes": 7751912,
+      "sha256": "f337f2eacb25e6f11b230ef51f38a9e8b4a445031105fcdff90ebd89778a3944"
+    },
+    {
+      "path": "3ds/Colosseum3DS/boot/outskirt_map2.c3t",
+      "exists": true,
+      "bytes": 4765944,
+      "sha256": "497355ef80631b9b1e086372dfc4065f9f45ba900c0b4f8c3f0f518b899df735"
+    },
+    {
+      "path": "3ds/Colosseum3DS/boot/outskirt_map3.c3t",
+      "exists": true,
+      "bytes": 3406456,
+      "sha256": "8e88bb441d49d0ce716650eca41ecdc15116d427419e86faa55feafe62328ad8"
+    },
+    {
+      "path": "3ds/Colosseum3DS/boot/outskirt_wes.c3t",
+      "exists": true,
+      "bytes": 575568,
+      "sha256": "2e27fe700196f2d8adeb15f156ba7a5bbd98baa4f1fb0fe0d00ab55ecaf797c0"
+    },
+    {
+      "path": "3ds/Colosseum3DS/saves/pokemon_colosseum.gci",
+      "exists": false
+    },
+    {
+      "path": "3ds/Colosseum3DS/saves/pokemon_colosseum.gci.bak",
+      "exists": false
+    }
+  ],
+  "scope": "Emulator integration evidence; not hardware performance or save-format verification",
+  "input_sha256": "4a8fd3e9c3189d1a63c353b4c3dadc6c85b40965d834f6d0e89b50616bfa6eb6",
+  "command": [
+    "/workspace/scratch/d8bf34fb7169/emulator-sandbox/harness",
+    "/workspace/scratch/d8bf34fb7169/Colosseum3DS-boot/build-3ds-boot/Colosseum3DS.3dsx",
+    "--core",
+    "/workspace/scratch/d8bf34fb7169/emulator-sandbox/core/azahar_libretro.so",
+    "--state",
+    "/workspace/scratch/d8bf34fb7169/emulator-sandbox/gameflow-state",
+    "--out",
+    "/workspace/scratch/d8bf34fb7169/emulator-sandbox/runs/new-game-save-final",
+    "--frames",
+    "8750",
+    "--seconds",
+    "150",
+    "--capture-every",
+    "100",
+    "--gl",
+    "--events",
+    "/workspace/scratch/d8bf34fb7169/emulator-sandbox/runs/new-game-save-final/input.csv"
+  ],
+  "process_exit_code": 0,
+  "completed_frames": 8750,
+  "interrupted": false,
+  "shutdown": false,
+  "video_callbacks": 8750,
+  "audio_frames": 0,
+  "run_loop_seconds": 19.436,
+  "elapsed_seconds": 19.896642820000125,
+  "sd_files_after": [
+    {
+      "path": "3ds/Colosseum3DS/boot/tpc.c3v",
+      "exists": true,
+      "bytes": 11840672,
+      "sha256": "ab205a7479a2fd81b4b7d266af6285e0ac381d29ccdc6402a5135545656fdf2a",
+      "changed": false
+    },
+    {
+      "path": "3ds/Colosseum3DS/boot/gs_logo.c3v",
+      "exists": true,
+      "bytes": 19968064,
+      "sha256": "b9fabb1bc42e8525379eb5c7e2e3fa4896ab9332d94b55109d6b40028d2e7783",
+      "changed": false
+    },
+    {
+      "path": "3ds/Colosseum3DS/boot/title.c3t",
+      "exists": true,
+      "bytes": 18353048,
+      "sha256": "f6fc95010631de9897a041b5cc6d46232bfd6b0bd3e784ad7065f5024cb9d166",
+      "changed": false
+    },
+    {
+      "path": "3ds/Colosseum3DS/boot/openingdemo.c3v",
+      "exists": true,
+      "bytes": 304066812,
+      "sha256": "f5cf0716ce6331166a5a97058c48105c691bb9482d039b6c1005b9378813afee",
+      "changed": false
+    },
+    {
+      "path": "3ds/Colosseum3DS/boot/newgame.c3g",
+      "exists": true,
+      "bytes": 176722,
+      "sha256": "6bfdc9ffd1ce16303801ade262d64a6e8cffcb5907c87a920b195427527b0903",
+      "changed": false
+    },
+    {
+      "path": "3ds/Colosseum3DS/boot/menu.c3u",
+      "exists": true,
+      "bytes": 1260,
+      "sha256": "322f6201e1a4af9e56eec2b7b55a18d630c59f4235c913a6c2d53ebeded251f1",
+      "changed": false
+    },
+    {
+      "path": "3ds/Colosseum3DS/boot/outskirt.c3f",
+      "exists": true,
+      "bytes": 21656,
+      "sha256": "45e9c8b4be3afc26c783d087d3348217ce555d852ba570168ca5459c2ad0b82e",
+      "changed": false
+    },
+    {
+      "path": "3ds/Colosseum3DS/boot/outskirt_arrival0.c3t",
+      "exists": true,
+      "bytes": 3519720,
+      "sha256": "28ff3752722e28f4b3c442a09630a8d0028910031af9ef17c4d068acaffad86f",
+      "changed": false
+    },
+    {
+      "path": "3ds/Colosseum3DS/boot/outskirt_arrival1.c3t",
+      "exists": true,
+      "bytes": 1113808,
+      "sha256": "aa21929fd770f260709e11fba541873c7d0c298ca842467f66d78cfc1ee7afaa",
+      "changed": false
+    },
+    {
+      "path": "3ds/Colosseum3DS/boot/outskirt_map0.c3t",
+      "exists": true,
+      "bytes": 12053184,
+      "sha256": "350097e53d1833d6dc70b1fb504c6ea6e89e14c69ab61292caf6fa1f5106cadf",
+      "changed": false
+    },
+    {
+      "path": "3ds/Colosseum3DS/boot/outskirt_map1.c3t",
+      "exists": true,
+      "bytes": 7751912,
+      "sha256": "f337f2eacb25e6f11b230ef51f38a9e8b4a445031105fcdff90ebd89778a3944",
+      "changed": false
+    },
+    {
+      "path": "3ds/Colosseum3DS/boot/outskirt_map2.c3t",
+      "exists": true,
+      "bytes": 4765944,
+      "sha256": "497355ef80631b9b1e086372dfc4065f9f45ba900c0b4f8c3f0f518b899df735",
+      "changed": false
+    },
+    {
+      "path": "3ds/Colosseum3DS/boot/outskirt_map3.c3t",
+      "exists": true,
+      "bytes": 3406456,
+      "sha256": "8e88bb441d49d0ce716650eca41ecdc15116d427419e86faa55feafe62328ad8",
+      "changed": false
+    },
+    {
+      "path": "3ds/Colosseum3DS/boot/outskirt_wes.c3t",
+      "exists": true,
+      "bytes": 575568,
+      "sha256": "2e27fe700196f2d8adeb15f156ba7a5bbd98baa4f1fb0fe0d00ab55ecaf797c0",
+      "changed": false
+    },
+    {
+      "path": "3ds/Colosseum3DS/saves/pokemon_colosseum.gci",
+      "exists": true,
+      "bytes": 393280,
+      "sha256": "b11f0e319d5ca801787ce3fbcd19063e127771a875f231e829f7cb917a5a8c94",
+      "changed": true
+    },
+    {
+      "path": "3ds/Colosseum3DS/saves/pokemon_colosseum.gci.bak",
+      "exists": false,
+      "changed": false
+    }
+  ],
+  "captures": [
+    {
+      "file": "frame-000000.ppm",
+      "sha256": "94fe1bd591ad11cbaa5ed0c86891f9368d5196180693c587a8d0d6ed55f996cc",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-000100.ppm",
+      "sha256": "94fe1bd591ad11cbaa5ed0c86891f9368d5196180693c587a8d0d6ed55f996cc",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-000200.ppm",
+      "sha256": "94fe1bd591ad11cbaa5ed0c86891f9368d5196180693c587a8d0d6ed55f996cc",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-000300.ppm",
+      "sha256": "94fe1bd591ad11cbaa5ed0c86891f9368d5196180693c587a8d0d6ed55f996cc",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-000400.ppm",
+      "sha256": "94fe1bd591ad11cbaa5ed0c86891f9368d5196180693c587a8d0d6ed55f996cc",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-000500.ppm",
+      "sha256": "94fe1bd591ad11cbaa5ed0c86891f9368d5196180693c587a8d0d6ed55f996cc",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-000600.ppm",
+      "sha256": "94fe1bd591ad11cbaa5ed0c86891f9368d5196180693c587a8d0d6ed55f996cc",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-000700.ppm",
+      "sha256": "595b6b1f95958642f4d7dca393236b8cceaa8a05b2c81f8ab00c6bd7ef2e5aa8",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-000800.ppm",
+      "sha256": "e3dbfeb1f9981f08bc5217282daae40bceb25900b9453535300f6a03d18ef07d",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-000900.ppm",
+      "sha256": "841a22259874fe6c73daa5451c9d3c767aec39daa0adf4ab36ec5044fa0e10b2",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-001000.ppm",
+      "sha256": "60a42bb7efb7b19722236e525d1b182500ef326c5998ff001c20572f94728c75",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-001100.ppm",
+      "sha256": "84256fa6f382fc03f86aa3e09f438325c34b3e99e8c40ad73ce41ef152bb6cc5",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-001200.ppm",
+      "sha256": "217e5105206d3425feea451c7c7be1e1161f23426aedd94eab0aa3df04d54e14",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-001300.ppm",
+      "sha256": "8dfead023e2165f2567997ba50aeee43a489168dd3c89617caab86de92a1acd2",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-001400.ppm",
+      "sha256": "d9c33f40e3e3745815dd06c4d331b5603125093e3b90d3f2b03458b444b50f2d",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-001500.ppm",
+      "sha256": "41643fb2ad483c1a19273ca1b6c1bd56c1eaa45c5697b6d66b020fd01ddacb5a",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-001600.ppm",
+      "sha256": "1050f64e3652bcc4ee1c9ffbe9b89aaaad7ee43718efed37946ae08ff74f64c7",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-001700.ppm",
+      "sha256": "f29c4e1e00d8fdccc4eb2c2378537577e17ba9a84fe17ee5ea0d11f8a27d6299",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-001800.ppm",
+      "sha256": "3ff65976a62fc05dfb29227d47b118aa923886cd872d636a04d923ca41f93c96",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-001900.ppm",
+      "sha256": "79b3f4ed93297656c6ca700d1a96974c840287945600ca1364af62f66cc424f3",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-002000.ppm",
+      "sha256": "0af70468297e1d39062c564cccabe0a24f81c0b5e99c67299be3fd7c8c0a45d0",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-002100.ppm",
+      "sha256": "fbb56c4291b963507a928c84c8503f5f534d6741f855e5e44ee69a2ef1ec8b78",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-002200.ppm",
+      "sha256": "01e5955ae53d228f8e173051691f13570b8fcbb83a88a12cb45a7bab1f76732b",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-002300.ppm",
+      "sha256": "c1391981d666e72de4671a9415d2d867175d8c074f9f9645d5a9a62c9b8baa7b",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-002400.ppm",
+      "sha256": "52f2a109ab932b0807b23ddb09b7d07e9f2c828987b80073fd9568b869a4c2be",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-002500.ppm",
+      "sha256": "dd24989e426e77832d3f14f9e997cd64d322b3797f5f825c5ee338197985debc",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-002600.ppm",
+      "sha256": "6ec2a1fe46595c980067867da7b917df3a4cfcf9e4845afaea402f5919b75aa4",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-002700.ppm",
+      "sha256": "54b7b07bc74a8bbbb455326e96ece2bf9ab808d610a12d34a2b7790a9402964f",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-002800.ppm",
+      "sha256": "ca5f2c88b9f3f9bae5ee59fbc272423cfd9a889b93d94f003833d444d19f1c24",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-002900.ppm",
+      "sha256": "e5658e83fb640017305f26f706d1a40f133b7b03974c330db7726f283ed76d13",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-003000.ppm",
+      "sha256": "9e03fd0fee7a1f2676f34c0e67c6d9693d69232fb24832f7787a4033bf68ed24",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-003100.ppm",
+      "sha256": "eb4e3ba37eebfe0d90fdd69ce81c2f4290329b9e7629bc0263a450e9e57d03f0",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-003200.ppm",
+      "sha256": "8edcd85eae1d4be681f036579a46d1cb66a37989ec2f1880432de98024ba8f66",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-003300.ppm",
+      "sha256": "254c576bcdca2890dbf93393bd71b00cf6f02726381f5d577e367413c13b8517",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-003400.ppm",
+      "sha256": "5ae9af1013a6b8972337199f513af98b7d30a0246b95016129251d1d6de68fbb",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-003500.ppm",
+      "sha256": "e274cb9a7d9f31cb44d3ba29e1d1c6d941e5f64f66efda9b408dcb5995ab72ae",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-003600.ppm",
+      "sha256": "f9be8c04354954c5ce19cde7a5a32bc3a33af4c8fbc65055be51d8edffb16d17",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-003700.ppm",
+      "sha256": "58b6535a97fcc429b7a1893e7e7727b98ad90d50f088c6a4377c20da3a9d9ed8",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-003800.ppm",
+      "sha256": "ebd3218c4ba8a414b573f454a6f373907143b8b8ab3617bb62406e82e3afdd1c",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-003900.ppm",
+      "sha256": "2adf760305c8416e4418dcf90be8d1a9d7d514c2cc133c10166b0165d14dc3fd",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-004000.ppm",
+      "sha256": "f31828f87b537fef40b24eaf2d030f95da9583a488bc70efdf99e9466bf04428",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-004100.ppm",
+      "sha256": "15b124cd1690f0e7c9b4efeb9062836bd3dbd4fc27b89262a28a3a87dcdf9ebd",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-004200.ppm",
+      "sha256": "556118558eaf0c9cc005bba666c494989953a633ba45e564e43c4d441f023f16",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-004300.ppm",
+      "sha256": "a3fe438a8b6a7ea82cb3e41d1ee8a36871e2e24510ea773df1d9714bce8646f5",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-004400.ppm",
+      "sha256": "b1dbde9bb17e7c3ff03ea007c17dfc9d1599f2733afe678ac028701e1d9356a8",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-004500.ppm",
+      "sha256": "fb68558bff06643f5d1aebdec4540a018fbd4519224d51f038f416f53d925d7f",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-004600.ppm",
+      "sha256": "7864104a7e79caaab7dca65afb5864d1bd5543dd46d2f94bf74010f00b2d6c6e",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-004700.ppm",
+      "sha256": "1cf6f18d3efaf5ec2c2130f01d6aece11b3380ac543b687409247defdfd3f4ff",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-004800.ppm",
+      "sha256": "273f2de8d8f573cf70bd1d107519d92d9072e36d5110e04441a031b28f465018",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-004900.ppm",
+      "sha256": "2580b5c08ce86eb5a1492b196e49950e47944e04039e5e55c35fcc0c10841f03",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-005000.ppm",
+      "sha256": "8c87001fde5115eb4a3c799af7ffd1ae15b64a8e6b315d60c8810625c61b2079",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-005100.ppm",
+      "sha256": "23605721d6ff1cb80065fbd2cbedc91488de52287e498274c4a1771bdda54f92",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-005200.ppm",
+      "sha256": "a42763115a5c0229e668d695bb91aac716b1d283c981a50322394d3450d4d0af",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-005300.ppm",
+      "sha256": "0bdc88523ec9edc47772ab067de9bf88490f25341447340595c03281b90a69dd",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-005400.ppm",
+      "sha256": "9514da95f08cfa3bb9ee157bc7b050e941400038c8a8bd4c8574c47881c0b699",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-005500.ppm",
+      "sha256": "5266dcef7ca5f7fef4fedc45926b7e5973bd3f41082d498f655039cf8e77f390",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-005600.ppm",
+      "sha256": "d3e3c6b9ccf200178e6264ec7a9024ae78d1d31f0263eb4cf73f25bbba304262",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-005700.ppm",
+      "sha256": "d3e3c6b9ccf200178e6264ec7a9024ae78d1d31f0263eb4cf73f25bbba304262",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-005800.ppm",
+      "sha256": "d3e3c6b9ccf200178e6264ec7a9024ae78d1d31f0263eb4cf73f25bbba304262",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-005900.ppm",
+      "sha256": "d3e3c6b9ccf200178e6264ec7a9024ae78d1d31f0263eb4cf73f25bbba304262",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-006000.ppm",
+      "sha256": "d3e3c6b9ccf200178e6264ec7a9024ae78d1d31f0263eb4cf73f25bbba304262",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-006100.ppm",
+      "sha256": "9fbab0e3af3004201d5f8ef7566e5257102f71e2a114396948040e7d3b53e587",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-006200.ppm",
+      "sha256": "9b08ffc3133e24c51f568062b9753729e40b4d4faf5bf816273ea1d2a22b418d",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-006300.ppm",
+      "sha256": "d38fb2aa16cb44cabc3736459ccc686316efc4f03495da4569fccf1783694915",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-006400.ppm",
+      "sha256": "87c41b030629529fce7a97dbda45fd0e10c5885b5ee830b6a984140fddeba989",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-006500.ppm",
+      "sha256": "8eeef9a16268e4560e55e6044ba1afa64535ed914f8475e8501602d03ac63b40",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-006600.ppm",
+      "sha256": "ba52960c9c837583c0d32b2d13ab646294d2bd654e53da03d5546a1284a1a681",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-006700.ppm",
+      "sha256": "01698fe3491d1ef03b9f801ab68f67e138391fb401686ca6fad64d33a9b8779b",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-006800.ppm",
+      "sha256": "743956da4e7e5a55b01f170ac9a709d964ea9123476f3fe42a7b75a5c15e874b",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-006900.ppm",
+      "sha256": "94bdda7ccf3884d6a2a3fd92d398a47b8e19204aba335f16524deed887749419",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-007000.ppm",
+      "sha256": "795eb3b2f4322b7c43b37b89834b921427aaeb681e9455e11125a7fad002c73b",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-007100.ppm",
+      "sha256": "4f40dd39369366bceaa6a75bc845bf533797ce9ec86857740829dde2733165d9",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-007200.ppm",
+      "sha256": "8f292cf38a93b7fca57e88e5b736cf41629ea54b9023e55b41e4a4454c787881",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-007300.ppm",
+      "sha256": "2386af9f92d8bb4ad3187641bba7298bebc4957c669fcdd8fd2ddd9cf7e16219",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-007400.ppm",
+      "sha256": "2386af9f92d8bb4ad3187641bba7298bebc4957c669fcdd8fd2ddd9cf7e16219",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-007500.ppm",
+      "sha256": "24444064f715afd6e43ad3b60b9a9fe70ee1258e96d155a94d119786dbe5e8f9",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-007600.ppm",
+      "sha256": "cdbb038ea5d3f63edbceb3e90feb0fc09739fed9eb02f9eb71e13aa3e55abf6f",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-007700.ppm",
+      "sha256": "7e77d0ba7fbffb7c82a31b128bbde28d910231eea661c4e934cd5c57fcd3d010",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-007800.ppm",
+      "sha256": "cd54f338336152f9e301704604743966cde6efce903e794175de28d742879ec4",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-007900.ppm",
+      "sha256": "fd918efa6aedf56d7e7b01d0a40ecb61f11ddf1414f602776d550ccf180ac241",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-008000.ppm",
+      "sha256": "25536a1cef4a23fc3fbcc9e708a81bd80ee301f7f302b299de1763c0f9dbe7c2",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-008100.ppm",
+      "sha256": "25536a1cef4a23fc3fbcc9e708a81bd80ee301f7f302b299de1763c0f9dbe7c2",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-008200.ppm",
+      "sha256": "d60574971fdf6a9708bfd66b82799cf4fa8c4c466683f95691b0cda983ea6dfa",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-008300.ppm",
+      "sha256": "70de41e772140f31bba6cd017a8512ed601709510954b351cc8eff8278ef96b1",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-008400.ppm",
+      "sha256": "70de41e772140f31bba6cd017a8512ed601709510954b351cc8eff8278ef96b1",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-008500.ppm",
+      "sha256": "4770fb57176f22008f5892f2edd934c19bdc157b045809db3f95315cde8ba76c",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-008600.ppm",
+      "sha256": "94fe1bd591ad11cbaa5ed0c86891f9368d5196180693c587a8d0d6ed55f996cc",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-008700.ppm",
+      "sha256": "94fe1bd591ad11cbaa5ed0c86891f9368d5196180693c587a8d0d6ed55f996cc",
+      "bytes": 576015
+    },
+    {
+      "file": "frame-008749.ppm",
+      "sha256": "94fe1bd591ad11cbaa5ed0c86891f9368d5196180693c587a8d0d6ed55f996cc",
+      "bytes": 576015
+    }
+  ],
+  "exit_code": 0,
+  "completed": true,
+  "png_conversion": true
+}

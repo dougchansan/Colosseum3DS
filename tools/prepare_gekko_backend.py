@@ -53,6 +53,9 @@ def prepare(donor, output):
     }""")
     source = replace_once(source, "    if (g_state.ready) {\n        C3D_Fini();\n    }", "    if (g_state.c3d_initialized) {\n        C3D_Fini();\n        g_state.c3d_initialized = false;\n    }")
     source = replace_once(source, '        g_state.error = "texture staging allocation failed";', '        C3D_TexDelete(tex);\n        g_state.error = "texture staging allocation failed";')
+    source = replace_once(source,
+                          "    (void)self;\n\n    if (!g_state.ready || id == 0u || id > CTR_MAX_TEXTURES) {",
+                          "    (void)self;\n    (void)size; /* gx_scene validates the exact RGBA8 byte count before dispatch. */\n\n    if (!g_state.ready || id == 0u || id > CTR_MAX_TEXTURES) {")
     header = replace_once(header, "#define GCTR_GX_MAX_TEXTURES 8u", "#define GCTR_GX_MAX_TEXTURES 16u")
     outputs = {output / "ctr_gx_citro3d.c": source, output / "include/gekkoctr/gx_texture.h": header}
     for path, content in outputs.items():

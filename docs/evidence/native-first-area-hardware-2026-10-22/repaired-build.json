@@ -1,0 +1,24 @@
+{
+  "configuration": "normal Gekko enabled",
+  "commit": "203cf6da34957d058de2dcb462a8daefeca99a57",
+  "command": "docker run --rm -v G:/Colosseum3DS-first-area:/Colosseum3DS-first-area -v G:/Colosseum3DS:/Colosseum3DS -w /Colosseum3DS-first-area devkitpro/devkitarm@sha256:116afba8df8453961de2936ffab20dd441edf4d682856c1ec8b0e53d7ed0bbf5 bash -lc '/opt/devkitpro/devkitARM/bin/arm-none-eabi-gcc --version; /opt/devkitpro/pacman/bin/pacman -Q devkitARM libctru citro3d; make -f Makefile.3ds C3_BUILD_ID=203cf6da3495 -j2'",
+  "outputs": [
+    {
+      "name": "Colosseum3DS.3dsx",
+      "bytes": 311228,
+      "sha256": "6f28bec622eabdac9b3df614e78728b2a049795c15b3dfb7237370a53fdf2388"
+    },
+    {
+      "name": "Colosseum3DS.smdh",
+      "bytes": 14016,
+      "sha256": "f3fad3feb7b42caab0a647bb392050bf72e4507593cded5a16819cc1c68e5a55"
+    }
+  ],
+  "embedded_build_id": "203cf6da3495",
+  "toolchain": [
+    "devkitARM r68-1",
+    "GCC16.1.0",
+    "libctru2.7.0-1",
+    "citro3d1.7.1-2"
+  ]
+}

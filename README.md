@@ -1,39 +1,73 @@
 # Colosseum3DS
 
+The [graphical bottom-screen UI](docs/bottom-screen-ui.md) now uses privately
+prepared original menu artwork and fonts for title/menu flow, dialogue, saves
+and battle controls. See that guide for `ui.c3ui` preparation and verification.
+The [in-game menu/P★DA](docs/ingame-pda.md) adds original UI artwork and live
+save-backed Mail, Strategy Memo, Snag List, inventory actions and trainer pages,
+plus original model previews and ringtone audition. See [in-game menu preparation](docs/ingame-pda.md).
+
 A native **New Nintendo 3DS / New 3DS XL / New 2DS XL** port project for
 Pokémon Colosseum, based on Count-Sheep's decompilation and the maintainer's
 private GC6E01 build inputs.
 
-**Current milestone: native bring-up. The game is not playable.**
-This version builds a homebrew application, executes selected real decompiled
-routines on ARM, exercises the PICA GPU and controls, and probes the original
-archive format. It does not boot the title screen, run a
-battle, or load/save a game. Supplying disc files does not unlock gameplay yet.
+**Current milestone: native boot, New Game, and the first Outskirt Stand visit.**
+With privately prepared GC6E01 assets, this branch plays the two original boot
+videos, renders the live 3D title, and opens a native main menu. New Game creates
+the source-defined initial state, offers WES/SETH/THOMAS or a custom name, then
+plays the original hideout movie and the Outskirt Stand bike arrival. Wes can
+move around the original map with source collision data. The native pause menu
+shows the party and explicitly saves the game; Continue reloads the saved party,
+progress and area entrance. The original exterior/shop scripts now run through
+a bounded GSVM adapter, with original NPC dialogue, choices, door events, and
+the animated TV news scene. The first Willie encounter retains the original
+battle request and current party, but **combat execution is not implemented**;
+the script stays pending at that boundary. Later areas remain unavailable.
+See the [first-visit implementation and acceptance record](docs/native-first-visit.md).
+See [native boot, reproduction and current limits](docs/native-boot.md),
+the [connected emulator validation](docs/native-first-area-validation.md), and
+the [local-agent hardware handoff](docs/native-story-handoff.md).
 
-The first `.3dsx` has been cross-compiled successfully with devkitARM GCC
-16.1.0. Host and sanitizer checks pass. Partial physical-device validation
-proves rendering, native self-tests, the missing-data diagnostic, sampled input,
-and exit/relaunch. Guarded deployment/rollback, a real archive on console,
-exhaustive controls, HOME behavior and lid sleep/resume remain unverified.
-See the [hardware checkpoint](docs/hardware-validation-2026-10-21.md) and the
-[historical initial validation record](docs/VALIDATION.md).
+The [recorded fresh-game acceptance](docs/evidence/native-story-2026-10-22/README.md)
+reached the shop, completed Willie's conversation and saved WES. A second
+native process continued that same new save, left the shop and reached the
+original encounter-10 request. Both runs used actual controller input and
+completed without detected guest faults; the combat backend remains pending.
+The preserved completed save was not installed or used for either run.
+
+Both full and focused `.3dsx` builds compile with devkitARM GCC 16.1.0. Host,
+sanitizer and connected emulator checks pass. Earlier physical-device
+checkpoints establish the smoke-test and Eevee-preview behavior. PR #4's shader
+fix restores the normal title, HOME suspend/resume, and clean exit on hardware.
+The combined story/first-area build still needs physical New 3DS acceptance,
+including audio, frame timing, Save/Continue and sleep/resume.
+See the [earlier hardware checkpoint](docs/hardware-validation-2026-10-21.md)
+and [historical initial validation record](docs/VALIDATION.md).
 
 ## What is implemented
 
-This development branch adds a [native textured Eevee scene](docs/gekkoctr-model-scene.md)
-through pinned GekkoCTR components. Its private preparation tool uses actual
-skeletal animation; the game itself remains unplayable. A prepared local pack
-selects the scene, while missing scene data retains the original smoke test.
+The [native title route](docs/native-boot.md) uses the original title's 31 joints,
+43 mesh batches, 20 textures, camera and material animations. Its bounded
+renderer uses Citro3D directly because that scene exceeds the earlier Gekko
+adapter's vertex/texture capacities. The [native textured Eevee scene](docs/gekkoctr-model-scene.md)
+still uses the pinned GekkoCTR components. A `boot/` directory selects the boot
+route; otherwise a prepared Eevee pack selects its preview, and missing scene
+data retains the original smoke test.
 The [model hardware record](docs/gekkoctr-hardware-2026-10-21.md) includes distinct
 physical poses, a 600-frame benchmark and tracked memory use.
 
 | Component | Current behavior |
 | --- | --- |
-| Native source integration | Three explicitly selected translation units from a pinned, unmodified decomp submodule; exact source/header hashes checked |
+| Native source integration | Three selected translation units plus five original memory-card codec functions generated from pinned `memcard.c`; exact source hashes checked |
 | Pokémon stats | Actual `pokemonSetLevelBasisStatus` with a native record adapter: IVs, EVs, nature rounding, HP changes, fainting and Shedinja handling |
 | Other game/library routines | Actual HSD random-number generator and GS collision side-plane helper |
-| 3DS platform | New-model detection, speedup request, GameCube-style button mapping, Circle Pad/C-stick, monotonic time, SD reads and clean exit |
-| Graphics | Original GPU smoke geometry and one prepared textured skeletal Eevee through native GekkoCTR/Citro3D; no full HSD game renderer |
+| 3DS platform | New-model detection, speedup request, GameCube PAD mapping, Circle Pad/C-stick, actual APT suspend-aware time, SD I/O and exit |
+| Boot and opening media | Original TPC, GS-logo and New Game opening movie streams; embedded PCM through NDSP when available; external scene music/SFX remain unconnected |
+| Graphics | Original title, Outskirt Stand map, Wes motions and bike arrival through a bounded Citro3D material subset; existing GekkoCTR Eevee route retained |
+| Main menu | Native bottom-screen New Game/name selection, Continue, options and title return, following original menu semantics; battle choices report unavailable |
+| Game state and saves | Original initial body layout, starters, items, flags and other subsystems; original slot codec and verified `.tmp`/`.bak` storage; explicit area-entrance checkpoint and reload |
+| First-visit scripts | Original GSVM banks and messages, exterior/shop lifecycle, NPC interaction, choices, door events, and the original animated TV scene |
+| First battle boundary | Original encounter-10 records and current-party snapshot; GSVM remains pending because the combat backend is not ported |
 | Data | Streaming, bounded FSYS reader and LZSS decoder with explicit big-endian fields and caller-owned output buffers |
 | Input provenance | Pinned private build reference, canonical hash verifier and local extracted-disc preparation tool |
 | Validation | Host regression tests, malformed-data tests, sanitizer job, and a devkitARM cross-build workflow |
@@ -89,10 +123,15 @@ the target. See [3DS build and hardware checks](docs/3ds-build.md).
 
 Controls for this bring-up application:
 
-- Circle Pad rotates the test geometry; A pauses automatic rotation.
-- X retries the `common.fsys` directory probe.
-- START + SELECT exits.
-- The bottom screen displays native self-test, input and archive status.
+- Boot logos play to completion, matching their original input rules.
+- A/B/START advances the title entrance. At PRESS START, A/START opens the main menu after loading the card.
+- D-pad/Circle Pad navigates the main menu, A confirms and B returns. New Game offers the original name choices.
+- The opening movie and bike arrival play to completion. In the field, Circle Pad/D-pad moves Wes, and X/START opens the pause menu.
+- A talks to a nearby NPC or inspects an original interaction surface. A/B advances dialogue; directional input and A answer choices.
+- The pause menu shows the party, saves after confirmation, or returns to the main menu. Continue resumes at the recorded area entrance, not an arbitrary coordinate.
+- START + SELECT exits every route.
+- Menus currently use native bottom-screen text; the original window/sprite UI is still unported.
+- With no boot assets, the existing preview controls remain: Circle Pad rotates the smoke geometry, A pauses, and X retries its archive probe.
 
 ## Use the private build inputs
 
@@ -137,10 +176,11 @@ directory; decoded member support is available to subsequent loaders.
    absolute memory accesses and PowerPC cooperative thread switching.
 2. Provide native `common_rel`/map module registration and endian-aware tables.
    ARM cannot run the original PPC REL code or its `_prolog` functions.
-3. Implement the first HSD model/texture loader and a constrained GX/TEV to
-   PICA renderer, then display one actual game scene with measured memory use.
-4. Bring up title/menu flow, timing, audio and save services; then a complete
-   battle and an overworld scene.
+3. Extend the working title/first-area/Eevee subsets to the original HSD runtime
+   needed by later scenes, with measured resource use.
+4. Complete the original battle state/action flow and validated result writeback
+   after the current Outskirt Stand event adapter, then port original menu
+   rendering and MusyX music. Preserve supported save data during that work.
 5. Profile on physical New 3DS hardware before setting a performance target.
 
 See [porting decisions and blockers](docs/PORTING.md),

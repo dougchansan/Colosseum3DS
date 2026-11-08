@@ -1,0 +1,12 @@
+# A second emulator process with the saved SD from new-game-wes-input.csv.
+# Libretro button masks. Continue is the default when valid state is available.
+800,40,0x0100,0,0,0,0
+1100,40,0x0008,0,0,0,0
+1260,40,0x0100,0,0,0,0
+1390,40,0x0100,0,0,0,0
+# Allow private field assets to load; no movie or arrival should replay.
+2300,150,0x0000,-12000,0,0,0
+2550,40,0x0200,0,0,0,0
+2670,15,0x0020,0,0,0,0
+2780,40,0x0100,0,0,0,0
+3000,60,0x000c,0,0,0,0

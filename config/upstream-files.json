@@ -2,6 +2,10 @@
   "commit": "51bfe4314a218dfaf9592fc80723c50498d0ee55",
   "files": [
     {
+      "path": "src/game/memcard.c",
+      "sha256": "3b0003c7d7971ba05b8fb1933dd5e687288cef1760ef0b664311264ba3ed3cc1"
+    },
+    {
       "path": "src/hsd/random.c",
       "sha256": "5cbf926074e0efc33caafa312333cc7b62b7d4124eaea1af238952feb2ececd5"
     },

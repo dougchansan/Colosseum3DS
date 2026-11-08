@@ -1,0 +1,302 @@
+[
+  {
+    "path": "platform/3ds/boot_scene.c",
+    "bytes": 16319,
+    "sha256": "a5fcea5688ec1522e70c0bcccf59dc3fd1f659447f355c4b276865ce894c8868"
+  },
+  {
+    "path": "platform/3ds/field_scene.c",
+    "bytes": 21859,
+    "sha256": "308ac9f12df10a47c99ae2fdccfeec9cab8764539a4acbf391ed4901b41a78a5"
+  },
+  {
+    "path": "platform/3ds/game_menu.c",
+    "bytes": 18878,
+    "sha256": "a0f60526f8cd35fff93cf2f5642c81c7c0ded265f9358b1860c2ddebb495e2cf"
+  },
+  {
+    "path": "platform/3ds/main.c",
+    "bytes": 3483,
+    "sha256": "0697b59509863501b2a923ca48651cfbb2dcf7e5549297554fb20522c7086d86"
+  },
+  {
+    "path": "platform/3ds/model_renderer.c",
+    "bytes": 9486,
+    "sha256": "4cc4395c64010b0cecd35356c86c29576dc5871d150cc316843fc40232dadd07"
+  },
+  {
+    "path": "platform/3ds/model_scene.c",
+    "bytes": 7490,
+    "sha256": "b38c3a38729d6809165c569b4f31ab3d7ea9fd845f12157ce22b30825df8ecd9"
+  },
+  {
+    "path": "platform/3ds/movie_player.c",
+    "bytes": 6530,
+    "sha256": "e848bcd63562841faab772f8f1a266f28f188d2d2931ad5bccaa9d8b65952c58"
+  },
+  {
+    "path": "platform/3ds/n3ds_platform.c",
+    "bytes": 5563,
+    "sha256": "ef9feed1ef073b878de15f2fdc7b384d1be0611cc1fbbcebaede1c02c6f387b9"
+  },
+  {
+    "path": "platform/3ds/n3ds_renderer.c",
+    "bytes": 5631,
+    "sha256": "2ed2148a2e04868baa59a4b04807fdb1561aebe54586c16d4aea82083828e58e"
+  },
+  {
+    "path": "platform/3ds/render_recovery.c",
+    "bytes": 6416,
+    "sha256": "7a93997b25c325d771d8fba55df5d6d4cc0f52e80e7348b9c78ba1479520000a"
+  },
+  {
+    "path": "platform/3ds/title_renderer.c",
+    "bytes": 52546,
+    "sha256": "b2aa472a765c7e5410b4dbcc11a116cfd3e191e68007b4232fbdab2fb23c9aa8"
+  },
+  {
+    "path": "platform/3ds/boot_scene.h",
+    "bytes": 175,
+    "sha256": "6c926afc098ba3cd05b8cf2d5d0bfa4337653522951f29a6bce51f00b487593b"
+  },
+  {
+    "path": "platform/3ds/field_scene.h",
+    "bytes": 475,
+    "sha256": "6459c877280c570dd113b362ba22bd5b9070ff8c110ad94965aba67595a224b8"
+  },
+  {
+    "path": "platform/3ds/game_menu.h",
+    "bytes": 3156,
+    "sha256": "cdd13b1169c4ff625e6299cb35b6b5736362657be3aaf407270a54cee6264eb2"
+  },
+  {
+    "path": "platform/3ds/model_renderer.h",
+    "bytes": 1132,
+    "sha256": "712632cabe286de7556726988a63523fc179c16b49df0c46b10c239cfdc253ab"
+  },
+  {
+    "path": "platform/3ds/model_scene.h",
+    "bytes": 218,
+    "sha256": "e1dd3fbff8e075a7a15d19b0aabba682a4c6421142d2fbeb0f248e127d6e8cfe"
+  },
+  {
+    "path": "platform/3ds/movie_player.h",
+    "bytes": 592,
+    "sha256": "62f7a3c3a4fa277c94a328cb7cd163a8dedb359b05b94867077a3a39dadff2ac"
+  },
+  {
+    "path": "platform/3ds/n3ds_platform.h",
+    "bytes": 1696,
+    "sha256": "49c95b1c0035e0f5f96c6496a0492b5acf44a1e8885055c6d33049f5d4e06b97"
+  },
+  {
+    "path": "platform/3ds/render_recovery.h",
+    "bytes": 1059,
+    "sha256": "b09c11881a3374c14c3dba7a16866d82fb847c0a4eb0a64816548e2110f14940"
+  },
+  {
+    "path": "platform/3ds/stage_renderer.h",
+    "bytes": 2294,
+    "sha256": "cb8e10331fb4f21e395a8286c4c921e644f2fe91baa27a4834b08721fdf260f4"
+  },
+  {
+    "path": "platform/3ds/title_renderer.h",
+    "bytes": 2136,
+    "sha256": "e34f754dbbfc6983274018d3690a2e3541793ac4321aa9f77996af80af873dd5"
+  },
+  {
+    "path": "platform/3ds/port_shader.v.pica",
+    "bytes": 677,
+    "sha256": "565788fa1766a8c13d5dbfb5d6df5829f9cedc004890bfc1cf1650c55f623dc0"
+  },
+  {
+    "path": "platform/3ds/title_shader.v.pica",
+    "bytes": 1009,
+    "sha256": "e93acc6a2c31fb42c0934cd0482e2245b36cd5058df4d2705f2e0bcb85dd991b"
+  },
+  {
+    "path": "src/area.c",
+    "bytes": 9743,
+    "sha256": "b9e5ed5653bf5d514aee24fd6bc5405a9de8fc3f8d00db595b4aa95de307bbb9"
+  },
+  {
+    "path": "src/area_camera.c",
+    "bytes": 4117,
+    "sha256": "a56dfe5365a9aac321b62c5bda51522b1c732d00b1b064b63279e2150a280cfe"
+  },
+  {
+    "path": "src/area_lights.c",
+    "bytes": 3389,
+    "sha256": "5da8c074905b30c4001bff5883ecf6c7b286ece550b79d919a0bec811b3c940a"
+  },
+  {
+    "path": "src/battle.c",
+    "bytes": 5766,
+    "sha256": "f07a987f62a1e9435e74311fd38a8843cc6807951743920bb4f8e3544bf18f89"
+  },
+  {
+    "path": "src/core.c",
+    "bytes": 3412,
+    "sha256": "0641b185eeb9386a003e866248159ffb8480148def642b30f16e3088c30e2bb3"
+  },
+  {
+    "path": "src/data.c",
+    "bytes": 12095,
+    "sha256": "7871260577c552c4599978bebea6b27fb259c98d8fe556b758054a8276d36cb7"
+  },
+  {
+    "path": "src/decomp_collision.c",
+    "bytes": 407,
+    "sha256": "fe38798c5911dc068c6d097a136cab23520f245bfa6bfff3cc012745b4f2291a"
+  },
+  {
+    "path": "src/decomp_pokemon.c",
+    "bytes": 7586,
+    "sha256": "a14e1c35739857a8418abac26249fd130a133e016773430ccbcb9f8a65b345e1"
+  },
+  {
+    "path": "src/decomp_rng.c",
+    "bytes": 733,
+    "sha256": "d7c42ce87e3f5728cfc07706d52c694dd0f15d7aa13bd5e31aa747d027d6e4b1"
+  },
+  {
+    "path": "src/field.c",
+    "bytes": 17586,
+    "sha256": "43097b59c16c3571d9e8066c5b575f615867c529a6d2b0b99312bff0ea03fb9e"
+  },
+  {
+    "path": "src/field_story.c",
+    "bytes": 54970,
+    "sha256": "88646a38812b3f8bed7075bbc104765ed21c5d2afe1adb34a32b7b9e475c3a59"
+  },
+  {
+    "path": "src/game_state.c",
+    "bytes": 20186,
+    "sha256": "ccb8c9eeaeb87295158d0a1378630a9abcb501cc8e07a1ee3451df3b2db31167"
+  },
+  {
+    "path": "src/model.c",
+    "bytes": 8511,
+    "sha256": "6aa52c94f04910adf3ee8c5ecb5125ec65cb0aa6c43583ee31bdb8b0b28dc36e"
+  },
+  {
+    "path": "src/movie.c",
+    "bytes": 6629,
+    "sha256": "a14700af7dfc645d4ab7445fcc9894260f9d8c8ef12d59a8b8d4dbf8a3eefc2a"
+  },
+  {
+    "path": "src/save.c",
+    "bytes": 15256,
+    "sha256": "e7d3f2327f963ada635cd89d2252e8d5121af1634b9d182a543234c87c58a5bf"
+  },
+  {
+    "path": "src/story.c",
+    "bytes": 25591,
+    "sha256": "c3abfce509c2c1625f6e0dbc2d9fe85f399a551438e57f59628ef6548668b3da"
+  },
+  {
+    "path": "src/title.c",
+    "bytes": 22579,
+    "sha256": "99179a8a893fc587022337d595b65fa734ba8de3ecdd55260c3e3f45c9538106"
+  },
+  {
+    "path": "include/colosseum3ds/area.h",
+    "bytes": 2258,
+    "sha256": "313b0ae6eba33349c44b2b05765fc33dba67305562a15ef72d9f23b34c47adc4"
+  },
+  {
+    "path": "include/colosseum3ds/area_camera.h",
+    "bytes": 811,
+    "sha256": "9664ed09a7d20831fe2445c287d0aa5959638bf67aeb686430c2ea53fd33e7e6"
+  },
+  {
+    "path": "include/colosseum3ds/area_lights.h",
+    "bytes": 1101,
+    "sha256": "247c4bf374b3ea811421b247a28277a38e2a4ffb7e261acb978a6543fec3bb4e"
+  },
+  {
+    "path": "include/colosseum3ds/battle.h",
+    "bytes": 2646,
+    "sha256": "e6e44bdf841a46d706fbb2b3a304b1d856c4085580001c6ad6922dc8cddd0f85"
+  },
+  {
+    "path": "include/colosseum3ds/core.h",
+    "bytes": 500,
+    "sha256": "6fbd918e924843eb84e80317f3f0f71c8c242de7272c2cc3c9642b5f6717030b"
+  },
+  {
+    "path": "include/colosseum3ds/data.h",
+    "bytes": 2385,
+    "sha256": "94287cc74ab6bea8d719108fa8d29d385bc3b902e54b0e24cd58e0863abbc759"
+  },
+  {
+    "path": "include/colosseum3ds/field.h",
+    "bytes": 2971,
+    "sha256": "51f5c4e00cd8931ceeeda80fb2734053a756adb70a001fbd4338723d25674834"
+  },
+  {
+    "path": "include/colosseum3ds/field_story.h",
+    "bytes": 2702,
+    "sha256": "7c59a7363f71bf094c829a932ebaa65f43b0b2f75d53a69253597bdaeefae28c"
+  },
+  {
+    "path": "include/colosseum3ds/game_state.h",
+    "bytes": 3868,
+    "sha256": "62cb92335ed02620866db174a6611b97b39101e6a63a55ee0dc46f54fa8949c6"
+  },
+  {
+    "path": "include/colosseum3ds/model.h",
+    "bytes": 1402,
+    "sha256": "b3e7c1eaef9750635fc864a455ce52e0dcf139054eee4fab48ac5b514bd37721"
+  },
+  {
+    "path": "include/colosseum3ds/movie.h",
+    "bytes": 1924,
+    "sha256": "608aba866de295714182ab300eb1075b5838a907e300ecd30d63a5ac05cd9921"
+  },
+  {
+    "path": "include/colosseum3ds/pokemon.h",
+    "bytes": 2231,
+    "sha256": "c4c05a557a04084a99a1c0aec738c82859dfc34825c9ad440c4ac94a871cb97e"
+  },
+  {
+    "path": "include/colosseum3ds/save.h",
+    "bytes": 4506,
+    "sha256": "3e031c48e711b248b28951713cc84e3b3d3e77031d7526e65de9d303ee68e4d1"
+  },
+  {
+    "path": "include/colosseum3ds/story.h",
+    "bytes": 2728,
+    "sha256": "68e96a5dd47676fad29a1dd2c43fccc4211fe0a562ed76d86b5112a46beb946b"
+  },
+  {
+    "path": "include/colosseum3ds/title.h",
+    "bytes": 5376,
+    "sha256": "ebe14d24c30c4160a050de3ba2740c850e7ac083af9af2a93116fcf958729ea5"
+  },
+  {
+    "path": "compat/include/dolphin/types.h",
+    "bytes": 788,
+    "sha256": "414025048b9257716f80a2da73578de6b2f5dc59ab86822a6e2d338fa46d3662"
+  },
+  {
+    "path": "Makefile.3ds",
+    "bytes": 3628,
+    "sha256": "f1aa7cbdf58418a2c5bddc34aeec046926d079db4eb8b3b538f254acf5d66877"
+  },
+  {
+    "path": "source-lock.json",
+    "bytes": 2015,
+    "sha256": "5453c2debbf55878af5566939019bd3c9e08061e90db2f480272ab9061e768ee"
+  },
+  {
+    "path": "tools/prepare_save_codec.py",
+    "bytes": 5665,
+    "sha256": "a44aabebe5725601921e8885a85f4a03b67045fe435ecd01ada4ffe256d2158d"
+  },
+  {
+    "path": "tools/prepare_gekko_backend.py",
+    "bytes": 4739,
+    "sha256": "ce41b24fc4e226d3860bb0821ddade76504f7a91b05a4d3cf6bb508564e7784f"
+  }
+]

@@ -1,0 +1,125 @@
+{
+  "status": "Title GPU stall fixed; normal title, HOME suspend/resume and clean exit physically verified with continuous NTR. Wider first-area acceptance pending.",
+  "tested_commit": "7a4a74613d01e3a4598da6e26c14f5bb701be83f",
+  "tested_3dsx_sha256": "d068396046553294eb597f7e38996e3fa393865a8f36e90928e5bbe65fc2b1a1",
+  "tested_3dsx_bytes": 315324,
+  "diagnostic_commit": "536dbd3864ce21f196439860f2a1889a4c9b3072",
+  "diagnostic_sha256": "4254c47bd712d5fcce72e1c46ebbb4f9b7b9d92a82af4238c0f3f26eb29e834f",
+  "diagnostic_installed": false,
+  "pass": [
+    "14 prepared asset hashes and staged/final transfer verification",
+    "Core selftest PASS",
+    "Original TPC and GS logo timeline completion",
+    "TPC NDSP initialization success",
+    "Confirmed null texture crash reproduced and repaired",
+    "NTR remains fresh on repaired app",
+    "Corrected probe all stages and clean exit",
+    "Normal live title animation",
+    "HOME suspend and resume from normal title",
+    "Normal START+SELECT exit to HBL",
+    "NTR continuous through corrected probe, ftpd, normal launch/suspend/resume/exit"
+  ],
+  "blocked": [
+    "Native menu interaction acceptance beyond live title",
+    "NewGame/WES/opening/arrival",
+    "Field movement and starter party",
+    "Explicit Save and independent whole-body GCI verification",
+    "Fresh Continue and no implicit GCI writes",
+    "Sleep/resume",
+    "Audible PCM and AVsync",
+    "Field loading time and responsiveness"
+  ],
+  "recovery": "CPU recovery X/A/START+SELECT verified; GPU queue remained busy. Owner restarted; FTP and NTR reachable.",
+  "engine_changes": "No CFW/NTR replacement or update performed",
+  "save_writes": 0,
+  "diagnostic_3dsx_bytes": 311956,
+  "diagnostic_result": "First draw returns, nextFrameBeginSYNCDRAW stalls with freshNTR",
+  "superseded_probe": {
+    "commit": "65469d1235ba585b429a5ce52860667539b0efb9",
+    "bytes": 312996,
+    "sha256": "f04be43b89a1e37e7f86731bfdfab9c64d9399a7823825999ed5ef34f7676781",
+    "installed": false,
+    "stages": [
+      "clear",
+      "geometry",
+      "geometry+originaloverlay",
+      "normal"
+    ],
+    "begin": "NONBLOCK-only,3s deadline; parkretainGPUstorage ontimeout",
+    "verification": "5 strict+ASan/UBSan host tests; pinned ARMcompile/link passed"
+  },
+  "ready_runtime_recovery": {
+    "source_commit": "7a4a74613d01e3a4598da6e26c14f5bb701be83f",
+    "configuration": "normal full Gekko-enabled native flow; cooperative render recovery; no temporary GPU probes",
+    "image": "devkitpro/devkitarm@sha256:116afba8df8453961de2936ffab20dd441edf4d682856c1ec8b0e53d7ed0bbf5",
+    "physically_tested": true,
+    "outputs": [
+      {
+        "name": "Colosseum3DS.3dsx",
+        "bytes": 315324,
+        "sha256": "d068396046553294eb597f7e38996e3fa393865a8f36e90928e5bbe65fc2b1a1"
+      },
+      {
+        "name": "Colosseum3DS.smdh",
+        "bytes": 14016,
+        "sha256": "f3fad3feb7b42caab0a647bb392050bf72e4507593cded5a16819cc1c68e5a55"
+      }
+    ],
+    "physical_scope": "Watchdog CPU recovery, remote X/A/STARTSELECT receipt, NTR continuity; normal title rendering and completed exit remain blocked",
+    "installed": true
+  },
+  "recovery_controls": [
+    "A: resume when GPU is idle",
+    "X: flush diagnostics to existing trace",
+    "START+SELECT: latch exit until safe GPU teardown"
+  ],
+  "recovery_limits": "APT/HID must keep returning. Citro3D suspend hook can block on a hard GPU wedge; process/kernel crashes still need physical recovery.",
+  "recovery_controls_verified": [
+    "X visible asPAD0400",
+    "A displaysResume request queued",
+    "STARTSELECT displaysExit requested",
+    "X visible asPAD0400 afterexitpending",
+    "NTRfreshthroughout, waittime advances"
+  ],
+  "gpu_queue_result": "Fixed shader completes rendering and safe teardown; earlier busy results retained as historical diagnostics.",
+  "snapshot_contents_downloaded": true,
+  "earlier_tested_repair": {
+    "tested_commit": "203cf6da34957d058de2dcb462a8daefeca99a57",
+    "tested_3dsx_sha256": "6f28bec622eabdac9b3df614e78728b2a049795c15b3dfb7237370a53fdf2388",
+    "tested_3dsx_bytes": 311228
+  },
+  "diagnostic_was_tested": true,
+  "current_installed_runtime": "4cce6c157b065757e9c6512a9ceea51baa96ba1c normal build, no probe",
+  "current_state": "Normal app exited cleanly to HBL; NTR still fresh, no reboot since corrected probe and normal launches.",
+  "recovery_trace": {
+    "bytes": 117978,
+    "sha256": "533b8b23911cb4ac5141702eb5daada5ee7fbb2a66ad0c789647540dcff024f0",
+    "events_confirmed": [
+      "timeout",
+      "snapshot",
+      "retry",
+      "exit_requested",
+      "snapshot after exit request"
+    ]
+  },
+  "home_control_verified": "Fresh NTR capture shows HOME suspends ftpd to HOME Menu; right/A selects HBL and confirmation opens launcher. Not tested in GPU wedge.",
+  "gpu_probe": {
+    "source_commit": "2a544f17c637966a464c62b299e892d9a1d6acbc",
+    "build_id": "2a544f1",
+    "bytes": 315544,
+    "sha256": "b0cfde6e30a7ca7f3ccbecf62df1f5d0fafa82b73ebb3731ffe4b94f18c4f720",
+    "clear_completed": true,
+    "geometry_submitted": true,
+    "overlay_submitted": false,
+    "recovery_visible": true
+  },
+  "shader_fix": {
+    "source_commit": "4cce6c157b065757e9c6512a9ceea51baa96ba1c",
+    "normal_bytes": 315308,
+    "normal_sha256": "049a08a355e69828145465bdd3e6a990407917e3e72b74de9a41dd11f332fd72",
+    "root_cause": "Texture output registers configured XYZW but shader wrote XY only; full-vector writes resolve physical stalls.",
+    "normal_home_suspend_resume": true,
+    "normal_clean_exit": true,
+    "ntr_reload_between_successful_launches": false
+  }
+}

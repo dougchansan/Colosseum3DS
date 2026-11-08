@@ -1,0 +1,37 @@
+boot_build d2af94a8f1b3 core=0
+movie_begin name=tpc frames=75 fps=30000/1001 audio=unavailable mix=stereo result=d880a7fa
+movie_end name=tpc result=0 displayed=71 skipped=4 elapsed_us=2531916
+movie_begin name=gs_logo frames=130 fps=30000/1001 audio=no_embedded_track mix=stereo result=00000000
+movie_end name=gs_logo result=0 displayed=122 skipped=8 elapsed_us=4369552
+title_begin vertices=17277 batches=43 textures=20 bones=31 fps=60.000
+title_state name=title_skip_out clip=0 frame=26 input=0100
+title_state name=title_skip_in clip=2 frame=32 input=0000
+title_state name=title_wait_start clip=2 frame=38 input=0000
+title_state name=title_start_accepted clip=2 frame=86 input=1000
+game_load status=ok name=WES floor=1 previous=928 spawn=0 count=1 backup=0 supported=1
+title_state name=main_menu clip=2 frame=98 input=0000
+menu_page name=continue_confirm input=0100
+title_end result=0 frames=137 state=main_menu clip=2
+field_begin floor=1 previous=928 spawn=0 new=0 maps=4 walk=136 walls=244 arrival=0 duration=5.000
+field_tick phase=2 menu=0 input=0000 stick=0,0 xyz=5.0000,0.0000,7.0000 yaw=3.1416 motion=0 sample=0.00 hits=0 time=98
+field_control_ready name=WES floor=1
+field_tick phase=3 menu=0 input=0000 stick=0,0 xyz=5.0000,0.0000,7.0000 yaw=3.1416 motion=0 sample=7.02 hits=0 time=99
+field_tick phase=3 menu=0 input=0000 stick=0,0 xyz=5.0000,0.0000,7.0000 yaw=3.1416 motion=0 sample=11.20 hits=0 time=100
+field_tick phase=3 menu=0 input=0000 stick=0,0 xyz=5.0000,0.0000,7.0000 yaw=3.1416 motion=0 sample=15.38 hits=0 time=101
+field_tick phase=3 menu=0 input=0000 stick=0,0 xyz=5.0000,0.0000,7.0000 yaw=3.1416 motion=0 sample=19.56 hits=0 time=102
+field_tick phase=3 menu=0 input=0000 stick=0,0 xyz=5.0000,0.0000,7.0000 yaw=3.1416 motion=0 sample=23.74 hits=0 time=103
+field_tick phase=3 menu=0 input=0000 stick=0,0 xyz=5.0000,0.0000,7.0000 yaw=3.1416 motion=0 sample=27.92 hits=0 time=105
+field_tick phase=3 menu=0 input=0000 stick=-38,0 xyz=4.7380,0.0000,7.0000 yaw=4.7124 motion=1 sample=14.04 hits=0 time=106
+field_tick phase=3 menu=0 input=0000 stick=-38,0 xyz=3.5401,0.0000,7.0000 yaw=4.7124 motion=1 sample=18.22 hits=0 time=107
+field_tick phase=3 menu=0 input=0000 stick=-38,0 xyz=2.3423,0.0000,7.0000 yaw=4.7124 motion=1 sample=22.40 hits=0 time=108
+field_tick phase=3 menu=0 input=0000 stick=0,0 xyz=2.1924,0.0000,7.0000 yaw=4.7124 motion=0 sample=56.15 hits=0 time=109
+field_tick phase=3 menu=1 input=0400 stick=0,0 xyz=2.1924,0.0000,7.0000 yaw=4.7124 motion=0 sample=39.27 hits=0 time=110
+field_tick phase=3 menu=1 input=0000 stick=0,0 xyz=2.1924,0.0000,7.0000 yaw=4.7124 motion=0 sample=39.27 hits=0 time=111
+field_tick phase=3 menu=1 input=0004 stick=0,0 xyz=2.1924,0.0000,7.0000 yaw=4.7124 motion=0 sample=39.27 hits=0 time=112
+field_tick phase=3 menu=1 input=0000 stick=0,0 xyz=2.1924,0.0000,7.0000 yaw=4.7124 motion=0 sample=39.27 hits=0 time=113
+field_tick phase=3 menu=2 input=0100 stick=0,0 xyz=2.1924,0.0000,7.0000 yaw=4.7124 motion=0 sample=39.27 hits=0 time=113
+field_tick phase=3 menu=2 input=0000 stick=0,0 xyz=2.1924,0.0000,7.0000 yaw=4.7124 motion=0 sample=39.27 hits=0 time=114
+field_tick phase=3 menu=2 input=0000 stick=0,0 xyz=2.1924,0.0000,7.0000 yaw=4.7124 motion=0 sample=39.27 hits=0 time=116
+field_tick phase=3 menu=2 input=0000 stick=0,0 xyz=2.1924,0.0000,7.0000 yaw=4.7124 motion=0 sample=39.27 hits=0 time=117
+field_end result=1 error=
+boot_end result=1 error=

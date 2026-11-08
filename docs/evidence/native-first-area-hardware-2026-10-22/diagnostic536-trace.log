@@ -1,0 +1,9 @@
+boot_build 536dbd3864ce core=0
+movie_begin name=tpc frames=75 fps=30000/1001 audio=ndsp mix=stereo result=00000000
+movie_end name=tpc result=0 displayed=50 skipped=25 elapsed_us=2534275
+movie_begin name=gs_logo frames=130 fps=30000/1001 audio=no_embedded_track mix=stereo result=00000000
+movie_end name=gs_logo result=0 displayed=130 skipped=0 elapsed_us=4350964
+title_begin vertices=17277 batches=43 textures=20 bones=31 fps=60.000
+title_draw_begin frame=0 wall_us=171810070
+title_draw_end frame=0 result=0 wall_us=171877834
+title_draw_begin frame=1 wall_us=171899998

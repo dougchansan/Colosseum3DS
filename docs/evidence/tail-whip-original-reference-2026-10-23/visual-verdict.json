@@ -1,0 +1,18 @@
+{
+  "score": 76,
+  "verdict": "revise",
+  "category_match": true,
+  "differences": [
+    "Both captures show the Tail Whip category: translucent cyan/blue horizontal rings around Zigzagoon. The native tail-band.png exposes only a cropped band across the head, while original-tail-whip-cyan-rings.png and rings-late show the full actor and multiple visible arcs; ring count, radius, thickness and attachment cannot be compared reliably from this crop.",
+    "The native view is an extreme head/trainer-foot close-up; the reference uses a wider view with a different actor orientation. Camera/RNG variant and effect age are not synchronized, so this is an observed composition difference rather than evidence of a camera or geometry defect.",
+    "The reference has a 640x512 backing image with SAR16:15; the native capture has a 283x240 scene viewport within combined screens plus a diagnostic HUD. Direct pixel alignment, apparent screen-space scale and edge/alpha comparisons would conflate viewport, display-aspect and HUD differences.",
+    "Reference announcement and female HUD verify original ZIGZAGOON used TAIL WHIP, but they do not independently establish an original A/B actor slot. The native B-slot identity must remain separately grounded in its native trace/roster, not inferred from the reference gender."
+  ],
+  "suggestions": [
+    "Collect or select native and original frames at matched authored effect age, controller phase and owner-relative camera/FOV; retain original and native RNG/camera variant records instead of assuming the two runs share a seed.",
+    "Compare the unobscured scene/effect regions using explicit viewport and SAR metadata, without changing the actual evidence images. Obtain a native frame showing the entire ring silhouette before judging radius, coverage, center or missing arcs.",
+    "Use the admitted drawable/controller source and synchronized before/ring/after frames to compare actor-relative center, yaw, class scale, texture-frame/material state and event timing; only then propose a demonstrated code or geometry correction.",
+    "Keep the current result as effect-category corroboration only. Do not mark pixel/retail visual parity, exact attachment, original actor-slot correspondence or performance accepted from these unsynchronized stills."
+  ],
+  "reasoning": "The actual native band and verified original cyan-ring sequence clearly share the Tail Whip visual category, but camera, effect-age and display framing prevent a defensible pixel-fidelity pass. Revise the comparison setup and phase selection, not the geometry on the strength of these views alone."
+}

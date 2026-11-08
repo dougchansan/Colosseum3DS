@@ -1,0 +1,17 @@
+{
+  "commit": "51bfe4314a218dfaf9592fc80723c50498d0ee55",
+  "files": [
+    {
+      "path": "src/game/fight_floor.c",
+      "sha256": "9bdddefb133af3615f2d66575cc687022f66026f835e9f70a582f6b4d0dd7bd7"
+    },
+    {
+      "path": "src/game/fight_range_80211A00.c",
+      "sha256": "fd9637901db913df32bae06fef5478fb152dfcb212a82349e099d8ca2d1f338a"
+    },
+    {
+      "path": "src/game/gs_math_random_exact_800E0C54.c",
+      "sha256": "4f46448db151759635ecba7f14ed90b64cb4bfd60f783966ae27fb109fa43eae"
+    }
+  ]
+}

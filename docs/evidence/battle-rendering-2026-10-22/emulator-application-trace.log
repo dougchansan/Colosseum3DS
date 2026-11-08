@@ -1,0 +1,227 @@
+preview_probe source=synthetic_entry real_tables=1 fresh_game=1 persisted_save_loaded=0 build=a99356029579-hud-uvfix
+preview_begin build=a99356029579-hud-uvfix seed=12345678 enemy_policy=uniform_legal experimental=1
+preview_turn turn=0 seed=2c53ded8 draws=352 outcome=1 save_writes=0 gsvm_resumed=0
+preview_event index=0 hp=86,75,52,52 draws=352 text=Nonpersistent battle preview. No retail AI or story result.
+preview_event index=1 hp=86,75,52,52 draws=352 text=WILLIE sends out two ZIGZAGOON!
+battle_stage_loaded models=9 actors=6 camera=source descriptor_version=1
+platform_memory stage=battle_stage_loaded heap_bytes=96038912 linear_heap_bytes=33554432 linear_free_bytes=15403136
+platform_allocator stage=battle_stage_loaded arena_bytes=45289472 used_bytes=45227944 free_in_arena_bytes=61528
+battle_render frames=1 draw_cpu_us=75801 gpu_previous_ms=0.000 draws=103 vertices=51543 gpu_buffer_bytes=16441080
+platform_memory stage=battle_render heap_bytes=96038912 linear_heap_bytes=33554432 linear_free_bytes=15238272
+platform_allocator stage=battle_render arena_bytes=45289472 used_bytes=45227992 free_in_arena_bytes=61480
+battle_render frames=8 draw_cpu_us=75732 gpu_previous_ms=0.250 draws=103 vertices=51543 gpu_buffer_bytes=16441080
+platform_memory stage=battle_render heap_bytes=96038912 linear_heap_bytes=33554432 linear_free_bytes=15238272
+platform_allocator stage=battle_render arena_bytes=45289472 used_bytes=45228192 free_in_arena_bytes=61280
+battle_source_sendout actor=0 pose=source_idle appearance_effect=unsupported cameras=unsupported audio=unsupported
+battle_source_sendout actor=1 pose=source_idle appearance_effect=unsupported cameras=unsupported audio=unsupported
+battle_source_sendout actor=2 pose=source_idle appearance_effect=unsupported cameras=unsupported audio=unsupported
+battle_source_sendout actor=3 pose=source_idle appearance_effect=unsupported cameras=unsupported audio=unsupported
+battle_render frames=14 draw_cpu_us=126537 gpu_previous_ms=0.250 draws=153 vertices=60681 gpu_buffer_bytes=16441080
+platform_memory stage=battle_render heap_bytes=96038912 linear_heap_bytes=33554432 linear_free_bytes=15238272
+platform_allocator stage=battle_render arena_bytes=45289472 used_bytes=45228192 free_in_arena_bytes=61280
+battle_render frames=19 draw_cpu_us=126558 gpu_previous_ms=0.250 draws=153 vertices=60633 gpu_buffer_bytes=16441080
+platform_memory stage=battle_render heap_bytes=96038912 linear_heap_bytes=33554432 linear_free_bytes=15238272
+platform_allocator stage=battle_render arena_bytes=45289472 used_bytes=45228192 free_in_arena_bytes=61280
+preview_ui page=1 actor=0 slot=0 target=2 event=1 input=0100
+battle_render frames=24 draw_cpu_us=126575 gpu_previous_ms=0.250 draws=153 vertices=60795 gpu_buffer_bytes=16441080
+platform_memory stage=battle_render heap_bytes=96038912 linear_heap_bytes=33554432 linear_free_bytes=15238272
+platform_allocator stage=battle_render arena_bytes=45289472 used_bytes=45228192 free_in_arena_bytes=61280
+preview_ui page=2 actor=0 slot=0 target=2 event=1 input=0100
+preview_ui page=1 actor=1 slot=0 target=2 event=1 input=0100
+battle_render frames=29 draw_cpu_us=126699 gpu_previous_ms=0.250 draws=153 vertices=60831 gpu_buffer_bytes=16441080
+platform_memory stage=battle_render heap_bytes=96038912 linear_heap_bytes=33554432 linear_free_bytes=15238272
+platform_allocator stage=battle_render arena_bytes=45289472 used_bytes=45228192 free_in_arena_bytes=61280
+preview_ui page=2 actor=1 slot=0 target=2 event=1 input=0100
+preview_ui page=3 actor=1 slot=0 target=2 event=1 input=0100
+battle_render frames=34 draw_cpu_us=126546 gpu_previous_ms=0.250 draws=153 vertices=60531 gpu_buffer_bytes=16441080
+platform_memory stage=battle_render heap_bytes=96038912 linear_heap_bytes=33554432 linear_free_bytes=15238272
+platform_allocator stage=battle_render arena_bytes=45289472 used_bytes=45228192 free_in_arena_bytes=61280
+preview_turn turn=1 seed=503aebc9 draws=367 outcome=1 save_writes=0 gsvm_resumed=0
+preview_event index=0 hp=86,75,52,52 draws=352 text=TURN 1
+preview_event index=1 hp=86,75,52,52 draws=357 text=ESPEON used CONFUSION!
+preview_event index=2 hp=86,75,1,52 draws=360 text=ZIGZAGOON A loses 51 HP.
+preview_event index=3 hp=86,75,1,52 draws=361 text=UMBREON used BITE!
+preview_event index=4 hp=86,75,0,52 draws=364 text=ZIGZAGOON A loses 1 HP.
+preview_event index=5 hp=86,75,0,52 draws=364 text=ZIGZAGOON A fainted!
+preview_event index=6 hp=86,75,0,52 draws=364 text=ZIGZAGOON B used TACKLE!
+preview_event index=7 hp=81,75,0,52 draws=367 text=UMBREON loses 5 HP.
+preview_event index=8 hp=81,75,0,52 draws=367 text=Turn complete.
+preview_ui page=0 actor=1 slot=0 target=2 event=0 input=0100
+battle_render frames=39 draw_cpu_us=126599 gpu_previous_ms=0.250 draws=153 vertices=60549 gpu_buffer_bytes=16441080
+platform_memory stage=battle_render heap_bytes=96038912 linear_heap_bytes=33554432 linear_free_bytes=15238272
+platform_allocator stage=battle_render arena_bytes=45289472 used_bytes=45228192 free_in_arena_bytes=61280
+battle_render frames=44 draw_cpu_us=126589 gpu_previous_ms=0.250 draws=153 vertices=60639 gpu_buffer_bytes=16441080
+platform_memory stage=battle_render heap_bytes=96038912 linear_heap_bytes=33554432 linear_free_bytes=15238272
+platform_allocator stage=battle_render arena_bytes=45289472 used_bytes=45228192 free_in_arena_bytes=61280
+battle_render frames=49 draw_cpu_us=126632 gpu_previous_ms=0.250 draws=153 vertices=60639 gpu_buffer_bytes=16441080
+platform_memory stage=battle_render heap_bytes=96038912 linear_heap_bytes=33554432 linear_free_bytes=15238272
+platform_allocator stage=battle_render arena_bytes=45289472 used_bytes=45228192 free_in_arena_bytes=61280
+battle_render frames=54 draw_cpu_us=126593 gpu_previous_ms=0.250 draws=153 vertices=60639 gpu_buffer_bytes=16441080
+platform_memory stage=battle_render heap_bytes=96038912 linear_heap_bytes=33554432 linear_free_bytes=15238272
+platform_allocator stage=battle_render arena_bytes=45289472 used_bytes=45228192 free_in_arena_bytes=61280
+battle_render frames=59 draw_cpu_us=126632 gpu_previous_ms=0.250 draws=153 vertices=60639 gpu_buffer_bytes=16441080
+platform_memory stage=battle_render heap_bytes=96038912 linear_heap_bytes=33554432 linear_free_bytes=15238272
+platform_allocator stage=battle_render arena_bytes=45289472 used_bytes=45228192 free_in_arena_bytes=61280
+battle_render frames=64 draw_cpu_us=126594 gpu_previous_ms=0.250 draws=153 vertices=60639 gpu_buffer_bytes=16441080
+platform_memory stage=battle_render heap_bytes=96038912 linear_heap_bytes=33554432 linear_free_bytes=15238272
+platform_allocator stage=battle_render arena_bytes=45289472 used_bytes=45228192 free_in_arena_bytes=61280
+battle_render frames=69 draw_cpu_us=126574 gpu_previous_ms=0.250 draws=153 vertices=60639 gpu_buffer_bytes=16441080
+platform_memory stage=battle_render heap_bytes=96038912 linear_heap_bytes=33554432 linear_free_bytes=15238272
+platform_allocator stage=battle_render arena_bytes=45289472 used_bytes=45228192 free_in_arena_bytes=61280
+battle_render frames=74 draw_cpu_us=126530 gpu_previous_ms=0.250 draws=153 vertices=60639 gpu_buffer_bytes=16441080
+platform_memory stage=battle_render heap_bytes=96038912 linear_heap_bytes=33554432 linear_free_bytes=15238272
+platform_allocator stage=battle_render arena_bytes=45289472 used_bytes=45228192 free_in_arena_bytes=61280
+battle_render frames=79 draw_cpu_us=126569 gpu_previous_ms=0.250 draws=153 vertices=60639 gpu_buffer_bytes=16441080
+platform_memory stage=battle_render heap_bytes=96038912 linear_heap_bytes=33554432 linear_free_bytes=15238272
+platform_allocator stage=battle_render arena_bytes=45289472 used_bytes=45228192 free_in_arena_bytes=61280
+battle_render frames=84 draw_cpu_us=126594 gpu_previous_ms=0.250 draws=153 vertices=60639 gpu_buffer_bytes=16441080
+platform_memory stage=battle_render heap_bytes=96038912 linear_heap_bytes=33554432 linear_free_bytes=15238272
+platform_allocator stage=battle_render arena_bytes=45289472 used_bytes=45228192 free_in_arena_bytes=61280
+battle_render frames=89 draw_cpu_us=126632 gpu_previous_ms=0.250 draws=153 vertices=60639 gpu_buffer_bytes=16441080
+platform_memory stage=battle_render heap_bytes=96038912 linear_heap_bytes=33554432 linear_free_bytes=15238272
+platform_allocator stage=battle_render arena_bytes=45289472 used_bytes=45228192 free_in_arena_bytes=61280
+battle_render frames=94 draw_cpu_us=126589 gpu_previous_ms=0.250 draws=153 vertices=60639 gpu_buffer_bytes=16441080
+platform_memory stage=battle_render heap_bytes=96038912 linear_heap_bytes=33554432 linear_free_bytes=15238272
+platform_allocator stage=battle_render arena_bytes=45289472 used_bytes=45228192 free_in_arena_bytes=61280
+battle_render frames=99 draw_cpu_us=126660 gpu_previous_ms=0.250 draws=153 vertices=60609 gpu_buffer_bytes=16441080
+platform_memory stage=battle_render heap_bytes=96038912 linear_heap_bytes=33554432 linear_free_bytes=15238272
+platform_allocator stage=battle_render arena_bytes=45289472 used_bytes=45228192 free_in_arena_bytes=61280
+battle_render frames=104 draw_cpu_us=126642 gpu_previous_ms=0.250 draws=153 vertices=60609 gpu_buffer_bytes=16441080
+platform_memory stage=battle_render heap_bytes=96038912 linear_heap_bytes=33554432 linear_free_bytes=15238272
+platform_allocator stage=battle_render arena_bytes=45289472 used_bytes=45228192 free_in_arena_bytes=61280
+battle_render frames=109 draw_cpu_us=126643 gpu_previous_ms=0.250 draws=153 vertices=60609 gpu_buffer_bytes=16441080
+platform_memory stage=battle_render heap_bytes=96038912 linear_heap_bytes=33554432 linear_free_bytes=15238272
+platform_allocator stage=battle_render arena_bytes=45289472 used_bytes=45228192 free_in_arena_bytes=61280
+battle_render frames=114 draw_cpu_us=126606 gpu_previous_ms=0.250 draws=153 vertices=60627 gpu_buffer_bytes=16441080
+platform_memory stage=battle_render heap_bytes=96038912 linear_heap_bytes=33554432 linear_free_bytes=15238272
+platform_allocator stage=battle_render arena_bytes=45289472 used_bytes=45228192 free_in_arena_bytes=61280
+battle_render frames=119 draw_cpu_us=126535 gpu_previous_ms=0.250 draws=153 vertices=60627 gpu_buffer_bytes=16441080
+platform_memory stage=battle_render heap_bytes=96038912 linear_heap_bytes=33554432 linear_free_bytes=15238272
+platform_allocator stage=battle_render arena_bytes=45289472 used_bytes=45228192 free_in_arena_bytes=61280
+battle_render frames=124 draw_cpu_us=126542 gpu_previous_ms=0.250 draws=153 vertices=60627 gpu_buffer_bytes=16441080
+platform_memory stage=battle_render heap_bytes=96038912 linear_heap_bytes=33554432 linear_free_bytes=15238272
+platform_allocator stage=battle_render arena_bytes=45289472 used_bytes=45228192 free_in_arena_bytes=61280
+battle_render frames=129 draw_cpu_us=126541 gpu_previous_ms=0.250 draws=153 vertices=60627 gpu_buffer_bytes=16441080
+platform_memory stage=battle_render heap_bytes=96038912 linear_heap_bytes=33554432 linear_free_bytes=15238272
+platform_allocator stage=battle_render arena_bytes=45289472 used_bytes=45228192 free_in_arena_bytes=61280
+battle_render frames=134 draw_cpu_us=126605 gpu_previous_ms=0.250 draws=153 vertices=60627 gpu_buffer_bytes=16441080
+platform_memory stage=battle_render heap_bytes=96038912 linear_heap_bytes=33554432 linear_free_bytes=15238272
+platform_allocator stage=battle_render arena_bytes=45289472 used_bytes=45228192 free_in_arena_bytes=61280
+battle_render frames=139 draw_cpu_us=126605 gpu_previous_ms=0.250 draws=153 vertices=60627 gpu_buffer_bytes=16441080
+platform_memory stage=battle_render heap_bytes=96038912 linear_heap_bytes=33554432 linear_free_bytes=15238272
+platform_allocator stage=battle_render arena_bytes=45289472 used_bytes=45228192 free_in_arena_bytes=61280
+battle_render frames=144 draw_cpu_us=126605 gpu_previous_ms=0.250 draws=153 vertices=60627 gpu_buffer_bytes=16441080
+platform_memory stage=battle_render heap_bytes=96038912 linear_heap_bytes=33554432 linear_free_bytes=15238272
+platform_allocator stage=battle_render arena_bytes=45289472 used_bytes=45228192 free_in_arena_bytes=61280
+battle_render frames=149 draw_cpu_us=126602 gpu_previous_ms=0.250 draws=153 vertices=60621 gpu_buffer_bytes=16441080
+platform_memory stage=battle_render heap_bytes=96038912 linear_heap_bytes=33554432 linear_free_bytes=15238272
+platform_allocator stage=battle_render arena_bytes=45289472 used_bytes=45228192 free_in_arena_bytes=61280
+battle_render frames=154 draw_cpu_us=126597 gpu_previous_ms=0.250 draws=153 vertices=60621 gpu_buffer_bytes=16441080
+platform_memory stage=battle_render heap_bytes=96038912 linear_heap_bytes=33554432 linear_free_bytes=15238272
+platform_allocator stage=battle_render arena_bytes=45289472 used_bytes=45228192 free_in_arena_bytes=61280
+battle_render frames=159 draw_cpu_us=126539 gpu_previous_ms=0.250 draws=153 vertices=60621 gpu_buffer_bytes=16441080
+platform_memory stage=battle_render heap_bytes=96038912 linear_heap_bytes=33554432 linear_free_bytes=15238272
+platform_allocator stage=battle_render arena_bytes=45289472 used_bytes=45228192 free_in_arena_bytes=61280
+battle_render frames=164 draw_cpu_us=126538 gpu_previous_ms=0.250 draws=153 vertices=60621 gpu_buffer_bytes=16441080
+platform_memory stage=battle_render heap_bytes=96038912 linear_heap_bytes=33554432 linear_free_bytes=15238272
+platform_allocator stage=battle_render arena_bytes=45289472 used_bytes=45228192 free_in_arena_bytes=61280
+battle_render frames=169 draw_cpu_us=126536 gpu_previous_ms=0.250 draws=153 vertices=60621 gpu_buffer_bytes=16441080
+platform_memory stage=battle_render heap_bytes=96038912 linear_heap_bytes=33554432 linear_free_bytes=15238272
+platform_allocator stage=battle_render arena_bytes=45289472 used_bytes=45228192 free_in_arena_bytes=61280
+battle_render frames=174 draw_cpu_us=126606 gpu_previous_ms=0.250 draws=153 vertices=60621 gpu_buffer_bytes=16441080
+platform_memory stage=battle_render heap_bytes=96038912 linear_heap_bytes=33554432 linear_free_bytes=15238272
+platform_allocator stage=battle_render arena_bytes=45289472 used_bytes=45228192 free_in_arena_bytes=61280
+battle_render frames=180 draw_cpu_us=113189 gpu_previous_ms=0.250 draws=139 vertices=58212 gpu_buffer_bytes=16441080
+platform_memory stage=battle_render heap_bytes=96038912 linear_heap_bytes=33554432 linear_free_bytes=15238272
+platform_allocator stage=battle_render arena_bytes=45289472 used_bytes=45228192 free_in_arena_bytes=61280
+battle_render frames=186 draw_cpu_us=113160 gpu_previous_ms=0.250 draws=139 vertices=58212 gpu_buffer_bytes=16441080
+platform_memory stage=battle_render heap_bytes=96038912 linear_heap_bytes=33554432 linear_free_bytes=15238272
+platform_allocator stage=battle_render arena_bytes=45289472 used_bytes=45228192 free_in_arena_bytes=61280
+battle_render frames=192 draw_cpu_us=113123 gpu_previous_ms=0.250 draws=139 vertices=58212 gpu_buffer_bytes=16441080
+platform_memory stage=battle_render heap_bytes=96038912 linear_heap_bytes=33554432 linear_free_bytes=15238272
+platform_allocator stage=battle_render arena_bytes=45289472 used_bytes=45228192 free_in_arena_bytes=61280
+battle_render frames=198 draw_cpu_us=113175 gpu_previous_ms=0.250 draws=139 vertices=58212 gpu_buffer_bytes=16441080
+platform_memory stage=battle_render heap_bytes=96038912 linear_heap_bytes=33554432 linear_free_bytes=15238272
+platform_allocator stage=battle_render arena_bytes=45289472 used_bytes=45228192 free_in_arena_bytes=61280
+battle_render frames=204 draw_cpu_us=113294 gpu_previous_ms=0.250 draws=139 vertices=58182 gpu_buffer_bytes=16441080
+platform_memory stage=battle_render heap_bytes=96038912 linear_heap_bytes=33554432 linear_free_bytes=15238272
+platform_allocator stage=battle_render arena_bytes=45289472 used_bytes=45228192 free_in_arena_bytes=61280
+battle_render frames=210 draw_cpu_us=113088 gpu_previous_ms=0.250 draws=139 vertices=58182 gpu_buffer_bytes=16441080
+platform_memory stage=battle_render heap_bytes=96038912 linear_heap_bytes=33554432 linear_free_bytes=15238272
+platform_allocator stage=battle_render arena_bytes=45289472 used_bytes=45228192 free_in_arena_bytes=61280
+battle_render frames=216 draw_cpu_us=112946 gpu_previous_ms=0.250 draws=139 vertices=58182 gpu_buffer_bytes=16441080
+platform_memory stage=battle_render heap_bytes=96038912 linear_heap_bytes=33554432 linear_free_bytes=15238272
+platform_allocator stage=battle_render arena_bytes=45289472 used_bytes=45228192 free_in_arena_bytes=61280
+battle_render frames=222 draw_cpu_us=113079 gpu_previous_ms=0.250 draws=139 vertices=58182 gpu_buffer_bytes=16441080
+platform_memory stage=battle_render heap_bytes=96038912 linear_heap_bytes=33554432 linear_free_bytes=15238272
+platform_allocator stage=battle_render arena_bytes=45289472 used_bytes=45228192 free_in_arena_bytes=61280
+battle_render frames=228 draw_cpu_us=113141 gpu_previous_ms=0.250 draws=139 vertices=58182 gpu_buffer_bytes=16441080
+platform_memory stage=battle_render heap_bytes=96038912 linear_heap_bytes=33554432 linear_free_bytes=15238272
+platform_allocator stage=battle_render arena_bytes=45289472 used_bytes=45228192 free_in_arena_bytes=61280
+preview_ui page=1 actor=0 slot=0 target=3 event=8 input=0100
+preview_ui page=2 actor=0 slot=0 target=3 event=8 input=0100
+battle_render frames=234 draw_cpu_us=113192 gpu_previous_ms=0.250 draws=139 vertices=58194 gpu_buffer_bytes=16441080
+platform_memory stage=battle_render heap_bytes=96038912 linear_heap_bytes=33554432 linear_free_bytes=15238272
+platform_allocator stage=battle_render arena_bytes=45289472 used_bytes=45228192 free_in_arena_bytes=61280
+preview_ui page=1 actor=1 slot=0 target=3 event=8 input=0100
+battle_render frames=240 draw_cpu_us=113234 gpu_previous_ms=0.250 draws=139 vertices=58398 gpu_buffer_bytes=16441080
+platform_memory stage=battle_render heap_bytes=96038912 linear_heap_bytes=33554432 linear_free_bytes=15238272
+platform_allocator stage=battle_render arena_bytes=45289472 used_bytes=45228192 free_in_arena_bytes=61280
+preview_ui page=2 actor=1 slot=0 target=3 event=8 input=0100
+battle_render frames=246 draw_cpu_us=113105 gpu_previous_ms=0.250 draws=139 vertices=58194 gpu_buffer_bytes=16441080
+platform_memory stage=battle_render heap_bytes=96038912 linear_heap_bytes=33554432 linear_free_bytes=15238272
+platform_allocator stage=battle_render arena_bytes=45289472 used_bytes=45228192 free_in_arena_bytes=61280
+preview_ui page=3 actor=1 slot=0 target=3 event=8 input=0100
+preview_turn turn=2 seed=1b13b0ac draws=372 outcome=2 save_writes=0 gsvm_resumed=0
+preview_event index=0 hp=81,75,0,52 draws=367 text=TURN 2
+preview_event index=1 hp=81,75,0,52 draws=369 text=ESPEON used CONFUSION!
+preview_event index=2 hp=81,75,0,0 draws=372 text=ZIGZAGOON B loses 52 HP.
+preview_event index=3 hp=81,75,0,0 draws=372 text=ZIGZAGOON B fainted!
+preview_event index=4 hp=81,75,0,0 draws=372 text=Turn complete.
+preview_event index=5 hp=81,75,0,0 draws=372 text=Preview result: WIN. No rewards, save, or story flags were written.
+preview_ui page=0 actor=1 slot=0 target=3 event=0 input=0100
+battle_render frames=252 draw_cpu_us=113150 gpu_previous_ms=0.250 draws=139 vertices=58116 gpu_buffer_bytes=16441080
+platform_memory stage=battle_render heap_bytes=96038912 linear_heap_bytes=33554432 linear_free_bytes=15238272
+platform_allocator stage=battle_render arena_bytes=45289472 used_bytes=45228192 free_in_arena_bytes=61280
+battle_render frames=258 draw_cpu_us=113138 gpu_previous_ms=0.250 draws=139 vertices=58206 gpu_buffer_bytes=16441080
+platform_memory stage=battle_render heap_bytes=96038912 linear_heap_bytes=33554432 linear_free_bytes=15238272
+platform_allocator stage=battle_render arena_bytes=45289472 used_bytes=45228192 free_in_arena_bytes=61280
+battle_render frames=264 draw_cpu_us=113188 gpu_previous_ms=0.250 draws=139 vertices=58206 gpu_buffer_bytes=16441080
+platform_memory stage=battle_render heap_bytes=96038912 linear_heap_bytes=33554432 linear_free_bytes=15238272
+platform_allocator stage=battle_render arena_bytes=45289472 used_bytes=45228192 free_in_arena_bytes=61280
+battle_render frames=270 draw_cpu_us=113174 gpu_previous_ms=0.250 draws=139 vertices=58206 gpu_buffer_bytes=16441080
+platform_memory stage=battle_render heap_bytes=96038912 linear_heap_bytes=33554432 linear_free_bytes=15238272
+platform_allocator stage=battle_render arena_bytes=45289472 used_bytes=45228192 free_in_arena_bytes=61280
+battle_render frames=276 draw_cpu_us=113108 gpu_previous_ms=0.250 draws=139 vertices=58206 gpu_buffer_bytes=16441080
+platform_memory stage=battle_render heap_bytes=96038912 linear_heap_bytes=33554432 linear_free_bytes=15238272
+platform_allocator stage=battle_render arena_bytes=45289472 used_bytes=45228192 free_in_arena_bytes=61280
+battle_render frames=282 draw_cpu_us=113158 gpu_previous_ms=0.250 draws=139 vertices=58206 gpu_buffer_bytes=16441080
+platform_memory stage=battle_render heap_bytes=96038912 linear_heap_bytes=33554432 linear_free_bytes=15238272
+platform_allocator stage=battle_render arena_bytes=45289472 used_bytes=45228192 free_in_arena_bytes=61280
+battle_render frames=288 draw_cpu_us=113158 gpu_previous_ms=0.250 draws=139 vertices=58206 gpu_buffer_bytes=16441080
+platform_memory stage=battle_render heap_bytes=96038912 linear_heap_bytes=33554432 linear_free_bytes=15238272
+platform_allocator stage=battle_render arena_bytes=45289472 used_bytes=45228192 free_in_arena_bytes=61280
+battle_render frames=294 draw_cpu_us=113192 gpu_previous_ms=0.250 draws=139 vertices=58206 gpu_buffer_bytes=16441080
+platform_memory stage=battle_render heap_bytes=96038912 linear_heap_bytes=33554432 linear_free_bytes=15238272
+platform_allocator stage=battle_render arena_bytes=45289472 used_bytes=45228192 free_in_arena_bytes=61280
+battle_render frames=300 draw_cpu_us=113173 gpu_previous_ms=0.250 draws=139 vertices=58206 gpu_buffer_bytes=16441080
+platform_memory stage=battle_render heap_bytes=96038912 linear_heap_bytes=33554432 linear_free_bytes=15238272
+platform_allocator stage=battle_render arena_bytes=45289472 used_bytes=45228192 free_in_arena_bytes=61280
+battle_render frames=306 draw_cpu_us=113105 gpu_previous_ms=0.250 draws=139 vertices=58206 gpu_buffer_bytes=16441080
+platform_memory stage=battle_render heap_bytes=96038912 linear_heap_bytes=33554432 linear_free_bytes=15238272
+platform_allocator stage=battle_render arena_bytes=45289472 used_bytes=45228192 free_in_arena_bytes=61280
+battle_render frames=312 draw_cpu_us=113189 gpu_previous_ms=0.250 draws=139 vertices=58188 gpu_buffer_bytes=16441080
+platform_memory stage=battle_render heap_bytes=96038912 linear_heap_bytes=33554432 linear_free_bytes=15238272
+platform_allocator stage=battle_render arena_bytes=45289472 used_bytes=45228192 free_in_arena_bytes=61280
+battle_render frames=318 draw_cpu_us=113147 gpu_previous_ms=0.250 draws=139 vertices=58188 gpu_buffer_bytes=16441080
+platform_memory stage=battle_render heap_bytes=96038912 linear_heap_bytes=33554432 linear_free_bytes=15238272
+platform_allocator stage=battle_render arena_bytes=45289472 used_bytes=45228192 free_in_arena_bytes=61280
+battle_render frames=324 draw_cpu_us=113170 gpu_previous_ms=0.250 draws=139 vertices=58188 gpu_buffer_bytes=16441080
+platform_memory stage=battle_render heap_bytes=96038912 linear_heap_bytes=33554432 linear_free_bytes=15238272
+platform_allocator stage=battle_render arena_bytes=45289472 used_bytes=45228192 free_in_arena_bytes=61280
+battle_render frames=330 draw_cpu_us=113103 gpu_previous_ms=0.250 draws=139 vertices=58188 gpu_buffer_bytes=16441080
+platform_memory stage=battle_render heap_bytes=96038912 linear_heap_bytes=33554432 linear_free_bytes=15238272
+platform_allocator stage=battle_render arena_bytes=45289472 used_bytes=45228192 free_in_arena_bytes=61280
+battle_render frames=336 draw_cpu_us=113142 gpu_previous_ms=0.250 draws=139 vertices=58188 gpu_buffer_bytes=16441080
+platform_memory stage=battle_render heap_bytes=96038912 linear_heap_bytes=33554432 linear_free_bytes=15238272
+platform_allocator stage=battle_render arena_bytes=45289472 used_bytes=45228192 free_in_arena_bytes=61280
