@@ -28,7 +28,6 @@ defaults:
 jobs:
   host:
     if: >-
-      github.event.repository.private == true &&
       (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: [self-hosted, Windows, X64, colosseum3ds-local]
     timeout-minutes: 15
@@ -63,7 +62,6 @@ jobs:
 
   capture:
     if: >-
-      github.event.repository.private == true &&
       (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: [self-hosted, Windows, X64, colosseum3ds-local]
     timeout-minutes: 10
@@ -86,7 +84,6 @@ jobs:
 
   new3ds:
     if: >-
-      github.event.repository.private == true &&
       (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: [self-hosted, Windows, X64, colosseum3ds-local]
     timeout-minutes: 20
