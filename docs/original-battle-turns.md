@@ -127,6 +127,22 @@ interpreter yet.
   (`tests/test_battle_fight_out.c`).
 
 
+- `src/battle_state.c` builds the battle memory from a finished entry: both
+  trainer records and the FightFloor record in one arena, the battle result
+  (`lbl_8047B5D8`) and the borrowed species/move/floor tables. The entry
+  stores FightPokemon source links as native party identities; the state
+  relocates each to that party slot in the trainer's embedded Hero (`+0x34 +
+  slot*0x138`) and refuses anything else. Over the real entry every link lands
+  on the party Pokemon the FightPokemon copied.
+- Lowered validity checks: `pokemonCheckValid` (species row name, species
+  count, attest bytes, bad-egg flag), `pokemonCheckFightOut` (also species
+  412, egg flag, HP 0), and the FightPokemon/FightOutPokemon forms (battle
+  result 1, source/copy links, entry ID, caught flag, FightOutPokemon field
+  0x120). All four entry-built battlers are valid and in battle after
+  send-out.
+
+## Increments
+
 1. **Execution and end of turn through original code.** A minimal
    FightFloor/FightOutPokemon state built by `fightOutPokemonCreate` from the
    entry FightPokemon. The original sort/nimbleness ordering, the two-pass
