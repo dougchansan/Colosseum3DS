@@ -66,6 +66,38 @@ Design constraints found:
   units selected by `configure.py` (the `*exact*` splits) are authoritative.
 
 
+## Interpreter status
+
+`src/battle_script.c` lowers the interpreter loop `fn_80211B94` over the
+private C3W1 pack (`tools/prepare_battle_script.py`: script region, effect
+table and the initialized-data windows from `main.dol`):
+
+- Top-level move calls run the end-of-move sequence in source order: faint
+  mark pass, the faint sub-script `lbl_80378798` inline with saved PC/state,
+  four post-faint passes, then cleanup (attacker field 0xD9, move-cleanup
+  pass, the original global clears and the three attacker/move status
+  writes) and the exit flag masks. Nested calls stop on state 1 or 2 and skip
+  the cleanup.
+- Script variables resolve through three GameCube memory windows (`.sdata`
+  `0x80478D78`, `.sbss` `0x8047B600`, `.data` `0x8038FF5A`) with the original
+  big-endian layout; the interpreter's PC/state/action slots and every other
+  address are refused.
+- Waits (`fightMainWaitFrame`) suspend the interpreter; the caller resumes it.
+- Lowered opcodes: goto (0x28), byte/halfword compares (0x29, 0x2A), set byte
+  (0x2E), OR word (0x35), pause (0x39), skip (0x3A), return/ends (0x3C, 0x3D,
+  0x3E, 0xF6, 0xF7) and the status get/set family (0xF8–0xFD). Every other
+  opcode fails with its original handler name.
+
+On the original scripts the ordinary-hit script runs its Surf guard and stops
+at `WS_HITCHECK` (Tackle) or `WS_WAZAKOUKA_CHECK` (Surf), and Growl sets the
+stat-change variable and reaches the shared stat-down script, each exactly
+where the disassembly predicts (`tests/test_battle_script.c`). Battle-logic
+opcodes, the FightOutPokemon status model behind `statusGet/SetStatus`, and
+targets are the next lowering steps; nothing on the console calls the
+interpreter yet.
+
+## Increments
+
 1. **Execution and end of turn through original code.** A minimal
    FightFloor/FightOutPokemon state built by `fightOutPokemonCreate` from the
    entry FightPokemon. The original sort/nimbleness ordering, the two-pass
