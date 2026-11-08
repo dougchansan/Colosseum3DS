@@ -29,7 +29,38 @@ resumable action frame. Each stage stops when the result global
 | Battle end | kinds 0xEâ€“0x11 (`Syuuryou*`), party copyback `fightTrainerBackFightPokemonToTemotiPokemon` | missing |
 | Story resume | native `fn_801CA5C4` â†’ `fn_8020DAD0` returns the result to GSVM; `src/field_story.c` parks at `W_BATTLE` | waiting |
 
-## Increments
+## Move-script engine (increment 1 scope, measured)
+
+`tools/analyze_battle_scripts.py` reads the opcode table `lbl_8027A00C` from
+the pinned decomp and derives each handler's script-pointer advances and
+jump operands from its canonical (`*exact*`) source, following helper calls.
+It then disassembles the scripts in the canonical `main.dol`, starting from
+`lbl_80379BFF[effect]` for the given moves plus the faint sub-script
+`lbl_80378798`. It writes nothing into the checkout.
+
+For encounter 10's moves (Tackle 0, Growl 18, Tail Whip 19, Bite 31, Struggle
+48, Reflect 65, Confusion 76, Return 121, Taunt 175, Helping Hand 176, Snatch
+195, Secret Power 197 — move effect IDs) the static closure over every branch
+is **46 opcodes in 18 scripts**, with no unresolved lengths and no run-time
+script selection reached. The scripts follow the Gen-3 battle-script layout;
+for example the ordinary hit script is the Surf/underwater guard, then attack
+canceler, accuracy check, attack string, PP reduce, critical, damage, type and
+damage adjustment, animation/HP/message steps, secondary effect, faint check
+and move end. This makes each opcode's meaning cross-checkable, but the
+original handler source stays the authority.
+
+Design constraints found:
+
+- Script operands embed absolute GameCube addresses of battle globals (for
+  example the hit marker `0x8047B618` and damage multiplier `0x8047B63E`).
+  The native interpreter needs an explicit, validated address map to native
+  storage; unknown addresses must fail, never alias host memory.
+- The `WS_STATUS_GET*/SET*` opcodes (0xF9–0xFD) go through `statusGetStatus` /
+  `statusSetStatus` with field IDs, so the FightOutPokemon/floor status model
+  must cover the IDs these scripts use.
+- Several decomp files keep stale duplicate bodies under `#if` guards; only the
+  units selected by `configure.py` (the `*exact*` splits) are authoritative.
+
 
 1. **Execution and end of turn through original code.** A minimal
    FightFloor/FightOutPokemon state built by `fightOutPokemonCreate` from the
