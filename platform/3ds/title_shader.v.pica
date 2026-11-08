@@ -25,7 +25,9 @@
     mul r1.xyz, vertexColor, r2.x
     mad outColor.xyz, vertexSpecular, r2.y, r1
     mov outColor.w, vertexColor.w
-    mov outTexCoord.xy, vertexUV
-    mov outTexCoord2.xy, vertexUV2
+    ; The .out declarations configure all four components. Hardware requires
+    ; each configured component to be written, including unused texture Z/W.
+    mov outTexCoord, vertexUV
+    mov outTexCoord2, vertexUV2
     end
 .end

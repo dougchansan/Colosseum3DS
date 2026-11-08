@@ -2,8 +2,9 @@
 
 The main menu and name selection run as a native bottom-screen interface over
 the live title scene. The choice order and transitions follow the pinned original
-code. Original menu windows, cursor art, fonts and layout have not been ported;
-the bottom console is the current presentation. Colosseum Battle and Battle Now
+code. The [graphical bottom-screen UI](bottom-screen-ui.md) reflows the original
+menu cards, cursor, window frames and proportional font from a private
+`ui.c3ui` pack. Colosseum Battle and Battle Now
 are visibly unavailable and do not enter placeholder game modes.
 
 ## Source decisions
@@ -83,7 +84,7 @@ references, message extents and native text-pack rejection. The movie tests cove
 signed PCM conversion and same/opposite-sign extremes in the mono mix.
 
 The menu owns no C3D frame or render target. It emits requests to the boot/field
-state controller and draws only to the selected bottom console. The live title,
+state controller and draws only to the bottom framebuffer. The live title,
 opening movie, field geometry and genuine save service retain their respective
 resource ownership. Passing these menu tests does not establish a complete
 Story Mode, original UI visual parity, or physical-console performance.

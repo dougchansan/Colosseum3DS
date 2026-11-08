@@ -1,0 +1,189 @@
+{
+  "mode": "fresh",
+  "controller_completed": true,
+  "error": null,
+  "runner_exit_code": 0,
+  "stages": [
+    {
+      "name": "fresh-wes-outskirt",
+      "frame": 6840,
+      "image": "/workspace/scratch/d8bf34fb7169/emulator-sandbox/runs/story-proof-fresh-1/stages/fresh-wes-outskirt.png",
+      "tick": {
+        "floor": 1,
+        "phase": 4,
+        "menu": 0,
+        "control": 1,
+        "message": 0,
+        "xyz": [
+          5.0,
+          0.0,
+          7.0
+        ]
+      },
+      "sha256": "81105e5179eea2923a6110793f15482492a2dd28b997095b6654ac99f845ce1c"
+    },
+    {
+      "name": "original-departure-0515d",
+      "frame": 8100,
+      "image": "/workspace/scratch/d8bf34fb7169/emulator-sandbox/runs/story-proof-fresh-1/stages/original-departure-0515d.png",
+      "tick": {
+        "floor": 1,
+        "phase": 4,
+        "menu": 0,
+        "control": 0,
+        "message": 20829,
+        "xyz": [
+          -0.1694,
+          0.0,
+          -0.9221
+        ]
+      },
+      "sha256": "c8d89d7f54a95939cbe598e0493cae5e6eb68330cd17f012733f629135627a70"
+    },
+    {
+      "name": "original-departure-05146",
+      "frame": 8460,
+      "image": "/workspace/scratch/d8bf34fb7169/emulator-sandbox/runs/story-proof-fresh-1/stages/original-departure-05146.png",
+      "tick": {
+        "floor": 1,
+        "phase": 4,
+        "menu": 0,
+        "control": 0,
+        "message": 20806,
+        "xyz": [
+          -0.1694,
+          0.0,
+          -0.9221
+        ]
+      },
+      "sha256": "6c151baa5fa7b355e45ebcc72344a7f00014f1a259cc82af403c4ff0fbaf96c3"
+    },
+    {
+      "name": "departure-complete",
+      "frame": 9480,
+      "image": "/workspace/scratch/d8bf34fb7169/emulator-sandbox/runs/story-proof-fresh-1/stages/departure-complete.png",
+      "tick": {
+        "floor": 1,
+        "phase": 4,
+        "menu": 0,
+        "control": 1,
+        "message": 0,
+        "xyz": [
+          -0.1694,
+          0.0,
+          -0.9221
+        ]
+      },
+      "sha256": "d46a286219cab0e29ba105ad1a445b4e326a6d6bd42372c766021b25388aa402"
+    },
+    {
+      "name": "original-shop-tv-0426e",
+      "frame": 12060,
+      "image": "/workspace/scratch/d8bf34fb7169/emulator-sandbox/runs/story-proof-fresh-1/stages/original-shop-tv-0426e.png",
+      "tick": {
+        "floor": 2,
+        "phase": 4,
+        "menu": 0,
+        "control": 0,
+        "message": 17006,
+        "xyz": [
+          -5.358,
+          0.0,
+          2.478
+        ]
+      },
+      "sha256": "215dd52db281ab47996e29221e0aaf749c0e839d997619b3f685b22b7ede20b6"
+    },
+    {
+      "name": "shop-control",
+      "frame": 12540,
+      "image": "/workspace/scratch/d8bf34fb7169/emulator-sandbox/runs/story-proof-fresh-1/stages/shop-control.png",
+      "tick": {
+        "floor": 2,
+        "phase": 4,
+        "menu": 0,
+        "control": 1,
+        "message": 0,
+        "xyz": [
+          -5.358,
+          0.0,
+          2.478
+        ]
+      },
+      "sha256": "5484ce386a1dc68235bdc79a972cc2978a01f00970b70d33493103144301c365"
+    },
+    {
+      "name": "willie-conversation-0514a",
+      "frame": 14340,
+      "image": "/workspace/scratch/d8bf34fb7169/emulator-sandbox/runs/story-proof-fresh-1/stages/willie-conversation-0514a.png",
+      "tick": {
+        "floor": 2,
+        "phase": 4,
+        "menu": 0,
+        "control": 0,
+        "message": 20810,
+        "xyz": [
+          2.7067,
+          0.0,
+          0.0253
+        ]
+      },
+      "sha256": "9996fddcd64da3fdf0e0f7dc0308a596c146650bfb7c0c069cb8f8d469ecac3f"
+    },
+    {
+      "name": "willie-conversation-0514c",
+      "frame": 14700,
+      "image": "/workspace/scratch/d8bf34fb7169/emulator-sandbox/runs/story-proof-fresh-1/stages/willie-conversation-0514c.png",
+      "tick": {
+        "floor": 2,
+        "phase": 4,
+        "menu": 0,
+        "control": 0,
+        "message": 20812,
+        "xyz": [
+          2.7067,
+          0.0,
+          0.0253
+        ]
+      },
+      "sha256": "48a79e5b8bc743c488a9ceabc873c3a2ae03461c4cd4e994c389ad2d7cbe372d"
+    },
+    {
+      "name": "willie-talk-complete",
+      "frame": 15180,
+      "image": "/workspace/scratch/d8bf34fb7169/emulator-sandbox/runs/story-proof-fresh-1/stages/willie-talk-complete.png",
+      "tick": {
+        "floor": 2,
+        "phase": 4,
+        "menu": 0,
+        "control": 1,
+        "message": 0,
+        "xyz": [
+          2.7067,
+          0.0,
+          0.0253
+        ]
+      },
+      "sha256": "65fed3917c37e15a7a3512dc9522cf427a0c3719ea04de1212006334be416ebd"
+    },
+    {
+      "name": "saved-fresh-wes-shop",
+      "frame": 16020,
+      "image": "/workspace/scratch/d8bf34fb7169/emulator-sandbox/runs/story-proof-fresh-1/stages/saved-fresh-wes-shop.png",
+      "tick": {
+        "floor": 2,
+        "phase": 4,
+        "menu": 5,
+        "control": 1,
+        "message": 0,
+        "xyz": [
+          2.7067,
+          0.0,
+          0.0253
+        ]
+      },
+      "sha256": "e652e87ea3d65eefd075e389a09d16cd632f0c6ea5a91023a1743abe8d70cf4f"
+    }
+  ],
+  "scope": "Actual controller input; no guest-memory or game-flag writes. Emulator evidence only; combat stays pending."
+}

@@ -1,11 +1,15 @@
 #include "n3ds_platform.h"
+#include "stage_renderer.h"
+#include "bottom_screen.h"
 
 #include <3ds.h>
 #include <stdio.h>
+#include <malloc.h>
 #include <string.h>
 
 static bool graphics_started;
 static uint16_t previous_buttons;
+static uint16_t deferred_buttons;
 static aptHookCookie clock_hook;
 static unsigned clock_pause_mask;
 static uint64_t clock_pause_start, clock_paused_us;
@@ -67,6 +71,7 @@ int c3_n3ds_init(char *error, size_t capacity)
     gfxSetDoubleBuffering(GFX_BOTTOM, false);
     consoleInit(GFX_BOTTOM, NULL);
     previous_buttons = 0;
+    deferred_buttons = 0;
     LightLock_Init(&clock_lock);
     clock_pause_mask = 0;
     clock_pause_start = clock_paused_us = 0;
@@ -82,6 +87,7 @@ int c3_n3ds_init(char *error, size_t capacity)
     }
     /* This is a request to the system; it is not a measured clock-rate claim. */
     osSetSpeedupEnable(true);
+    c3_bottom_screen_init();
     if (capacity) error[0] = '\0';
     return 0;
 }
@@ -97,7 +103,8 @@ bool c3_n3ds_poll(C3N3dsInput *input)
     irrstCstickRead(&cstick);
     memset(input, 0, sizeof(*input));
     input->held = map_buttons(keys);
-    input->pressed = (uint16_t)(input->held & ~previous_buttons);
+    input->pressed = (uint16_t)((input->held & ~previous_buttons) | deferred_buttons);
+    deferred_buttons = 0;
     previous_buttons = input->held;
     input->stick_x = normalize_axis(circle.dx);
     input->stick_y = normalize_axis(circle.dy);
@@ -117,6 +124,11 @@ uint64_t c3_n3ds_time_us(void)
          + (ticks % SYSCLOCK_ARM11) * UINT64_C(1000000) / SYSCLOCK_ARM11;
 }
 
+void c3_n3ds_defer_buttons(uint16_t pressed)
+{
+    deferred_buttons |= pressed;
+}
+
 uint64_t c3_n3ds_active_time_us(void)
 {
     uint64_t now, paused;
@@ -126,6 +138,20 @@ uint64_t c3_n3ds_active_time_us(void)
     if (clock_pause_mask) paused += now - clock_pause_start;
     LightLock_Unlock(&clock_lock);
     return now - paused;
+}
+
+void c3_n3ds_log_memory(FILE *trace, const char *stage)
+{
+    if (!trace) return;
+    struct mallinfo memory = mallinfo();
+    fprintf(trace, "platform_memory stage=%s heap_bytes=%lu linear_heap_bytes=%lu linear_free_bytes=%lu\n",
+            stage ? stage : "unspecified",
+            (unsigned long)envGetHeapSize(), (unsigned long)envGetLinearHeapSize(),
+            (unsigned long)linearSpaceFree());
+    fprintf(trace, "platform_allocator stage=%s arena_bytes=%lu used_bytes=%lu free_in_arena_bytes=%lu\n",
+            stage ? stage : "unspecified", (unsigned long)memory.arena,
+            (unsigned long)memory.uordblks, (unsigned long)memory.fordblks);
+    fflush(trace);
 }
 
 const char *c3_n3ds_data_root(void)
@@ -147,6 +173,8 @@ void c3_n3ds_wait_for_exit(void)
 void c3_n3ds_shutdown(void)
 {
     if (graphics_started) {
+        c3_bottom_screen_close();
+        c3_stage_renderer_fini();
         aptUnhook(&clock_hook);
         osSetSpeedupEnable(false);
         gfxExit();

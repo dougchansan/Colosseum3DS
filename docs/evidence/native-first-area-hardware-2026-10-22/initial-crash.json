@@ -1,0 +1,18 @@
+{
+  "build_commit": "8b3e7052ad951b606abc3be028429889353469e8",
+  "executable_sha256": "5303d913b44bd68857c585cae4aae0476efb355ba954a97dba8a6327e5766640",
+  "processor": "ARM11 core0",
+  "exception": "data abort",
+  "status": "Translation - Section",
+  "access": "Read",
+  "pc": "0011abf0",
+  "lr": "00109724",
+  "far": "0000000c",
+  "r0": "00000001",
+  "r1": "00000000",
+  "symbol_pc": "C3D_TexGetType in C3D_TexBind; texture.h:132",
+  "symbol_lr": "c3_stage_renderer_draw; platform/3ds/title_renderer.c:652",
+  "instruction": "ldr ip,[r1,#12]",
+  "finding": "NULL texture on unit1; verified exact ELF disassembly",
+  "status_of_later_acceptance": "Blocked by first title draw crash; no NewGame or Save performed"
+}

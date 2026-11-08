@@ -1,0 +1,421 @@
+./build/test_core
+Native decomp startup checks passed
+./build/test_data
+FSYS/LZSS: 6 test groups passed (bounds, streaming, overlap, ring wrap, malformed input)
+./build/test_pokemon
+Pokemon native source slice: 30 checks passed
+./build/test_model
+Native model validation and animation checks passed
+./build/test_movie
+movie: frame timing, independent streams, PCM endian/mono, bounds and truncation passed
+./build/test_save
+save: 87 checks, 0 failures (synthetic format fixtures)
+./build/test_title
+Native title bounds, ownership, animation and normal checks passed
+./build/test_field
+field: 82 checks passed
+./build/test_game_menu
+native game menu: 47 checks passed
+./build/test_game_state
+game-state checks: 181 passed (synthetic fixtures only)
+./build/test_render_recovery
+Colosseum3DS | render recovery
+Build host | test
+
+Rendering paused: GPU busy
+Wait 3.0 seconds | PAD 0000
+
+Submit 7 | fill 7 draw 0 tx 0
+A: resume when GPU is ready
+X: write diagnostics to trace
+START + SELECT: request exit
+
+A hard GPU/system fault may still
+require a physical reset. HOME may
+also wait for GPU completion.
+Colosseum3DS | render recovery
+Build host | test
+
+Rendering paused: GPU busy
+Wait 3.1 seconds | PAD 0400
+
+Submit 7 | fill 7 draw 0 tx 0
+A: resume when GPU is ready
+X: write diagnostics to trace
+START + SELECT: request exit
+
+A hard GPU/system fault may still
+require a physical reset. HOME may
+also wait for GPU completion.
+Colosseum3DS | render recovery
+Build host | test
+
+Rendering paused: GPU busy
+Wait 3.2 seconds | PAD 0100
+
+Submit 7 | fill 7 draw 0 tx 0
+A: resume when GPU is ready
+X: write diagnostics to trace
+START + SELECT: request exit
+
+Resume request queued.
+
+A hard GPU/system fault may still
+require a physical reset. HOME may
+also wait for GPU completion.
+Colosseum3DS | render recovery
+Build host | test
+
+Rendering paused: GPU busy
+Wait 3.5 seconds | PAD 0000
+
+Submit 7 | fill 7 draw 0 tx 0
+A: resume when GPU is ready
+X: write diagnostics to trace
+START + SELECT: request exit
+
+Resume request queued.
+
+A hard GPU/system fault may still
+require a physical reset. HOME may
+also wait for GPU completion.
+Colosseum3DS | render recovery
+Build host | test
+
+Rendering paused: GPU busy
+Wait 0.0 seconds | PAD 0000
+
+Submit 7 | fill 7 draw 0 tx 0
+Exit requested.
+Waiting for GPU before releasing
+scene memory.
+
+X: write diagnostics to trace
+START + SELECT: request exit
+
+A hard GPU/system fault may still
+require a physical reset. HOME may
+also wait for GPU completion.
+Colosseum3DS | render recovery
+Build host | test
+
+Rendering paused: GPU busy
+Wait 0.3 seconds | PAD 0000
+
+Submit 7 | fill 7 draw 0 tx 0
+Exit requested.
+Waiting for GPU before releasing
+scene memory.
+
+X: write diagnostics to trace
+START + SELECT: request exit
+
+A hard GPU/system fault may still
+require a physical reset. HOME may
+also wait for GPU completion.
+Colosseum3DS | render recovery
+Build host | test
+
+Rendering paused: GPU busy
+Wait 0.0 seconds | PAD 0000
+
+Submit 7 | fill 7 draw 0 tx 0
+Exit requested.
+Waiting for GPU before releasing
+scene memory.
+
+X: write diagnostics to trace
+START + SELECT: request exit
+
+A hard GPU/system fault may still
+require a physical reset. HOME may
+also wait for GPU completion.
+Colosseum3DS | render recovery
+Build host | test
+
+Rendering paused: GPU busy
+Wait 0.3 seconds | PAD 0000
+
+Submit 7 | fill 7 draw 0 tx 0
+Exit requested.
+Waiting for GPU before releasing
+scene memory.
+
+X: write diagnostics to trace
+START + SELECT: request exit
+
+A hard GPU/system fault may still
+require a physical reset. HOME may
+also wait for GPU completion.
+Colosseum3DS | render recovery
+Build host | test
+
+Rendering paused: GPU busy
+Wait 0.0 seconds | PAD 0000
+
+Submit 7 | fill 7 draw 0 tx 0
+Exit requested.
+Waiting for GPU before releasing
+scene memory.
+
+X: write diagnostics to trace
+START + SELECT: request exit
+
+A hard GPU/system fault may still
+require a physical reset. HOME may
+also wait for GPU completion.
+Colosseum3DS | render recovery
+Build host | transition
+
+Rendering paused: GPU busy
+Wait 0.0 seconds | PAD 0000
+
+Submit 7 | fill 7 draw 0 tx 0
+Changing scene.
+Waiting for GPU before releasing
+scene memory.
+
+X: write diagnostics to trace
+START + SELECT: request exit
+
+A hard GPU/system fault may still
+require a physical reset. HOME may
+also wait for GPU completion.
+Colosseum3DS | render recovery
+Build host | transition
+
+Rendering paused: GPU busy
+Wait 0.0 seconds | PAD 0000
+
+Submit 7 | fill 7 draw 0 tx 0
+Exit requested.
+Waiting for GPU before releasing
+scene memory.
+
+X: write diagnostics to trace
+START + SELECT: request exit
+
+A hard GPU/system fault may still
+require a physical reset. HOME may
+also wait for GPU completion.
+Colosseum3DS | render recovery
+Build host | transition
+
+Rendering paused: GPU busy
+Wait 0.3 seconds | PAD 0000
+
+Submit 7 | fill 7 draw 0 tx 0
+Exit requested.
+Waiting for GPU before releasing
+scene memory.
+
+X: write diagnostics to trace
+START + SELECT: request exit
+
+A hard GPU/system fault may still
+require a physical reset. HOME may
+also wait for GPU completion.
+Colosseum3DS | render recovery
+Build host | transition
+
+Rendering paused: GPU busy
+Wait 0.0 seconds | PAD 0000
+
+Submit 7 | fill 7 draw 0 tx 0
+Changing scene.
+Waiting for GPU before releasing
+scene memory.
+
+X: write diagnostics to trace
+START + SELECT: request exit
+
+A hard GPU/system fault may still
+require a physical reset. HOME may
+also wait for GPU completion.
+Colosseum3DS | render recovery
+Build host | transition
+
+Rendering paused: GPU busy
+Wait 0.0 seconds | PAD 0000
+
+Submit 7 | fill 7 draw 0 tx 0
+Exit requested.
+Waiting for GPU before releasing
+scene memory.
+
+X: write diagnostics to trace
+START + SELECT: request exit
+
+A hard GPU/system fault may still
+require a physical reset. HOME may
+also wait for GPU completion.
+Colosseum3DS | render recovery
+Build host | transition
+
+Rendering paused: GPU busy
+Wait 0.3 seconds | PAD 0000
+
+Submit 7 | fill 7 draw 0 tx 0
+Exit requested.
+Waiting for GPU before releasing
+scene memory.
+
+X: write diagnostics to trace
+START + SELECT: request exit
+
+A hard GPU/system fault may still
+require a physical reset. HOME may
+also wait for GPU completion.
+Colosseum3DS | render recovery
+Build host | transition
+
+Rendering paused: GPU busy
+Wait 0.0 seconds | PAD 0000
+
+Submit 7 | fill 7 draw 0 tx 0
+Changing scene.
+Waiting for GPU before releasing
+scene memory.
+
+X: write diagnostics to trace
+START + SELECT: request exit
+
+A hard GPU/system fault may still
+require a physical reset. HOME may
+also wait for GPU completion.
+Colosseum3DS | render recovery
+Build host | transition
+
+Rendering paused: GPU busy
+Wait 0.0 seconds | PAD 0400
+
+Submit 7 | fill 7 draw 0 tx 0
+Changing scene.
+Waiting for GPU before releasing
+scene memory.
+
+X: write diagnostics to trace
+START + SELECT: request exit
+
+A hard GPU/system fault may still
+require a physical reset. HOME may
+also wait for GPU completion.
+render recovery: 734 checks passed
+./build/test_area
+area: 3547 checks passed
+./build/test_area_camera
+Area camera bounds, interpolation, loop and ownership checks passed
+./build/test_area_lights
+Area light bounds, quantized samples, loop and ownership checks passed
+./build/test_story
+story VM: 1062 checks passed
+./build/test_field_story
+field-story synthetic regressions: 7488 checks passed
+field-story private integration skipped: supply privately prepared boot directory
+./build/test_battle
+first-battle data/request: 1998 checks passed; backend remains blocked
+python3 -m unittest discover -s tests -p 'test_*.py'
+.......................................................................................ssssss......................................sss..sss..............................
+----------------------------------------------------------------------
+Ran 169 tests in 4.968s
+
+OK (skipped=12)
+{
+  "command": "diagnose",
+  "started_utc": "2026-10-22T07:49:24.401585+00:00",
+  "application_directory": "/3ds/Colosseum3DS",
+  "status": "failed",
+  "limits": "FTP bytes only; launch, exit, input, screens and gameplay require manual observation",
+  "build_metadata": {
+    "git_commit": null,
+    "build_configuration": null,
+    "toolchain": null
+  },
+  "endpoint": {
+    "host": "example.invalid",
+    "port": 5000
+  },
+  "error": "unreachable"
+}
+{
+  "command": "diagnose",
+  "started_utc": "2026-10-22T07:49:24.407760+00:00",
+  "application_directory": "/3ds/Colosseum3DS",
+  "status": "failed",
+  "limits": "FTP bytes only; launch, exit, input, screens and gameplay require manual observation",
+  "build_metadata": {
+    "git_commit": null,
+    "build_configuration": null,
+    "toolchain": null
+  },
+  "endpoint": {
+    "host": "192.0.2.10",
+    "port": 5000
+  },
+  "resolved_addresses": [
+    "192.0.2.10"
+  ],
+  "tcp_probes": {
+    "ftp": {
+      "port": 5000,
+      "reachable": false,
+      "protocol_verified": false,
+      "error": "FTP TCP unavailable"
+    },
+    "ntr": {
+      "port": 8000,
+      "reachable": false,
+      "protocol_verified": false,
+      "error": "NTR unavailable"
+    }
+  },
+  "error": "FTP unavailable"
+}
+{
+  "command": "diagnose",
+  "started_utc": "2026-10-22T07:49:24.412440+00:00",
+  "application_directory": "/3ds/Colosseum3DS",
+  "status": "failed",
+  "limits": "FTP bytes only; launch, exit, input, screens and gameplay require manual observation",
+  "error": "Only /3ds/Colosseum3DS is supported"
+}
+{
+  "command": "inspect",
+  "started_utc": "2026-10-22T07:49:24.416506+00:00",
+  "application_directory": "/3ds/Colosseum3DS",
+  "status": "failed",
+  "limits": "FTP bytes only; launch, exit, input, screens and gameplay require manual observation",
+  "build_metadata": {
+    "git_commit": null,
+    "build_configuration": null,
+    "toolchain": null
+  },
+  "endpoint": {
+    "host": "192.0.2.10",
+    "port": 5000
+  },
+  "resolved_addresses": [],
+  "error": "FTP control connection closed unexpectedly (EOFError)"
+}
+{
+  "command": "inspect",
+  "started_utc": "2026-10-22T07:49:24.421463+00:00",
+  "application_directory": "/3ds/Colosseum3DS",
+  "status": "failed",
+  "limits": "FTP bytes only; launch, exit, input, screens and gameplay require manual observation",
+  "build_metadata": {
+    "git_commit": null,
+    "build_configuration": null,
+    "toolchain": null
+  },
+  "endpoint": {
+    "host": "192.0.2.10",
+    "port": 5000
+  },
+  "resolved_addresses": [],
+  "ftp_local_source_address": "192.0.2.2",
+  "passive_ftp": true,
+  "server_system": "215 UNIX Type: L8",
+  "application_directory_accessible": true,
+  "error": "FTP control connection closed unexpectedly (EOFError)"
+}

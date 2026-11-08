@@ -1,0 +1,25 @@
+{
+  "commit": "51bfe4314a218dfaf9592fc80723c50498d0ee55",
+  "files": [
+    {
+      "path": "src/game/fight_out_pokemon_exact_80206A04.c",
+      "sha256": "8d07c7557d6e267d2560e8b91e9367cdf46b73b8ea147633b831cfe9fa963d9c"
+    },
+    {
+      "path": "src/game/fight_trainer_db_range_801FBD10.c",
+      "sha256": "9fcc27c3ac276eb922f7365a807a4894d5345f879c2bf9cf5303896476b3412d"
+    },
+    {
+      "path": "src/game/pokemon_get_status_exact_8012640C.c",
+      "sha256": "295ff83903d644add435e7beaf8888c35eed1e05d518329b416303fd3cff4682"
+    },
+    {
+      "path": "src/game/pokemon_range_8011F5FC.c",
+      "sha256": "e5ad2f1745cea73925404e7feef6cac9a3fb1e2bc4ab87fa42e8022f531b1003"
+    },
+    {
+      "path": "src/game/field_range_80117E58.c",
+      "sha256": "024f1b87bd348a69e3d4a1b309e268c928c803f6dd36b6a691f0da6cec4c2af4"
+    }
+  ]
+}

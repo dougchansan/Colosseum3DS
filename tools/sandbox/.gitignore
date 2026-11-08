@@ -8,3 +8,8 @@
 /dependencies.json
 /__pycache__/
 /probe-build/
+/gpu-probe-build/
+/scene-probe-build/
+/shop-probe-build/
+/tv-corners-build/
+/tv-probe-build/

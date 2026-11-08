@@ -1,0 +1,57 @@
+{
+  "commit": "51bfe4314a218dfaf9592fc80723c50498d0ee55",
+  "files": [
+    {
+      "path": "src/game/fight_trainer_range_801F7F80.c",
+      "sha256": "29aaf8e5dbd3666f685043396def52d974285b2a2cd1388da7845b47ba9f5f2f"
+    },
+    {
+      "path": "src/game/hero_savedata_exact_80129280.c",
+      "sha256": "22b3936eb1b63b858a435a14773b5ede7439e4aece37aa4f32c8e56f82cc84c0"
+    },
+    {
+      "path": "src/game/hero_bios_exact_8012A450.c",
+      "sha256": "660cdb9802501e82f63ed173a610cbeaec85bb79a046e2b95534654da0135505"
+    },
+    {
+      "path": "src/game/pokemon_range_8011F5FC.c",
+      "sha256": "e5ad2f1745cea73925404e7feef6cac9a3fb1e2bc4ab87fa42e8022f531b1003"
+    },
+    {
+      "path": "src/game/gamedata.c",
+      "sha256": "2e04c7a259dcadc78edd7adfcd281ce941c8180af837f786c4672847b8b52da8"
+    },
+    {
+      "path": "src/game/gs_msg.c",
+      "sha256": "7d36a3f685efbca1743d569691dd5fcda6e3c704afb72e926bb1e778957a0ebc"
+    },
+    {
+      "path": "src/game/people/people_data_exact_80141308.c",
+      "sha256": "6a027894b1e03c364ceb6d8766a31bfc1b0239939f2e61051a99b3ce43ba385e"
+    },
+    {
+      "path": "src/game/people/people_data_exact_80142A88.c",
+      "sha256": "83e9a7e9c6d0959953e3a0daf14ceaaff550315b675d6560b97492bc4c904e8b"
+    },
+    {
+      "path": "src/game/people/people_data.c",
+      "sha256": "a5ce74a0ed6f9497bb4452a9ea63055602ac03801debe0d5409992bb6583cfb6"
+    },
+    {
+      "path": "src/game/fight_trainer_db_range_801FBD10.c",
+      "sha256": "9fcc27c3ac276eb922f7365a807a4894d5345f879c2bf9cf5303896476b3412d"
+    },
+    {
+      "path": "src/game/fight_trainer_range_801FAA58.c",
+      "sha256": "f3418bdfb311fe8e33ca06e773a5e82493310d2bff960fde1323a2933b9f90bc"
+    },
+    {
+      "path": "src/game/pokemon_data.c",
+      "sha256": "e40fc24c972135df30f2507b00054185c84bb15dcbf9c5c0b121bfa0c7ee7a45"
+    },
+    {
+      "path": "src/game/gamedataBios.c",
+      "sha256": "363c603cddc9476ffb441226500ffacf1072aec5486f1d7fd6638863ba21373c"
+    }
+  ]
+}

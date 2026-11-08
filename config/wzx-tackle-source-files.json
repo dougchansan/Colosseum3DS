@@ -1,0 +1,79 @@
+{
+  "commit": "51bfe4314a218dfaf9592fc80723c50498d0ee55",
+  "files": {
+    "src/game/sequence.c": "5197f33a164dd2698f04c01272f0deaa7f02629f010856b535684277f5daa1dd",
+    "src/game/wazaSequence.c": "975afb18f19c6da6f7132fe3772d8ab3ab9546f528d8381073b59e614459444d",
+    "src/game/wazaSequenceSys.c": "0a6ae93e3ffacf678122ebb965a91c9fd6e204c98a1a3f0ec8325c00031826ea",
+    "src/game/wazaSequenceSys_tail.c": "91fb672f4d033367b472de815a8fea43824b0eed7deb69bbd8a85be1aa8a2a8e",
+    "src/game/wazaSequenceEntry.c": "6500a4db7253ce776686b86d470a6f9587cfa3db10cf9fcfb9cca50328d0855f",
+    "src/game/gs_range_801DE698.c": "e4594cc503d7dd0c4acd06b5df8aa216d04c10ea3698b6e20285cf5f50e2b69d",
+    "src/game/fight_waza.c": "680d4b391266423c36cbe64599b9552f0dbed2078ba6f31300e8acac376b78d6",
+    "src/game/fight_out_pokemon_suffix_80207C6C.c": "dcdd443bf323b793cbf71b17e5cbf856f39391ca1b020bde9ac70bf42a70e2d7",
+    "src/game/fight_range_exact_80226134.c": "b3d1d1babc2e0bf4f8ecd6c0d262e63bf814949231cfd5c776bf33d4056efc5b",
+    "src/game/fight_range_exact_80222110.c": "6691d742e74cf1068cb79f66789e413b8425639e6f0086b0891599b6bb93f399",
+    "src/game/gs_model_anim_exact_800EC4D0.c": "fc99c538bf7c9ee460b12bd02a2deb03a1dbc9a740098f8470306aabedf18c06",
+    "src/game/gs_model_anim_suffix_800ED4D4.c": "78dcdb6bb3e8e89b27cf73d0fdc524bf16518d44e2eb94391e2c66fe0201619b",
+    "src/game/generator.c": "da5f8de6327e5cd5cb7ccd06513009408f6fd21542d228a42fd2ab2713301414",
+    "src/game/psdisp.c": "9556cef7febef3d712f66130d2b6d8bb4302395e54e77daaf4961e394aa0ea6a",
+    "src/game/pslist.c": "f2c8dca89e412fada19cf6e80b91a4103a4937bf32c9a010849dc246c30f2fb7",
+    "src/game/particle.c": "be476e7b65e8b4d1bab156c4839efba7bd7fe02e16111bc4a78117edf82e71e1",
+    "src/game/fight_range_exact_80223A24.c": "1165cfd689cb6cdc7e6499e6af05da05511f94dce6658b67ac1de88effbadc69"
+  },
+  "dol_slices": [
+    {
+      "address": 2149432524,
+      "bytes": 272,
+      "sha256": "566ceb38a50410103e7a0b81b0e92189233bb059d01562c35dac9b84658951f9"
+    },
+    {
+      "address": 2149431396,
+      "bytes": 152,
+      "sha256": "a8e7ece3790bea8e1c7ea0635e8fe9895727af3c43d72089452adb0a727d2298"
+    },
+    {
+      "address": 2149445388,
+      "bytes": 356,
+      "sha256": "17bb06f614fd44538c8259c0249eb6690e4e91d90f20b1d45befc25df3464c38"
+    },
+    {
+      "address": 2152195016,
+      "bytes": 8,
+      "sha256": "8250ab532e40d24a67c08f58e0cd1d76cef63a045599ae5dc9279472cada42dd"
+    },
+    {
+      "address": 2151114158,
+      "bytes": 12,
+      "sha256": "1f70211b8ca56859be79633b038d5d16d3e08c1fe006b773de5351e2b6d06590"
+    },
+    {
+      "address": 2151112598,
+      "bytes": 32,
+      "sha256": "709f0d0dfc04a429880d0f7e247dda21d2c2cbb2be4db6c0d94656e691f8d343"
+    },
+    {
+      "address": 2151128063,
+      "bytes": 4,
+      "sha256": "d1502bf30cc492a60f39f4821a96fc0cd9f464942fab3e8da64c41a092c0c756"
+    },
+    {
+      "address": 2151128187,
+      "bytes": 4,
+      "sha256": "0ad93118ae9b8871d9ace378ad5511d8c81a50178fa82c530c449806f3aa3e6c"
+    },
+    {
+      "address": 2149429504,
+      "bytes": 84,
+      "sha256": "484a6acd77761f38615fc29157f273b58927b15a707514a557191ca5a7068824"
+    },
+    {
+      "address": 2149617964,
+      "bytes": 596,
+      "sha256": "b6e602fab863a0bedcb76db1b853b123c1a73fa7a8b455e119a13ed913e0139f"
+    },
+    {
+      "address": 2149728028,
+      "bytes": 324,
+      "sha256": "fc06ab8dcd93a0d21d6ce307cbca109187e5247a560a3312e284c5aee24e00d7"
+    }
+  ]
+}

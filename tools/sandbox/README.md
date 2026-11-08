@@ -103,6 +103,97 @@ frame at which an input arrives, because native scheduling and core timing are
 not controlled by this frontend. Treat the script as deterministic frontend
 input, not a cycle-exact execution replay.
 
+## Live controller input
+
+Use `--live-input /absolute/controller.packet` to control a running session
+after inspecting its actual screens and application trace. The file may be
+absent when the run starts. Write one packet, replacing the file atomically:
+
+```text
+sequence,duration_frames,libretro_mask,left_x,left_y,right_x,right_y
+```
+
+The packet itself has **no header**. For example, `1,12,0x0100,0,0,0,0` holds A
+for 12 frontend frames. Each sequence must be a strictly increasing positive
+64-bit integer. Duration is 1..36000 frames, the button mask is 0..65535, and
+axes are -32768..32767. The packet must be a regular file of at most 256 bytes;
+symbolic links and other file types are rejected. Keep it outside `--out`.
+
+The frontend reads the packet before each `retro_run()`. A valid newer sequence
+starts on that frame, replacing the complete controller state. Its duration
+expires to neutral. Repeated sequences, stale sequences, and invalid packets
+never renew a hold. Once live input has been accepted, it keeps ownership of
+the controller: an old `--events` CSV hold cannot resume after expiration.
+Before the first live packet, the existing CSV behaves normally. This allows
+a fixed boot sequence followed by adaptive movement and dialogue input.
+
+This example sends an A pulse using a temporary file in the same directory:
+
+```python
+from pathlib import Path
+import os
+import tempfile
+
+packet = Path("/absolute/controller.packet")
+sequence = 1  # Increment for every subsequent command in this run.
+with tempfile.NamedTemporaryFile("w", dir=packet.parent, delete=False) as output:
+    output.write(f"{sequence},12,0x0100,0,0,0,0\n")
+    output.flush()
+    os.fsync(output.fileno())
+    temporary = output.name
+os.replace(temporary, packet)
+```
+
+A newer packet with duration 1 and all five input values zero cancels a current
+hold, then remains neutral. Use a distinct packet path per run or remove an old
+packet before launch; an existing valid packet is accepted on frame zero.
+
+`live-input.csv` records every accepted sequence with its **actual** start frame:
+`sequence,start,count,mask,left_x,left_y,right_x,right_y`. Each row is flushed
+before the affected `retro_run()`, and `core.log` records acceptance and expiry.
+Wait for that acknowledgement before treating a command as submitted. Confirm
+the resulting game action with screenshots and the application trace; frontend
+frames do not guarantee a particular native game update. `run.json` hashes and
+checks the accepted log. Its bounded initial/final packet snapshots are only
+observations of proposed input, not evidence of acceptance.
+
+The `record_run.py` wrapper also accepts `--live-input` after `--`, so adaptive
+controller runs can produce the same actual screen recording as CSV runs.
+
+### First-visit route with trace feedback
+
+With the complete private asset set prepared as described in
+[native-first-visit.md](../../docs/native-first-visit.md), run the maintained
+controller route from this directory:
+
+```sh
+python3 first_visit_route.py --mode fresh \
+  --app /absolute/Colosseum3DS.3dsx --state /absolute/private-state \
+  --run /absolute/new-fresh-run --video /absolute/new-fresh.mp4 \
+  --frames 21000 --seconds 180
+python3 first_visit_route.py --mode continue \
+  --app /absolute/Colosseum3DS.3dsx --state /absolute/private-state \
+  --run /absolute/new-continue-run --video /absolute/new-continue.mp4 \
+  --frames 10000 --seconds 120
+```
+
+Fresh mode refuses an existing primary or backup GCI. Back up an existing SD
+outside this test state before preparing a fresh run. Continue mode uses the
+GCI created by that fresh run; do not substitute the completed card. Each
+command needs new run and video paths. The route advances through bounded
+controller packets, observes the native diagnostic trace, and records actual
+framebuffer stages and `controller-result.json`. It never writes guest memory
+or story flags. A route failure remains a failure even if frames were recorded.
+
+The fresh route ends after explicit Save and clean exit. Continue loads that
+checkpoint, exits the shop, and expects the original encounter-10 request to
+remain pending at the missing combat backend. This is not a battle victory.
+Use the accepted `live-input.csv` as the exact command record for a capture;
+the helper's feedback and host scheduling can produce different frame numbers
+on another run. These commands automate the isolated emulator only. See the
+[hardware handoff](../../docs/native-story-handoff.md) for physical input,
+ftpd deployment, NTR capture and the completed-save acceptance gate.
+
 ## Evidence and run bounds
 
 Each `--out` must name a new directory. It contains:
@@ -112,6 +203,9 @@ Each `--out` must name a new directory. It contains:
 - `core.log`: actual emulator and harness output.
 - `frames.csv`: captured libretro frame number, callback count, dimensions, and
   input state at capture time.
+- `live-input.csv`, when enabled: accepted sequence numbers, frontend start
+  frames, durations and full controller state; bounded packet snapshots are
+  retained when present.
 - `frame-NNNNNN.ppm`: actual 400x480 combined top/bottom output in the default
   layout. Optional PNG copies are produced when Pillow is installed.
 - `last.ppm`: the last capture received, not a fabricated success screen.
@@ -122,6 +216,36 @@ then includes its size and SHA-256 before and after execution, or records its
 absence if the application is expected to create it. Paths are relative to the
 emulated SD root and cannot escape it. Asset bytes are never copied into the
 record. Without this option, `run.json` does not identify the SD asset contents.
+
+For the game application, also pass
+`--app-trace 3ds/Colosseum3DS/boot-trace.log`. The wrapper requires a newly
+written trace, archives it as `application-trace.log`, and fails a run that
+reports a negative field/boot result or a failed save. Explicit guest memory
+faults and ARM aborts in the core log also fail the run, even if the emulator
+continues producing frames. These checks are additional to inspecting the
+actual route and screenshots; an unported battle request is a documented
+boundary, not a completed battle.
+
+### Record actual emulator output
+
+With FFmpeg available, this records the combined screens directly from the
+frontend callbacks, while retaining the same trace, input and binary evidence:
+
+```sh
+python3 record_run.py --video /absolute/new-progress.mp4 -- \
+  /absolute/Colosseum3DS.3dsx --state /absolute/private-state \
+  --out /absolute/new-run --frames 9000 --seconds 120 \
+  --events /absolute/route.csv --gl \
+  --app-trace 3ds/Colosseum3DS/boot-trace.log \
+  --sd-file 3ds/Colosseum3DS/saves/pokemon_colosseum.gci
+```
+
+The MP4 samples every two 60 Hz frontend frames and plays at 30 fps without
+audio. Frames are held when the core supplies no replacement image, as on the
+frontend display. This is actual emulator output, not generated imagery or a
+measurement of physical-console performance. The adjacent `.recording.json`
+binds the video hash, dimensions, frame count, encoding completion, and tested
+executable hash to the run record. Existing output files are never overwritten.
 
 The wrapper enforces a wall deadline and terminates the child process group if
 the core fails to return. Runs are also bounded by frame count. A deadline ending

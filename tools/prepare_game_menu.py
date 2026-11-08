@@ -44,9 +44,9 @@ def be32(data, offset):
     return struct.unpack_from(">I", data, offset)[0]
 
 
-def unpack_lzss(data, expected):
+def unpack_lzss(data, expected, maximum=65536):
     """The original zero-window 4KiB LZSS, with exact input/output bounds."""
-    if not 0 < expected <= 65536 or len(data) < 16 or data[:4] != b"LZSS":
+    if not 0 < expected <= maximum or len(data) < 16 or data[:4] != b"LZSS":
         raise ValueError("Invalid bounded message compression header")
     if be32(data, 4) != expected or be32(data, 8) != len(data):
         raise ValueError("Message compression sizes disagree")
@@ -86,7 +86,7 @@ def unpack_lzss(data, expected):
     return bytes(output)
 
 
-def read_member(data, member_id):
+def read_member(data, member_id, maximum=65536):
     if len(data) < 0x44 or data[:4] != b"FSYS":
         raise ValueError("Expected FSYS archive")
     count, tables = be32(data, 0x0C), be32(data, 0x18)
@@ -104,10 +104,10 @@ def read_member(data, member_id):
             raise ValueError("Duplicate expected FSYS member")
         offset, unpacked, flags = (be32(data, entry + value) for value in (4, 8, 12))
         size = be32(data, entry + 0x14)
-        if not 0 < unpacked <= 65536 or size > 65536 or offset + size > len(data):
+        if not 0 < unpacked <= maximum or size > maximum or offset + size > len(data):
             raise ValueError("Message member exceeds bounds")
         payload = data[offset:offset + size]
-        found = unpack_lzss(payload, unpacked) if flags & 0x80000000 else payload
+        found = unpack_lzss(payload, unpacked, maximum) if flags & 0x80000000 else payload
         if len(found) != unpacked:
             raise ValueError("Message member size mismatch")
     if found is None:

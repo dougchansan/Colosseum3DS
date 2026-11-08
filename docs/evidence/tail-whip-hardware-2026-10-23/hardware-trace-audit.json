@@ -1,0 +1,1012 @@
+{
+  "verdict": "PASS for scoped traced Tail Whip execution/completion and existing source-effect regression, state/save preservation, return and clean exit. No visual/audio parity, all-motion hardware coverage, or full-speed claim.",
+  "build": "5539f43fa3a6",
+  "binary_bytes": 549388,
+  "binary_sha256": "ad7189047ee7fe934136250943ec2b938bfdac945790fe950adeb3c9f0ae3a93",
+  "trace_sha256": "04c1e68b4a82ccb3f31afe863d0d363daa939908ee7a2cbe7d229d02c8138dbe",
+  "trace_lines": 8879,
+  "manifest_checks": [
+    {
+      "file": "Colosseum3DS.3dsx",
+      "bytes": 549388,
+      "sha256": "ad7189047ee7fe934136250943ec2b938bfdac945790fe950adeb3c9f0ae3a93",
+      "verified": true
+    },
+    {
+      "file": "Colosseum3DS.smdh",
+      "bytes": 14016,
+      "sha256": "f3fad3feb7b42caab0a647bb392050bf72e4507593cded5a16819cc1c68e5a55",
+      "verified": true
+    },
+    {
+      "file": "boot-trace.log",
+      "bytes": 1112844,
+      "sha256": "04c1e68b4a82ccb3f31afe863d0d363daa939908ee7a2cbe7d229d02c8138dbe",
+      "verified": true
+    },
+    {
+      "file": "saves/pokemon_colosseum.gci",
+      "bytes": 393280,
+      "sha256": "7e1cb3159756293bf938fd922fe45e82448d1b667f6833a48da351af3cbd0f23",
+      "verified": true
+    },
+    {
+      "file": "saves/pokemon_colosseum.gci.bak",
+      "expected_absent": true,
+      "verified": true
+    },
+    {
+      "file": "boot/battle/bite.c3w",
+      "bytes": 256,
+      "sha256": "d09f9616086beae627464d594be18397fa0e1bf3f73e478bb7d291fb3040c1d9",
+      "verified": true
+    },
+    {
+      "file": "boot/battle/bite_attack.c3t",
+      "bytes": 189680,
+      "sha256": "d15ec7e3fac067bcee2b8a82eb3ed280f75f09893afd9c9e41f1187a2e78cb74",
+      "verified": true
+    },
+    {
+      "file": "boot/battle/bite_damage.c3w",
+      "bytes": 256,
+      "sha256": "ecf7be4b638f467b896bef17d07eba1394d76c044046e485a25e9f324ccc962e",
+      "verified": true
+    },
+    {
+      "file": "boot/battle/bite_damage.c3t",
+      "bytes": 627512,
+      "sha256": "f49562d04ec2117e61f22c9c9c23a2b775cf15474b77069dcb2e91474927752c",
+      "verified": true
+    },
+    {
+      "file": "boot/battle/bite_damage.c3p",
+      "bytes": 308480,
+      "sha256": "9fe84012d54bba173a53dc9fc4eaf9aee782ba390e21e03a46d4aa651564e45d",
+      "verified": true
+    },
+    {
+      "file": "boot/battle/bite_camera.c3c",
+      "bytes": 18368,
+      "sha256": "93f105aef2ec3644f71d66eb24a3b05640fe91893b9012aff5179d829b0e0b35",
+      "verified": true
+    },
+    {
+      "file": "boot/battle/audio.c3u",
+      "bytes": 1314734,
+      "sha256": "28fbba0bccf95ae04c9fe76339a10cb73def4f17d24f48ac3a38b770d736a960",
+      "verified": true
+    },
+    {
+      "file": "boot/battle/reflect.c3w",
+      "bytes": 288,
+      "sha256": "d7540d79983505e3b0d342352d5d9b19fe8d620f25ab1f2a4256e5b8ff2fc1c8",
+      "verified": true
+    },
+    {
+      "file": "boot/battle/reflect.c3t",
+      "bytes": 176344,
+      "sha256": "58dac5ec1dff0f46699a2f3ceb32eb15be3f5657935f76605dd37f3451332bdc",
+      "verified": true
+    },
+    {
+      "file": "boot/battle/reflect.c3p",
+      "bytes": 462944,
+      "sha256": "a397faff5a7ee5acb1b31b37ec63ef50aaf8ca81394c249f079ef313e3e36a5b",
+      "verified": true
+    },
+    {
+      "file": "boot/battle/reflect_parts.c3r",
+      "bytes": 3728,
+      "sha256": "e6b6c61a0036ea9a1220dccf28ac4cfdf49470469bb8bca9704d867fa67e2906",
+      "verified": true
+    }
+  ],
+  "effect_readback_checks": [
+    {
+      "file": "boot/battle/confusion_sequence.c3s",
+      "bytes": 13048,
+      "sha256": "a2bd7564e9b1a04343cc6002782dd71bf26bf4a19de3bea70c491d20fe8c2f8f",
+      "verified": true
+    },
+    {
+      "file": "boot/battle/confusion_type12.c3f",
+      "bytes": 16640,
+      "sha256": "21a0ebb2cb2b06decd1b69ac365f83e0c375b616529f8ec0929a5812d02b6e4b",
+      "verified": true
+    },
+    {
+      "file": "boot/battle/confusion_attack.c3p",
+      "bytes": 414688,
+      "sha256": "c4fb9eab25cf99ed5814e34eb6ab7873204de336afd1975bc7ef1536a500d4bb",
+      "verified": true
+    },
+    {
+      "file": "boot/battle/confusion_damage.c3p",
+      "bytes": 160672,
+      "sha256": "9570f60e0793e8ebc194c8f6cc07b16338dcbe4c225ab47a8980a2c94703aeef",
+      "verified": true
+    },
+    {
+      "file": "boot/battle/confusion_camera.c3c",
+      "bytes": 22524,
+      "sha256": "6818a7908bc9ca4f392b6815681af191e9046fb35b7f44e71b57bb633d19a6a2",
+      "verified": true
+    },
+    {
+      "file": "boot/battle/tail_whip.c3w",
+      "bytes": 512,
+      "sha256": "cea9395e8275c238efb3a9b7244e58e2ab23299ad67b398fe9f069a244a90466",
+      "verified": true
+    },
+    {
+      "file": "boot/battle/tail_whip_controller.c3m",
+      "bytes": 6176,
+      "sha256": "fec21131059e7a2ab94e60a66e2dc5beb4838bdb2866238e1af71a7154bb88b7",
+      "verified": true
+    },
+    {
+      "file": "boot/battle/tail_whip_effect.c3t",
+      "bytes": 330104,
+      "sha256": "8d097323ad0f9c2f17ced5ce0fff340ab96ffee6e2a47a786676247b7e74f891",
+      "verified": true
+    },
+    {
+      "file": "boot/battle/tailwhip_camera.c3c",
+      "bytes": 5908,
+      "sha256": "2b17963c68c9066d7ce4c9bb6beeaecfcefab0044e22fbf2a9bc19e7c8187255",
+      "verified": true
+    },
+    {
+      "file": "boot/battle/audio.c3u",
+      "bytes": 1314734,
+      "sha256": "28fbba0bccf95ae04c9fe76339a10cb73def4f17d24f48ac3a38b770d736a960",
+      "verified": true
+    }
+  ],
+  "all_hashes_match": true,
+  "sessions": [
+    {
+      "index": 1,
+      "start_line": 377,
+      "turns": [
+        {
+          "kind": "preview_turn",
+          "line": 378,
+          "text": "preview_turn turn=0 seed=2c53ded8 draws=352 outcome=1 save_writes=0 gsvm_resumed=0",
+          "fields": {
+            "turn": "0",
+            "seed": "2c53ded8",
+            "draws": "352",
+            "outcome": "1",
+            "save_writes": "0",
+            "gsvm_resumed": "0"
+          }
+        },
+        {
+          "kind": "preview_turn",
+          "line": 2060,
+          "text": "preview_turn turn=1 seed=7c853675 draws=363 outcome=1 save_writes=0 gsvm_resumed=0",
+          "fields": {
+            "turn": "1",
+            "seed": "7c853675",
+            "draws": "363",
+            "outcome": "1",
+            "save_writes": "0",
+            "gsvm_resumed": "0"
+          }
+        },
+        {
+          "kind": "preview_turn",
+          "line": 3086,
+          "text": "preview_turn turn=2 seed=1b13b0ac draws=372 outcome=1 save_writes=0 gsvm_resumed=0",
+          "fields": {
+            "turn": "2",
+            "seed": "1b13b0ac",
+            "draws": "372",
+            "outcome": "1",
+            "save_writes": "0",
+            "gsvm_resumed": "0"
+          }
+        },
+        {
+          "kind": "preview_turn",
+          "line": 5772,
+          "text": "preview_turn turn=3 seed=783b002d draws=387 outcome=1 save_writes=0 gsvm_resumed=0",
+          "fields": {
+            "turn": "3",
+            "seed": "783b002d",
+            "draws": "387",
+            "outcome": "1",
+            "save_writes": "0",
+            "gsvm_resumed": "0"
+          }
+        },
+        {
+          "kind": "preview_turn",
+          "line": 7716,
+          "text": "preview_turn turn=4 seed=b3b225c0 draws=392 outcome=2 save_writes=0 gsvm_resumed=0",
+          "fields": {
+            "turn": "4",
+            "seed": "b3b225c0",
+            "draws": "392",
+            "outcome": "2",
+            "save_writes": "0",
+            "gsvm_resumed": "0"
+          }
+        }
+      ],
+      "tail_admission": [
+        {
+          "kind": "wzx_tail_whip_admitted",
+          "line": 384,
+          "text": "wzx_tail_whip_admitted controller=yaw_only drawable=original center_null=position_only camera=source",
+          "fields": {
+            "controller": "yaw_only",
+            "drawable": "original",
+            "center_null": "position_only",
+            "camera": "source"
+          }
+        }
+      ],
+      "tail_starts": [
+        {
+          "kind": "wzx_tail_whip_start",
+          "line": 3137,
+          "text": "wzx_tail_whip_start event=20 owner=3 dispatcher=attack_once spread_targets=coordinator",
+          "fields": {
+            "event": "20",
+            "owner": "3",
+            "dispatcher": "attack_once",
+            "spread_targets": "coordinator"
+          }
+        }
+      ],
+      "tail_completions": [
+        {
+          "kind": "wzx_tail_whip_complete",
+          "line": 3165,
+          "text": "wzx_tail_whip_complete event=20 owner=3 units=174780 controller_done=1 effect_done=1 audio_done=1 cue=3 owner_restored=1",
+          "fields": {
+            "event": "20",
+            "owner": "3",
+            "units": "174780",
+            "controller_done": "1",
+            "effect_done": "1",
+            "audio_done": "1",
+            "cue": "3",
+            "owner_restored": "1"
+          }
+        }
+      ],
+      "confusion_completions": [
+        {
+          "kind": "wzx_confusion_complete",
+          "line": 5825,
+          "text": "wzx_confusion_complete phase=0 units=222960 emitted=26 peak=24 cosmetic_draws=134 audio_done=1 cues=4,0,0,0",
+          "fields": {
+            "phase": "0",
+            "units": "222960",
+            "emitted": "26",
+            "peak": "24",
+            "cosmetic_draws": "134",
+            "audio_done": "1",
+            "cues": "4,0,0,0"
+          }
+        },
+        {
+          "kind": "wzx_confusion_complete",
+          "line": 5892,
+          "text": "wzx_confusion_complete phase=1 units=402000 emitted=738 peak=652 cosmetic_draws=3302 audio_done=1 cues=6,5,7,0",
+          "fields": {
+            "phase": "1",
+            "units": "402000",
+            "emitted": "738",
+            "peak": "652",
+            "cosmetic_draws": "3302",
+            "audio_done": "1",
+            "cues": "6,5,7,0"
+          }
+        },
+        {
+          "kind": "wzx_confusion_complete",
+          "line": 7765,
+          "text": "wzx_confusion_complete phase=0 units=219600 emitted=26 peak=24 cosmetic_draws=134 audio_done=1 cues=10,0,0,0",
+          "fields": {
+            "phase": "0",
+            "units": "219600",
+            "emitted": "26",
+            "peak": "24",
+            "cosmetic_draws": "134",
+            "audio_done": "1",
+            "cues": "10,0,0,0"
+          }
+        },
+        {
+          "kind": "wzx_confusion_complete",
+          "line": 7832,
+          "text": "wzx_confusion_complete phase=1 units=402000 emitted=738 peak=652 cosmetic_draws=3302 audio_done=1 cues=12,11,13,0",
+          "fields": {
+            "phase": "1",
+            "units": "402000",
+            "emitted": "738",
+            "peak": "652",
+            "cosmetic_draws": "3302",
+            "audio_done": "1",
+            "cues": "12,11,13,0"
+          }
+        }
+      ],
+      "confusion_identity_checks": [
+        {
+          "line": 5825,
+          "cues": [
+            4
+          ],
+          "sounds": [
+            1091
+          ],
+          "expected": [
+            1091
+          ],
+          "match": true,
+          "audio_done": true
+        },
+        {
+          "line": 5892,
+          "cues": [
+            6,
+            5,
+            7
+          ],
+          "sounds": [
+            233,
+            1138,
+            1139
+          ],
+          "expected": [
+            233,
+            1138,
+            1139
+          ],
+          "match": true,
+          "audio_done": true
+        },
+        {
+          "line": 7765,
+          "cues": [
+            10
+          ],
+          "sounds": [
+            1091
+          ],
+          "expected": [
+            1091
+          ],
+          "match": true,
+          "audio_done": true
+        },
+        {
+          "line": 7832,
+          "cues": [
+            12,
+            11,
+            13
+          ],
+          "sounds": [
+            233,
+            1138,
+            1139
+          ],
+          "expected": [
+            233,
+            1138,
+            1139
+          ],
+          "match": true,
+          "audio_done": true
+        }
+      ],
+      "reflect_completions": [
+        {
+          "kind": "wzx_reflect_instance_complete",
+          "line": 2128,
+          "text": "wzx_reflect_instance_complete event=6 owner=1 cue=1",
+          "fields": {
+            "event": "6",
+            "owner": "1",
+            "cue": "1"
+          }
+        },
+        {
+          "kind": "wzx_reflect_instance_complete",
+          "line": 2156,
+          "text": "wzx_reflect_instance_complete event=6 owner=0 cue=2",
+          "fields": {
+            "event": "6",
+            "owner": "0",
+            "cue": "2"
+          }
+        }
+      ],
+      "bite_completions": [
+        {
+          "kind": "wzx_damage_complete",
+          "line": 5973,
+          "text": "wzx_damage_complete tick=380 particles=82 peak=81 cosmetic_draws=325 hp_faint_gate=released",
+          "fields": {
+            "tick": "380",
+            "particles": "82",
+            "peak": "81",
+            "cosmetic_draws": "325",
+            "hp_faint_gate": "released"
+          }
+        }
+      ],
+      "win_events": [
+        {
+          "kind": "preview_event",
+          "line": 7722,
+          "text": "preview_event index=5 hp=83,64,0,0 draws=392 text=Preview result: WIN. No rewards, save, or story flags were written.",
+          "fields": {
+            "index": "5",
+            "hp": "83,64,0,0",
+            "draws": "392",
+            "text": "Preview"
+          }
+        }
+      ],
+      "exit": {
+        "kind": "preview_exit",
+        "line": 8396,
+        "text": "preview_exit app_exit=0 error= save_writes=0 gsvm_resumed=0",
+        "fields": {
+          "app_exit": "0",
+          "error": "",
+          "save_writes": "0",
+          "gsvm_resumed": "0"
+        }
+      },
+      "guard": {
+        "kind": "preview_state_guard",
+        "line": 8397,
+        "text": "preview_state_guard bytes=122832 unchanged=1 before_sha1=f703c363c86afd4998cae13d426d81298d5d79a9 after_sha1=f703c363c86afd4998cae13d426d81298d5d79a9 play_time_advanced=0",
+        "fields": {
+          "bytes": "122832",
+          "unchanged": "1",
+          "before_sha1": "f703c363c86afd4998cae13d426d81298d5d79a9",
+          "after_sha1": "f703c363c86afd4998cae13d426d81298d5d79a9",
+          "play_time_advanced": "0"
+        }
+      },
+      "state_unchanged": true,
+      "save_writes_zero": true
+    },
+    {
+      "index": 2,
+      "start_line": 8437,
+      "turns": [
+        {
+          "kind": "preview_turn",
+          "line": 8438,
+          "text": "preview_turn turn=0 seed=2c53ded8 draws=352 outcome=1 save_writes=0 gsvm_resumed=0",
+          "fields": {
+            "turn": "0",
+            "seed": "2c53ded8",
+            "draws": "352",
+            "outcome": "1",
+            "save_writes": "0",
+            "gsvm_resumed": "0"
+          }
+        }
+      ],
+      "tail_admission": [
+        {
+          "kind": "wzx_tail_whip_admitted",
+          "line": 8444,
+          "text": "wzx_tail_whip_admitted controller=yaw_only drawable=original center_null=position_only camera=source",
+          "fields": {
+            "controller": "yaw_only",
+            "drawable": "original",
+            "center_null": "position_only",
+            "camera": "source"
+          }
+        }
+      ],
+      "tail_starts": [],
+      "tail_completions": [],
+      "confusion_completions": [],
+      "confusion_identity_checks": [],
+      "reflect_completions": [],
+      "bite_completions": [],
+      "win_events": [],
+      "exit": {
+        "kind": "preview_exit",
+        "line": 8845,
+        "text": "preview_exit app_exit=0 error= save_writes=0 gsvm_resumed=0",
+        "fields": {
+          "app_exit": "0",
+          "error": "",
+          "save_writes": "0",
+          "gsvm_resumed": "0"
+        }
+      },
+      "guard": {
+        "kind": "preview_state_guard",
+        "line": 8846,
+        "text": "preview_state_guard bytes=122832 unchanged=1 before_sha1=3955a5953a9708f2aeba6c5e2b5c6b3a321e4d47 after_sha1=3955a5953a9708f2aeba6c5e2b5c6b3a321e4d47 play_time_advanced=0",
+        "fields": {
+          "bytes": "122832",
+          "unchanged": "1",
+          "before_sha1": "3955a5953a9708f2aeba6c5e2b5c6b3a321e4d47",
+          "after_sha1": "3955a5953a9708f2aeba6c5e2b5c6b3a321e4d47",
+          "play_time_advanced": "0"
+        }
+      },
+      "state_unchanged": true,
+      "save_writes_zero": true
+    }
+  ],
+  "tail_audio": {
+    "sound_id_hex": "0x1DB",
+    "sound_id_decimal": 475,
+    "sequence": 3,
+    "pack_cue": {
+      "rate": 32000,
+      "frames": 92279,
+      "pcm_bytes": 184558
+    },
+    "playing_observed": true,
+    "sdk_done_observed": true,
+    "sdk_done_unique": [
+      {
+        "kind": "battle_audio_voice",
+        "line": 5791,
+        "text": "battle_audio_voice channel=4 sound=475 sequence=3 playing=0 paused=0 sample_position=92279 wave_status=3",
+        "fields": {
+          "channel": "4",
+          "sound": "475",
+          "sequence": "3",
+          "playing": "0",
+          "paused": "0",
+          "sample_position": "92279",
+          "wave_status": "3"
+        }
+      }
+    ],
+    "sdk_done_sample_position_matches_pack": true
+  },
+  "tail_camera": {
+    "program_readback_verified": true,
+    "admission": [
+      {
+        "kind": "wzx_tail_whip_admitted",
+        "line": 384,
+        "text": "wzx_tail_whip_admitted controller=yaw_only drawable=original center_null=position_only camera=source",
+        "fields": {
+          "controller": "yaw_only",
+          "drawable": "original",
+          "center_null": "position_only",
+          "camera": "source"
+        }
+      },
+      {
+        "kind": "wzx_tail_whip_admitted",
+        "line": 8444,
+        "text": "wzx_tail_whip_admitted controller=yaw_only drawable=original center_null=position_only camera=source",
+        "fields": {
+          "controller": "yaw_only",
+          "drawable": "original",
+          "center_null": "position_only",
+          "camera": "source"
+        }
+      }
+    ],
+    "direct_motion_number_logged": false,
+    "inferred_motion": 2,
+    "inference": "Source seed0x5441494C first xorshift draw0.8143010139465332, initial previous_motion UINT32_MAX, flags0x78 ordered3/0/1/2 =>motion2. This is a code/seed inference, not a logged hardware motion observation.",
+    "restoration": "Tail completion logs owner_restored=1 after the code path cancels/restores its camera; both previews return to preserved field VM. Numeric before/after camera matrices are not logged."
+  },
+  "save": {
+    "before_file": "C:\\Colosseum3DS-pr7-captures\\hardware-5539f43-before\\saves\\pokemon_colosseum.gci",
+    "after_file": "C:\\Colosseum3DS-pr7-captures\\hardware-5539f43-final\\saves\\pokemon_colosseum.gci",
+    "sha256": "7e1cb3159756293bf938fd922fe45e82448d1b667f6833a48da351af3cbd0f23",
+    "byte_identical": true,
+    "backup_absent": true
+  },
+  "recoveries": [
+    {
+      "kind": "render_recovery",
+      "line": 15,
+      "text": "render_recovery scene=title event=drained frames=665 elapsed_us=311 ready=1 exit=0 input=0000 counters=3171,3171 build=5539f43fa3a6",
+      "fields": {
+        "scene": "title",
+        "event": "drained",
+        "frames": "665",
+        "elapsed_us": "311",
+        "ready": "1",
+        "exit": "0",
+        "input": "0000",
+        "counters": "3171,3171",
+        "build": "5539f43fa3a6"
+      }
+    },
+    {
+      "kind": "render_recovery",
+      "line": 106,
+      "text": "render_recovery scene=field event=drained frames=206 elapsed_us=28874 ready=1 exit=0 input=0000 counters=5563,5563 build=5539f43fa3a6",
+      "fields": {
+        "scene": "field",
+        "event": "drained",
+        "frames": "206",
+        "elapsed_us": "28874",
+        "ready": "1",
+        "exit": "0",
+        "input": "0000",
+        "counters": "5563,5563",
+        "build": "5539f43fa3a6"
+      }
+    },
+    {
+      "kind": "render_recovery",
+      "line": 373,
+      "text": "render_recovery scene=field-to-battle event=drained frames=1762 elapsed_us=32142 ready=1 exit=0 input=0000 counters=16556,16556 build=5539f43fa3a6",
+      "fields": {
+        "scene": "field-to-battle",
+        "event": "drained",
+        "frames": "1762",
+        "elapsed_us": "32142",
+        "ready": "1",
+        "exit": "0",
+        "input": "0000",
+        "counters": "16556,16556",
+        "build": "5539f43fa3a6"
+      }
+    },
+    {
+      "kind": "render_recovery",
+      "line": 8392,
+      "text": "render_recovery scene=battle event=drained frames=7235 elapsed_us=435 ready=1 exit=0 input=0000 counters=71811,71811 build=5539f43fa3a6",
+      "fields": {
+        "scene": "battle",
+        "event": "drained",
+        "frames": "7235",
+        "elapsed_us": "435",
+        "ready": "1",
+        "exit": "0",
+        "input": "0000",
+        "counters": "71811,71811",
+        "build": "5539f43fa3a6"
+      }
+    },
+    {
+      "kind": "render_recovery",
+      "line": 8398,
+      "text": "render_recovery scene=battle-to-field event=drained frames=0 elapsed_us=155 ready=1 exit=0 input=0000 counters=71815,71815 build=5539f43fa3a6",
+      "fields": {
+        "scene": "battle-to-field",
+        "event": "drained",
+        "frames": "0",
+        "elapsed_us": "155",
+        "ready": "1",
+        "exit": "0",
+        "input": "0000",
+        "counters": "71815,71815",
+        "build": "5539f43fa3a6"
+      }
+    },
+    {
+      "kind": "render_recovery",
+      "line": 8433,
+      "text": "render_recovery scene=field-to-battle event=drained frames=2016 elapsed_us=29886 ready=1 exit=0 input=0000 counters=73681,73681 build=5539f43fa3a6",
+      "fields": {
+        "scene": "field-to-battle",
+        "event": "drained",
+        "frames": "2016",
+        "elapsed_us": "29886",
+        "ready": "1",
+        "exit": "0",
+        "input": "0000",
+        "counters": "73681,73681",
+        "build": "5539f43fa3a6"
+      }
+    },
+    {
+      "kind": "render_recovery",
+      "line": 8841,
+      "text": "render_recovery scene=battle event=drained frames=352 elapsed_us=317 ready=1 exit=0 input=0000 counters=76768,76768 build=5539f43fa3a6",
+      "fields": {
+        "scene": "battle",
+        "event": "drained",
+        "frames": "352",
+        "elapsed_us": "317",
+        "ready": "1",
+        "exit": "0",
+        "input": "0000",
+        "counters": "76768,76768",
+        "build": "5539f43fa3a6"
+      }
+    },
+    {
+      "kind": "render_recovery",
+      "line": 8847,
+      "text": "render_recovery scene=battle-to-field event=drained frames=0 elapsed_us=149 ready=1 exit=0 input=0000 counters=76771,76771 build=5539f43fa3a6",
+      "fields": {
+        "scene": "battle-to-field",
+        "event": "drained",
+        "frames": "0",
+        "elapsed_us": "149",
+        "ready": "1",
+        "exit": "0",
+        "input": "0000",
+        "counters": "76771,76771",
+        "build": "5539f43fa3a6"
+      }
+    },
+    {
+      "kind": "render_recovery",
+      "line": 8876,
+      "text": "render_recovery scene=field event=drained frames=2228 elapsed_us=38563 ready=1 exit=1 input=0000 counters=78373,78373 build=5539f43fa3a6",
+      "fields": {
+        "scene": "field",
+        "event": "drained",
+        "frames": "2228",
+        "elapsed_us": "38563",
+        "ready": "1",
+        "exit": "1",
+        "input": "0000",
+        "counters": "78373,78373",
+        "build": "5539f43fa3a6"
+      }
+    }
+  ],
+  "non_drained_recoveries": [],
+  "field_returns": [
+    {
+      "kind": "field_battle_return",
+      "line": 8404,
+      "text": "field_battle_return preview=0 pending=10 vm_preserved=1 models=9",
+      "fields": {
+        "preview": "0",
+        "pending": "10",
+        "vm_preserved": "1",
+        "models": "9"
+      }
+    },
+    {
+      "kind": "field_battle_return",
+      "line": 8853,
+      "text": "field_battle_return preview=0 pending=10 vm_preserved=1 models=9",
+      "fields": {
+        "preview": "0",
+        "pending": "10",
+        "vm_preserved": "1",
+        "models": "9"
+      }
+    }
+  ],
+  "final_field_end": {
+    "kind": "field_end",
+    "line": 8878,
+    "text": "field_end result=1 error=",
+    "fields": {
+      "result": "1",
+      "error": ""
+    }
+  },
+  "final_boot_end": {
+    "kind": "boot_end",
+    "line": 8879,
+    "text": "boot_end result=1 error=",
+    "fields": {
+      "result": "1",
+      "error": ""
+    }
+  },
+  "metrics": {
+    "battle_render": {
+      "command_words": {
+        "samples": 919,
+        "minimum": 15480.0,
+        "minimum_line": 7860,
+        "maximum": 111256.0,
+        "maximum_line": 2101,
+        "median": 18920.0
+      },
+      "particle_command_words": {
+        "samples": 919,
+        "minimum": 0.0,
+        "minimum_line": 393,
+        "maximum": 92176.0,
+        "maximum_line": 2101,
+        "median": 0.0
+      },
+      "command_capacity_words": {
+        "samples": 919,
+        "minimum": 262144.0,
+        "minimum_line": 393,
+        "maximum": 262144.0,
+        "maximum_line": 8832,
+        "median": 262144.0
+      },
+      "draw_cpu_us": {
+        "samples": 919,
+        "minimum": 61189.0,
+        "minimum_line": 8004,
+        "maximum": 135983.0,
+        "maximum_line": 5838,
+        "median": 79268.0
+      },
+      "gpu_previous_ms": {
+        "samples": 919,
+        "minimum": 6.366,
+        "minimum_line": 3138,
+        "maximum": 48.894,
+        "maximum_line": 5798,
+        "median": 13.097
+      },
+      "draws": {
+        "samples": 919,
+        "minimum": 125.0,
+        "minimum_line": 7860,
+        "maximum": 962.0,
+        "maximum_line": 2101,
+        "median": 153.0
+      },
+      "vertices": {
+        "samples": 919,
+        "minimum": 55737.0,
+        "minimum_line": 8311,
+        "maximum": 222528.0,
+        "maximum_line": 5838,
+        "median": 60645.0
+      },
+      "gpu_buffer_bytes": {
+        "samples": 919,
+        "minimum": 25630712.0,
+        "minimum_line": 393,
+        "maximum": 25999352.0,
+        "maximum_line": 8383,
+        "median": 25630712.0
+      }
+    },
+    "battle_frame": {
+      "sample_clock_cpu_us": {
+        "samples": 919,
+        "minimum": 44903.0,
+        "minimum_line": 1045,
+        "maximum": 103695.0,
+        "maximum_line": 5841,
+        "median": 46150.0
+      },
+      "sample_clock_peak_us": {
+        "samples": 919,
+        "minimum": 45252.0,
+        "minimum_line": 2009,
+        "maximum": 142542.0,
+        "maximum_line": 7790,
+        "median": 46749.0
+      },
+      "full_cpu_frame_us": {
+        "samples": 919,
+        "minimum": 108592.0,
+        "minimum_line": 7908,
+        "maximum": 239742.0,
+        "maximum_line": 5841,
+        "median": 125340.0
+      },
+      "full_cpu_peak_us": {
+        "samples": 919,
+        "minimum": 110478.0,
+        "minimum_line": 8368,
+        "maximum": 275608.0,
+        "maximum_line": 7790,
+        "median": 126599.0
+      },
+      "particles": {
+        "samples": 919,
+        "minimum": 0.0,
+        "minimum_line": 396,
+        "maximum": 808.0,
+        "maximum_line": 2104,
+        "median": 0.0
+      },
+      "particle_vertices": {
+        "samples": 919,
+        "minimum": 0.0,
+        "minimum_line": 396,
+        "maximum": 4848.0,
+        "maximum_line": 2104,
+        "median": 0.0
+      },
+      "particle_live_peak": {
+        "samples": 919,
+        "minimum": 0.0,
+        "minimum_line": 396,
+        "maximum": 1369.0,
+        "maximum_line": 5789,
+        "median": 652.0
+      }
+    },
+    "battle_load": {
+      "wall_us": {
+        "samples": 2,
+        "minimum": 6558674.0,
+        "minimum_line": 388,
+        "maximum": 6568802.0,
+        "maximum_line": 8448,
+        "median": 6563738.0
+      }
+    },
+    "platform_memory": {
+      "linear_free_bytes": {
+        "samples": 934,
+        "minimum": 4627328.0,
+        "minimum_line": 5839,
+        "maximum": 31941632.0,
+        "maximum_line": 2,
+        "median": 4995968.0
+      },
+      "heap_bytes": {
+        "samples": 934,
+        "minimum": 95629312.0,
+        "minimum_line": 2,
+        "maximum": 95629312.0,
+        "maximum_line": 8851,
+        "median": 95629312.0
+      },
+      "linear_heap_bytes": {
+        "samples": 934,
+        "minimum": 33554432.0,
+        "minimum_line": 2,
+        "maximum": 33554432.0,
+        "maximum_line": 8851,
+        "median": 33554432.0
+      }
+    },
+    "platform_allocator": {
+      "used_bytes": {
+        "samples": 934,
+        "minimum": 18176.0,
+        "minimum_line": 3,
+        "maximum": 49579808.0,
+        "maximum_line": 8385,
+        "median": 49579592.0
+      },
+      "arena_bytes": {
+        "samples": 934,
+        "minimum": 20424.0,
+        "minimum_line": 3,
+        "maximum": 49741768.0,
+        "maximum_line": 8834,
+        "median": 49741768.0
+      }
+    },
+    "field_tick": {
+      "command_words": {
+        "samples": 260,
+        "minimum": 14492.0,
+        "minimum_line": 30,
+        "maximum": 19644.0,
+        "maximum_line": 8875,
+        "median": 19644.0
+      }
+    },
+    "command_usage": {
+      "observed_maximum_words": 111256.0,
+      "capacity": 262144.0,
+      "observed_percent": 42.4407958984375,
+      "observed_headroom_words": 150888.0,
+      "periodic_sample_only": true
+    }
+  },
+  "caveats": [
+    "Trace establishes source-effect execution and SDK completion, not pixel parity or speaker/mixer fidelity.",
+    "Tail camera source program was admitted and verified; no motion number or numeric camera-restoration matrix is directly logged. Deterministic motion2 inference does not qualify physical Dolly0 or translation1 branches.",
+    "Command/GPU/memory figures are periodic sampled maxima/minima. CPU full_cpu_peak_us is a logged interval peak and must not be confused with the sampled full_cpu_frame_us maximum.",
+    "No sustained60Hz/full-speed claim: sampled CPU frame maximum239.742ms and interval peak275.608ms.",
+    "No watchdog timeout/retry/resume is logged; successful short WAIT recovery can return silently.",
+    "The preview remains nonpersistent and experimental. Snatch and other unimplemented WZX/field-audio paths are not qualified by selecting their actor actions.",
+    "Final START+SELECT/FTPD/NTR continuous observation is operator-provided context; trace independently proves field/application requested exit with empty errors, not NTR transport continuity."
+  ]
+}

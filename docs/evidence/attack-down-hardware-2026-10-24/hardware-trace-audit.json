@@ -1,0 +1,485 @@
+{
+  "source_commit": "5519c82018fc58d3b8e8e9a50c1fa34e5ad388e9",
+  "source_tree": "a7263591142305d48922a9e080db6f533743427a",
+  "normal_executable": {
+    "bytes": 591824,
+    "sha256": "d0ffcc71da8dee828f61dfd95678d9a592a1047e4d0dd4c7055c4f74b4e30c11"
+  },
+  "closed_trace": {
+    "bytes": 585311,
+    "sha256": "153424760c9196072a6dbdad4c5c7e83680432a7ebd7e68c602358e78729df52"
+  },
+  "asset_counts": {
+    "base": 11,
+    "supplemental": 20,
+    "duplicate_audio": 1,
+    "distinct": 30
+  },
+  "battle_assets": {
+    "bite.c3w": {
+      "bytes": 256,
+      "sha256": "d09f9616086beae627464d594be18397fa0e1bf3f73e478bb7d291fb3040c1d9",
+      "base_readback": true,
+      "supplemental_readback": false,
+      "canonical_fixture_match": true
+    },
+    "bite_attack.c3t": {
+      "bytes": 189680,
+      "sha256": "d15ec7e3fac067bcee2b8a82eb3ed280f75f09893afd9c9e41f1187a2e78cb74",
+      "base_readback": true,
+      "supplemental_readback": false,
+      "canonical_fixture_match": true
+    },
+    "bite_damage.c3w": {
+      "bytes": 256,
+      "sha256": "ecf7be4b638f467b896bef17d07eba1394d76c044046e485a25e9f324ccc962e",
+      "base_readback": true,
+      "supplemental_readback": false,
+      "canonical_fixture_match": true
+    },
+    "bite_damage.c3t": {
+      "bytes": 627512,
+      "sha256": "f49562d04ec2117e61f22c9c9c23a2b775cf15474b77069dcb2e91474927752c",
+      "base_readback": true,
+      "supplemental_readback": false,
+      "canonical_fixture_match": true
+    },
+    "bite_damage.c3p": {
+      "bytes": 308480,
+      "sha256": "9fe84012d54bba173a53dc9fc4eaf9aee782ba390e21e03a46d4aa651564e45d",
+      "base_readback": true,
+      "supplemental_readback": false,
+      "canonical_fixture_match": true
+    },
+    "bite_camera.c3c": {
+      "bytes": 18368,
+      "sha256": "93f105aef2ec3644f71d66eb24a3b05640fe91893b9012aff5179d829b0e0b35",
+      "base_readback": true,
+      "supplemental_readback": false,
+      "canonical_fixture_match": true
+    },
+    "audio.c3u": {
+      "bytes": 1641592,
+      "sha256": "ab998e7f705142757a837a220c884a71e770afbb998e2277c48abb6f18d9f3b4",
+      "base_readback": true,
+      "supplemental_readback": true,
+      "canonical_fixture_match": true
+    },
+    "reflect.c3w": {
+      "bytes": 288,
+      "sha256": "d7540d79983505e3b0d342352d5d9b19fe8d620f25ab1f2a4256e5b8ff2fc1c8",
+      "base_readback": true,
+      "supplemental_readback": false,
+      "canonical_fixture_match": true
+    },
+    "reflect.c3t": {
+      "bytes": 176344,
+      "sha256": "58dac5ec1dff0f46699a2f3ceb32eb15be3f5657935f76605dd37f3451332bdc",
+      "base_readback": true,
+      "supplemental_readback": false,
+      "canonical_fixture_match": true
+    },
+    "reflect.c3p": {
+      "bytes": 462944,
+      "sha256": "a397faff5a7ee5acb1b31b37ec63ef50aaf8ca81394c249f079ef313e3e36a5b",
+      "base_readback": true,
+      "supplemental_readback": false,
+      "canonical_fixture_match": true
+    },
+    "reflect_parts.c3r": {
+      "bytes": 3728,
+      "sha256": "e6b6c61a0036ea9a1220dccf28ac4cfdf49470469bb8bca9704d867fa67e2906",
+      "base_readback": true,
+      "supplemental_readback": false,
+      "canonical_fixture_match": true
+    },
+    "confusion_sequence.c3s": {
+      "bytes": 13048,
+      "sha256": "a2bd7564e9b1a04343cc6002782dd71bf26bf4a19de3bea70c491d20fe8c2f8f",
+      "base_readback": false,
+      "supplemental_readback": true,
+      "canonical_fixture_match": true
+    },
+    "confusion_type12.c3f": {
+      "bytes": 16640,
+      "sha256": "21a0ebb2cb2b06decd1b69ac365f83e0c375b616529f8ec0929a5812d02b6e4b",
+      "base_readback": false,
+      "supplemental_readback": true,
+      "canonical_fixture_match": true
+    },
+    "confusion_attack.c3p": {
+      "bytes": 414688,
+      "sha256": "c4fb9eab25cf99ed5814e34eb6ab7873204de336afd1975bc7ef1536a500d4bb",
+      "base_readback": false,
+      "supplemental_readback": true,
+      "canonical_fixture_match": true
+    },
+    "confusion_damage.c3p": {
+      "bytes": 160672,
+      "sha256": "9570f60e0793e8ebc194c8f6cc07b16338dcbe4c225ab47a8980a2c94703aeef",
+      "base_readback": false,
+      "supplemental_readback": true,
+      "canonical_fixture_match": true
+    },
+    "confusion_camera.c3c": {
+      "bytes": 22524,
+      "sha256": "6818a7908bc9ca4f392b6815681af191e9046fb35b7f44e71b57bb633d19a6a2",
+      "base_readback": false,
+      "supplemental_readback": true,
+      "canonical_fixture_match": true
+    },
+    "tail_whip.c3w": {
+      "bytes": 512,
+      "sha256": "cea9395e8275c238efb3a9b7244e58e2ab23299ad67b398fe9f069a244a90466",
+      "base_readback": false,
+      "supplemental_readback": true,
+      "canonical_fixture_match": true
+    },
+    "tail_whip_controller.c3m": {
+      "bytes": 6176,
+      "sha256": "fec21131059e7a2ab94e60a66e2dc5beb4838bdb2866238e1af71a7154bb88b7",
+      "base_readback": false,
+      "supplemental_readback": true,
+      "canonical_fixture_match": true
+    },
+    "tail_whip_effect.c3t": {
+      "bytes": 330104,
+      "sha256": "8d097323ad0f9c2f17ced5ce0fff340ab96ffee6e2a47a786676247b7e74f891",
+      "base_readback": false,
+      "supplemental_readback": true,
+      "canonical_fixture_match": true
+    },
+    "tailwhip_camera.c3c": {
+      "bytes": 5908,
+      "sha256": "2b17963c68c9066d7ce4c9bb6beeaecfcefab0044e22fbf2a9bc19e7c8187255",
+      "base_readback": false,
+      "supplemental_readback": true,
+      "canonical_fixture_match": true
+    },
+    "growl.c3w": {
+      "bytes": 1280,
+      "sha256": "ddfc4864cabd7413e1249addef888e0f551869eb497e37679431bcc7d5a28ab7",
+      "base_readback": false,
+      "supplemental_readback": true,
+      "canonical_fixture_match": true
+    },
+    "growl_model.c3t": {
+      "bytes": 585528,
+      "sha256": "b36c101bdfe76e5b99ef2f9137d8955f9733e611d195bf1890c680d967480064",
+      "base_readback": false,
+      "supplemental_readback": true,
+      "canonical_fixture_match": true
+    },
+    "growl.c3p": {
+      "bytes": 1710208,
+      "sha256": "538e94f797a4307f57f7c3ec15b481528664f56e138f3994d9a321fb7a90ed67",
+      "base_readback": false,
+      "supplemental_readback": true,
+      "canonical_fixture_match": true
+    },
+    "growl_camera.c3c": {
+      "bytes": 12124,
+      "sha256": "c0698aca8c969eaacffb083e6aa26a65ec1159f31e41788fad08d42849f8059a",
+      "base_readback": false,
+      "supplemental_readback": true,
+      "canonical_fixture_match": true
+    },
+    "stat_down.c3w": {
+      "bytes": 1024,
+      "sha256": "feb6c2eac768c9093eef37483c92a704622076db371f0d703dd51d4730f443f0",
+      "base_readback": false,
+      "supplemental_readback": true,
+      "canonical_fixture_match": true
+    },
+    "stat_down.c3p": {
+      "bytes": 6496,
+      "sha256": "d8d2cf5ce1357d29e05be91b6a4bd50870db1f901182cd0743fe5c65c00ae6c5",
+      "base_readback": false,
+      "supplemental_readback": true,
+      "canonical_fixture_match": true
+    },
+    "stat_down_camera.c3c": {
+      "bytes": 4720,
+      "sha256": "c4e04a48126fc782b4b053a9041c1c26810d5a83423327d6096f8f53bc86bdf7",
+      "base_readback": false,
+      "supplemental_readback": true,
+      "canonical_fixture_match": true
+    },
+    "attack_down.c3w": {
+      "bytes": 1024,
+      "sha256": "a0564c33991a8289ccafdeb214c7741c6f11d5303e6398f5b1628d02e20fd8f1",
+      "base_readback": false,
+      "supplemental_readback": true,
+      "canonical_fixture_match": true
+    },
+    "attack_down.c3p": {
+      "bytes": 6496,
+      "sha256": "b8f116680ad1ad7c8758c98171d90b3fb139c7133cae61277027e63e9fb948f3",
+      "base_readback": false,
+      "supplemental_readback": true,
+      "canonical_fixture_match": true
+    },
+    "attack_down_camera.c3c": {
+      "bytes": 4720,
+      "sha256": "743115543a590cbeb107ff49ba9a4766f0596fb17e077ce21e2f8212d1eee75c",
+      "base_readback": false,
+      "supplemental_readback": true,
+      "canonical_fixture_match": true
+    }
+  },
+  "save": {
+    "bytes": 393280,
+    "sha256": "7e1cb3159756293bf938fd922fe45e82448d1b667f6833a48da351af3cbd0f23",
+    "byte_identical_before_after": true,
+    "backup_absent": true
+  },
+  "selected_trace_records": [
+    {
+      "line": 15,
+      "record": "render_recovery scene=title event=drained frames=520 elapsed_us=227 ready=1 exit=0 input=0000 counters=2501,2501 build=5519c82018fc"
+    },
+    {
+      "line": 84,
+      "record": "render_recovery scene=field event=drained frames=75 elapsed_us=28192 ready=1 exit=0 input=0000 counters=3530,3530 build=5519c82018fc"
+    },
+    {
+      "line": 86,
+      "record": "field_end result=2 error="
+    },
+    {
+      "line": 528,
+      "record": "render_recovery scene=field-to-battle event=drained frames=3501 elapsed_us=26635 ready=1 exit=0 input=0000 counters=25278,25278 build=5519c82018fc"
+    },
+    {
+      "line": 533,
+      "record": "preview_turn turn=0 seed=2c53ded8 draws=352 outcome=1 save_writes=0 gsvm_resumed=0"
+    },
+    {
+      "line": 724,
+      "record": "preview_turn turn=1 seed=7c853675 draws=363 outcome=1 save_writes=0 gsvm_resumed=0"
+    },
+    {
+      "line": 976,
+      "record": "preview_turn turn=2 seed=1b13b0ac draws=372 outcome=1 save_writes=0 gsvm_resumed=0"
+    },
+    {
+      "line": 1057,
+      "record": "wzx_stat_down_start event=21 target=0 special=0x29 stat=2 delta=-1 cue=4"
+    },
+    {
+      "line": 1076,
+      "record": "wzx_stat_down_complete event=21 target=0 units=118000 emitted=369 peak=232 cosmetic_draws=1772 audio=finished cleanup_audio=finished cue=4 color_restored=1 camera_restored=1"
+    },
+    {
+      "line": 1078,
+      "record": "wzx_stat_down_start event=22 target=1 special=0x29 stat=2 delta=-1 cue=5"
+    },
+    {
+      "line": 1106,
+      "record": "wzx_stat_down_complete event=22 target=1 units=180000 emitted=369 peak=232 cosmetic_draws=1772 audio=finished cleanup_audio=finished cue=5 color_restored=1 camera_restored=1"
+    },
+    {
+      "line": 1137,
+      "record": "wzx_growl_complete event=23 owner=2 units=230000 emitted=26 peak=25 cosmetic_draws=200 family_cancelled=1 audio_status=stopped cue=6 owner_released=1 motion_continues_at_half_rate=1 camera_restored=1"
+    },
+    {
+      "line": 1139,
+      "record": "wzx_stat_down_start event=24 target=0 special=0x27 stat=1 delta=-1 cue=7"
+    },
+    {
+      "line": 1158,
+      "record": "wzx_stat_down_complete event=24 target=0 units=118000 emitted=369 peak=232 cosmetic_draws=1772 audio=finished cleanup_audio=finished cue=7 color_restored=1 camera_restored=1"
+    },
+    {
+      "line": 1160,
+      "record": "wzx_stat_down_start event=25 target=1 special=0x27 stat=1 delta=-1 cue=8"
+    },
+    {
+      "line": 1188,
+      "record": "wzx_stat_down_complete event=25 target=1 units=180000 emitted=369 peak=232 cosmetic_draws=1772 audio=finished cleanup_audio=finished cue=8 color_restored=1 camera_restored=1"
+    },
+    {
+      "line": 2229,
+      "record": "preview_turn turn=3 seed=783b002d draws=387 outcome=1 save_writes=0 gsvm_resumed=0"
+    },
+    {
+      "line": 2913,
+      "record": "preview_turn turn=4 seed=b3b225c0 draws=392 outcome=2 save_writes=0 gsvm_resumed=0"
+    },
+    {
+      "line": 2919,
+      "record": "preview_event index=5 hp=83,64,0,0 draws=392 text=Preview result: WIN. No rewards, save, or story flags were written."
+    },
+    {
+      "line": 3868,
+      "record": "render_recovery scene=battle event=drained frames=2878 elapsed_us=432 ready=1 exit=0 input=0000 counters=48332,48332 build=5519c82018fc"
+    },
+    {
+      "line": 3872,
+      "record": "preview_exit app_exit=0 error= save_writes=0 gsvm_resumed=0"
+    },
+    {
+      "line": 3873,
+      "record": "preview_state_guard bytes=122832 unchanged=1 before_sha1=fb06cfb39b075cbf6fbedf4f5066d7e31e559d6c after_sha1=fb06cfb39b075cbf6fbedf4f5066d7e31e559d6c play_time_advanced=0"
+    },
+    {
+      "line": 3874,
+      "record": "render_recovery scene=battle-to-field event=drained frames=0 elapsed_us=162 ready=1 exit=0 input=0000 counters=48336,48336 build=5519c82018fc"
+    },
+    {
+      "line": 3905,
+      "record": "render_recovery scene=field-to-battle event=drained frames=3715 elapsed_us=30516 ready=1 exit=0 input=0000 counters=49945,49945 build=5519c82018fc"
+    },
+    {
+      "line": 3910,
+      "record": "preview_turn turn=0 seed=2c53ded8 draws=352 outcome=1 save_writes=0 gsvm_resumed=0"
+    },
+    {
+      "line": 4298,
+      "record": "render_recovery scene=battle event=drained frames=335 elapsed_us=458 ready=1 exit=0 input=0000 counters=53074,53074 build=5519c82018fc"
+    },
+    {
+      "line": 4302,
+      "record": "preview_exit app_exit=0 error= save_writes=0 gsvm_resumed=0"
+    },
+    {
+      "line": 4303,
+      "record": "preview_state_guard bytes=122832 unchanged=1 before_sha1=af5e58432cebbb56a39b22068ac3aa19861213da after_sha1=af5e58432cebbb56a39b22068ac3aa19861213da play_time_advanced=0"
+    },
+    {
+      "line": 4304,
+      "record": "render_recovery scene=battle-to-field event=drained frames=0 elapsed_us=169 ready=1 exit=0 input=0000 counters=53078,53078 build=5519c82018fc"
+    },
+    {
+      "line": 4326,
+      "record": "render_recovery scene=field event=drained frames=3858 elapsed_us=29931 ready=1 exit=1 input=0000 counters=54236,54236 build=5519c82018fc"
+    },
+    {
+      "line": 4328,
+      "record": "field_end result=1 error="
+    },
+    {
+      "line": 4329,
+      "record": "boot_end result=1 error="
+    }
+  ],
+  "recording": {
+    "view_only": true,
+    "input_packets_sent": 0,
+    "tcp_commands_sent": 0,
+    "frames": 8404,
+    "encoded_fps": 10,
+    "wall_seconds": 1051.6869999999763,
+    "first_frame_wall_seconds": 0.061999999976251274,
+    "stale_samples": 20,
+    "decode_errors": 0,
+    "encoder_exit": 0,
+    "silent": true,
+    "scope": "Continuous actual NTR screens sampled at10fps; repeated frames and freshness retained in frames.jsonl; no audio stream",
+    "sha256": "98a7b084f3d082eb9b6576cf130762d92e32f2d8370e65f063be40fe317b51c9",
+    "full_ffmpeg_decode_exit": 0,
+    "encoded_seconds": 840.4
+  },
+  "initial_recording": {
+    "view_only": true,
+    "input_packets_sent": 0,
+    "tcp_commands_sent": 0,
+    "frames": 1099,
+    "encoded_fps": 10,
+    "wall_seconds": 122.39000000001397,
+    "first_frame_wall_seconds": 0.09299999999348074,
+    "stale_samples": 1,
+    "decode_errors": 0,
+    "encoder_exit": 0,
+    "silent": true,
+    "scope": "Continuous actual NTR screens sampled at10fps; repeated frames and freshness retained in frames.jsonl; no audio stream",
+    "sha256": "4c6581384452ad0a3e7e84c6b084f5fdf988d997e2e81b5be3ccb8c1faa2fd92",
+    "receiver_exit": 1,
+    "closure": "PublicationError / WinError 5 while publishing live image; encoder closed successfully. Separate receiver restarted; no uninterrupted-stream claim."
+  },
+  "stream_refresh": {
+    "utc": "2026-10-24T22:08:56.099141+00:00",
+    "commands": [
+      0,
+      901
+    ],
+    "input_packets_sent": 0,
+    "same_boot": true,
+    "scope": "Owner refreshed established NTR remoteplay before preview; no BootNTR reload. No inputs sent while stale."
+  },
+  "navigation": {
+    "willie_public_cli": {
+      "status": "failed",
+      "steps": 4,
+      "error": "Current state no longer matches route authorization",
+      "scope": "Partial authorization-safe attempt; no full-pass claim."
+    },
+    "private_two_turn_route": {
+      "status": "passed",
+      "steps": 14,
+      "duration_seconds": 55.98399999999674,
+      "release_packets_per_step": 3,
+      "release_errors": 0,
+      "receipt": "UDP send counts alone are not receipt proof; actual visible state transitions accompany the route."
+    }
+  },
+  "original_reference": {
+    "status": "bounded_attempt_no_reference",
+    "selected_count": 0,
+    "watchdog_closed": true,
+    "closed_audit_files_unchanged": true,
+    "files": [
+      {
+        "file": "exe",
+        "sha256": "5e076628b977603dcde9ddef5eedf10b5a9ce0b6208bd4e6dfa9039cdebf3433",
+        "unchanged": true
+      },
+      {
+        "file": "rvz",
+        "sha256": "f278e568b5c2dafb153ec932edc95051146cecf5ebc1d3843d71745cd0c1861e",
+        "unchanged": true
+      },
+      {
+        "file": "source_gci",
+        "sha256": "7e1cb3159756293bf938fd922fe45e82448d1b667f6833a48da351af3cbd0f23",
+        "unchanged": true
+      },
+      {
+        "file": "copied_gci",
+        "sha256": "7e1cb3159756293bf938fd922fe45e82448d1b667f6833a48da351af3cbd0f23",
+        "unchanged": true
+      },
+      {
+        "file": "source_rig_gci",
+        "sha256": "7e1cb3159756293bf938fd922fe45e82448d1b667f6833a48da351af3cbd0f23",
+        "unchanged": true
+      },
+      {
+        "file": "default_gci",
+        "sha256": "fa2d5eeb7ddca3f7bd8c1a9032cb91db4c26546e5a727d5e58d33c87c91b57ee",
+        "unchanged": true
+      },
+      {
+        "file": "movie",
+        "sha256": "7168c298d2ce179b40bab586bf7ef04f2245d22e885e8cc4ca605271218350f5",
+        "unchanged": true
+      },
+      {
+        "file": "protocol_tool",
+        "sha256": "546d341f187cad2bf3f5d704b4897dc060487e3e09c3f7a5e373c5a721c4c8e7",
+        "unchanged": true
+      },
+      {
+        "file": "worker",
+        "sha256": "3cfefc27e00262324c4b7f109f4b9d7a631f27d555779363e2f76bea21d8e8ba",
+        "unchanged": true
+      }
+    ]
+  },
+  "limits": [
+    "No qualified original Growl/RED comparison.",
+    "Silent capture does not establish audible correctness.",
+    "Reached physical route only; no all-variant, pixel-parity or retail-performance claim.",
+    "CI for this commit was under investigation at publication; local host strict/sanitizer and ARM builds are separate evidence."
+  ]
+}

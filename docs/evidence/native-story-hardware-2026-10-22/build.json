@@ -1,0 +1,48 @@
+{
+  "source_identities": 9,
+  "python_versions": [
+    "3.12.15",
+    "NumPy2.4.3",
+    "Pillow11.3.0"
+  ],
+  "image": "devkitpro/devkitarm@sha256:116afba8df8453961de2936ffab20dd441edf4d682856c1ec8b0e53d7ed0bbf5",
+  "python_result": "174 passed plus1 Picasso test passed separately",
+  "python_tests": 175,
+  "commit": "322eb4d3a9eb09d057cdccab83da31885b66b3cb",
+  "toolchain": [
+    "devkitARM r68-1",
+    "GCC16.1.0",
+    "libctru2.7.0-1",
+    "citro3d1.7.1-2"
+  ],
+  "embedded_build_id": "322eb4d3a9eb",
+  "host_c_suites": 17,
+  "configuration": "normal full Gekko enabled",
+  "outputs": [
+    {
+      "bytes": 381732,
+      "name": "Colosseum3DS.3dsx",
+      "sha256": "84493e3382e737e672e9ce51e9680827518eb2e5b42f7c5931061d6f32ba6304"
+    },
+    {
+      "bytes": 14016,
+      "name": "Colosseum3DS.smdh",
+      "sha256": "f3fad3feb7b42caab0a647bb392050bf72e4507593cded5a16819cc1c68e5a55"
+    },
+    {
+      "bytes": 2808408,
+      "name": "Colosseum3DS.elf",
+      "sha256": "5740406af71369011d2cdc6172548f1c9c14afbbf0fb19f57b9ccd18d36a6569"
+    }
+  ],
+  "private_story_integration": {
+    "assets": "private/prepared-story/boot",
+    "normal_checks": 15595,
+    "synthetic_checks_each": 7488,
+    "trace_sha256": "251fea1edb7093dcfb640c8ed7d864fcab524454c5acc261e0fa07b07c231cd7",
+    "published_committed_trace": "byte identical",
+    "asan_ubsan_checks": 15595,
+    "normal_sanitized_traces": "byte identical",
+    "scope": "headless actual runtime; no video/audio/physical claims; stops before unported combat"
+  }
+}

@@ -1,8 +1,10 @@
 #include "boot_scene.h"
 #include "field_scene.h"
 #include "game_menu.h"
+#include "bottom_screen.h"
 #include "movie_player.h"
 #include "n3ds_platform.h"
+#include "render_recovery.h"
 #include "title_renderer.h"
 #include "colosseum3ds/game_state.h"
 #include "colosseum3ds/movie.h"
@@ -78,7 +80,7 @@ static void load_card(C3GameState *state, C3GameMenuSave *view,
     view->valid = 1;
     view->can_continue = c3_field_scene_supports(summary.floor) && prepared != NULL;
     snprintf(view->name, sizeof(view->name), "%s", summary.name);
-    snprintf(view->location, sizeof(view->location), "%s", summary.floor == 1 ? "OUTSKIRT STAND" : "Unported area");
+    snprintf(view->location, sizeof(view->location), "%s", summary.floor == 1 ? "OUTSKIRT STAND" : summary.floor == 2 ? "OUTSKIRT STAND - INSIDE" : "Unported area");
     view->money = summary.money;
     view->play_seconds = summary.play_seconds;
     if (!prepared)
@@ -99,12 +101,13 @@ static void load_card(C3GameState *state, C3GameMenuSave *view,
 
 /* Return 0 with a prepared in-memory game, 1 on application exit, -1 on
  * rendering/asset failure. Native menus borrow the live title background. */
-static int run_title(FILE *trace, int core_status, C3GameState *state,
+static int run_title(FILE *trace, C3GameState *state,
                       int *new_game, int start_at_menu, C3GameMenuOptions *session_options,
                       int *options_edited, char *error, size_t capacity)
 {
     C3Title *title = calloc(1, sizeof(*title));
     C3GameMenu menu = {0};
+    if(trace)fprintf(trace,"bottom_ui original_assets=%d format=C3UI fallback=libctru\n",c3_bottom_screen_has_original_assets());
     C3GameMenuOptions options = *session_options;
     C3N3dsInput input = {0};
     C3TitleRenderStats stats = {0};
@@ -248,21 +251,21 @@ static int run_title(FILE *trace, int core_status, C3GameState *state,
         }
         if (phase == TITLE_MENU) c3_game_menu_draw(&menu);
         else if (now >= next_status) {
-            consoleClear();
-            printf("Colosseum3DS | native title\nBuild: %.12s | Core: %s\n\n", C3_BUILD_ID,
-                   core_status == 0 ? "PASS" : "FAIL");
-            printf("Live HSD title | clip %u sample %.1f\n", clip, (double)title->active_frame);
-            printf("%lu vertices | %lu textures\n", (unsigned long)title->vertex_count,
-                   (unsigned long)title->texture_count);
-            printf("PAD %04X  L %3u R %3u\n", input.held, input.trigger_l, input.trigger_r);
-            printf("Stick %4d %4d | C %4d %4d\n\n", input.stick_x, input.stick_y, input.cstick_x, input.cstick_y);
-            if (phase == TITLE_WAIT_START) printf("PRESS START\n\n");
-            else if (phase == TITLE_ACCEPTED) printf("START accepted. Loading saved game...\n\n");
-            else printf("Title entrance | A/B/START: advance\n\n");
-            printf("START + SELECT: exit\n");
+            c3_bottom_screen_title(phase == TITLE_WAIT_START,phase == TITLE_ACCEPTED);
             next_status = now + UINT64_C(250000);
         }
-        if (c3_title_renderer_draw(title, fade, &stats, error, capacity)) { result = -1; break; }
+        int draw_result = c3_title_renderer_draw(title, fade, &stats, error, capacity);
+        if (draw_result == C3_RENDER_BUSY) {
+            C3RenderRecoveryResult recovery = c3_render_recover(trace, "title", frames, C3_RECOVER_WAIT);
+            if (recovery == C3_RECOVERY_EXIT) { result = 1; break; }
+            if (recovery == C3_RECOVERY_RESUME_PAUSED) {
+                previous = c3_n3ds_active_time_us();
+                next_status = 0;
+                menu.dirty = 1;
+            }
+            continue;
+        }
+        if (draw_result) { result = -1; break; }
         ++frames;
     }
     if (trace) {
@@ -270,8 +273,10 @@ static int run_title(FILE *trace, int core_status, C3GameState *state,
         fflush(trace);
     }
 done:
+    if (c3_render_recover(trace, "title", frames,
+                          result == 1 ? C3_RECOVER_EXIT : C3_RECOVER_DRAIN) == C3_RECOVERY_EXIT)
+        result = 1;
     if (menu_open) c3_game_menu_close(&menu);
-    c3_title_renderer_shutdown();
     c3_title_close(title);
     free(title);
     return result;
@@ -286,12 +291,13 @@ int c3_boot_scene_run(int core_status)
     c3_movie_player_set_mono(0);
     FILE *trace = fopen("sdmc:/3ds/Colosseum3DS/boot-trace.log", "w");
     if (trace) { fprintf(trace, "boot_build %s core=%d\n", C3_BUILD_ID, core_status); fflush(trace); }
+    c3_n3ds_log_memory(trace, "boot_start");
     int result = c3_movie_player_run(BOOT_ROOT "tpc.c3v", "tpc", trace, error, sizeof(error));
     if (!result) result = c3_movie_player_run(BOOT_ROOT "gs_logo.c3v", "gs_logo", trace, error, sizeof(error));
     int from_game = 0;
     while (!result) {
         int new_game = 0;
-        result = run_title(trace, core_status, &state, &new_game, from_game,
+        result = run_title(trace, &state, &new_game, from_game,
                            &session_options, &options_edited, error, sizeof(error));
         if (result) break;
         if (new_game) {
@@ -308,14 +314,19 @@ int c3_boot_scene_run(int core_status)
             if (trace) { fprintf(trace, "opening_complete flag=08d0 floor=1 spawn=0 fade_script=05960008\n"); fflush(trace); }
         }
         result = c3_field_scene_run(&state, new_game, SAVE_PATH, trace, error, sizeof(error));
+        C3GameSummary current_options;
+        if(c3_game_state_summary(&state,&current_options)){
+            if(session_options.sound_mono!=current_options.sound_mono||session_options.rumble_disabled!=current_options.rumble_disabled)options_edited=1;
+            session_options.sound_mono=current_options.sound_mono;
+            session_options.rumble_disabled=current_options.rumble_disabled;
+            c3_movie_player_set_mono(session_options.sound_mono);
+        }
         from_game = 1;
     }
     c3_game_state_free(&state);
     if (trace) { fprintf(trace, "boot_end result=%d error=%s\n", result, error); fclose(trace); }
     if (result < 0) {
-        consoleClear();
-        printf("Colosseum3DS | stopped\n\n%s\n\n", error);
-        printf("See docs/native-boot.md.\nSTART: exit\n");
+        c3_bottom_screen_notice("Unable to continue",error,"START: exit");
         c3_n3ds_wait_for_exit();
     }
     return result < 0 || core_status != 0 ? 1 : 0;

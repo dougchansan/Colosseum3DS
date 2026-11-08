@@ -1,0 +1,69 @@
+{
+  "commit": "51bfe4314a218dfaf9592fc80723c50498d0ee55",
+  "files": [
+    {
+      "path": "src/game/pokemon_range_8011F5FC.c",
+      "sha256": "e5ad2f1745cea73925404e7feef6cac9a3fb1e2bc4ab87fa42e8022f531b1003"
+    },
+    {
+      "path": "src/game/pokemon_range_exact_801248C4.c",
+      "sha256": "3bb6f0b890edf39aba65c03aadc41ca144091b6155802b0cbbd385a30f13655a"
+    },
+    {
+      "path": "src/game/pokemon_get_status_exact_8012640C.c",
+      "sha256": "295ff83903d644add435e7beaf8888c35eed1e05d518329b416303fd3cff4682"
+    },
+    {
+      "path": "src/game/pokemon_range_8012795C.c",
+      "sha256": "686f4dbd1bfb44c0c851b603d6442c1cc6a83cc503ffceabbfd13b35f391d4d8"
+    },
+    {
+      "path": "src/game/fight_trainer_range_801F7F80.c",
+      "sha256": "29aaf8e5dbd3666f685043396def52d974285b2a2cd1388da7845b47ba9f5f2f"
+    },
+    {
+      "path": "src/game/pokemon_data.c",
+      "sha256": "e40fc24c972135df30f2507b00054185c84bb15dcbf9c5c0b121bfa0c7ee7a45"
+    },
+    {
+      "path": "src/game/field_range_80117E58.c",
+      "sha256": "024f1b87bd348a69e3d4a1b309e268c928c803f6dd36b6a691f0da6cec4c2af4"
+    },
+    {
+      "path": "src/game/gs_msg.c",
+      "sha256": "7d36a3f685efbca1743d569691dd5fcda6e3c704afb72e926bb1e778957a0ebc"
+    },
+    {
+      "path": "src/game/waza.c",
+      "sha256": "5a333dee057a4e865c172da9379d4aecc882af034a3ba837d6651e46449dc00c"
+    },
+    {
+      "path": "src/game/gamedata.c",
+      "sha256": "2e04c7a259dcadc78edd7adfcd281ce941c8180af837f786c4672847b8b52da8"
+    },
+    {
+      "path": "src/game/gamedataBios.c",
+      "sha256": "363c603cddc9476ffb441226500ffacf1072aec5486f1d7fd6638863ba21373c"
+    },
+    {
+      "path": "include/game/pokemon_data.h",
+      "sha256": "e92811673afba62df19788d78199e3a3996a85dcad4d2e4fc851c060be712c70"
+    },
+    {
+      "path": "src/game/data/rodata_80279B78.c",
+      "sha256": "4093b49d69a020ec94e91f97a7fda05ea29dc5fb2aaf7d8fbbbc67b19655c415"
+    },
+    {
+      "path": "src/game/data/data_803635C0.c",
+      "sha256": "2cccf5b0231579b72d4709b32bdbb61f47a5881e6e39b79491ff5ffce498ce78"
+    },
+    {
+      "path": "src/game/fight_trainer_db_range_801FBD10.c",
+      "sha256": "9fcc27c3ac276eb922f7365a807a4894d5345f879c2bf9cf5303896476b3412d"
+    },
+    {
+      "path": "src/game/fight_trainer_range_801FAA58.c",
+      "sha256": "f3418bdfb311fe8e33ca06e773a5e82493310d2bff960fde1323a2933b9f90bc"
+    }
+  ]
+}

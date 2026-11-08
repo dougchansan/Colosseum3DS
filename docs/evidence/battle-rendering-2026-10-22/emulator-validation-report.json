@@ -1,0 +1,137 @@
+{
+  "scope": "Isolated Azahar diagnostic native probe; not normal application field route or physical console",
+  "head": "a99356029579",
+  "build_id": "a99356029579-hud-uvfix",
+  "probe_sha256": "a18616a6fbf5c6136a3cc0bbd9f58aae1772b110d17e00de6add4f8fb16d0024",
+  "title_renderer_sha256": "797be6e9b67d9b4e4bf68e9a9a0aaf8ad745900b07a438bb7e685795cc7931e5",
+  "tracked_source_patch_sha256": "34ef34a01606d93195c1ad2177b53a0547e364c910540e01490e0449295ca69a",
+  "toolchain_image": "devkitpro/devkitarm@sha256:116afba8df8453961de2936ffab20dd441edf4d682856c1ec8b0e53d7ed0bbf5",
+  "smoke": {
+    "frames": 900,
+    "completed": true,
+    "application_shutdown": false,
+    "guest_faults": {
+      "count": 0,
+      "lines": [],
+      "truncated": false
+    },
+    "seconds": 14.737
+  },
+  "controller": {
+    "requested_frames": 16000,
+    "completed_frontend_frames": 4642,
+    "seconds": 299.419,
+    "exit_code": 124,
+    "completed": false,
+    "guest_faults": {
+      "count": 0,
+      "lines": [],
+      "truncated": false
+    },
+    "turns": [
+      {
+        "turn": 0,
+        "seed": "2c53ded8",
+        "draws": 352,
+        "outcome": 1
+      },
+      {
+        "turn": 1,
+        "seed": "503aebc9",
+        "draws": 367,
+        "outcome": 1
+      },
+      {
+        "turn": 2,
+        "seed": "1b13b0ac",
+        "draws": 372,
+        "outcome": 2
+      }
+    ],
+    "observed": [
+      "readable graphical top HUD and four source Pokemon instances plus trainers",
+      "explicit controller commands and confirmation",
+      "Confusion and Bite source attack motion",
+      "HP applied at matching event",
+      "both source faint motions and hidden fainted actors",
+      "opposing Tackle and hit reaction",
+      "second turn computed WIN committed without writeback"
+    ],
+    "remaining_gate": "300-second wall bound ended after both faint motions at Turn complete, immediately before final trainer outcome clip/result event; emulator result display/clean exit not qualified by this run",
+    "not_verified": [
+      "normal application field handoff",
+      "physical hardware",
+      "support action capture",
+      "original WZX effects/particles",
+      "original battle camera sequences",
+      "audio"
+    ]
+  },
+  "visual_findings": {
+    "hud": "Fixed: texture-state dirty getter plus atlas V orientation; actual captured HUD is legible",
+    "composition": "Static authored arena camera shows small distant actors; original battle camera sequences unsupported"
+  },
+  "telemetry_scope": "Emulator application counters only, not hardware measurements or gameplay FPS",
+  "telemetry": {
+    "samples": 62,
+    "draw_cpu_us_median": 126535.5,
+    "draw_cpu_us_max": 126699,
+    "draw_calls_max": 153,
+    "vertices_max": 60831,
+    "gpu_buffer_bytes_max": 16441080,
+    "linear_free_bytes_observed": 15238272,
+    "heap_allocator_used_bytes_observed": 45228192
+  },
+  "save_boundary": {
+    "gci_staged": false,
+    "gci_present": false,
+    "trace_save_writes": 0,
+    "gsvm_resumed": 0,
+    "scope": "In-memory newgame-template entry; no existing save loaded"
+  },
+  "screenshots": [
+    {
+      "label": "readable-hud-four-pokemon",
+      "source_ppm": "smoke\\last.ppm",
+      "file": "screenshots\\readable-hud-four-pokemon.png",
+      "sha256": "9e0feb8e6f5ab6643944f3591d984a4aba01ab3c8f187e3d80ebe0204f114230"
+    },
+    {
+      "label": "command-selection",
+      "source_ppm": "controller\\frame-000900.ppm",
+      "file": "screenshots\\command-selection.png",
+      "sha256": "bc6ff8459cff88337cc78394d2cd47fd9f876921ed39998e0d0f164628253bb7"
+    },
+    {
+      "label": "first-faint-hp-zero",
+      "source_ppm": "controller\\frame-002070.ppm",
+      "file": "screenshots\\first-faint-hp-zero.png",
+      "sha256": "f53a2cfa7faca43fb65de41f4e097304fbba0e82e7ddc01b6da61ec4bde25a0e"
+    },
+    {
+      "label": "opposing-tackle-hit",
+      "source_ppm": "controller\\frame-003240.ppm",
+      "file": "screenshots\\opposing-tackle-hit.png",
+      "sha256": "6a0e2d2b18d296d257f6453a96458e90952d22a34e21305330eb000c58ec290d"
+    },
+    {
+      "label": "both-fainted-pre-result",
+      "source_ppm": "controller\\last.ppm",
+      "file": "screenshots\\both-fainted-pre-result.png",
+      "sha256": "38005611e14d4886d138dbe4792c760f46d3dcc821c5053f26d69ae03a377659"
+    }
+  ],
+  "video": {
+    "file": "controller.mp4",
+    "sha256": "ea373473be4a7ee3f9855c2666c035cb51f8eb74cd71aba8b31e937fc16a221b",
+    "bytes": 347864,
+    "audio": false,
+    "capture_every_frontend_frames": 15,
+    "sample_playback_fps": 4,
+    "captured_frames": 310,
+    "scope": "Unmodified combined-screen samples; sparse frontend-clock recording, not gameplay FPS"
+  },
+  "core_sha256": "64431df51bba1ec09f36499ec2cc072498076ade6fc9f0fb117c3637699ec631",
+  "harness_sha256": "bf0c089ec75f124481423cc58bc46c0b52827d93448a1e3c60aba4bdd4ef96e6",
+  "normal_application_tested": false
+}

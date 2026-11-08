@@ -81,12 +81,18 @@ int main(void)
     while(aptMainLoop()){
         hidScanInput();if(hidKeysDown()&KEY_START)break;
         C3TitleRenderStats stats;
-        if(okay&&c3_stage_renderer_draw(models,1,&camera,fade,&stats,error,sizeof(error))){okay=0;printf("DRAW FAIL %s\n",error);}
+        if(okay){
+            int result=c3_stage_renderer_draw(models,1,&camera,fade,&stats,error,sizeof(error));
+            if(result==C3_RENDER_BUSY){svcSleepThread(1000000);continue;}
+            if(result==C3_RENDER_ERROR){okay=0;printf("DRAW FAIL %s\n",error);}
+        }
         if(okay&&(stats.draw_calls!=expected_draws||stats.vertices!=expected_vertices||stats.gpu_buffer_bytes!=2112)){
             okay=0;printf("Bad aggregate metrics %lu/%lu/%lu\n",(unsigned long)stats.draw_calls,
                 (unsigned long)stats.vertices,(unsigned long)stats.gpu_buffer_bytes);
         }
         if(!okay){gfxFlushBuffers();gfxSwapBuffers();gspWaitForVBlank();}
     }
-    c3_stage_renderer_shutdown();gfxExit();return okay?0:1;
+    while(!c3_stage_renderer_try_shutdown()){aptMainLoop();svcSleepThread(1000000);}
+    c3_stage_renderer_fini();
+    gfxExit();return okay?0:1;
 }

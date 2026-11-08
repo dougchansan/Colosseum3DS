@@ -1,3 +1,4 @@
+#include "bottom_screen.h"
 #include "movie_player.h"
 #include "n3ds_platform.h"
 #include "colosseum3ds/movie.h"
@@ -135,15 +136,7 @@ int c3_movie_player_run(const char *path, const char *label, FILE *trace,
         if (frame == movie.frame_count) goto done;
         if (audio_queue(&audio, &movie, error, capacity)) { result = -1; goto done; }
         if (now >= next_status) {
-            consoleClear();
-            printf("Colosseum3DS | original movie\n\n");
-            printf("Original THP: %s\n", label);
-            printf("Frame %lu / %lu | RGB565 320x240\n", (unsigned long)frame, (unsigned long)movie.frame_count);
-            printf("Audio: %s\n\n", audio.available ? (audio.mono ? "PCM mono / NDSP" : "PCM stereo / NDSP") :
-                   movie.audio_sample_frames ? "NDSP unavailable" : "external BGM not connected");
-            printf("PAD %04X | Stick %4d %4d\n", (unsigned)input.held, input.stick_x, input.stick_y);
-            printf("Original movie plays to completion.\n");
-            printf("START + SELECT: exit\n");
+            c3_bottom_screen_title(0,1);
             next_status = now + UINT64_C(250000);
         }
         if (frame != last_frame) {

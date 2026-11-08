@@ -1,0 +1,223 @@
+{
+  "schema": 1,
+  "date": "2026-10-22",
+  "bundle": "story-integration-v2",
+  "sd_directory": "3ds/Colosseum3DS/boot",
+  "pins": {
+    "game_source_repository": "Count-Sheep/pkmn-colosseum",
+    "game_source_commit": "51bfe4314a218dfaf9592fc80723c50498d0ee55",
+    "parser_repository": "StarsMmd/Blender-Addon-Gamecube-Models",
+    "parser_commit": "dc71de837978a6a2fe8c5082f2840cfafb135235",
+    "disc_game_id": "GC6E01",
+    "disc_revision": 0,
+    "main_dol_sha1": "870e8b9693ca780782d80f22a6a4572d8ba9458f"
+  },
+  "converter_commands": {
+    "working_directory": "repository root",
+    "path_note": "Replace /private paths; every output must be new. Preserve generated basenames when staging into the SD directory.",
+    "commands": [
+      "python3 tools/prepare_boot_media.py --disc /private/disc --output /private/logos --ffmpeg /usr/bin/ffmpeg",
+      "python3 tools/prepare_title.py --disc /private/disc --output /private/title.c3t --parser vendor/hsd-importer",
+      "python3 tools/prepare_game_menu.py --disc /private/disc --output /private/menu.c3u",
+      "python3 tools/prepare_game_state.py --disc /private/disc --output /private/newgame.c3g",
+      "python3 tools/prepare_intro_media.py --disc /private/disc --output /private/intro --ffmpeg /usr/bin/ffmpeg",
+      "python3 tools/prepare_outskirt.py --disc /private/disc --output /private/exterior --parser vendor/hsd-importer",
+      "python3 tools/prepare_area.py --disc /private/disc --output /private/area --parser vendor/hsd-importer",
+      "python3 tools/prepare_story.py --disc /private/disc --output /private/story",
+      "python3 tools/prepare_area_runtime.py --metadata /private/area/area-actors.json --links /private/story/area-events.json --lifecycle /private/story/area-lifecycle.json --names /private/story/actor-names.json --output /private/area-runtime",
+      "python3 tools/prepare_battle.py --disc /private/disc --output /private/willie.c3b"
+    ]
+  },
+  "verification": {
+    "required_files": 35,
+    "total_bytes": 428164858,
+    "missing_files": [],
+    "required_bundle_files_only": true,
+    "matching_full_export_model_files": 20,
+    "model_references": [
+      "outskirt-v3",
+      "area-v6"
+    ],
+    "matching_runtime_area_files": 2,
+    "runtime_area_reference": "area-runtime-v6",
+    "runtime_actor_collision_type_byte": 69,
+    "runtime_actor_part1_bone_plus_one_offset": 156
+  },
+  "files": [
+    {
+      "file": "gs_logo.c3v",
+      "bytes": 19968064,
+      "sha256": "b9fabb1bc42e8525379eb5c7e2e3fa4896ab9332d94b55109d6b40028d2e7783"
+    },
+    {
+      "file": "menu.c3u",
+      "bytes": 1260,
+      "sha256": "322f6201e1a4af9e56eec2b7b55a18d630c59f4235c913a6c2d53ebeded251f1"
+    },
+    {
+      "file": "newgame.c3g",
+      "bytes": 176722,
+      "sha256": "6bfdc9ffd1ce16303801ade262d64a6e8cffcb5907c87a920b195427527b0903"
+    },
+    {
+      "file": "openingdemo.c3v",
+      "bytes": 304066812,
+      "sha256": "f5cf0716ce6331166a5a97058c48105c691bb9482d039b6c1005b9378813afee"
+    },
+    {
+      "file": "outskirt.c3a",
+      "bytes": 2688,
+      "sha256": "a2c0a8a989795154435cbbbfd09605bb858c1cbbcef718708406026671f0a678"
+    },
+    {
+      "file": "outskirt.c3f",
+      "bytes": 21656,
+      "sha256": "45e9c8b4be3afc26c783d087d3348217ce555d852ba570168ca5459c2ad0b82e"
+    },
+    {
+      "file": "outskirt.c3s",
+      "bytes": 158626,
+      "sha256": "8f44a587630b3123885a3d393d21e9f3ec2e4e9a173710fe9351cef706e93b13"
+    },
+    {
+      "file": "outskirt_arrival0.c3t",
+      "bytes": 3519720,
+      "sha256": "28ff3752722e28f4b3c442a09630a8d0028910031af9ef17c4d068acaffad86f"
+    },
+    {
+      "file": "outskirt_arrival1.c3t",
+      "bytes": 1113808,
+      "sha256": "aa21929fd770f260709e11fba541873c7d0c298ca842467f66d78cfc1ee7afaa"
+    },
+    {
+      "file": "outskirt_map0.c3t",
+      "bytes": 12053184,
+      "sha256": "350097e53d1833d6dc70b1fb504c6ea6e89e14c69ab61292caf6fa1f5106cadf"
+    },
+    {
+      "file": "outskirt_map1.c3t",
+      "bytes": 7751912,
+      "sha256": "f337f2eacb25e6f11b230ef51f38a9e8b4a445031105fcdff90ebd89778a3944"
+    },
+    {
+      "file": "outskirt_map2.c3t",
+      "bytes": 4765944,
+      "sha256": "497355ef80631b9b1e086372dfc4065f9f45ba900c0b4f8c3f0f518b899df735"
+    },
+    {
+      "file": "outskirt_map3.c3t",
+      "bytes": 3406456,
+      "sha256": "8e88bb441d49d0ce716650eca41ecdc15116d427419e86faa55feafe62328ad8"
+    },
+    {
+      "file": "outskirt_npc0.c3t",
+      "bytes": 1548720,
+      "sha256": "f51107b47126841f76f2f78b5bcfa1231d110010e4cb8cd82d47ee03d0a97b82"
+    },
+    {
+      "file": "outskirt_npc1.c3t",
+      "bytes": 1867448,
+      "sha256": "84517adb9f625ecb783c6151e6ecaafaf27cfccd0163396aeb2b6c5ec94be78a"
+    },
+    {
+      "file": "outskirt_npc2.c3t",
+      "bytes": 4042296,
+      "sha256": "41107b1fd28aff2043316502e7efba12b725e6bed1ece589fcb463ec6625104f"
+    },
+    {
+      "file": "outskirt_npc3.c3t",
+      "bytes": 1120896,
+      "sha256": "3e8ab13632f57769f2a1583a284f5b1d22e0c4c5b5d6dcf10058a749ddfb9cde"
+    },
+    {
+      "file": "outskirt_shop.c3s",
+      "bytes": 150634,
+      "sha256": "b7cf10edb43673774f776c61a030beb46aba55dd7c42ef38a136bd3f7d781d36"
+    },
+    {
+      "file": "outskirt_wes.c3t",
+      "bytes": 621280,
+      "sha256": "0ca314cf2cabc2624a5722535020fd6c2a45897073001c2d35736cdafe17ef16"
+    },
+    {
+      "file": "shop.c3a",
+      "bytes": 1328,
+      "sha256": "536f123f1e294fb509d26d876b54513abb862f0769be20c86e45969816748ad2"
+    },
+    {
+      "file": "shop.c3f",
+      "bytes": 5680,
+      "sha256": "717f6c1f16a84bcad8eb32b1df9b92cb30fb0745824966a2fa03d5245aaf08e2"
+    },
+    {
+      "file": "shop.c3l",
+      "bytes": 7276,
+      "sha256": "21a861fc9e857df1e27d42d20235af91337c3b157333312857601251c9cd417a"
+    },
+    {
+      "file": "shop_camera.c3c",
+      "bytes": 26508,
+      "sha256": "23a55c9d0c7726dc1df3a478c005e7fb56705cc2f5ce9251564dff231d51433a"
+    },
+    {
+      "file": "shop_map0.c3t",
+      "bytes": 10710032,
+      "sha256": "e624b55a87c8310c7c76d116fe172961cec753c37a49f0cf03097c8f39f80940"
+    },
+    {
+      "file": "shop_map1.c3t",
+      "bytes": 4786368,
+      "sha256": "c5ffe1ed8d37d96b7967e4e31f914846818fc84d6efb1d3e73501233b7c52086"
+    },
+    {
+      "file": "shop_npc0.c3t",
+      "bytes": 2151584,
+      "sha256": "3022689555b52ae127ca654b66e423bc471726360f6967f092a1816b434d1fff"
+    },
+    {
+      "file": "shop_npc1.c3t",
+      "bytes": 595648,
+      "sha256": "02d678533d56eb22a1d5d7954b3a3d4cde1e86b604f4adf8d6b91f2ffef99a97"
+    },
+    {
+      "file": "shop_npc2.c3t",
+      "bytes": 846208,
+      "sha256": "13d82131aabab26a57b02045d6502539a2913c0849d2105bf5aee0dedf646fc0"
+    },
+    {
+      "file": "shop_npc3.c3t",
+      "bytes": 808752,
+      "sha256": "3f3e23016ed15c949da7b4f328341f76b305dc53e8da7f8878d83b622d00f438"
+    },
+    {
+      "file": "shop_npc4.c3t",
+      "bytes": 1120816,
+      "sha256": "c4d9b5181809d2589a8cf7a787fe9d1edf608584cab32156935d828b15500ee0"
+    },
+    {
+      "file": "shop_tv.c3t",
+      "bytes": 9891096,
+      "sha256": "b695ee76a01eaa41196ed8e17aef38805a42fea29284b0976b1249562405683a"
+    },
+    {
+      "file": "shop_wes.c3t",
+      "bytes": 661072,
+      "sha256": "f5aca543dd80297bccf8ba1be35fe168666603d4f3a63582b9b518ecd872b67f"
+    },
+    {
+      "file": "title.c3t",
+      "bytes": 18353048,
+      "sha256": "f6fc95010631de9897a041b5cc6d46232bfd6b0bd3e784ad7065f5024cb9d166"
+    },
+    {
+      "file": "tpc.c3v",
+      "bytes": 11840672,
+      "sha256": "ab205a7479a2fd81b4b7d266af6285e0ac381d29ccdc6402a5135545656fdf2a"
+    },
+    {
+      "file": "willie.c3b",
+      "bytes": 644,
+      "sha256": "873052ebb92bcf11f2dc9deed182362bf941020adcc945bd994c38c7ea0f4319"
+    }
+  ]
+}
