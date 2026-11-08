@@ -857,9 +857,23 @@ static void draw_battle_hud(C3TitleRenderStats *stats)
 #include "confusion_renderer.inc"
 
 int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
-                          const C3TitleCamera *camera, float fade,
+                          const C3TitleCamera *authored_camera, float fade,
                           C3TitleRenderStats *stats, char *error, size_t capacity)
 {
+    /* Widescreen (Hor+): keep the authored vertical FOV and framing but project
+     * at the native 400x240 top-screen aspect instead of letterboxing the GC
+     * 4:3 image. Every pass (main, Confusion capture, particles) derives from
+     * this one camera, so their screen mappings stay mutually consistent.
+     * Build with -DC3_AUTHORED_ASPECT_LETTERBOX for authored-aspect parity. */
+    const C3TitleCamera *camera = authored_camera;
+#ifndef C3_AUTHORED_ASPECT_LETTERBOX
+    C3TitleCamera display_camera;
+    if (authored_camera) {
+        display_camera = *authored_camera;
+        display_camera.aspect = 400.0f / 240.0f;
+        camera = &display_camera;
+    }
+#endif
     C3TitleRenderStats local_stats;
     if (!stats) stats = &local_stats;
     if (stats) memset(stats, 0, sizeof(*stats));
@@ -969,8 +983,9 @@ int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
          * inherits transparent black instead of the main opaque clear. */
         C3D_RenderTargetClear(draw_target, C3D_CLEAR_ALL, capture?0:0x000000FF, 0);
         C3D_FrameDrawOn(draw_target);
-        /* Preserve the authored camera aspect rather than stretching its image.
-         * GPU coordinates are rotated: viewport height is display width. */
+        /* Never stretch: fit the projection aspect (native 5:3 unless built
+         * with authored-aspect letterboxing). GPU coordinates are rotated:
+         * viewport height is display width. */
         float aspect = camera->aspect;
         unsigned display_width = 400, display_height = 240;
         if (aspect < 400.0f/240.0f) display_width = (unsigned)(240.0f * aspect + 0.5f);
