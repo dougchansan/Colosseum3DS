@@ -17,6 +17,11 @@ git submodule update --init --recursive
 make -f Makefile.3ds -j2
 ```
 
+The build requires a nonempty source identity. If Docker cannot resolve a
+Windows worktree's Git path, obtain `git rev-parse --short=12 HEAD` on the host
+and pass that value as `C3_BUILD_ID` to the container's make invocation. The
+build fails before compilation when automatic resolution returns an empty ID.
+
 The outputs are `build-3ds/Colosseum3DS.3dsx`, `.smdh` and `.elf`. A successful
 host build alone does not establish that these ARM artifacts build or boot.
 An actual ARM build succeeded on October 21, 2026; the result, toolchain
@@ -24,6 +29,10 @@ versions and output hashes are in [VALIDATION.md](VALIDATION.md). The CI runner
 and real-device gates remain separate.
 
 ## Run
+
+For passive FTP inspection, guarded replacement and the manual launch/observe
+handoff, see [the local hardware workflow](hardware-workflow.md). Its transfer
+checks do not establish screen capture or input redirection.
 
 Copy the `.3dsx` and `.smdh` into `sd:/3ds/Colosseum3DS/` and launch with an
 up-to-date homebrew launcher on a New Nintendo 3DS, New 3DS XL or New 2DS XL.

@@ -1,0 +1,18 @@
+{
+  "image": "gs-logo.png",
+  "sampled_utc": 1792643978.4759002,
+  "frames": {
+    "top": {
+      "frame_id": 187,
+      "counter": 150,
+      "received_utc": "2026-10-22T04:39:38.416024+00:00"
+    },
+    "bottom": {
+      "frame_id": 187,
+      "counter": 150,
+      "received_utc": "2026-10-22T04:39:38.436092+00:00"
+    }
+  },
+  "image_sha256": "c53ff24a3d00aac27607c328328406be8579a50936795e5efe7535edcd5d6c30",
+  "collection_final_status": "insufficient_fresh_frames after later title crash; this is an earlier sampled observation"
+}

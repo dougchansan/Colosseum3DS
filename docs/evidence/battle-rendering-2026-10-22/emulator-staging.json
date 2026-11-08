@@ -1,0 +1,75 @@
+{
+  "head": "a99356029579",
+  "build_id": "a99356029579-hud-uvfix",
+  "probe_sha256": "a18616a6fbf5c6136a3cc0bbd9f58aae1772b110d17e00de6add4f8fb16d0024",
+  "title_renderer_sha256": "797be6e9b67d9b4e4bf68e9a9a0aaf8ad745900b07a438bb7e685795cc7931e5",
+  "assets": [
+    {
+      "file": "newgame.c3g",
+      "bytes": 176722,
+      "sha256": "6bfdc9ffd1ce16303801ade262d64a6e8cffcb5907c87a920b195427527b0903"
+    },
+    {
+      "file": "willie.c3b",
+      "bytes": 644,
+      "sha256": "873052ebb92bcf11f2dc9deed182362bf941020adcc945bd994c38c7ea0f4319"
+    },
+    {
+      "file": "willie.c3i",
+      "bytes": 768,
+      "sha256": "8878693f7d7dd98c58b9decfbd67b54d8b1088f6cf24e2d9852a82bc9bf33bd8"
+    },
+    {
+      "file": "willie.c3p",
+      "bytes": 1024,
+      "sha256": "da6a5666fa008629ef1fe035ad7e69ff3c27c38ec57cb0283c56cab978aee46e"
+    },
+    {
+      "file": "battle\\arena0_0.c3t",
+      "bytes": 12294400,
+      "sha256": "12a4ca0fc1568ff79943b6f3f66048d65e6c1100c0f606a89408969fc4a23b10"
+    },
+    {
+      "file": "battle\\arena1_0.c3t",
+      "bytes": 1510168,
+      "sha256": "dadd4d142a14002ed20b5396b26df7e3bc1e6bfc79aeb5dca8ccca81bbb3a6c2"
+    },
+    {
+      "file": "battle\\arena2_0.c3t",
+      "bytes": 4135024,
+      "sha256": "cc96d2002958a499a9f96c1336cf5af12910f14b81edc0fb552edafe04d763b8"
+    },
+    {
+      "file": "battle\\pokemon196_0.c3t",
+      "bytes": 3997504,
+      "sha256": "23cf55ad4c639c634ddbf7a7c7b6ae54df1867e5432d695ed4c848a75d29496c"
+    },
+    {
+      "file": "battle\\pokemon197_0.c3t",
+      "bytes": 3932104,
+      "sha256": "aa50977b39cfec0655dd7ec853ddac1050a1266bbd3dbada77cebedfc3bdc30a"
+    },
+    {
+      "file": "battle\\pokemon288_0.c3t",
+      "bytes": 5247600,
+      "sha256": "95821f9afa59e887f09dc7f98b83dcf8b4f5dbc645ba2307e91443e612013cdc"
+    },
+    {
+      "file": "battle\\scene.c3v",
+      "bytes": 1280,
+      "sha256": "2c3eddcca1ab8a620429072b569695a7908dba32e7937dcbb488191cba20452c"
+    },
+    {
+      "file": "battle\\trainer10_0.c3t",
+      "bytes": 1944184,
+      "sha256": "d6c3bea225cb57088390ef2e0c1fd8413315fb7f2d78c1c1cd13316e3587eb91"
+    },
+    {
+      "file": "battle\\trainer1_0.c3t",
+      "bytes": 5675168,
+      "sha256": "95296918b8d7f364e53084e57757a1ef0d18508be501b48beada9282ec76f204"
+    }
+  ],
+  "tracked_source_patch_sha256": "34ef34a01606d93195c1ad2177b53a0547e364c910540e01490e0449295ca69a",
+  "toolchain_image": "devkitpro/devkitarm@sha256:116afba8df8453961de2936ffab20dd441edf4d682856c1ec8b0e53d7ed0bbf5"
+}

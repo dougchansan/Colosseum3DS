@@ -1,5 +1,9 @@
 # Initial native build validation — October 21, 2026
 
+This is the historical bring-up record. For the connected New Game, opening,
+Outskirt Stand and save/Continue checkpoint, see
+[native-first-area-validation.md](native-first-area-validation.md).
+
 ## Result
 
 The first native New 3DS application compiled, assembled its PICA shader and

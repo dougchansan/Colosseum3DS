@@ -1,0 +1,10 @@
+python3 tools/prepare_save_codec.py
+python3 tools/prepare_gekko_backend.py --output build-3ds/gekko
+make --no-print-directory -C build-3ds -f /workspace/scratch/d8bf34fb7169/Colosseum3DS-story/Makefile.3ds
+boot_scene.c
+model_scene.c
+render_recovery.c
+ctr_gx_citro3d.c
+gx_scene.c
+linking Colosseum3DS.elf
+built ... Colosseum3DS.3dsx

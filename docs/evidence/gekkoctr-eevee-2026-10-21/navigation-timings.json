@@ -1,0 +1,108 @@
+[
+  {
+    "target": "ftpd",
+    "status": "passed",
+    "duration_seconds": 12.921999999991385,
+    "steps": [
+      {
+        "state": "model",
+        "elapsed_seconds": 0.26600000000325963,
+        "action": "STARTSELECT",
+        "duration_seconds": 0.15
+      },
+      {
+        "state": "root_first",
+        "elapsed_seconds": 3.7969999999913853,
+        "action": "HOME",
+        "duration_seconds": 0.15
+      },
+      {
+        "state": "home_hbl",
+        "elapsed_seconds": 5.719000000011874,
+        "action": "LEFT",
+        "duration_seconds": 0.15
+      },
+      {
+        "state": "home_ftpd",
+        "elapsed_seconds": 6.312999999994645,
+        "action": "A",
+        "duration_seconds": 0.15
+      },
+      {
+        "state": "confirm_ftpd",
+        "elapsed_seconds": 7.14100000000326,
+        "action": "A",
+        "duration_seconds": 0.15
+      },
+      {
+        "state": "ftpd",
+        "elapsed_seconds": 12.921999999991385
+      }
+    ]
+  },
+  {
+    "target": "model",
+    "status": "passed",
+    "duration_seconds": 15.14000000001397,
+    "steps": [
+      {
+        "state": "ftpd",
+        "elapsed_seconds": 0.3120000000053551,
+        "action": "HOME",
+        "duration_seconds": 0.15
+      },
+      {
+        "state": "home_ftpd",
+        "elapsed_seconds": 2.2190000000118744,
+        "action": "RIGHT",
+        "duration_seconds": 0.15
+      },
+      {
+        "state": "home_hbl",
+        "elapsed_seconds": 2.812000000005355,
+        "action": "A",
+        "duration_seconds": 0.15
+      },
+      {
+        "state": "confirm_hbl",
+        "elapsed_seconds": 3.625,
+        "action": "A",
+        "duration_seconds": 0.15
+      },
+      {
+        "state": "root_first",
+        "elapsed_seconds": 10.312000000005355,
+        "action": "DOWN",
+        "duration_seconds": 0.4
+      },
+      {
+        "state": "root_selected",
+        "elapsed_seconds": 11.01500000001397,
+        "action": "A",
+        "duration_seconds": 0.15
+      },
+      {
+        "state": "project_first",
+        "elapsed_seconds": 11.5,
+        "action": "DOWN",
+        "duration_seconds": 0.4
+      },
+      {
+        "state": "project_selected",
+        "elapsed_seconds": 12.219000000011874,
+        "action": "A",
+        "duration_seconds": 0.15
+      },
+      {
+        "state": "scene_entry",
+        "elapsed_seconds": 12.703000000008615,
+        "action": "A",
+        "duration_seconds": 0.15
+      },
+      {
+        "state": "model",
+        "elapsed_seconds": 15.125
+      }
+    ]
+  }
+]

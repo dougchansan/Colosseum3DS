@@ -1,0 +1,42 @@
+{
+  "status": "passed",
+  "build_metadata": {
+    "git_commit": "7a4a74613d01e3a4598da6e26c14f5bb701be83f",
+    "build_configuration": "normal full Gekko-enabled native flow; cooperative render recovery; no temporary GPU probes",
+    "toolchain": "devkitARM pinned Docker116afba8; GCC16.1.0 r68-1; libctru2.7.0-1; Citro3D1.7.1-2; Picasso2.7.2-3"
+  },
+  "deployment": [
+    {
+      "name": "Colosseum3DS.3dsx",
+      "bytes": 315324,
+      "sha256": "d068396046553294eb597f7e38996e3fa393865a8f36e90928e5bbe65fc2b1a1",
+      "staged_verified": true,
+      "installed_verified": true
+    },
+    {
+      "name": "Colosseum3DS.smdh",
+      "bytes": 14016,
+      "sha256": "f3fad3feb7b42caab0a647bb392050bf72e4507593cded5a16819cc1c68e5a55",
+      "staged_verified": true,
+      "installed_verified": true
+    }
+  ],
+  "files": [
+    {
+      "name": "Colosseum3DS.3dsx",
+      "bytes": 311956,
+      "sha256": "4254c47bd712d5fcce72e1c46ebbb4f9b7b9d92a82af4238c0f3f26eb29e834f"
+    },
+    {
+      "name": "Colosseum3DS.smdh",
+      "bytes": 14016,
+      "sha256": "f3fad3feb7b42caab0a647bb392050bf72e4507593cded5a16819cc1c68e5a55"
+    }
+  ],
+  "deployment_verified": true,
+  "remote_backups": [
+    "/3ds/Colosseum3DS/Colosseum3DS.3dsx.backup-a9117ed2926f4bcebba7f7bf0a743fee",
+    "/3ds/Colosseum3DS/Colosseum3DS.smdh.backup-a9117ed2926f4bcebba7f7bf0a743fee"
+  ],
+  "recovery_required": false
+}

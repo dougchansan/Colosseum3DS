@@ -1,0 +1,13 @@
+{
+  "source_created_test_state": true,
+  "seed": "0239bcc4",
+  "name": "WES",
+  "play_seconds": 98.5946273803711,
+  "arrival_complete": true,
+  "whole_body_verified": true,
+  "body_bytes": 122832,
+  "outer_generation": 1,
+  "saved_count": 1,
+  "body_sha256": "1a138ed561b3ef32f474f8401dd63ce66a407f7475c5a5b5c5ff63f5bfbc063d",
+  "gci_sha256": "b11f0e319d5ca801787ce3fbcd19063e127771a875f231e829f7cb917a5a8c94"
+}

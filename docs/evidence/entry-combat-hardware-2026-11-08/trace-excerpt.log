@@ -1,0 +1,44 @@
+entry_session_begin encounter=10 seed=12345678 seed_source=native_preview_seed preset_mode=0 trainers=1/1,10/0
+entry_sequence seq=1 index=38 group=2db flags=0
+entry_sequence_load seq=1 model=willie stage_slot=5
+entry_grid seq=1 stage_slot=5 x=0 y=0
+entry_visible seq=1 stage_slot=5 visible=1
+entry_sequence seq=2 index=1 group=9d flags=0
+entry_sequence_load seq=2 model=wes stage_slot=4
+entry_grid seq=2 stage_slot=4 x=1 y=0
+entry_visible seq=2 stage_slot=4 visible=1
+entry_session result=1,1 steps=2 waits=0 rng_seed=b4422412 rng_draws=354 entry_counter=13 loads=2 grids=2 shown=2 hidden=2
+entry_trainer side=0 trainer=1 sequence=2
+entry_fighter side=0 slot=0 species=197 level=26 hp=89/89 personality=7e14a072 entry_id=11
+entry_fighter side=0 slot=1 species=196 level=25 hp=69/69 personality=c492107a entry_id=12
+entry_trainer side=1 trainer=10 sequence=1
+entry_fighter side=1 slot=0 species=288 level=24 hp=52/52 personality=2e8ed3ec entry_id=9
+entry_fighter side=1 slot=1 species=288 level=24 hp=52/52 personality=4ff92c53 entry_id=10
+entry_preview_begin source=entry_fightpokemon rng_seed=b4422412 rng_draws=354 hp=89,69,52,52
+entry_session_end wall_us=122002 save_writes=0 gsvm_resumed=0 authoritative=0
+platform_memory stage=entry_session heap_bytes=95203328 linear_heap_bytes=33554432 linear_free_bytes=30893056
+preview_begin build=1d4036be0b6a seed=b4422412 rng_draws=354 source=entry_fightpokemon enemy_policy=uniform_legal experimental=1
+preview_turn turn=0 seed=b4422412 draws=354 outcome=1 save_writes=0 gsvm_resumed=0
+preview_event index=0 hp=89,69,52,52 draws=354 text=Nonpersistent battle preview. No retail AI or story result.
+preview_event index=1 hp=89,69,52,52 draws=354 text=WILLIE sends out two ZIGZAGOON!
+battle_load wall_us=8912438 effects=1 source_camera=1 audio=1
+preview_turn turn=1 seed=79723f68 draws=368 outcome=1 save_writes=0 gsvm_resumed=0
+preview_event index=0 hp=89,69,52,52 draws=354 text=TURN 1
+preview_event index=1 hp=89,69,52,52 draws=359 text=ESPEON used CONFUSION!
+preview_event index=2 hp=89,69,0,52 draws=362 text=ZIGZAGOON A loses 52 HP.
+preview_event index=3 hp=89,69,0,52 draws=362 text=ZIGZAGOON A fainted!
+preview_event index=4 hp=89,69,0,52 draws=362 text=UMBREON used BITE!
+preview_event index=5 hp=89,69,0,14 draws=365 text=ZIGZAGOON B loses 38 HP.
+preview_event index=6 hp=89,69,0,14 draws=366 text=ZIGZAGOON B used TAIL WHIP!
+preview_event index=7 hp=89,69,0,14 draws=367 text=UMBREON's Defense fell.
+preview_event index=8 hp=89,69,0,14 draws=368 text=ESPEON's Defense fell.
+preview_event index=9 hp=89,69,0,14 draws=368 text=Turn complete.
+preview_turn turn=2 seed=fbdd3cbf draws=373 outcome=2 save_writes=0 gsvm_resumed=0
+preview_event index=0 hp=89,69,0,14 draws=368 text=TURN 2
+preview_event index=1 hp=89,69,0,14 draws=370 text=ESPEON used CONFUSION!
+preview_event index=2 hp=89,69,0,0 draws=373 text=ZIGZAGOON B loses 14 HP.
+preview_event index=3 hp=89,69,0,0 draws=373 text=ZIGZAGOON B fainted!
+preview_event index=4 hp=89,69,0,0 draws=373 text=Turn complete.
+preview_event index=5 hp=89,69,0,0 draws=373 text=Preview result: WIN. No rewards, save, or story flags were written.
+preview_exit app_exit=0 error= save_writes=0 gsvm_resumed=0
+preview_state_guard bytes=122832 unchanged=1 before_sha1=7fcb38712a85db8c722930eb190dadb911ea35c7 after_sha1=7fcb38712a85db8c722930eb190dadb911ea35c7 play_time_advanced=0

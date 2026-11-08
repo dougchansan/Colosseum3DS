@@ -1,0 +1,10 @@
+boot_build 4cce6c1 core=0
+movie_begin name=tpc frames=75 fps=30000/1001 audio=ndsp mix=stereo result=00000000
+movie_end name=tpc result=0 displayed=49 skipped=26 elapsed_us=2520760
+movie_begin name=gs_logo frames=130 fps=30000/1001 audio=no_embedded_track mix=stereo result=00000000
+movie_end name=gs_logo result=0 displayed=129 skipped=1 elapsed_us=4339512
+title_begin vertices=17277 batches=43 textures=20 bones=31 fps=60.000
+title_state name=title_wait_start clip=2 frame=99 input=0000
+title_end result=1 frames=451 state=title_wait_start clip=2
+render_recovery scene=title event=drained frames=451 elapsed_us=28698 ready=1 exit=1 input=0000 counters=2155,2155 build=4cce6c1
+boot_end result=1 error=

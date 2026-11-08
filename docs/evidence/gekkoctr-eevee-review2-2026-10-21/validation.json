@@ -1,0 +1,31 @@
+{
+  "install_model_scene": {
+    "old_head": "3c533491bc9ed047c17a83b12442e59a6013f053",
+    "test_methods": 5,
+    "failures": 4,
+    "errors": 3,
+    "old_behavior_rejected": true
+  },
+  "console_navigate": {
+    "old_head": "3c533491bc9ed047c17a83b12442e59a6013f053",
+    "test_methods": 2,
+    "failures": 7,
+    "errors": 1,
+    "old_behavior_rejected": true
+  },
+  "implementation_commit": "8eefd95dd907271bc51615850b3a127880fcd7cf",
+  "source_verification": "PASS: 8 pinned upstream files",
+  "native": "PASS: core, data, pokemon, model",
+  "python_with_pillow": {
+    "environment": "WSL Python 3.14; Pillow 11.3.0",
+    "tests": 95,
+    "skips": 0,
+    "result": "PASS"
+  },
+  "sanitizers": "PASS: gcc:13 make -B test with ASan/UBSan CFLAGS and LDFLAGS; generated lifecycle receives sanitizer CFLAGS",
+  "shader_negative_control": "Restored premature free in extracted generated initialization: heap-use-after-free under ASan; retained storage passes partial failures and repeated shutdown",
+  "animation_negative_control": "Current new tiny-negative fixture plus old src/model.c: ASan heap-buffer-overflow; normalized source passes",
+  "arm": "PASS: pinned devkitARM compile, explicit Picasso reassembly and link",
+  "implementation_ci": "https://github.com/dougchansan/Colosseum3DS/actions/runs/39703945689",
+  "read_only_review": "No actionable findings"
+}

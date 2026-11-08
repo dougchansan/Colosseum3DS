@@ -1,0 +1,42 @@
+{
+  "explicit-save.mp4": {
+    "programs": [],
+    "stream_groups": [],
+    "streams": [
+      {
+        "codec_name": "h264",
+        "width": 400,
+        "height": 480,
+        "nb_frames": "29"
+      }
+    ],
+    "format": {
+      "duration": "15.360000"
+    },
+    "sha256": "ee39ef3a628e1601104821fe3c3c2c0593f8a4835570d69ffaef37268980f02e",
+    "bytes": 79952,
+    "source_sample_count": 28,
+    "source": "Actual NTR combined screens; observation sample timestamps; no audio or gameplay FPS claim",
+    "editing": "Actual PNG samples ordered by capture timestamp; H264/YUV420 encoding, final sample repeated to retain its duration; no synthesized scenes or audio"
+  },
+  "fresh-process-continue.mp4": {
+    "programs": [],
+    "stream_groups": [],
+    "streams": [
+      {
+        "codec_name": "h264",
+        "width": 400,
+        "height": 480,
+        "nb_frames": "29"
+      }
+    ],
+    "format": {
+      "duration": "14.800000"
+    },
+    "sha256": "3b984c8079792f582b80d0b96d0fe498ad0608ddaff33cee823271289f24d595",
+    "bytes": 119200,
+    "source_sample_count": 28,
+    "source": "Actual NTR combined screens; observation sample timestamps; no audio or gameplay FPS claim",
+    "editing": "Actual PNG samples ordered by capture timestamp; H264/YUV420 encoding, final sample repeated to retain its duration; no synthesized scenes or audio"
+  }
+}

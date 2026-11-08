@@ -1,0 +1,132 @@
+/* Execute generated initialization/teardown with libctru-style borrowed bytes.
+ * All GPU operations are inert; borrowed-byte reads remain ASan-visible. */
+#include <assert.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+typedef uint32_t u32;
+typedef struct { unsigned char *bytes; } DVLE_s;
+typedef struct { DVLE_s DVLE[1]; } DVLB_s;
+typedef struct { DVLE_s *vertexShader; } shaderProgram_s;
+typedef int C3D_RenderTarget;
+typedef int C3D_AttrInfo;
+typedef int ctr_vertex_t;
+typedef int ctr_vertex_uv_t;
+#define CTR_MAX_TEXTURES 16
+#define CTR_MAX_VERTICES 8192
+#define C3D_DEFAULT_CMDBUF_SIZE 1
+#define CTR_TARGET_WIDTH 240
+#define CTR_TARGET_HEIGHT 400
+#define GPU_RB_RGBA8 0
+#define GPU_RB_DEPTH24_STENCIL8 0
+#define GFX_TOP 0
+#define GFX_LEFT 0
+#define CTR_DISPLAY_TRANSFER_FLAGS 0
+#define GPU_FLOAT 0
+static struct {
+    bool c3d_initialized, ready, textured;
+    C3D_RenderTarget *target;
+    DVLB_s *dvlb;
+    shaderProgram_s program;
+    @SHADER_STORAGE@
+    int uniform_projection;
+    ctr_vertex_t *vertices;
+    ctr_vertex_uv_t *vertices_uv;
+    int textures[CTR_MAX_TEXTURES];
+    bool texture_valid[CTR_MAX_TEXTURES];
+    const char *error;
+} g_state;
+static int failure, blob_allocs, blob_frees, program_frees, dvlb_frees, drains, finishes;
+static bool blob_live;
+static C3D_RenderTarget target;
+static DVLB_s dvlb;
+static void *blob_address;
+static unsigned char borrowed_read(DVLE_s *dvle) {
+    /* Read first: old ownership reports the actual heap-use-after-free. */
+    volatile unsigned char byte = dvle->bytes[0];
+    assert(blob_live);
+    return byte;
+}
+static void *read_whole_file(const char *path, size_t *size) {
+    (void)path;
+    if (failure == 3) return NULL;
+    *size = 32;
+    blob_address = malloc(*size);
+    assert(blob_address);
+    memset(blob_address, 42, *size);
+    blob_live = true;
+    ++blob_allocs;
+    return blob_address;
+}
+static void tracked_free(void *ptr) {
+    if (ptr) {
+        assert(ptr == blob_address && blob_live);
+        ++blob_frees;
+        blob_live = false;
+    }
+    free(ptr);
+}
+#define free tracked_free
+static bool C3D_Init(int size) { (void)size; return failure != 1; }
+static C3D_RenderTarget *C3D_RenderTargetCreate(int a,int b,int c,int d) {
+    (void)a;(void)b;(void)c;(void)d;
+    return failure == 2 ? NULL : &target;
+}
+static void C3D_RenderTargetSetOutput(C3D_RenderTarget *p,int a,int b,int c) {
+    (void)p;(void)a;(void)b;(void)c;
+}
+static DVLB_s *DVLB_ParseFile(u32 *bytes,u32 size) {
+    (void)size;
+    dvlb.DVLE[0].bytes = (unsigned char *)bytes;
+    return failure == 4 ? NULL : &dvlb;
+}
+static void shaderProgramInit(shaderProgram_s *p) { p->vertexShader = NULL; }
+static void shaderProgramSetVsh(shaderProgram_s *p,DVLE_s *v) {
+    assert(borrowed_read(v) == 42); p->vertexShader = v;
+}
+static void C3D_BindProgram(shaderProgram_s *p) { assert(borrowed_read(p->vertexShader) == 42); }
+static int shaderInstanceGetUniformLocation(DVLE_s *v,const char *name) {
+    (void)name; assert(borrowed_read(v) == 42); return failure == 5 ? -1 : 0;
+}
+static C3D_AttrInfo *C3D_GetAttrInfo(void) { static C3D_AttrInfo attr; return &attr; }
+static void AttrInfo_Init(C3D_AttrInfo *a) { (void)a; }
+static void AttrInfo_AddLoader(C3D_AttrInfo *a,int b,int c,int d) { (void)a;(void)b;(void)c;(void)d; }
+static void *linearAlloc(size_t size) {
+    static int calls;
+    if (!g_state.vertices) calls = 0;
+    ++calls;
+    return failure == 5 + calls ? NULL : malloc(size);
+}
+/* linear allocations are unrelated to shader storage tracking. */
+#undef free
+static void linearFree(void *ptr) { assert(g_state.target == NULL); free(ptr); }
+static void C3D_RenderTargetDelete(C3D_RenderTarget *p) { assert(p == &target); ++drains; }
+static void C3D_TexDelete(int *p) { (void)p; }
+static void shaderProgramFree(shaderProgram_s *p) {
+    assert(g_state.target == NULL); assert(borrowed_read(p->vertexShader) == 42); ++program_frees;
+}
+static void DVLB_Free(DVLB_s *p) {
+    assert(program_frees == 1); assert(borrowed_read(&p->DVLE[0]) == 42); ++dvlb_frees;
+}
+static void C3D_Fini(void) { assert(!blob_live); ++finishes; }
+#define free tracked_free
+@INITIALIZATION@
+@SHUTDOWN@
+#undef free
+int main(void) {
+    for (failure = 0; failure <= 7; ++failure) {
+        blob_allocs = blob_frees = program_frees = dvlb_frees = drains = finishes = 0;
+        bool ok = ctr_gx_init_common("shader", true);
+        assert(ok == (failure == 0));
+        gctr_ctr_gx_shutdown();
+        gctr_ctr_gx_shutdown();
+        assert(blob_allocs == (failure == 0 || failure >= 4));
+        assert(blob_frees == blob_allocs && !blob_live);
+        assert(program_frees == (failure == 0 || failure >= 5));
+        assert(dvlb_frees == program_frees);
+        assert(drains == (failure != 1 && failure != 2));
+        assert(finishes == (failure != 1));
+    }
+    return 0;
+}

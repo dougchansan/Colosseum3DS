@@ -15,9 +15,33 @@
     "container": "ghcr.io/dougchansan/pkmn-colosseum-build@sha256:66e4fe838b6fe86dd97c72b08ade1520a5dd728640063678bf16bfa17e28c812",
     "validation_run": "https://github.com/dougchansan/pkmn-colosseum-build/actions/runs/38674909620"
   },
+  "graphics": {
+    "repository": "dougchansan/GekkoCTR",
+    "commit": "0f2032c6d641c78ebf4e6a418ecb51e04c0c62d8",
+    "path": "vendor/gekkoctr",
+    "license": "GPL-3.0",
+    "native_modules": ["runtime/gx.c", "runtime/gx_texture.c", "runtime/gx_material.c", "runtime/gx_scene.c", "platform/ctr/ctr_gx_citro3d.c", "platform/ctr/shaders/p5_material.v.pica"],
+    "adaptations": "tools/prepare_gekko_backend.py; no guest CPU, FIFO, gx_submit or MEM1"
+  },
+  "asset_preparer": {
+    "repository": "StarsMmd/Blender-Addon-Gamecube-Models",
+    "commit": "dc71de837978a6a2fe8c5082f2840cfafb135235",
+    "path": "vendor/hsd-importer",
+    "license": "GPL-3.0",
+    "tool": "Blender 5.x for tools/prepare_model.py; Python/NumPy without Blender for tools/prepare_title.py"
+  },
   "native_translation_units": [
     "src/hsd/random.c",
     "src/game/GScolsys2Util_exact_8010C77C.c",
     "src/game/pokemon_range_8012795C.c"
+  ],
+  "native_extracts": [
+    {
+      "source": "src/game/memcard.c",
+      "functions": ["fn_801CBBAC", "fn_801CBCDC", "fn_801CBE44", "fn_801CBF64", "fn_801CC380"],
+      "generator": "tools/prepare_save_codec.py",
+      "output": "build/save_codec.c",
+      "portability_changes": "Explicit big-endian SHA-1 block loads, aligned automatic scratch, local crypto work arrays, fixed-width types and private symbol names"
+    }
   ]
 }

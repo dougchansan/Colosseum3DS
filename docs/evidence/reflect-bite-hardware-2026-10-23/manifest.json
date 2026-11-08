@@ -1,0 +1,50 @@
+{
+  "source_commit": "749708b3bd332bc013a15e69a3cb3f4183276a9d",
+  "source_tree": "adc60ac7c14e3eeb9dc423d6dac46b267d94a9f7",
+  "binary_sha256": "e70b5093b000abb6247552526355fbf40962f651794df9d124bb7722af76f04d",
+  "ci_run": 40055623883,
+  "silent": true,
+  "retail_visual_parity": false,
+  "media": [
+    {
+      "file": "bite-damage.png",
+      "bytes": 85110,
+      "sha256": "dd37c1e1bfd78ac85e6e46a3723b27bdb83b0cd6a458f2d6d6d04fce099307fc"
+    },
+    {
+      "file": "bite-fangs.png",
+      "bytes": 99309,
+      "sha256": "b3ec6df687041f750be2142cf5f313ef756d7e4ca32f96b1d46906618509b598"
+    },
+    {
+      "file": "clean-exit.png",
+      "bytes": 139762,
+      "sha256": "690512a0ea2132c2ae94a3bac935d79bb2953024e602d47b53b04a1c4853db17"
+    },
+    {
+      "file": "field-return.png",
+      "bytes": 114131,
+      "sha256": "7e230bc8f073d709b181fda5876e6e3b4edf7741da054e0449f15ec15a8d4a2b"
+    },
+    {
+      "file": "preview-win.png",
+      "bytes": 116459,
+      "sha256": "72cdce4fba61d94913286bd1191aa85635d683ede11eec4c3d6b30ef5897802e"
+    },
+    {
+      "file": "reflect-bite-win-silent.mp4",
+      "bytes": 1603458,
+      "sha256": "f549779b9e7878f4b42eeaf953504d800f34fdce677b50d2b0f0e52d42917c33"
+    },
+    {
+      "file": "reflect-edge.png",
+      "bytes": 79102,
+      "sha256": "b6ada714cab34b09537f3e098c60405fac5997036a12cc90fc43b876088436cb"
+    },
+    {
+      "file": "reflect-ring.png",
+      "bytes": 81317,
+      "sha256": "d4eb36769b31147e29b6b1f81d847dd108eb61b873ebf085b2a660ef19f8d1d5"
+    }
+  ]
+}

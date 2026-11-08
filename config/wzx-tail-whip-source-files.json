@@ -1,0 +1,16 @@
+{
+  "commit": "51bfe4314a218dfaf9592fc80723c50498d0ee55",
+  "files": {
+    "src/game/fight_waza.c": "680d4b391266423c36cbe64599b9552f0dbed2078ba6f31300e8acac376b78d6",
+    "src/game/sequence.c": "5197f33a164dd2698f04c01272f0deaa7f02629f010856b535684277f5daa1dd",
+    "src/game/wazaSequence.c": "975afb18f19c6da6f7132fe3772d8ab3ab9546f528d8381073b59e614459444d",
+    "src/game/wazaSequenceEntry.c": "6500a4db7253ce776686b86d470a6f9587cfa3db10cf9fcfb9cca50328d0855f",
+    "src/game/wazaSequenceSys_tail.c": "91fb672f4d033367b472de815a8fea43824b0eed7deb69bbd8a85be1aa8a2a8e",
+    "src/game/gs_model_anim_suffix_800ED4D4.c": "78dcdb6bb3e8e89b27cf73d0fdc524bf16518d44e2eb94391e2c66fe0201619b",
+    "src/game/gs_model_main_suffix_800E4AC0.c": "ed366dda2bb2f2ce6f00f17e9a75ef72519003b322636c8dc36f70127a508802",
+    "src/game/gs_model_main_suffix_candidate_800E4AC0.c": "4097f9fbce7205363bafa22bcab5801ffd5d77d9e28742250969e71d6b19a75d",
+    "src/game/gs_model_main_exact_800E3928.c": "18bcaa804ef0db2cc78030318b7b287c3048338f106c60c39d83b9df1e6759dc",
+    "src/game/gs_model_bound.c": "834f966ce186f00a347eaecd1a04ab48bc84778c7e03b50f718cfb86a07b2df2",
+    "src/game/wazaSequenceCamera.c": "f59ed730b4f94c842e81c2316537c7ca847a44de7d0e5a6e21eada4179ef93f4"
+  }
+}

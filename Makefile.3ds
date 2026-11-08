@@ -9,20 +9,36 @@ DEVKITARM ?= $(DEVKITPRO)/devkitARM
 include $(DEVKITARM)/3ds_rules
 
 TARGET := Colosseum3DS
+ifeq ($(C3_BOOT_ONLY),1)
+BUILD := build-3ds-boot
+else
 BUILD := build-3ds
-SOURCES := platform/3ds src
-INCLUDES := include compat/include vendor/colosseum/include platform/3ds
+endif
+SOURCES := platform/3ds src build $(BUILD)/gekko vendor/gekkoctr/runtime
+INCLUDES := $(BUILD)/gekko/include include compat/include vendor/colosseum/include platform/3ds src build \
+            vendor/gekkoctr/include vendor/gekkoctr/platform/ctr/include
+GEKKO_CFILES := gx.c gx_texture.c gx_material.c gx_scene.c
+PYTHON ?= python3
 ARCH := -march=armv6k -mtune=mpcore -mfloat-abi=hard -mtp=soft
 CFLAGS := -g -O2 -Wall -Wextra -std=gnu11 -mword-relocations \
           -ffunction-sections -fdata-sections $(ARCH)
 CFLAGS += $(INCLUDE) -D__3DS__ $(C3_EXTRA_CFLAGS)
+C3_BUILD_ID ?= $(shell git rev-parse --short=12 HEAD)
+C3_BUILD_ID := $(strip $(C3_BUILD_ID))
+ifeq ($(strip $(C3_BUILD_ID)),)
+$(error Cannot resolve build identity; pass C3_BUILD_ID explicitly from the verified source checkout)
+endif
+CFLAGS += -DC3_BUILD_ID=\"$(C3_BUILD_ID)\"
+ifeq ($(C3_BOOT_ONLY),1)
+CFLAGS += -DC3_BOOT_ONLY
+endif
 ASFLAGS := -g $(ARCH)
 LDFLAGS = -specs=3dsx.specs -g $(ARCH) -Wl,--gc-sections,-Map,$(notdir $*.map)
 LIBS := -lcitro3d -lctru -lm
 LIBDIRS := $(CTRULIB)
 
 export APP_TITLE := Colosseum3DS
-export APP_DESCRIPTION := Native port bring-up; not playable
+export APP_DESCRIPTION := Native boot and first-area checkpoint
 export APP_AUTHOR := Colosseum3DS contributors
 
 ifneq ($(BUILD),$(notdir $(CURDIR)))
@@ -33,7 +49,14 @@ export VPATH := $(foreach dir,$(SOURCES),$(CURDIR)/$(dir))
 export DEPSDIR := $(CURDIR)/$(BUILD)
 export LD := $(CC)
 
-CFILES := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.c)))
+CFILES := $(notdir $(wildcard platform/3ds/*.c src/*.c)) save_codec.c
+ifeq ($(C3_BOOT_ONLY),1)
+# A focused native boot target also works without the optional C3M/Gekko
+# preview dependency. Keep its object directory separate from the full build.
+CFILES := $(filter-out model_renderer.c model_scene.c,$(CFILES))
+else
+CFILES += ctr_gx_citro3d.c $(GEKKO_CFILES)
+endif
 PICAFILES := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.v.pica)))
 export OFILES_SOURCES := $(CFILES:.c=.o)
 export OFILES := $(PICAFILES:.v.pica=.shbin.o) $(OFILES_SOURCES)
@@ -43,10 +66,54 @@ export INCLUDE := $(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir)) \
 export LIBPATHS := $(foreach dir,$(LIBDIRS),-L$(dir)/lib)
 export _3DSXDEPS := $(OUTPUT).smdh
 export _3DSXFLAGS := --smdh=$(OUTPUT).smdh
+ifneq ($(C3_BOOT_ONLY),1)
+export _3DSXFLAGS += --romfs=$(CURDIR)/$(BUILD)/romfs
+endif
 
-.PHONY: all clean
-all: $(BUILD)
+.PHONY: all clean prepare-gekko prepare-save prepare-battle-action prepare-battle-rng prepare-battle-damage prepare-battle-rules prepare-battle-pokemon prepare-battle-trainer prepare-battle-fight-pokemon prepare-battle-party-sort prepare-battle-runtime-trainer
+ifeq ($(C3_BOOT_ONLY),1)
+all: prepare-save prepare-battle-action prepare-battle-rng prepare-battle-damage prepare-battle-rules prepare-battle-pokemon prepare-battle-trainer prepare-battle-fight-pokemon prepare-battle-party-sort prepare-battle-runtime-trainer | $(BUILD)
+else
+all: prepare-save prepare-battle-action prepare-battle-rng prepare-battle-damage prepare-battle-rules prepare-battle-pokemon prepare-battle-trainer prepare-battle-fight-pokemon prepare-battle-party-sort prepare-battle-runtime-trainer prepare-gekko $(BUILD)/romfs/p5_material.shbin
+endif
 	$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile.3ds
+
+prepare-save:
+	$(PYTHON) tools/prepare_save_codec.py
+
+prepare-battle-action:
+	$(PYTHON) tools/prepare_battle_action.py
+
+prepare-battle-damage:
+	$(PYTHON) tools/prepare_battle_damage.py
+
+prepare-battle-rng:
+	$(PYTHON) tools/prepare_battle_rng.py
+
+prepare-battle-rules:
+	$(PYTHON) tools/prepare_battle_rules.py
+
+prepare-battle-pokemon:
+	$(PYTHON) tools/prepare_battle_pokemon.py
+
+prepare-battle-trainer:
+	$(PYTHON) tools/prepare_battle_trainer.py
+
+prepare-battle-fight-pokemon:
+	$(PYTHON) tools/prepare_battle_fight_pokemon.py
+
+prepare-battle-party-sort:
+	$(PYTHON) tools/prepare_battle_party_sort.py
+
+prepare-battle-runtime-trainer:
+	$(PYTHON) tools/prepare_battle_runtime_trainer.py
+
+prepare-gekko: | $(BUILD)
+	$(PYTHON) tools/prepare_gekko_backend.py --output $(BUILD)/gekko
+
+$(BUILD)/romfs/p5_material.shbin: vendor/gekkoctr/platform/ctr/shaders/p5_material.v.pica | $(BUILD)
+	mkdir -p $(BUILD)/romfs
+	picasso -o $@ $<
 
 $(BUILD):
 	mkdir -p $@
@@ -58,8 +125,21 @@ else
 
 all: $(OUTPUT).3dsx
 $(OUTPUT).3dsx: $(OUTPUT).elf $(_3DSXDEPS)
+ifneq ($(C3_BOOT_ONLY),1)
+$(OUTPUT).3dsx: $(TOPDIR)/$(BUILD)/romfs/p5_material.shbin
+endif
 $(OUTPUT).elf: $(OFILES)
 $(OFILES_SOURCES): $(HFILES)
+# Embed the actual built commit even when only documentation changed.
+.PHONY: force-build-id
+force-build-id:
+model_scene.o boot_scene.o render_recovery.o battle_preview_scene.o: force-build-id
+battle_rules.o: $(TOPDIR)/build/battle_rules_original.inc $(TOPDIR)/build/battle_rng_source.h
+battle_pokemon.o: $(TOPDIR)/build/battle_pokemon_original.inc $(TOPDIR)/build/battle_rng_source.h
+battle_trainer.o: $(TOPDIR)/build/battle_trainer_original.inc
+battle_fight_pokemon.o: $(TOPDIR)/build/battle_fight_pokemon_original.inc
+battle_party_sort.o: $(TOPDIR)/build/battle_party_sort_original.inc
+battle_runtime_trainer.o: $(TOPDIR)/build/battle_runtime_trainer_original.inc
 
 %.shbin.o %_shbin.h: %.shbin
 	$(bin2o)

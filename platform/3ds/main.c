@@ -1,4 +1,11 @@
 #include "n3ds_platform.h"
+#include "boot_scene.h"
+#ifdef C3_BATTLE_PREVIEW_PROBE
+#include "battle_preview_scene.h"
+#endif
+#ifndef C3_BOOT_ONLY
+#include "model_scene.h"
+#endif
 #include "colosseum3ds/core.h"
 
 #include <3ds.h>
@@ -22,7 +29,22 @@ int main(void)
         return 1;
     }
     core_status = c3_port_selftest();
+#ifdef C3_BATTLE_PREVIEW_PROBE
+    if(core_status==0){int result=c3_battle_preview_probe_run();c3_n3ds_shutdown();return result;}
+#endif
     data_result = c3_data_probe(c3_n3ds_data_root(), data_status, sizeof(data_status));
+    if (c3_boot_scene_available()) {
+        int result = c3_boot_scene_run(core_status);
+        c3_n3ds_shutdown();
+        return result;
+    }
+#ifndef C3_BOOT_ONLY
+    if (c3_model_scene_available()) {
+        int result = c3_model_scene_run(core_status, data_result, data_status);
+        c3_n3ds_shutdown();
+        return result;
+    }
+#endif
     if (c3_n3ds_renderer_init(error, sizeof(error)) != 0) {
         printf("Colosseum3DS\n\n%s\n\nSTART: exit\n", error);
         c3_n3ds_wait_for_exit();

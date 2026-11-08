@@ -1,0 +1,16 @@
+{
+  "score": 84,
+  "verdict": "revise",
+  "category_match": true,
+  "differences": [
+    "Native Umbreon is framed larger and more frontally than the original Umbreon; native Espeon is frontal and isolated while original Espeon is a three-quarter view with trainer/Umbreon visible.",
+    "Original and native particle streak placement, visible density and actor tint differ in the selected stills; these are different effect ages, camera projections and cosmetic RNG realizations, so geometric or emitter defects cannot be inferred from those differences.",
+    "Native captured viewport is about283x160 within a400x480 two-screen image with debug overlays; original backing is640x512 with intended16:15 sample aspect and retail HUD."
+  ],
+  "suggestions": [
+    "Match target, procedural camera choice, sampled source effect tick and actor pose before scoring spatial/temporal fidelity.",
+    "Compare phase-aligned sequences at corrected display aspect and common viewport framing; retain unmodified originals alongside any comparison views.",
+    "Correlate the actual hardware trace with both target effects to qualify source lifecycle and color restoration separately from screenshots."
+  ],
+  "reasoning": "Both native targets visibly show the verified original category of green/cyan vertical streaks and green actor modulation with Defense-fell captions. Camera, phase, pose, aspect and RNG are not aligned; this is a category match and revise-comparison verdict, not retail visual acceptance or proof of a geometry defect."
+}

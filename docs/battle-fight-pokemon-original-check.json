@@ -1,0 +1,54 @@
+{
+  "schema": 1,
+  "scope": "observed source-caller FightPokemon constructors only",
+  "full_party_sort_qualified": false,
+  "full_battle_entry_qualified": false,
+  "full_battle_qualified": false,
+  "inter_call_rng_qualified": false,
+  "dol_sha1": "870e8b9693ca780782d80f22a6a4572d8ba9458f",
+  "library_sha256": "8a59074372833d786214f9985f925937960413d872d55417df290de862e8a4d3",
+  "observation_sha256": "a442a6b656a78dea599b5100b333fd61e456c8273f6db546dfffc80fa2efaf18",
+  "matched": 4,
+  "cases": [
+    {
+      "capture_id": "01-fightPokemonCreate",
+      "caller": "0x80233f74",
+      "classification": "temporary-selection-candidate",
+      "matched_destination_bytes": 340,
+      "unchanged_source_bytes": 312,
+      "original_rng_unchanged": true,
+      "draws": 0,
+      "seed": "0x471708e9"
+    },
+    {
+      "capture_id": "02-fightPokemonCreate",
+      "caller": "0x80233f74",
+      "classification": "temporary-selection-candidate",
+      "matched_destination_bytes": 340,
+      "unchanged_source_bytes": 312,
+      "original_rng_unchanged": true,
+      "draws": 0,
+      "seed": "0x471708e9"
+    },
+    {
+      "capture_id": "04-fightPokemonCreate",
+      "caller": "0x8020d47c",
+      "classification": "final-entry-primary",
+      "matched_destination_bytes": 340,
+      "unchanged_source_bytes": 312,
+      "original_rng_unchanged": true,
+      "draws": 0,
+      "seed": "0x8ff186ab"
+    },
+    {
+      "capture_id": "05-fightPokemonCreate",
+      "caller": "0x8020d47c",
+      "classification": "final-entry-primary",
+      "matched_destination_bytes": 340,
+      "unchanged_source_bytes": 312,
+      "original_rng_unchanged": true,
+      "draws": 0,
+      "seed": "0x8ff186ab"
+    }
+  ]
+}

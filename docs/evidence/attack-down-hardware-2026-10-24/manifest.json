@@ -1,0 +1,570 @@
+{
+  "source_commit": "5519c82018fc58d3b8e8e9a50c1fa34e5ad388e9",
+  "source_tree": "a7263591142305d48922a9e080db6f533743427a",
+  "normal_executable": {
+    "bytes": 591824,
+    "sha256": "d0ffcc71da8dee828f61dfd95678d9a592a1047e4d0dd4c7055c4f74b4e30c11"
+  },
+  "trace": {
+    "bytes": 585311,
+    "sha256": "153424760c9196072a6dbdad4c5c7e83680432a7ebd7e68c602358e78729df52"
+  },
+  "recording": {
+    "view_only": true,
+    "input_packets_sent": 0,
+    "tcp_commands_sent": 0,
+    "frames": 8404,
+    "encoded_fps": 10,
+    "wall_seconds": 1051.6869999999763,
+    "first_frame_wall_seconds": 0.061999999976251274,
+    "stale_samples": 20,
+    "decode_errors": 0,
+    "encoder_exit": 0,
+    "silent": true,
+    "scope": "Continuous actual NTR screens sampled at10fps; repeated frames and freshness retained in frames.jsonl; no audio stream",
+    "sha256": "98a7b084f3d082eb9b6576cf130762d92e32f2d8370e65f063be40fe317b51c9",
+    "full_ffmpeg_decode_exit": 0,
+    "encoded_seconds": 840.4
+  },
+  "selected": [
+    {
+      "file": "umbreon-green-defense.png",
+      "source_frame": 4150,
+      "utc": "2026-10-24T22:13:04.821752+00:00",
+      "wall_seconds": 562.8279999999795,
+      "fresh": true,
+      "screens": {
+        "bottom": {
+          "frame_id": 104,
+          "counter": 7164,
+          "received_utc": "2026-10-24T22:13:04.788980+00:00"
+        },
+        "top": {
+          "frame_id": 104,
+          "counter": 7059,
+          "received_utc": "2026-10-24T22:13:04.764337+00:00"
+        }
+      },
+      "ages": {
+        "top": 0.046999999962281436,
+        "bottom": 0.03200000000651926
+      },
+      "bytes": 124658,
+      "sha256": "bfdc8b17ec1ccaa1613885390e55861c2c0406e59e1bd7b3174032ebae6845c2"
+    },
+    {
+      "file": "umbreon-before-red.png",
+      "source_frame": 4160,
+      "utc": "2026-10-24T22:13:05.835532+00:00",
+      "wall_seconds": 563.8279999999795,
+      "fresh": true,
+      "screens": {
+        "bottom": {
+          "frame_id": 121,
+          "counter": 7181,
+          "received_utc": "2026-10-24T22:13:05.767011+00:00"
+        },
+        "top": {
+          "frame_id": 122,
+          "counter": 7077,
+          "received_utc": "2026-10-24T22:13:05.803997+00:00"
+        }
+      },
+      "ages": {
+        "top": 0.01600000000325963,
+        "bottom": 0.046999999962281436
+      },
+      "bytes": 120759,
+      "sha256": "4c9f5136ff22f34a75f4d9e9b14fbd103e59a24170226ec69f1e594a62fd4356"
+    },
+    {
+      "file": "espeon-green-defense.png",
+      "source_frame": 4170,
+      "utc": "2026-10-24T22:13:06.819485+00:00",
+      "wall_seconds": 564.8279999999795,
+      "fresh": true,
+      "screens": {
+        "bottom": {
+          "frame_id": 139,
+          "counter": 7199,
+          "received_utc": "2026-10-24T22:13:06.783276+00:00"
+        },
+        "top": {
+          "frame_id": 139,
+          "counter": 7094,
+          "received_utc": "2026-10-24T22:13:06.760426+00:00"
+        }
+      },
+      "ages": {
+        "top": 0.06299999996554106,
+        "bottom": 0.03200000000651926
+      },
+      "bytes": 118599,
+      "sha256": "97818f3d1812c5f437c077c3f7f9b086c8d5d7d61263c907aa343b736ac0578d"
+    },
+    {
+      "file": "espeon-before-red.png",
+      "source_frame": 4180,
+      "utc": "2026-10-24T22:13:07.836841+00:00",
+      "wall_seconds": 565.8429999999935,
+      "fresh": true,
+      "screens": {
+        "bottom": {
+          "frame_id": 157,
+          "counter": 7217,
+          "received_utc": "2026-10-24T22:13:07.807002+00:00"
+        },
+        "top": {
+          "frame_id": 157,
+          "counter": 7112,
+          "received_utc": "2026-10-24T22:13:07.786446+00:00"
+        }
+      },
+      "ages": {
+        "top": 0.0470000000204891,
+        "bottom": 0.031000000017229468
+      },
+      "bytes": 110062,
+      "sha256": "128bf9d6682f8c32e9ccd5323332761689f6d167f52e9a9a53fb44e822f0ed71"
+    },
+    {
+      "file": "growl-a-glow.png",
+      "source_frame": 4220,
+      "utc": "2026-10-24T22:13:11.826676+00:00",
+      "wall_seconds": 569.8279999999795,
+      "fresh": true,
+      "screens": {
+        "bottom": {
+          "frame_id": 227,
+          "counter": 7287,
+          "received_utc": "2026-10-24T22:13:11.806282+00:00"
+        },
+        "top": {
+          "frame_id": 227,
+          "counter": 7182,
+          "received_utc": "2026-10-24T22:13:11.772574+00:00"
+        }
+      },
+      "ages": {
+        "top": 0.046999999962281436,
+        "bottom": 0.01600000000325963
+      },
+      "bytes": 92482,
+      "sha256": "894177ff5c0b37643d7144fa42ffa449ee8a6ff0f3c7b585a86b823a84fc12f7"
+    },
+    {
+      "file": "growl-a-after.png",
+      "source_frame": 4230,
+      "utc": "2026-10-24T22:13:12.827104+00:00",
+      "wall_seconds": 570.8279999999795,
+      "fresh": true,
+      "screens": {
+        "bottom": {
+          "frame_id": 244,
+          "counter": 7304,
+          "received_utc": "2026-10-24T22:13:12.798845+00:00"
+        },
+        "top": {
+          "frame_id": 244,
+          "counter": 7199,
+          "received_utc": "2026-10-24T22:13:12.770120+00:00"
+        }
+      },
+      "ages": {
+        "top": 0.046999999962281436,
+        "bottom": 0.01600000000325963
+      },
+      "bytes": 101425,
+      "sha256": "c1561de90587245825833f4c8f56d391f84e33d64e5fb20cd96c2a1eed69d01c"
+    },
+    {
+      "file": "umbreon-red-attack.png",
+      "source_frame": 4240,
+      "utc": "2026-10-24T22:13:13.822400+00:00",
+      "wall_seconds": 571.8279999999795,
+      "fresh": true,
+      "screens": {
+        "bottom": {
+          "frame_id": 5,
+          "counter": 7321,
+          "received_utc": "2026-10-24T22:13:13.763257+00:00"
+        },
+        "top": {
+          "frame_id": 6,
+          "counter": 7217,
+          "received_utc": "2026-10-24T22:13:13.803470+00:00"
+        }
+      },
+      "ages": {
+        "top": 0.01600000000325963,
+        "bottom": 0.06299999996554106
+      },
+      "bytes": 128698,
+      "sha256": "f7bad4e531ce1f07a2047c2bb25a067fb9a930556b4b65b08f12cf1aee6cf8fa"
+    },
+    {
+      "file": "umbreon-color-return.png",
+      "source_frame": 4250,
+      "utc": "2026-10-24T22:13:14.821384+00:00",
+      "wall_seconds": 572.8279999999795,
+      "fresh": true,
+      "screens": {
+        "bottom": {
+          "frame_id": 23,
+          "counter": 7339,
+          "received_utc": "2026-10-24T22:13:14.797879+00:00"
+        },
+        "top": {
+          "frame_id": 23,
+          "counter": 7234,
+          "received_utc": "2026-10-24T22:13:14.771890+00:00"
+        }
+      },
+      "ages": {
+        "top": 0.046999999962281436,
+        "bottom": 0.01600000000325963
+      },
+      "bytes": 105921,
+      "sha256": "2f5021f5bfb757850a84117ea99d4022a40f38640f2d31def58678e4e0f6e169"
+    },
+    {
+      "file": "espeon-red-attack.png",
+      "source_frame": 4260,
+      "utc": "2026-10-24T22:13:15.821332+00:00",
+      "wall_seconds": 573.8279999999795,
+      "fresh": true,
+      "screens": {
+        "bottom": {
+          "frame_id": 40,
+          "counter": 7356,
+          "received_utc": "2026-10-24T22:13:15.768473+00:00"
+        },
+        "top": {
+          "frame_id": 41,
+          "counter": 7252,
+          "received_utc": "2026-10-24T22:13:15.802688+00:00"
+        }
+      },
+      "ages": {
+        "top": 0.01600000000325963,
+        "bottom": 0.046999999962281436
+      },
+      "bytes": 125666,
+      "sha256": "8d343c85a1e74ffa019404692e99d883f728504ccd610911cc6620e228dc1747"
+    },
+    {
+      "file": "espeon-color-return.png",
+      "source_frame": 4270,
+      "utc": "2026-10-24T22:13:16.821482+00:00",
+      "wall_seconds": 574.8279999999795,
+      "fresh": true,
+      "screens": {
+        "bottom": {
+          "frame_id": 58,
+          "counter": 7374,
+          "received_utc": "2026-10-24T22:13:16.788037+00:00"
+        },
+        "top": {
+          "frame_id": 58,
+          "counter": 7269,
+          "received_utc": "2026-10-24T22:13:16.764538+00:00"
+        }
+      },
+      "ages": {
+        "top": 0.046999999962281436,
+        "bottom": 0.03200000000651926
+      },
+      "bytes": 115744,
+      "sha256": "d2462e9848232f4294a2adc6cdc9fd9022c0bd89df01e815a8f44b0157a7086e"
+    },
+    {
+      "file": "preview-win.png",
+      "source_frame": 6400,
+      "utc": "2026-10-24T22:17:08.463746+00:00",
+      "wall_seconds": 806.3279999999795,
+      "fresh": true,
+      "screens": {
+        "bottom": {
+          "frame_id": 114,
+          "counter": 11002,
+          "received_utc": "2026-10-24T22:17:07.461439+00:00"
+        },
+        "top": {
+          "frame_id": 115,
+          "counter": 10896,
+          "received_utc": "2026-10-24T22:17:07.475296+00:00"
+        }
+      },
+      "ages": {
+        "top": 0.8439999999827705,
+        "bottom": 0.8599999999860302
+      },
+      "bytes": 115379,
+      "sha256": "539dcdf2b23ccd1f47185b0b8a68b873a7d17c77d3d1216dc2ee085179c8e198"
+    },
+    {
+      "file": "field-return.png",
+      "source_frame": 6890,
+      "utc": "2026-10-24T22:18:37.665652+00:00",
+      "wall_seconds": 895.5310000000172,
+      "fresh": true,
+      "screens": {
+        "bottom": {
+          "frame_id": 16,
+          "counter": 11878,
+          "received_utc": "2026-10-24T22:18:37.501020+00:00"
+        },
+        "top": {
+          "frame_id": 17,
+          "counter": 11741,
+          "received_utc": "2026-10-24T22:18:37.514525+00:00"
+        }
+      },
+      "ages": {
+        "top": 0,
+        "bottom": 0.01600000000325963
+      },
+      "bytes": 114172,
+      "sha256": "4eb64df118d482b39ae5605853d326d9e805b7f7d16b003e6bd90940afb728b8"
+    },
+    {
+      "file": "reentry-recovery.png",
+      "source_frame": 7060,
+      "utc": "2026-10-24T22:18:59.279148+00:00",
+      "wall_seconds": 917.2810000000172,
+      "fresh": true,
+      "screens": {
+        "bottom": {
+          "frame_id": 161,
+          "counter": 12277,
+          "received_utc": "2026-10-24T22:18:59.257424+00:00"
+        },
+        "top": {
+          "frame_id": 161,
+          "counter": 12140,
+          "received_utc": "2026-10-24T22:18:59.243297+00:00"
+        }
+      },
+      "ages": {
+        "top": 0.031000000017229468,
+        "bottom": 0.01600000000325963
+      },
+      "bytes": 122816,
+      "sha256": "06417645d5b9cd483a9b99e3efae5260b9fc1ffebfb46cf36bd187931f34009c"
+    },
+    {
+      "file": "reentry-discard.png",
+      "source_frame": 7500,
+      "utc": "2026-10-24T22:19:43.274211+00:00",
+      "wall_seconds": 961.2810000000172,
+      "fresh": true,
+      "screens": {
+        "bottom": {
+          "frame_id": 202,
+          "counter": 13084,
+          "received_utc": "2026-10-24T22:19:43.235040+00:00"
+        },
+        "top": {
+          "frame_id": 203,
+          "counter": 12946,
+          "received_utc": "2026-10-24T22:19:43.256741+00:00"
+        }
+      },
+      "ages": {
+        "top": 0.01600000000325963,
+        "bottom": 0.031000000017229468
+      },
+      "bytes": 110313,
+      "sha256": "77e3e405115e18f395de94388b685aa6fea51fb0aa59b7ea4d75a471642e8055"
+    },
+    {
+      "file": "field-after-cancel.png",
+      "source_frame": 7560,
+      "utc": "2026-10-24T22:19:49.279478+00:00",
+      "wall_seconds": 967.2810000000172,
+      "fresh": true,
+      "screens": {
+        "bottom": {
+          "frame_id": 55,
+          "counter": 13193,
+          "received_utc": "2026-10-24T22:19:49.259301+00:00"
+        },
+        "top": {
+          "frame_id": 55,
+          "counter": 13054,
+          "received_utc": "2026-10-24T22:19:49.218751+00:00"
+        }
+      },
+      "ages": {
+        "top": 0.0470000000204891,
+        "bottom": 0.01600000000325963
+      },
+      "bytes": 114020,
+      "sha256": "d131da3f02b364c44cf24f2e0203054597aa3cdf23ac25871a14c616fbed7282"
+    },
+    {
+      "file": "exit-recovery.png",
+      "source_frame": 7710,
+      "utc": "2026-10-24T22:20:04.275913+00:00",
+      "wall_seconds": 982.2810000000172,
+      "fresh": true,
+      "screens": {
+        "bottom": {
+          "frame_id": 32,
+          "counter": 13425,
+          "received_utc": "2026-10-24T22:20:04.246985+00:00"
+        },
+        "top": {
+          "frame_id": 32,
+          "counter": 13287,
+          "received_utc": "2026-10-24T22:20:04.222933+00:00"
+        }
+      },
+      "ages": {
+        "top": 0.0470000000204891,
+        "bottom": 0.031000000017229468
+      },
+      "bytes": 122706,
+      "sha256": "6dc616cd140658f5a7b2a442295f40dc439381361abccab7ced2e2a002a3ec9d"
+    },
+    {
+      "file": "homebrew-launcher.png",
+      "source_frame": 7780,
+      "utc": "2026-10-24T22:20:11.284548+00:00",
+      "wall_seconds": 989.2810000000172,
+      "fresh": true,
+      "screens": {
+        "bottom": {
+          "frame_id": 156,
+          "counter": 13549,
+          "received_utc": "2026-10-24T22:20:11.247229+00:00"
+        },
+        "top": {
+          "frame_id": 156,
+          "counter": 13411,
+          "received_utc": "2026-10-24T22:20:11.220906+00:00"
+        }
+      },
+      "ages": {
+        "top": 0.0470000000204891,
+        "bottom": 0.031000000017229468
+      },
+      "bytes": 131313,
+      "sha256": "313fa6db42dfbfea6e3c960e8767d073b5b6f2811e5558e48c8905c07affdb73"
+    },
+    {
+      "file": "home-menu.png",
+      "source_frame": 8000,
+      "utc": "2026-10-24T22:20:33.279464+00:00",
+      "wall_seconds": 1011.2810000000172,
+      "fresh": true,
+      "screens": {
+        "bottom": {
+          "frame_id": 33,
+          "counter": 13937,
+          "received_utc": "2026-10-24T22:20:33.216554+00:00"
+        },
+        "top": {
+          "frame_id": 34,
+          "counter": 13799,
+          "received_utc": "2026-10-24T22:20:33.247118+00:00"
+        }
+      },
+      "ages": {
+        "top": 0.031000000017229468,
+        "bottom": 0.06300000002374873
+      },
+      "bytes": 179607,
+      "sha256": "a788c658b336c6ff154cdb1770b817eeb2431f828789db96f907c6b60b853ee2"
+    },
+    {
+      "file": "ftpd.png",
+      "source_frame": 8300,
+      "utc": "2026-10-24T22:21:03.274267+00:00",
+      "wall_seconds": 1041.2810000000172,
+      "fresh": true,
+      "screens": {
+        "bottom": {
+          "frame_id": 94,
+          "counter": 14510,
+          "received_utc": "2026-10-24T22:21:03.257660+00:00"
+        },
+        "top": {
+          "frame_id": 94,
+          "counter": 14371,
+          "received_utc": "2026-10-24T22:21:03.237392+00:00"
+        }
+      },
+      "ages": {
+        "top": 0.031000000017229468,
+        "bottom": 0.01600000000325963
+      },
+      "bytes": 110257,
+      "sha256": "4bc33e2f0da99eb8e0b74e445aecb91fe45bc68f93ab9f8786de722b7ca213ff"
+    }
+  ],
+  "excerpts": [
+    {
+      "file": "green-growl-red-silent.mp4",
+      "source_start_frame": 4110,
+      "source_end_frame_exclusive": 4300,
+      "source_encoded_start_seconds": 411.0,
+      "source_encoded_duration_seconds": 19.0,
+      "playback_speed": 1,
+      "source_start_utc": "2026-10-24T22:13:00.819990+00:00",
+      "source_last_utc": "2026-10-24T22:13:19.719004+00:00",
+      "source_stale_samples": 0,
+      "probe": {
+        "programs": [],
+        "stream_groups": [],
+        "streams": [
+          {
+            "codec_type": "video",
+            "r_frame_rate": "10/1",
+            "duration": "19.000000",
+            "nb_frames": "190"
+          }
+        ]
+      },
+      "full_ffmpeg_decode_exit": 0,
+      "bytes": 494398,
+      "sha256": "0a77f4fd15deb278faf684481f9fe9c04eba95686c234d75f2523af96783b43a"
+    },
+    {
+      "file": "finish-route-silent-5x.mp4",
+      "source_start_frame": 6350,
+      "source_end_frame_exclusive": 8340,
+      "source_encoded_start_seconds": 635.0,
+      "source_encoded_duration_seconds": 199.0,
+      "playback_speed": 5,
+      "source_start_utc": "2026-10-24T22:16:59.240701+00:00",
+      "source_last_utc": "2026-10-24T22:21:07.178858+00:00",
+      "source_stale_samples": 2,
+      "probe": {
+        "programs": [],
+        "stream_groups": [],
+        "streams": [
+          {
+            "codec_type": "video",
+            "r_frame_rate": "10/1",
+            "duration": "39.800000",
+            "nb_frames": "398"
+          }
+        ]
+      },
+      "full_ffmpeg_decode_exit": 0,
+      "bytes": 551058,
+      "sha256": "982910f7efc34238782cf080522e4c2644002dab203144e818c87149c848442d"
+    }
+  ],
+  "privacy": "Original resource packs, executable bytes, source card, full trace and private configuration are not included. Screenshots retain the displayed native UI.",
+  "ci": {
+    "run": 40136640385,
+    "source_commit": "5519c82018fc58d3b8e8e9a50c1fa34e5ad388e9",
+    "host": "success",
+    "capture": "success",
+    "arm_compile": "success",
+    "artifact_upload": "failure: GitHub artifact storage quota",
+    "overall": "failure"
+  }
+}
