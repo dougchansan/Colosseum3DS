@@ -55,6 +55,10 @@ Design constraints found:
   example the hit marker `0x8047B618` and damage multiplier `0x8047B63E`).
   The native interpreter needs an explicit, validated address map to native
   storage; unknown addresses must fail, never alias host memory.
+  For encounter 10 the operands reference exactly 10 battle variables
+  (`0x8038FF76`, `0x8038FFFC`, `0x80478D7B`, `0x80478D7D`, `0x80478D80`,
+  `0x8047B600`, `0x8047B618`, `0x8047B627`, `0x8047B63C`, `0x8047B63E`) and
+  2 read-only message tables used by opcode 0x13 (`0x80279D70`, `0x80279DC0`).
 - The `WS_STATUS_GET*/SET*` opcodes (0xF9–0xFD) go through `statusGetStatus` /
   `statusSetStatus` with field IDs, so the FightOutPokemon/floor status model
   must cover the IDs these scripts use.

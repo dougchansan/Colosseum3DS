@@ -10,6 +10,7 @@ the checkout; original bytes stay in the private DOL.
 usage: analyze_battle_scripts.py MAIN_DOL COMMON_REL [--moves 33,39,...]
 """
 import argparse
+import bisect
 import hashlib
 import re
 import struct
@@ -159,6 +160,7 @@ def main():
         effects.setdefault(struct.unpack(">H", row[26:28])[0], []).append(m)
 
     seen_ops = defaultdict(set); problems = []; dynamic = set()
+    globals_used = defaultdict(set)
     visited = set(); queue = []
     roots = {}
     for eff in sorted(effects):
@@ -194,6 +196,8 @@ def main():
                     target = struct.unpack(">I", dol.read(pc + j, 4))[0]
                     if SCRIPT_LO <= target < SCRIPT_HI:  # data pointers name variables
                         queue.append(target)
+                    elif 0x80000000 <= target < 0x81800000:
+                        globals_used[target].add((op, j))
             if not size and names[op] in TERMINATORS:
                 break
             if not size and op in DYNAMIC:
@@ -214,6 +218,23 @@ def main():
     for op in sorted(seen_ops):
         adv, jumps, unconditional, found = info[op]
         print(f"  {op:#04x} {names[op]:<28} advances={sorted(adv)} jump_offsets={sorted(jumps)}{' goto' if unconditional else ''} uses={len(seen_ops[op])}")
+    symbols = {}
+    for line in (ROOT / "vendor/colosseum/config/GC6E01/symbols.txt").read_text().splitlines():
+        m = re.match(r"(\w+) = \.\w+:0x([0-9A-Fa-f]{8});", line)
+        if m:
+            symbols[int(m.group(2), 16)] = m.group(1)
+    starts = sorted(symbols)
+
+    def name_of(addr):
+        i = bisect.bisect_right(starts, addr) - 1
+        if i < 0 or addr - starts[i] >= 0x1000:
+            return "?"
+        return symbols[starts[i]] + (f"+{addr - starts[i]:#x}" if addr != starts[i] else "")
+
+    print(f"\nglobals referenced by operands ({len(globals_used)}):")
+    for addr in sorted(globals_used):
+        ops = ",".join(f"{o:#04x}@{j}" for o, j in sorted(globals_used[addr]))
+        print(f"  {addr:08x} {name_of(addr):<28} {ops}")
     print("\ndynamic continuations:", " ".join(f"{op:#04x} {names[op]}" for op in sorted(dynamic)))
     print(f"scripts walked: {len(listing)}")
     print("\nproblems:")
