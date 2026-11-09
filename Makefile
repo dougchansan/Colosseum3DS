@@ -512,4 +512,15 @@ all: build/test_battle_state
 battle-state-check: build/test_battle_state
 	./build/test_battle_state
 test: battle-state-check
+
+# Attack-canceller pieces (guarded lowering) over the real entry.
+BATTLE_CANCELER_SOURCES = $(sort src/battle_canceler.c $(BATTLE_STATE_SOURCES))
+build/test_battle_canceler: tests/test_battle_canceler.c $(BATTLE_CANCELER_SOURCES) src/battle_script_names.inc $(HEADERS) $(BATTLE_STATUS_TABLES) $(BATTLE_ENTRY_SESSION_GENERATED) | build
+	$(CC) $(CPPFLAGS) -Isrc -Ibuild $(CFLAGS) tests/test_battle_canceler.c $(BATTLE_CANCELER_SOURCES) $(LDFLAGS) -lm -o $@
+
+all: build/test_battle_canceler
+.PHONY: battle-canceler-check
+battle-canceler-check: build/test_battle_canceler
+	./build/test_battle_canceler
+test: battle-canceler-check
 test: battle-runtime-trainer-check

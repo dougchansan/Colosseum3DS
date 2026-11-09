@@ -159,6 +159,20 @@ interpreter yet.
   FightOutPokemon `+0x15C` x52). Real rows of every category are exercised on
   the entry-built records.
 
+- Attack-canceller pieces (`src/battle_canceler.c`), by guarded lowering:
+  every branch condition is evaluated as in the original, bodies taken by
+  status-free battlers are lowered, and a held condition whose body is not
+  lowered yet stops with a named reason. The status canceller `fn_8022F2F8`
+  runs its 15-step machine (step counter `lbl_8047B644`, reset per move by
+  `fn_802128D0`): step 0 clears conditions 0x15/0x28
+  (`fightOutPokemonWriteJoutaiDataId`), then sleep, freeze, Truant, recharge,
+  flinch, Disable, Taunt, Imprison, confusion, paralysis, attraction, Bide,
+  thaw and the Shadow check. `fn_8022A6C8` is the Shadow Hyper Mode canceller
+  and `fn_8022EDEC` the Shadow reverse check; both return 0 for non-Shadow
+  battlers (`pokemonIsDarkPokemon`: dark ID set and DP >= 0). Encounter 10's
+  fight kind 2 allows Hyper Mode (kind row +0x16 = 1); computed floor fields
+  0x14/0x16/0x18/0x1A/0x31 come from the encounter, type and kind rows.
+
 ## Increments
 
 1. **Execution and end of turn through original code.** A minimal

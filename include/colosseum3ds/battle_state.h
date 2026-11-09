@@ -42,7 +42,16 @@ typedef struct {
     C3BattleDataRows moves, floors;
     C3BattleDataRows conditions; /* lbl_8035BBA8 rows (0x14), set by the caller
                                     from the battle DOL-table pack */
+    C3BattleDataRows encounters, types, kinds; /* 56 / 8 / 32-byte rows; types
+                                    and kinds admit index == count */
 } C3BattleState;
+
+/* Computed fightFloorGetStatus fields read from the encounter tables:
+ * 0x14 fight type (encounter row +1), 0x16 trainer count / 0x18 active count
+ * (type row +0 / +2), 0x1A fight kind (encounter row +0), 0x31 Shadow Hyper
+ * Mode flag (kind row +0x16). Other fields go to c3_battle_floor_status_get.
+ * Returns 0 for a field neither handles. */
+int c3_battle_floor_value(const C3BattleState *state, uint32_t field, uint32_t *value);
 
 /* msgctrlSetValue: stores into the original variable for a known ID (IDs
  * 0x2D, 0x2E, 0x39, 0x4E, 0x58, 0x59, 0x5D keep 16 bits); unknown IDs are

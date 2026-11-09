@@ -125,8 +125,39 @@ int c3_battle_state_from_entry(C3BattleState *s,const C3BattleEntrySession *e,co
     s->species=(C3BattleSpeciesTable){spc->bytes,spc->count};
     s->moves=(C3BattleDataRows){mov->bytes,mov->count,56};
     s->floors=(C3BattleDataRows){flr->bytes,flr->count,24};
+    const C3BattleEntryPackView *enc=&p->sections[C3_PACK_ENC],*typ=&p->sections[C3_PACK_TYP],*knd=&p->sections[C3_PACK_KND];
+    if(!enc->bytes||!typ->bytes||!knd->bytes)return fail(err,"Encounter tables are missing from the entry pack.");
+    s->encounters=(C3BattleDataRows){enc->bytes,enc->count,56};
+    /* fightTypeDataBiosGetPtr / fightKindDataBiosGetPtr admit index == count;
+     * the pack carries that boundary row. */
+    s->types=(C3BattleDataRows){typ->bytes,typ->count+1u,8};
+    s->kinds=(C3BattleDataRows){knd->bytes,knd->count+1u,32};
     if(err)err[0]=0;
     return 1;
+}
+
+static const uint8_t *row_at(const C3BattleDataRows *r,uint32_t id)
+{return r->rows&&id<r->count?r->rows+id*r->stride:NULL;}
+int c3_battle_floor_value(const C3BattleState *s,uint32_t field,uint32_t *value)
+{
+    if(!s||!value)return 0;
+    field&=0xFFFFu;
+    if(field==0x14||field==0x16||field==0x18||field==0x1A||field==0x31){
+        uint32_t encounter=0;
+        if(!c3_battle_floor_status_get(&s->arena,&s->floors,s->floor,0,0,0x0D,0,&encounter))return 0;
+        const uint8_t *er=row_at(&s->encounters,encounter&0xFFFFu);
+        if(field==0x14||field==0x16||field==0x18){
+            uint8_t type=er?er[1]:0;
+            if(field==0x14){*value=type;return 1;}
+            const uint8_t *tr=row_at(&s->types,type);
+            *value=tr?tr[field==0x16?0:2]:0;return 1;
+        }
+        uint8_t kind=er?er[0]:0;
+        if(field==0x1A){*value=kind;return 1;}
+        const uint8_t *kr=row_at(&s->kinds,kind);
+        *value=kr?kr[0x16]:0;return 1;
+    }
+    return c3_battle_floor_status_get(&s->arena,&s->floors,s->floor,0,0,field,0,value);
 }
 
 static const uint8_t *bytes(const C3BattleState *s,uint32_t a,uint32_t n,int *fault)
