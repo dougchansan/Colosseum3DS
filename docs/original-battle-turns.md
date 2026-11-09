@@ -234,6 +234,37 @@ interpreter yet.
   binding of the same arithmetic on the same records. The scripts stop at the
   type check (`0x06`, `fn_802274F0`).
 
+- `0x06` type check (`WS_TYPE_CHECK` → `fn_802274F0(1, 1, 1, 0)`), and the
+  accuracy miss path that calls it as `fn_802274F0(0, 0, 0, 1)`.
+  - Same-type bonus (×1.5) and Levitate against Ground. The Ghost exception
+    for an identified defender (condition 0x19) and Wonder Guard are lowered
+    as well.
+  - The type chart (`zokuseiGetWazaJoutai`: type row +8 + defender type × 2)
+    feeds `fn_802279F8`, which applies ×0 / ×0.5 / ×2 and records the result
+    as FightWaza conditions 0x41–0x43.
+  - The FightWaza work copy is restored after the miss path's call; the
+    floor/defender writes (floor 0x3B → attacker field 0xDE, defender 0xF3
+    and 0xF4, attacker 0x108) follow the original.
+  - Condition slot writes are now in the battle state: write
+    (`fn_8011B2C0`), check write (`fn_8011B444`) and erase (`fn_8011B788`),
+    with the condition-row and slot layouts read from the DOL accessors.
+    Only kaisuu row 0 (min = max = −1, no draw) is modelled. The FightWaza
+    rows 0x3F–0x45 all use it, and other rows are refused by name.
+  - Miss: `fightWazaIsHit` fails, so the defender's hit move is cleared
+    (0xF3 = 0, 0xF4 = 9) and the script takes the miss branch.
+
+  On the original data:
+
+  | Case | Damage | Conditions |
+  |---|---|---|
+  | Tackle (Normal Zigzagoon) | 4 → 6 (same type) | 0x3F (`fightWazaInit` default) |
+  | Confusion (Psychic Espeon) | 37 → 55 (same type) | 0x3F |
+  | Tackle retyped Fighting on Dark Umbreon | 8 (×2, no same-type bonus) | 0x41 |
+  | Normal on Umbreon retyped Ghost | 0 | 0x43, attacker 0x108 set |
+
+  Hits stop at `0x07` `WS_DAMAGE_LOSS` (`fn_802271E0`). A miss under
+  evasion +6 continues on the miss branch to opcode `0x45` (`fn_80222370`).
+
 ## Increments
 
 1. **Execution and end of turn through original code.** A minimal

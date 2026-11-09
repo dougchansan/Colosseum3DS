@@ -136,4 +136,16 @@ int c3_battle_condition_present(const C3BattleState *state, uint32_t object,
  * categories return 0, as in the original. */
 int c3_battle_condition_check(const C3BattleState *state, uint32_t fight_out,
                               uint16_t id, int *fault);
+/* Condition slot writes (field_range_80117E58.c), same slot resolution as
+ * c3_battle_condition_present. Condition rows: kind +0, slot +1, write type
+ * +2, count limit +3, kaisuu row +4, selector +8, link +0xA. Slots: ID +0,
+ * argument +2, kaisuu +4 (s8), +5, count +6, +8 (u32), +0xC (u16).
+ *   write (fn_8011B2C0): clear the slot, store ID, argument and the kaisuu
+ *     count; write type 4 also counts up to the limit. Only kaisuu row 0
+ *     (min = max = -1, no draw) is modelled; other rows set *fault.
+ *   check write (fn_8011B444): 0 no slot, 1 refused, 2 writable.
+ *   erase (fn_8011B788): zero the slot if it holds `id`. */
+int c3_battle_condition_write(C3BattleState *state, uint32_t object, uint16_t id, uint16_t argument, int *fault);
+int c3_battle_condition_check_write(const C3BattleState *state, uint32_t object, uint16_t id, int *fault);
+void c3_battle_condition_erase(C3BattleState *state, uint32_t object, uint16_t id, int *fault);
 #endif

@@ -7,6 +7,8 @@
  *   0x03 fn_8022808C  PP reduce
  *   0x04 WS_CRITICAL_CHECK
  *   0x05 fn_80227C40  damage calculation (fn_80232110 via battle_damage_state)
+ *   0x06 WS_TYPE_CHECK fn_802274F0(1, 1, 1, 0): STAB, Levitate, type chart
+ *                     (fn_802279F8), Wonder Guard
  * Script variables (hit marker 0x8047B618, ...) are the interpreter's
  * windows; battle records are the state's arena. */
 #include "colosseum3ds/battle_handlers.h"
@@ -57,6 +59,42 @@ C3BattleScriptServices c3_battle_handler_services(C3BattleHandlers *h)
 {
     C3BattleScriptServices sv={h,status_get,status_set,target,end_of_move,c3_battle_handler_dispatch};
     return sv;
+}
+
+/* ---- FightWaza conditions (fight_out_pokemon_exact_802096E8.c) ---------- */
+
+#define WAZA_CATEGORY 0x2A
+static uint16_t condition_category(const C3BattleState *s,uint16_t id)   /* fn_80119ED0 */
+{
+    const C3BattleDataRows *r=&s->conditions;
+    return r->rows&&id<r->count?(uint16_t)((uint16_t)r->rows[(uint32_t)id*r->stride+8]<<8|r->rows[(uint32_t)id*r->stride+9]):0;
+}
+static int waza_is(const C3BattleState *s,uint32_t fw,uint16_t id,int *fault)        /* fightWazaIsJoutaiDataId */
+{return condition_category(s,id)==WAZA_CATEGORY&&c3_battle_condition_present(s,fw,id,fault)==1;}
+static int waza_check_write(const C3BattleState *s,uint32_t fw,uint16_t id,int *fault) /* fightWazaCheckWriteJoutaiDataId */
+{return condition_category(s,id)==WAZA_CATEGORY?c3_battle_condition_check_write(s,fw,id,fault):0;}
+static void waza_write(C3BattleState *s,uint32_t fw,uint16_t id,int *fault)          /* fightWazaWriteJoutaiDataId(.., 0) */
+{if(condition_category(s,id)==WAZA_CATEGORY&&!c3_battle_condition_write(s,fw,id,0,fault)&&fault)*fault=1;}
+static void waza_erase(C3BattleState *s,uint32_t fw,uint16_t id,int *fault)          /* fightWazaInitJoutaiDataId */
+{if(condition_category(s,id)==WAZA_CATEGORY)c3_battle_condition_erase(s,fw,id,fault);}
+static int waza_hit(const C3BattleState *s,uint32_t fw,int *fault)                  /* fightWazaIsHit */
+{return !waza_is(s,fw,0x40,fault)&&!waza_is(s,fw,0x43,fault)&&!waza_is(s,fw,0x45,fault);}
+static int waza_sousai(const C3BattleState *s,uint32_t fw,int *fault)               /* fightWazaIsJoutaiSousai */
+{return waza_is(s,fw,0x41,fault)&&waza_is(s,fw,0x42,fault);}
+/* pokemonSetStatus(fo, 0xDE, id): write the condition when writable. */
+static void waza_set_condition(C3BattleState *s,uint32_t fo,uint16_t id,int *fault)
+{
+    uint32_t fw=0;
+    if(!c3_battle_fight_status_get(&s->arena,fo,0xD9,0,&fw)){if(fault)*fault=1;return;}
+    if(waza_check_write(s,fw,id,fault)==2)waza_write(s,fw,id,fault);
+}
+/* fightFloorSetStatus(0, 0, 0x3B, 0, id): the floor attacker's 0xDE. */
+static void floor_attacker_condition(C3BattleState *s,uint16_t id,int *fault)
+{
+    uint32_t attacker=0;
+    if(!c3_battle_floor_value(s,0x36,&attacker)&&
+       !c3_battle_floor_status_get(&s->arena,&s->floors,s->floor,0,0,0x36,0,&attacker)){if(fault)*fault=1;return;}
+    waza_set_condition(s,attacker,id,fault);
 }
 
 /* ---- 0x00 WS_HITCHECK ---------------------------------------------------- */
@@ -143,13 +181,20 @@ static int present(C3BattleHandlers *h,C3BattlePresent r,uint32_t a,uint32_t b)
 
 /* fn_802284B0_hit: the move hit unless a FightWaza miss condition is set;
  * then the follow-me flag and the absorbing-ability check (fn_8022DCB8). */
+static int type_check(C3BattleHandlers *h,C3BattleScript *sc,uint8_t r3,uint8_t r4,uint8_t r5,uint8_t r6);
 static int accuracy_hit(C3BattleHandlers *h,C3BattleScript *sc,uint16_t move,uint32_t attacker,uint32_t defender)
 {
     C3BattleState *s=h->state;
     uint32_t fw=get(s,attacker,0xD9),flags=0;
     int missed=c3_battle_condition_present(s,fw,0x40,NULL)||c3_battle_condition_present(s,fw,0x43,NULL)||
         c3_battle_condition_present(s,fw,0x45,NULL);                              /* fightWazaIsHit */
-    if(missed)return stop(sc,"miss result (fn_802284B0_hit)");
+    if(missed){
+        uint32_t jump=0;
+        if(!c3_battle_fight_status_set(&s->arena,defender,0xF3,0,0)||!c3_battle_fight_status_set(&s->arena,defender,0xF4,0,9))
+            return stop(sc,"defender hit move");
+        if(!c3_battle_script_fetch(sc,1,4,&jump))return C3_SCRIPT_HANDLER_FAIL;
+        return c3_battle_script_jump(sc,jump)?C3_SCRIPT_HANDLER_DONE:C3_SCRIPT_HANDLER_FAIL;
+    }
     if(has(s,defender,0x15)&&battler_side(s,attacker)!=battler_side(s,defender)){
         if(!c3_battle_script_read(sc,HIT_MARKER,4,&flags))return stop(sc,"hit marker");
         if(!(flags&0x1000000u))c3_battle_script_write(sc,HIT_MARKER,4,flags|0x40u);
@@ -214,7 +259,18 @@ static int op_accuracy(C3BattleHandlers *h,C3BattleScript *sc)
     uint16_t random=0;
     if(!c3_battle_rng_next16(&s->rng,&random))return stop(sc,"random stream");
     int roll=(int)(random%100u)+1;
-    if(roll>(int)accuracy)return stop(sc,"miss (type check fn_802274F0)");
+    if(roll>(int)accuracy){
+        int fault=0;uint32_t fw=get(s,attacker,0xD9),maximum=0,old=0,now=0;
+        if(waza_check_write(s,fw,0x40,&fault)==2)waza_write(s,fw,0x40,&fault);
+        if(fault)return stop(sc,"miss condition");
+        if(!c3_battle_floor_value(s,0x19,&maximum))return stop(sc,"floor field 0x19");
+        uint8_t category=(uint8_t)waza(s,0,move,5);
+        c3_battle_script_write(sc,WORK_BASE+6,1,((uint16_t)maximum>=2&&(category==4||category==6))?2u:0u);
+        (void)c3_battle_script_read(sc,WORK_BASE+6,1,&old);
+        if(type_check(h,sc,0,0,0,1)!=C3_SCRIPT_HANDLER_DONE)return C3_SCRIPT_HANDLER_FAIL;
+        (void)c3_battle_script_read(sc,WORK_BASE+6,1,&now);
+        if(now==3&&(old==2||old==0))c3_battle_script_write(sc,WORK_BASE+6,1,old);
+    }
     return accuracy_hit(h,sc,move,attacker,defender);
 }
 
@@ -350,6 +406,109 @@ static int op_damage_calc(C3BattleHandlers *h,C3BattleScript *sc)
     return C3_SCRIPT_HANDLER_DONE;
 }
 
+/* ---- 0x06 WS_TYPE_CHECK (fn_802274F0, fn_802279F8) ----------------------- */
+
+/* fn_802279F8(fight_waza, effectiveness, move, apply): 0x43 no effect, 0x42
+ * not very effective, 0x41 super effective; 0x3F and others leave it. */
+static void type_effect(C3BattleState *s,uint32_t fw,uint16_t effect,uint16_t move,uint8_t apply,int *fault)
+{
+    int32_t damage=(int32_t)waza(s,fw,0,0x2D);
+    uint16_t power=(uint16_t)waza(s,0,move,7);
+    uint8_t mult;
+    if(waza_is(s,fw,0x43,fault)&&apply==0)return;
+    if(effect==0x3F)return;
+    if(effect==0x43)mult=0;else if(effect==0x42)mult=5;else if(effect==0x41)mult=0x14;else return;
+    if(apply==1){
+        damage=damage*(int32_t)mult/10;
+        if(damage==0&&mult!=0)damage=1;
+        if(!c3_battle_waza_status_set(&s->arena,fw,0x2D,0,(uint32_t)damage)&&fault)*fault=1;
+    }
+    if(mult==0){
+        if(waza_check_write(s,fw,effect,fault)==2)waza_write(s,fw,effect,fault);
+        waza_erase(s,fw,0x42,fault);waza_erase(s,fw,0x41,fault);
+    }else if(power!=0&&waza_hit(s,fw,fault)){
+        uint16_t opposite=mult==5?0x41:0x42;
+        if(waza_is(s,fw,opposite,fault))waza_erase(s,fw,opposite,fault);
+        else if(waza_check_write(s,fw,effect,fault)==2)waza_write(s,fw,effect,fault);
+    }
+}
+/* zokuseiGetWazaJoutai (fn_8010C508): type row +8 + defender type * 2. */
+static uint16_t type_chart(const C3BattleHandlers *h,uint16_t move_type,uint16_t defender_type)
+{
+    const C3BattleDamageTables *t=&h->damage;
+    if(!t->types||move_type>=t->type_count||defender_type>=0x12)return 0;
+    const uint8_t *p=t->types+(uint32_t)move_type*0x2Cu+8u+(uint32_t)defender_type*2u;
+    return (uint16_t)((uint16_t)p[0]<<8|p[1]);
+}
+static uint16_t battler_type(const C3BattleState *s,uint32_t fo,uint32_t slot)   /* fightOutPokemonGetZokuseiDataId */
+{uint32_t v=0;(void)c3_battle_fight_status_get(&s->arena,fo,0xFF,slot,&v);return (uint16_t)v;}
+
+static int type_check(C3BattleHandlers *h,C3BattleScript *sc,uint8_t r3,uint8_t r4,uint8_t r5,uint8_t r6)
+{
+    C3BattleState *s=h->state;
+    uint32_t attacker=0,defender=0,flags=0;
+    int fault=0;
+    if(!c3_battle_target(&s->arena,s->floor,0x11,0,&attacker)||!c3_battle_target(&s->arena,s->floor,0x12,0,&defender))
+        return stop(sc,"type check targets");
+    uint16_t att1=battler_type(s,attacker,0),att2=battler_type(s,attacker,1);
+    uint32_t fw=get(s,attacker,0xD9);
+    uint16_t move=fw?(uint16_t)waza(s,fw,0,0x28):0;              /* fightOutPokemonGetUseWazaDataId */
+    uint16_t power=(uint16_t)waza(s,0,move,7),move_type=(uint16_t)waza(s,fw,0,0x30);
+    uint16_t def1=battler_type(s,defender,0),def2=battler_type(s,defender,1);
+    uint16_t def_ability=(uint16_t)get(s,defender,0x100);
+    uint8_t backup[0xAC];
+    uint8_t *record=fw?c3_battle_arena_bytes(&s->arena,fw,sizeof backup):NULL;
+    if(fw&&!record)return stop(sc,"FightWaza record");
+    if(record)memcpy(backup,record,sizeof backup);
+    if(move!=0xA5&&move!=0x164&&(r6!=1||power!=0)){
+        if(r3==1&&(att1==move_type||att2==move_type)){             /* same-type bonus */
+            int32_t damage=(int32_t)waza(s,fw,0,0x2D);
+            if(!c3_battle_waza_status_set(&s->arena,fw,0x2D,0,(uint32_t)(damage*0xF/10)))return stop(sc,"FightWaza damage");
+        }
+        if(def_ability==0x1A&&move_type==4){                       /* Levitate vs Ground */
+            if(r5==1){
+                floor_attacker_condition(s,0x43,&fault);floor_attacker_condition(s,0x40,&fault);
+                if(!c3_battle_fight_status_set(&s->arena,defender,0xF3,0,0)||!c3_battle_fight_status_set(&s->arena,defender,0xF4,0,9))
+                    fault=1;
+            }
+            c3_battle_script_write(sc,WORK_BASE+6,1,4);
+        }else{
+            int identified=c3_battle_condition_check(s,defender,0x19,&fault)==1;
+            if(!identified||(def1!=7&&def2!=7)||move_type>1){
+                type_effect(s,fw,type_chart(h,move_type,def1),move,r3,&fault);
+                if(def1!=def2)type_effect(s,fw,type_chart(h,move_type,def2),move,r3,&fault);
+            }
+        }
+        if(def_ability==0x19){                                     /* Wonder Guard */
+            uint16_t effect=(uint16_t)waza(s,0,move,9);
+            int guard=2,w=0;
+            if(effect==0x97&&(c3_battle_state_weather(s,0,&w)?w==1:(fault=1,0)))guard=2;
+            else if(effect==0x91||effect==0x27||effect==0x4B||effect==0x97||effect==0x9B||effect==0x1A){
+                if(!c3_battle_script_read(sc,HIT_MARKER,4,&flags))return stop(sc,"hit marker");
+                guard=(flags&0x8000000u)?1:2;
+            }
+            if(guard==2&&(!waza_is(s,fw,0x41,&fault)||waza_sousai(s,fw,&fault))&&power!=0){
+                if(r5==1){
+                    floor_attacker_condition(s,0x40,&fault);
+                    if(!c3_battle_fight_status_set(&s->arena,defender,0xF3,0,0)||!c3_battle_fight_status_set(&s->arena,defender,0xF4,0,9))
+                        fault=1;
+                }
+                c3_battle_script_write(sc,WORK_BASE+6,1,3);
+            }
+        }
+        if(waza_is(s,fw,0x43,&fault)&&!c3_battle_fight_status_set(&s->arena,attacker,0x108,0,1))fault=1;
+    }
+    if(r3==0){
+        int f40=waza_is(s,fw,0x40,&fault),f43=waza_is(s,fw,0x43,&fault);
+        if(record)memcpy(record,backup,sizeof backup);
+        if(f40)floor_attacker_condition(s,0x40,&fault);
+        if(f43)floor_attacker_condition(s,0x43,&fault);
+    }
+    if(fault)return stop(sc,"type check condition or record");
+    if(r4==1)sc->pc+=1;
+    return C3_SCRIPT_HANDLER_DONE;
+}
+
 int c3_battle_handler_dispatch(void *user,C3BattleScript *sc,uint8_t op,unsigned phase)
 {
     C3BattleHandlers *h=user;(void)phase;
@@ -361,6 +520,7 @@ int c3_battle_handler_dispatch(void *user,C3BattleScript *sc,uint8_t op,unsigned
     case 0x03:return op_pp_reduce(h,sc);
     case 0x04:return op_critical(h,sc);
     case 0x05:return op_damage_calc(h,sc);
+    case 0x06:return type_check(h,sc,1,1,1,0);
     default:return C3_SCRIPT_HANDLER_NONE;
     }
 }

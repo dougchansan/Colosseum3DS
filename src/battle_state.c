@@ -298,6 +298,59 @@ int c3_battle_condition_present(const C3BattleState *s,uint32_t object,uint16_t 
     uint16_t stored=be16(slot);                                  /* fn_8011A090 */
     return stored!=0&&stored==id;
 }
+static uint8_t *condition_slot(C3BattleState *s,uint32_t object,uint16_t id,const uint8_t **row,int *fault)
+{
+    *row=condition_row(s,id);
+    uint8_t kind=*row?(*row)[0]:0,index=*row?(*row)[1]:0;     /* fn_80119F10, fn_80119E90 */
+    uint32_t base=condition_base(s,kind,object,condition_category(s,id),fault);
+    if(!base)return NULL;
+    uint8_t *slot=c3_battle_arena_bytes(&s->arena,base+(uint32_t)index*16u,16);
+    if(!slot&&fault)*fault=1;
+    return slot;
+}
+static void slot_zero(uint8_t *slot){memset(slot,0,7);memset(slot+8,0,6);}  /* fn_80119FF0 ... fn_80119F90 */
+int c3_battle_condition_write(C3BattleState *s,uint32_t object,uint16_t id,uint16_t argument,int *fault)
+{
+    const uint8_t *row=NULL;
+    if(!s||!id)return 1;
+    uint8_t *slot=condition_slot(s,object,id,&row,fault);
+    if(!slot)return 1;
+    uint8_t type=row?row[2]:0,limit=row?row[3]:0,kaisuu=row?row[4]:0;
+    if(kaisuu!=0){if(fault)*fault=1;return 0;}                   /* kaisuuGetKaisuu: rows 1+ not packed */
+    uint8_t old=type==4?slot[6]:0;                               /* fn_8011A030 */
+    slot_zero(slot);
+    slot[0]=(uint8_t)(id>>8);slot[1]=(uint8_t)id;
+    slot[2]=(uint8_t)(argument>>8);slot[3]=(uint8_t)argument;
+    slot[4]=0xFF;                                                /* kaisuu row 0: -1 */
+    if(type==4){uint8_t count=(uint8_t)(old+1u);slot[6]=limit<count?limit:count;}
+    return 1;
+}
+int c3_battle_condition_check_write(const C3BattleState *s,uint32_t object,uint16_t id,int *fault)
+{
+    const uint8_t *row=NULL;
+    if(!s)return 0;
+    if(!id)return 1;
+    uint8_t *slot=condition_slot((C3BattleState *)s,object,id,&row,fault);
+    if(!slot)return 0;
+    uint16_t stored=be16(slot);
+    uint8_t type=row?row[2]:0;
+    const uint8_t *stored_row=condition_row(s,stored);
+    uint16_t link=stored_row?be16(stored_row+0xA):0;            /* fn_80119E10 */
+    switch(type){
+    case 0:case 1:return 2;
+    case 2:return stored?1:2;
+    case 3:if(!stored)return 2;return stored==id||link==id?1:2;
+    case 4:if(!stored||stored==id)return 2;return link!=id?1:2;
+    default:return 0;
+    }
+}
+void c3_battle_condition_erase(C3BattleState *s,uint32_t object,uint16_t id,int *fault)
+{
+    const uint8_t *row=NULL;
+    if(!s||!id||!c3_battle_condition_present(s,object,id,fault))return;
+    uint8_t *slot=condition_slot(s,object,id,&row,fault);
+    if(slot)slot_zero(slot);
+}
 int c3_battle_condition_check(const C3BattleState *s,uint32_t fo,uint16_t id,int *fault)
 {
     if(!s)return 0;

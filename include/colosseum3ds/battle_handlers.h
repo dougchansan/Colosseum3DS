@@ -37,6 +37,6 @@ C3BattleScriptServices c3_battle_handler_services(C3BattleHandlers *handlers);
 
 /* Lowered opcodes so far: 0x00 WS_HITCHECK (attack canceler), 0x01
  * accuracy check, 0x02 attack string, 0x03 PP reduce, 0x04 critical check,
- * 0x05 damage calculation. */
+ * 0x05 damage calculation, 0x06 type check. */
 int c3_battle_handler_dispatch(void *user, C3BattleScript *script, uint8_t opcode, unsigned phase);
 #endif
