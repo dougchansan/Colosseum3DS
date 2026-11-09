@@ -265,6 +265,26 @@ interpreter yet.
   Hits stop at `0x07` `WS_DAMAGE_LOSS` (`fn_802271E0`). A miss under
   evasion +6 continues on the miss branch to opcode `0x45` (`fn_80222370`).
 
+- `0x07` `WS_DAMAGE_LOSS` and `0x08` `WS_DAMAGE_LOSS_ONLY`
+  (`fn_802271E0(1|0, 1)`).
+  - One draw from the shared stream scales nonzero damage to 85–100 %
+    (`100 - draw % 16`, at least 1).
+  - Unless the defender has condition 0x14: False Swipe (effect 0x65, 0x07
+    only), Endure (condition 0x2C) or the Focus Band flag (0x11A) cap damage
+    at the defender's HP − 1. Endure records FightWaza condition 0x46.
+  - Focus Band itself needs a held item, which is refused, as is its
+    survival message (floor 0x56).
+
+  On the original data the next draw gives 85 %:
+
+  | Case | Damage |
+  |---|---|
+  | Tackle | 6 → 5 |
+  | Confusion | 55 → 46 |
+  | Endure at 3 HP | capped at 2, condition 0x46 |
+
+  After the set-byte step (`0x2E`), hits stop at `0x09` (`fn_80226FD4`).
+
 ## Increments
 
 1. **Execution and end of turn through original code.** A minimal

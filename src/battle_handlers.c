@@ -9,6 +9,8 @@
  *   0x05 fn_80227C40  damage calculation (fn_80232110 via battle_damage_state)
  *   0x06 WS_TYPE_CHECK fn_802274F0(1, 1, 1, 0): STAB, Levitate, type chart
  *                     (fn_802279F8), Wonder Guard
+ *   0x07 WS_DAMAGE_LOSS / 0x08 WS_DAMAGE_LOSS_ONLY  fn_802271E0(1|0, 1):
+ *                     random 85-100%, Focus Band, False Swipe / Endure
  * Script variables (hit marker 0x8047B618, ...) are the interpreter's
  * windows; battle records are the state's arena. */
 #include "colosseum3ds/battle_handlers.h"
@@ -509,6 +511,53 @@ static int type_check(C3BattleHandlers *h,C3BattleScript *sc,uint8_t r3,uint8_t 
     return C3_SCRIPT_HANDLER_DONE;
 }
 
+/* ---- 0x07 WS_DAMAGE_LOSS, 0x08 WS_DAMAGE_LOSS_ONLY (fn_802271E0) --------- */
+
+static int damage_loss(C3BattleHandlers *h,C3BattleScript *sc,uint8_t r3,uint8_t r4)
+{
+    C3BattleState *s=h->state;
+    uint32_t attacker=0,defender=0;
+    int fault=0;
+    if(!c3_battle_target(&s->arena,s->floor,0x11,0,&attacker)||!c3_battle_target(&s->arena,s->floor,0x12,0,&defender))
+        return stop(sc,"damage loss targets");
+    uint32_t fw=get(s,attacker,0xD9);
+    uint16_t move=fw?(uint16_t)waza(s,fw,0,0x28):0;              /* fightOutPokemonGetUseWazaDataId */
+    int32_t damage=(int32_t)waza(s,fw,0,0x2D);
+    uint16_t effect=0;
+    if(!held_item_effect(s,defender,&effect))return stop(sc,"defender held item (Focus Band)");
+    uint32_t pokemon=battler_pokemon(s,defender);                 /* fightOutPokemonGetPokemonPtr */
+    const uint8_t *hp_bytes=pokemon?c3_battle_arena_bytes(&s->arena,pokemon+0x8A,2):NULL;
+    uint16_t hp=hp_bytes?(uint16_t)((uint16_t)hp_bytes[0]<<8|hp_bytes[1]):0;   /* pokemonGetStatus 0x83 */
+    if(pokemon&&!hp_bytes)return stop(sc,"defender Pokemon record");
+    if(r4==1){
+        uint16_t random=0;
+        if(!c3_battle_rng_next16(&s->rng,&random))return stop(sc,"random stream");
+        uint16_t percent=(uint16_t)(100u-random%16u);
+        if(damage!=0){
+            damage=damage*(int32_t)percent/100;
+            if(damage==0)damage=1;
+            if(!c3_battle_waza_status_set(&s->arena,fw,0x2D,0,(uint32_t)damage))return stop(sc,"FightWaza damage");
+        }
+    }
+    /* effect 0x27 (Focus Band) needs a held item, refused above. */
+    if(c3_battle_condition_check(s,defender,0x14,&fault)==0){
+        uint16_t move_effect=(uint16_t)waza(s,0,move,9);
+        int endure=c3_battle_condition_check(s,defender,0x2C,&fault)==1;
+        uint32_t focus=get(s,defender,0x11A);
+        if((move_effect==0x65&&r3==1)||endure||focus){              /* False Swipe, Endure, Focus Band */
+            if((int32_t)hp<=damage){
+                if(!c3_battle_waza_status_set(&s->arena,fw,0x2D,0,(uint32_t)(hp-1u)))return stop(sc,"FightWaza damage");
+                if(endure){
+                    if(waza_check_write(s,fw,0x46,&fault)==2)waza_write(s,fw,0x46,&fault);
+                }else if(focus)return stop(sc,"Focus Band survival (floor 0x56 item)");
+            }
+        }
+    }
+    if(fault)return stop(sc,"damage loss condition");
+    sc->pc+=1;
+    return C3_SCRIPT_HANDLER_DONE;
+}
+
 int c3_battle_handler_dispatch(void *user,C3BattleScript *sc,uint8_t op,unsigned phase)
 {
     C3BattleHandlers *h=user;(void)phase;
@@ -521,6 +570,8 @@ int c3_battle_handler_dispatch(void *user,C3BattleScript *sc,uint8_t op,unsigned
     case 0x04:return op_critical(h,sc);
     case 0x05:return op_damage_calc(h,sc);
     case 0x06:return type_check(h,sc,1,1,1,0);
+    case 0x07:return damage_loss(h,sc,1,1);
+    case 0x08:return damage_loss(h,sc,0,1);
     default:return C3_SCRIPT_HANDLER_NONE;
     }
 }

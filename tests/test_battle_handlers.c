@@ -95,6 +95,16 @@ static C3BattleScriptStatus run_effect(World *w,Run *r,uint16_t effect)
     CHECK(0);return C3_SCRIPT_FAILED;
 }
 
+/* Damage loss (fn_802271E0): the third draw of a hit (accuracy, critical,
+ * loss) gives 100 - draw % 16 percent, at least 1 of nonzero damage. */
+static uint32_t after_loss(C3BattleRng rng,uint32_t damage)
+{
+    uint16_t draw=0;
+    for(int i=0;i<3;++i)CHECK(c3_battle_rng_next16(&rng,&draw));
+    uint32_t lost=damage*(100u-draw%16u)/100u;
+    return damage&&!lost?1u:lost;
+}
+
 /* Base damage from the preview binding of the same original arithmetic
  * (src/battle_damage.c), with preview mons built from the same records. */
 static uint32_t preview_base_damage(World *w,const char *dir,unsigned att_side,unsigned att_slot,
@@ -155,13 +165,16 @@ int main(void)
     if(hit){
         /* Critical check (one draw when critical hits are possible), damage
          * calculation, type check (same-type bonus; Normal on Dark is
-         * neutral), then the damage loss step (not lowered yet). */
-        uint16_t crit_draw=0;C3BattleRng after=predicted;CHECK(c3_battle_rng_next16(&after,&crit_draw));
+         * neutral), damage loss (one draw: 85-100%), the set-byte step, then
+         * fn_80226FD4 (not lowered yet). */
+        uint16_t crit_draw=0,loss_draw=0;C3BattleRng after=predicted;CHECK(c3_battle_rng_next16(&after,&crit_draw));
         uint32_t crit=crit_draw%16u==0?2u:1u,flag=0;
         CHECK(c3_battle_floor_value(w.state,0x29,&flag));
         if(!(flag&0xFF)){crit=1;after=predicted;}
+        CHECK(c3_battle_rng_next16(&after,&loss_draw));
         CHECK(w.state->rng.draws==after.draws&&w.state->rng.seed==after.seed);
-        CHECK(r.script.failure_pc==0x80375F9Bu&&strstr(r.script.failure,"WS_DAMAGE_LOSS"));
+        CHECK(r.script.failure_pc==0x80375FA2u&&strstr(r.script.failure,"fn_80226FD4"));
+        CHECK(c3_battle_script_read(&r.script,0x8047B600u,1,&v)&&v==0);           /* 0x2E set byte */
         CHECK(c3_battle_script_read(&r.script,0x8047B618u,4,&v)&&v==0x02000400u);   /* hit marker */
         CHECK(tackle[2]==pp_before-1);                                                  /* PP 35 -> 34 */
         CHECK(c3_battle_fight_status_get(&w.state->arena,c3_battle_state_fight_out(w.state,1,0),0x111,0,&v)&&v==1);
@@ -176,9 +189,11 @@ int main(void)
         CHECK(c3_battle_waza_status_get(&w.state->arena,&w.state->moves,fw,0,0x2B,0,&stored_crit)&&stored_crit==crit);
         CHECK(c3_battle_waza_status_get(&w.state->arena,&w.state->moves,fw,0,0x2D,0,&damage));
         uint32_t base=preview_base_damage(&w,preview_dir,1,0,0,0,33,35,0);
-        printf("tackle damage: base %u x crit %u = %u (critical-hit flag %u, crit draw %u)\n",base,crit,damage,
-            (unsigned)flag,crit_draw);
-        CHECK(damage==base*crit*15/10);
+        uint32_t typed=base*crit*15/10,percent=100u-loss_draw%16u,lost=typed?typed*percent/100u:0;
+        if(typed&&!lost)lost=1;
+        printf("tackle damage: base %u x crit %u x 1.5 = %u, x %u%% = %u (crit draw %u, loss draw %u)\n",base,crit,
+            typed,percent,damage,crit_draw,loss_draw);
+        CHECK(damage==lost);
         CHECK(c3_battle_condition_present(w.state,fw,0x3F,NULL));                    /* fightWazaInit default */
         for(uint16_t id=0x40;id<=0x45;++id)CHECK(!c3_battle_condition_present(w.state,fw,id,NULL));
         CHECK(c3_battle_script_read(&r.script,0x80478D7Eu,1,&v)&&v==0);           /* work byte 6 */
@@ -190,17 +205,18 @@ int main(void)
 
     /* Espeon (player slot 1) uses Confusion (slot 0) on Zigzagoon A. */
     battle_reset(&w,0,1,1,0,93,0);
+    C3BattleRng start=w.state->rng;
     CHECK(run_effect(&w,&r,76)==C3_SCRIPT_FAILED);
     printf("confusion: stops at %08lx: %s\n",(unsigned long)r.script.failure_pc,r.script.failure);
     CHECK(r.handlers.canceller_step==15&&!strstr(r.script.failure,"WS_HITCHECK"));
     {   /* Espeon's Confusion: special, Psychic, power 50, cross-checked too. */
         uint32_t fw=c3_battle_state_fight_out(w.state,0,1)+0x49C,damage=0,crit=0;
-        if(strstr(r.script.failure,"WS_DAMAGE_LOSS")){
+        if(strstr(r.script.failure,"fn_80226FD4")){
             CHECK(c3_battle_waza_status_get(&w.state->arena,&w.state->moves,fw,0,0x2D,0,&damage));
             CHECK(c3_battle_waza_status_get(&w.state->arena,&w.state->moves,fw,0,0x2B,0,&crit));
             uint32_t base=preview_base_damage(&w,preview_dir,0,1,1,0,93,50,14);
-            printf("confusion damage: base %u x crit %u x 1.5 = %u\n",base,crit,damage);
-            CHECK(damage==base*crit*15/10);                       /* Psychic on Psychic Espeon */
+            printf("confusion damage: base %u x crit %u x 1.5, loss = %u\n",base,crit,damage);
+            CHECK(damage==after_loss(start,base*crit*15/10));     /* Psychic on Psychic Espeon */
         }
     }
 
@@ -212,7 +228,7 @@ int main(void)
     hit=(int)(draw%100u)+1<=95*33/100;
     CHECK(run_effect(&w,&r,0)==C3_SCRIPT_FAILED);
     printf("evasion +6: draw %u -> %s: %s\n",draw,hit?"hit":"miss",r.script.failure);
-    if(hit)CHECK(strstr(r.script.failure,"WS_DAMAGE_LOSS")!=NULL);
+    if(hit)CHECK(strstr(r.script.failure,"fn_80226FD4")!=NULL);
     else{   /* fightWazaIsHit fails: miss condition 0x40, the defender's hit
              * move cleared (0xF3 0, 0xF4 9) and the miss branch taken. */
         uint32_t fw=c3_battle_state_fight_out(w.state,1,0)+0x49C,att_type=0,hit_move=1,hit_type=0;
@@ -231,16 +247,34 @@ int main(void)
     {
         uint32_t att=c3_battle_state_fight_out(w.state,1,0),fw=att+0x49C,damage=0,crit=0;
         CHECK(c3_battle_waza_status_set(&w.state->arena,fw,0x30,0,1));
+        start=w.state->rng;
         CHECK(run_effect(&w,&r,0)==C3_SCRIPT_FAILED);
-        CHECK(strstr(r.script.failure,"WS_DAMAGE_LOSS")!=NULL);
+        CHECK(strstr(r.script.failure,"fn_80226FD4")!=NULL);
         CHECK(c3_battle_waza_status_get(&w.state->arena,&w.state->moves,fw,0,0x2D,0,&damage));
         CHECK(c3_battle_waza_status_get(&w.state->arena,&w.state->moves,fw,0,0x2B,0,&crit));
         /* The preview admits types 0/14/17 only; Fighting is physical like
          * Normal and no type-specific modifier applies to these battlers. */
         uint32_t base=preview_base_damage(&w,preview_dir,1,0,0,0,33,35,0);
-        printf("fighting tackle: base %u x crit %u x 2 = %u\n",base,crit,damage);
-        CHECK(damage==base*crit*2);
+        printf("fighting tackle: base %u x crit %u x 2, loss = %u\n",base,crit,damage);
+        CHECK(damage==after_loss(start,base*crit*2));
         CHECK(c3_battle_condition_present(w.state,fw,0x41,NULL)&&!c3_battle_condition_present(w.state,fw,0x42,NULL));
+    }
+    /* Endure (condition 0x2C) on Umbreon at 3 HP: damage capped at HP - 1 and
+     * FightWaza condition 0x46 recorded. */
+    battle_reset(&w,1,0,0,0,33,0);
+    {
+        uint32_t att=c3_battle_state_fight_out(w.state,1,0),fw=att+0x49C,def=c3_battle_state_fight_out(w.state,0,0);
+        uint32_t damage=0;
+        uint8_t *hp=c3_battle_arena_bytes(&w.state->arena,c3_battle_state_fight_pokemon(w.state,0,0)+4+0x8A,2);
+        hp[0]=0;hp[1]=3;
+        uint8_t *slot=c3_battle_arena_bytes(&w.state->arena,def+0x15C+0x23*16,16);   /* row 0x2C: slot 0x23 */
+        slot[0]=0;slot[1]=0x2C;
+        CHECK(c3_battle_condition_check(w.state,def,0x2C,NULL)==1);
+        CHECK(run_effect(&w,&r,0)==C3_SCRIPT_FAILED);
+        printf("endure: %s\n",r.script.failure);
+        CHECK(strstr(r.script.failure,"fn_80226FD4")!=NULL);
+        CHECK(c3_battle_waza_status_get(&w.state->arena,&w.state->moves,fw,0,0x2D,0,&damage)&&damage==2);
+        CHECK(c3_battle_condition_present(w.state,fw,0x46,NULL));
     }
     /* Umbreon retyped Ghost (7/7): Normal has no effect: damage 0, condition
      * 0x43 and the attacker's no-effect flag 0x108. */
