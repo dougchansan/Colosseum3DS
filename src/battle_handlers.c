@@ -18,6 +18,8 @@
  *                     AI damage memory, Transform copy, HP bar
  *   0x0D fn_80226730  critical-hit message 0x7631 (floor 0x52, work byte 7)
  *   0x0E fn_802266EC  reads the attacker's FightWaza (0xD9), nothing else
+ *   0x12 fn_8022622C  with a message open (work byte 7): wait the operand's
+ *                     frames, close the message, clear the flag
  *   0x5C fn_8021E9F4  target damage blink (fightOutPokemonDamageEffect) on a
  *                     hit with hit-marker bit 0x80 and not 0x100
  * Script variables (hit marker 0x8047B618, ...) are the interpreter's
@@ -805,6 +807,26 @@ static int op_critical_message(C3BattleHandlers *h,C3BattleScript *sc)
     return C3_SCRIPT_HANDLER_DONE;
 }
 
+/* ---- 0x12 timed message close (fn_8022622C) ------------------------------ */
+
+/* fightMainWaitFrame(operand) then fightMenuCloseMsg() when work byte 7 says
+ * a message window is open; PC + 3 either way. A zero-frame wait returns at
+ * once in the original, so it does not suspend the script here. */
+static int op_message_close(C3BattleHandlers *h,C3BattleScript *sc,unsigned phase)
+{
+    uint32_t open=0,frames=0;
+    if(phase==0){
+        if(!c3_battle_script_read(sc,WORK_BASE+7,1,&open))return stop(sc,"message flag");
+        if(!open){sc->pc+=3;return C3_SCRIPT_HANDLER_DONE;}
+        if(!c3_battle_script_fetch(sc,1,2,&frames))return C3_SCRIPT_HANDLER_FAIL;
+        if(frames){sc->wait_frames=(uint16_t)frames;return C3_SCRIPT_HANDLER_WAIT;}
+    }
+    present(h,C3_PRESENT_MESSAGE_CLOSE,0,0);
+    c3_battle_script_write(sc,WORK_BASE+7,1,0);
+    sc->pc+=3;
+    return C3_SCRIPT_HANDLER_DONE;
+}
+
 int c3_battle_handler_dispatch(void *user,C3BattleScript *sc,uint8_t op,unsigned phase)
 {
     C3BattleHandlers *h=user;(void)phase;
@@ -824,6 +846,7 @@ int c3_battle_handler_dispatch(void *user,C3BattleScript *sc,uint8_t op,unsigned
     case 0x0B:return op_hp_update(h,sc);
     case 0x0D:return op_critical_message(h,sc);
     case 0x0E:return op_fight_waza_touch(h,sc);
+    case 0x12:return op_message_close(h,sc,phase);
     case 0x5C:return op_damage_blink(h,sc);
     default:return C3_SCRIPT_HANDLER_NONE;
     }

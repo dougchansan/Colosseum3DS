@@ -389,6 +389,18 @@ interpreter yet.
   step, floor 0x52 holds 0x7631, the message is requested and work byte 7
   is 1.
 
+- `0x12` timed message close (`fn_8022622C`, operand: frames).
+  - Only when work byte 7 says a message window is open:
+    `fightMainWaitFrame(operand)` (a script wait, like the pause opcode
+    0x39), then `fightMenuCloseMsg` (`C3_PRESENT_MESSAGE_CLOSE`), then the
+    flag is cleared.
+  - Advances three bytes either way. A zero-frame operand does not suspend
+    the script, matching the original's immediate return.
+
+  On the hit script the operand is 0x40. Tackle without a critical hit
+  passes straight on to `0x0F` (`fn_8022631C`). With the forced critical
+  hit, the message waits 0x40 frames, closes, and work byte 7 returns to 0.
+
 ## Increments
 
 1. **Execution and end of turn through original code.** A minimal
