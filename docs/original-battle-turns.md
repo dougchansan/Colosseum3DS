@@ -173,6 +173,18 @@ interpreter yet.
   fight kind 2 allows Hyper Mode (kind row +0x16 = 1); computed floor fields
   0x14/0x16/0x18/0x1A/0x31 come from the encounter, type and kind rows.
 
+- The interpreter takes battle-logic opcodes from an external handler
+  (`services.handler`), with public helpers for operand fetch, checked jumps,
+  failure and the script variables. `src/battle_handlers.c` backs the
+  interpreter services with the battle state (statusGet/SetStatus kinds
+  5/6/7, fixed targets) and lowers `WS_HITCHECK` (0x00), the attack canceler:
+  battle result, attacker in battle (else hit marker 0x80000 and
+  `lbl_80375FBF`), the status canceller, Soundproof, PP, the Hyper Mode
+  canceller, hit marker 0x2000000, Magic Coat, Snatch, Lightning Rod and
+  Protect. On the original scripts, Zigzagoon's Tackle and Espeon's Confusion
+  pass the attack canceler and stop at the accuracy check (`fn_802284B0`,
+  0x80375F8F); a fainted attacker continues at `lbl_80375FBF` to move end.
+
 ## Increments
 
 1. **Execution and end of turn through original code.** A minimal

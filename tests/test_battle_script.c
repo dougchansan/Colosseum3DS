@@ -91,7 +91,7 @@ static void opcodes(void)
     sc[0x300]=0x3C;                                                        /* SEQRET */
     seal(b);
     C3BattleScriptPack pack;char e[C3_SCRIPT_ERROR_SIZE];CHECK(c3_battle_script_pack_decode(&pack,b,PACK_BYTES,e));
-    Services sv={0};sv.get_value=33;C3BattleScriptServices svc={&sv,sget,sset,starget,spass};
+    Services sv={0};sv.get_value=33;C3BattleScriptServices svc={&sv,sget,sset,starget,spass,NULL};
     C3BattleScript *s=calloc(1,sizeof *s);CHECK(s&&c3_battle_script_init(s,&pack,&svc));
     uint32_t v;
     CHECK(c3_battle_script_read(s,0x80478D7Bu,1,&v)&&v==0x5A);            /* .sdata initial byte */
@@ -125,7 +125,7 @@ static void jumpifbyte_selectors(void)
         sc[6]=0x29;sc[7]=cases[i].sel;put32(sc+8,0x8047B627u);sc[12]=cases[i].operand;put32(sc+13,S+0x40);
         sc[17]=0x3E;sc[0x40]=0x3C;seal(b);
         C3BattleScriptPack pack;char e[C3_SCRIPT_ERROR_SIZE];CHECK(c3_battle_script_pack_decode(&pack,b,PACK_BYTES,e));
-        Services sv={0};C3BattleScriptServices svc={&sv,sget,sset,starget,spass};
+        Services sv={0};C3BattleScriptServices svc={&sv,sget,sset,starget,spass,NULL};
         C3BattleScript *s=calloc(1,sizeof *s);CHECK(s&&c3_battle_script_init(s,&pack,&svc));
         CHECK(c3_battle_script_call(s,S,1,0));run(s,16);CHECK(s->status==C3_SCRIPT_DONE);
         /* taken -> SEQRET at +0x40 (3 opcodes), else SEQEND at +17 (3 opcodes): distinguish by state path */
@@ -151,7 +151,7 @@ static void top_level_and_failures(void)
     sc[0x30]=0x28;put32(sc+0x31,0x80000000u);                              /* jump outside region */
     seal(b);
     C3BattleScriptPack pack;char e[C3_SCRIPT_ERROR_SIZE];CHECK(c3_battle_script_pack_decode(&pack,b,PACK_BYTES,e));
-    Services sv={0};sv.attacker=0xA77;sv.attacker_move=0x21;C3BattleScriptServices svc={&sv,sget,sset,starget,spass};
+    Services sv={0};sv.attacker=0xA77;sv.attacker_move=0x21;C3BattleScriptServices svc={&sv,sget,sset,starget,spass,NULL};
     C3BattleScript *s=calloc(1,sizeof *s);CHECK(s&&c3_battle_script_init(s,&pack,&svc));
     CHECK(c3_battle_script_write(s,0x8047B618u,4,0xFFFFFFFFu));
     CHECK(c3_battle_script_call(s,S,0x55,1));run(s,32);
@@ -196,7 +196,7 @@ static void original(const char *path)
     CHECK(c3_battle_script_pack_decode(&pack,bytes,n,e));
     CHECK(pack.effects[0]==0x80375F40u&&pack.effects[18]==0x80376343u&&pack.effects[19]==0x8037634Eu&&
           pack.effects[76]==0x80376C69u&&pack.effects[197]==0x803782B5u);
-    Services sv={0};C3BattleScriptServices svc={&sv,sget,sset,starget,spass};
+    Services sv={0};C3BattleScriptServices svc={&sv,sget,sset,starget,spass,NULL};
     C3BattleScript *s=calloc(1,sizeof *s);uint32_t v;
     /* Ordinary hit with Tackle: the Surf guard reads floor 0x37 and skips to
      * the attack canceler, the first battle-logic opcode. */

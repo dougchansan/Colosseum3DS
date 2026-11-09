@@ -61,6 +61,7 @@ typedef enum {
     C3_SCRIPT_PASS_MOVE_CLEANUP      /* 0x802136A4 */
 } C3BattleScriptPass;
 
+struct C3BattleScript;
 typedef struct {
     void *user;
     /* statusGetStatus / statusSetStatus (status.c). arg values are the
@@ -72,7 +73,16 @@ typedef struct {
     /* fightTargetGetPtrAsNowFightType(kind, arg) -> FightOutPokemon handle */
     int (*target)(void *user, uint8_t kind, uint32_t arg, uint32_t *handle);
     int (*end_of_move)(void *user, C3BattleScriptPass pass, uint8_t arg);
+    /* Optional battle-logic opcodes lowered outside the interpreter. Called
+     * for an opcode the interpreter does not handle itself; returns one of
+     * C3_SCRIPT_HANDLER_*. NULL means none. */
+    int (*handler)(void *user, struct C3BattleScript *script, uint8_t opcode, unsigned phase);
 } C3BattleScriptServices;
+
+/* External handler results. A handler that fails calls c3_battle_script_fail
+ * first; WAIT sets script->wait_frames; NONE means "not lowered". */
+enum { C3_SCRIPT_HANDLER_FAIL = 0, C3_SCRIPT_HANDLER_DONE = 1, C3_SCRIPT_HANDLER_WAIT = 2,
+       C3_SCRIPT_HANDLER_NONE = 3 };
 
 typedef enum {
     C3_SCRIPT_IDLE = 0, C3_SCRIPT_RUNNING, C3_SCRIPT_WAITING,
@@ -131,6 +141,13 @@ int c3_battle_script_read(const C3BattleScript *script, uint32_t address,
                           unsigned width, uint32_t *value);
 int c3_battle_script_write(C3BattleScript *script, uint32_t address,
                            unsigned width, uint32_t value);
+
+/* Helpers for external handlers: bytecode fetch relative to the PC (bounded
+ * to the script region), a checked jump, and failure with a message. Each
+ * returns 1 on success, 0 after recording the failure. */
+int c3_battle_script_fetch(struct C3BattleScript *script, uint32_t offset, unsigned width, uint32_t *value);
+int c3_battle_script_jump(struct C3BattleScript *script, uint32_t target);
+int c3_battle_script_fail(struct C3BattleScript *script, const char *format, ...);
 
 /* Original handler name for an opcode (decomp symbol), for diagnostics. */
 const char *c3_battle_script_opcode_name(uint8_t opcode);

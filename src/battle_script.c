@@ -61,12 +61,22 @@ int c3_battle_script_pack_decode(C3BattleScriptPack *out,const uint8_t *b,size_t
 
 /* ---- failure, memory ----------------------------------------------------- */
 
-static int fail(C3BattleScript *s,const char *fmt,...)
+static void vfail(C3BattleScript *s,const char *fmt,va_list ap)
 {
     if(s->status!=C3_SCRIPT_FAILED){
-        va_list ap;va_start(ap,fmt);vsnprintf(s->failure,sizeof s->failure,fmt,ap);va_end(ap);
+        vsnprintf(s->failure,sizeof s->failure,fmt,ap);
         s->failure_pc=s->pc;s->status=C3_SCRIPT_FAILED;
     }
+}
+static int fail(C3BattleScript *s,const char *fmt,...)
+{
+    va_list ap;va_start(ap,fmt);vfail(s,fmt,ap);va_end(ap);
+    return 0;
+}
+int c3_battle_script_fail(C3BattleScript *s,const char *fmt,...)
+{
+    if(!s)return 0;
+    va_list ap;va_start(ap,fmt);vfail(s,fmt,ap);va_end(ap);
     return 0;
 }
 
@@ -118,6 +128,10 @@ static int jump(C3BattleScript *s,uint32_t target)
         return fail(s,"Script jump target %08lx is outside the script region",(unsigned long)target);
     s->pc=target;return 1;
 }
+
+int c3_battle_script_fetch(C3BattleScript *s,uint32_t off,unsigned w,uint32_t *v)
+{return s&&v&&(w==1||w==2||w==4)?fetch(s,off,w,v):0;}
+int c3_battle_script_jump(C3BattleScript *s,uint32_t target){return s?jump(s,target):0;}
 
 /* ---- handlers ------------------------------------------------------------ */
 
@@ -249,8 +263,15 @@ static int execute(C3BattleScript *s)
     uint32_t op=0;
     if(!fetch(s,0,1,&op))return H_FAIL;
     Handler h=handler_for((uint8_t)op);
-    if(!h)return fail(s,"Opcode 0x%02lx %s is not lowered yet",(unsigned long)op,c3_battle_script_opcode_name((uint8_t)op)),H_FAIL;
-    int r=h(s,s->handler_phase);
+    int r;
+    if(h)r=h(s,s->handler_phase);
+    else{
+        r=s->services.handler?s->services.handler(s->services.user,s,(uint8_t)op,s->handler_phase):C3_SCRIPT_HANDLER_NONE;
+        if(r==C3_SCRIPT_HANDLER_NONE)
+            return fail(s,"Opcode 0x%02lx %s is not lowered yet",(unsigned long)op,c3_battle_script_opcode_name((uint8_t)op)),H_FAIL;
+        if(r==C3_SCRIPT_HANDLER_FAIL&&s->status!=C3_SCRIPT_FAILED)
+            return fail(s,"Opcode 0x%02lx %s failed",(unsigned long)op,c3_battle_script_opcode_name((uint8_t)op)),H_FAIL;
+    }
     if(r==H_WAIT){++s->handler_phase;s->status=C3_SCRIPT_WAITING;return H_WAIT;}
     if(r==H_DONE){s->handler_phase=0;++s->opcodes;}
     return r;
