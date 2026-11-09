@@ -35,6 +35,7 @@
 #define C3_SCRIPT_ERROR_SIZE 160u
 #define C3_CONDITION_ROW_BYTES 0x14u
 #define C3_CONDITION_TABLE_BYTES 0x6B8u
+#define C3_ACCURACY_STAGES 13u
 
 typedef struct {
     const uint8_t *script;                  /* borrowed: C3_SCRIPT_REGION_BYTES */
@@ -43,6 +44,8 @@ typedef struct {
     uint8_t wdt[C3_SCRIPT_WDT_BYTES];
     const uint8_t *conditions;              /* borrowed condition rows (0x14 each) */
     uint32_t condition_count;               /* lbl_80478B48 */
+    const uint8_t *accuracy;                /* lbl_80375DD0: (multiplier, divisor) x13 */
+    uint32_t accuracy_count;                /* lbl_80478D70 */
 } C3BattleScriptPack;
 
 /* Validates header, digest, section order/bases/lengths and every effect
@@ -82,7 +85,11 @@ typedef struct {
 /* External handler results. A handler that fails calls c3_battle_script_fail
  * first; WAIT sets script->wait_frames; NONE means "not lowered". */
 enum { C3_SCRIPT_HANDLER_FAIL = 0, C3_SCRIPT_HANDLER_DONE = 1, C3_SCRIPT_HANDLER_WAIT = 2,
-       C3_SCRIPT_HANDLER_NONE = 3 };
+       C3_SCRIPT_HANDLER_NONE = 3,
+       /* The handler pushed a nested sequence (c3_battle_script_call, top
+        * level 0) without moving the PC: the sequence runs, then the same
+        * opcode is re-entered with the next phase. */
+       C3_SCRIPT_HANDLER_CALL = 4 };
 
 typedef enum {
     C3_SCRIPT_IDLE = 0, C3_SCRIPT_RUNNING, C3_SCRIPT_WAITING,
@@ -101,6 +108,7 @@ typedef struct {
     C3BattleScriptPhase phase;
     uint32_t faint_pc, faint_action; /* faint sub-script locals uVar7/uVar6 */
     uint8_t faint_state;             /* uVar2 */
+    uint8_t saved_handler_phase;     /* caller's handler phase to resume with */
 } C3BattleScriptFrame;
 
 typedef struct C3BattleScript {

@@ -44,12 +44,16 @@ typedef struct {
                                     from the battle DOL-table pack */
     C3BattleDataRows encounters, types, kinds; /* 56 / 8 / 32-byte rows; types
                                     and kinds admit index == count */
+    C3BattleDataRows accuracy;   /* lbl_80375DD0 (multiplier, divisor) x13, set by
+                                    the caller from the battle DOL-table pack */
+    C3BattleRng rng;             /* the shared fn_800E0C54 stream; continues from
+                                    the entry session at handoff */
 } C3BattleState;
 
 /* Computed fightFloorGetStatus fields read from the encounter tables:
  * 0x14 fight type (encounter row +1), 0x16 trainer count / 0x18 active count
  * (type row +0 / +2), 0x1A fight kind (encounter row +0), 0x31 Shadow Hyper
- * Mode flag (kind row +0x16). Other fields go to c3_battle_floor_status_get.
+ * Mode flag (kind row +0x16), 0x34 host/enemy message flag (kind row +0x18). Other fields go to c3_battle_floor_status_get.
  * Returns 0 for a field neither handles. */
 int c3_battle_floor_value(const C3BattleState *state, uint32_t field, uint32_t *value);
 

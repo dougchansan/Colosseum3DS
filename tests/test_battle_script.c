@@ -9,7 +9,7 @@
 #include <string.h>
 
 #define CHECK(x) do{if(!(x)){fprintf(stderr,"%s:%d: CHECK(%s)\n",__FILE__,__LINE__,#x);exit(1);}}while(0)
-#define PACK_BYTES (64u+72u+C3_SCRIPT_REGION_BYTES+C3_SCRIPT_EFFECTS*4u+C3_SCRIPT_WSD_BYTES+C3_SCRIPT_WDT_BYTES+4u+C3_CONDITION_TABLE_BYTES)
+#define PACK_BYTES (64u+96u+C3_SCRIPT_REGION_BYTES+C3_SCRIPT_EFFECTS*4u+C3_SCRIPT_WSD_BYTES+C3_SCRIPT_WDT_BYTES+4u+C3_CONDITION_TABLE_BYTES+4u+C3_ACCURACY_STAGES*2u)
 #define AT(a) ((a)-C3_SCRIPT_REGION_BASE)
 
 static void put32(uint8_t *p,uint32_t v){p[0]=(uint8_t)(v>>24);p[1]=(uint8_t)(v>>16);p[2]=(uint8_t)(v>>8);p[3]=(uint8_t)v;}
@@ -33,21 +33,24 @@ static int spass(void *u,C3BattleScriptPass p,uint8_t a){Services *s=u;char t[32
 static uint8_t *synthetic_pack(void)
 {
     static uint8_t b[PACK_BYTES];memset(b,0,sizeof b);
-    static const char *tags[6]={"SCR ","EFF ","WSD ","WDT ","CNC ","CND "};
-    const uint32_t bases[6]={C3_SCRIPT_REGION_BASE,0x80379BFFu,C3_SCRIPT_WSD_BASE,C3_SCRIPT_WDT_BASE,0x80478B48u,0x8035BBA8u};
-    const uint32_t lens[6]={C3_SCRIPT_REGION_BYTES,C3_SCRIPT_EFFECTS*4u,C3_SCRIPT_WSD_BYTES,C3_SCRIPT_WDT_BYTES,4u,C3_CONDITION_TABLE_BYTES};
-    memcpy(b,"C3W1",4);put32(b+4,2);put32(b+8,PACK_BYTES);put32(b+12,6);
+    static const char *tags[8]={"SCR ","EFF ","WSD ","WDT ","CNC ","CND ","HTC ","HIT "};
+    const uint32_t bases[8]={C3_SCRIPT_REGION_BASE,0x80379BFFu,C3_SCRIPT_WSD_BASE,C3_SCRIPT_WDT_BASE,0x80478B48u,0x8035BBA8u,
+        0x80478D70u,0x80375DD0u};
+    const uint32_t lens[8]={C3_SCRIPT_REGION_BYTES,C3_SCRIPT_EFFECTS*4u,C3_SCRIPT_WSD_BYTES,C3_SCRIPT_WDT_BYTES,4u,
+        C3_CONDITION_TABLE_BYTES,4u,C3_ACCURACY_STAGES*2u};
+    memcpy(b,"C3W1",4);put32(b+4,3);put32(b+8,PACK_BYTES);put32(b+12,8);
     static const uint8_t dol[20]={0x87,0x0e,0x8b,0x96,0x93,0xca,0x78,0x07,0x82,0xd8,0x0f,0x22,0xa6,0xa4,0x57,0x2d,0x8b,0xa9,0x45,0x8f};
     memcpy(b+16,dol,20);
-    for(unsigned i=0;i<6;++i){memcpy(b+64+12*i,tags[i],4);put32(b+68+12*i,bases[i]);put32(b+72+12*i,lens[i]);}
-    uint8_t *eff=b+136+C3_SCRIPT_REGION_BYTES;
+    for(unsigned i=0;i<8;++i){memcpy(b+64+12*i,tags[i],4);put32(b+68+12*i,bases[i]);put32(b+72+12*i,lens[i]);}
+    uint8_t *eff=b+160+C3_SCRIPT_REGION_BYTES;
+    put32(b+PACK_BYTES-C3_ACCURACY_STAGES*2u-4u,C3_ACCURACY_STAGES);
     for(unsigned i=0;i<C3_SCRIPT_EFFECTS;++i)put32(eff+4*i,C3_SCRIPT_REGION_BASE+i);
     uint8_t *wsd=eff+C3_SCRIPT_EFFECTS*4u;wsd[3]=0x5A;wsd[4]=0x77;   /* 80478D7B, 80478D7C */
     uint8_t *wdt=wsd+C3_SCRIPT_WSD_BYTES;wdt[0]=0x33;wdt[0x8038FFF9u-C3_SCRIPT_WDT_BASE]=0x44;
     return b;
 }
 static void seal(uint8_t *b){c3_save_codec_sha1(b+36,b+64,PACK_BYTES-64u);}
-static uint8_t *script_bytes(uint8_t *b){return b+136;}
+static uint8_t *script_bytes(uint8_t *b){return b+160;}
 
 static void run(C3BattleScript *s,unsigned limit)
 {
@@ -65,7 +68,7 @@ static void pack_rejection(void)
     CHECK(c3_battle_script_pack_decode(&p,b,PACK_BYTES,e));
     CHECK(!c3_battle_script_pack_decode(&p,b,PACK_BYTES-1,e));
     b[200]^=1;CHECK(!c3_battle_script_pack_decode(&p,b,PACK_BYTES,e)&&strstr(e,"checksum"));b[200]^=1;
-    put32(b+136+C3_SCRIPT_REGION_BYTES,0x80000000u);seal(b);       /* effect 0 outside the region */
+    put32(b+160+C3_SCRIPT_REGION_BYTES,0x80000000u);seal(b);       /* effect 0 outside the region */
     CHECK(!c3_battle_script_pack_decode(&p,b,PACK_BYTES,e)&&strstr(e,"outside"));
 }
 

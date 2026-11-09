@@ -132,6 +132,7 @@ int c3_battle_state_from_entry(C3BattleState *s,const C3BattleEntrySession *e,co
      * the pack carries that boundary row. */
     s->types=(C3BattleDataRows){typ->bytes,typ->count+1u,8};
     s->kinds=(C3BattleDataRows){knd->bytes,knd->count+1u,32};
+    s->rng=e->rng;                                              /* shared stream continues */
     if(err)err[0]=0;
     return 1;
 }
@@ -142,7 +143,7 @@ int c3_battle_floor_value(const C3BattleState *s,uint32_t field,uint32_t *value)
 {
     if(!s||!value)return 0;
     field&=0xFFFFu;
-    if(field==0x14||field==0x16||field==0x18||field==0x1A||field==0x31){
+    if(field==0x14||field==0x16||field==0x18||field==0x1A||field==0x31||field==0x34){
         uint32_t encounter=0;
         if(!c3_battle_floor_status_get(&s->arena,&s->floors,s->floor,0,0,0x0D,0,&encounter))return 0;
         const uint8_t *er=row_at(&s->encounters,encounter&0xFFFFu);
@@ -155,7 +156,7 @@ int c3_battle_floor_value(const C3BattleState *s,uint32_t field,uint32_t *value)
         uint8_t kind=er?er[0]:0;
         if(field==0x1A){*value=kind;return 1;}
         const uint8_t *kr=row_at(&s->kinds,kind);
-        *value=kr?kr[0x16]:0;return 1;
+        *value=kr?kr[field==0x31?0x16:0x18]:0;return 1;
     }
     return c3_battle_floor_status_get(&s->arena,&s->floors,s->floor,0,0,field,0,value);
 }
@@ -241,6 +242,7 @@ static uint32_t condition_base(const C3BattleState *s,uint8_t kind,uint32_t obje
 {
     uint32_t v=0;
     if(!object||kind==0||kind>9)return 0;                        /* statusGetStatus: 0 */
+    if(kind==7&&selector==9)return object;                       /* fightFloorBiosGetJoutaiPtr(floor, 0) */
     if(kind==5){
         if(selector==0x7C)return object+0x64;                    /* fn_8011F474: condition[16] */
         if(selector==0xC8)return object+0xE8;                    /* fn_8011EDC4: attest2[16] */
@@ -248,7 +250,7 @@ static uint32_t condition_base(const C3BattleState *s,uint8_t kind,uint32_t obje
     }else if(kind==6){
         if(c3_battle_waza_status_get(&s->arena,&s->moves,object,0,selector,0,&v))return v;
     }
-    if(fault)*fault=1;                                           /* kinds 1-4, 7-9: not modelled */
+    if(fault)*fault=1;                                           /* other kinds/selectors: not modelled */
     return 0;
 }
 int c3_battle_condition_present(const C3BattleState *s,uint32_t object,uint16_t id,int *fault)

@@ -25,17 +25,18 @@ static int pack_fail(char *e,const char *m){if(e)snprintf(e,C3_SCRIPT_ERROR_SIZE
 
 int c3_battle_script_pack_decode(C3BattleScriptPack *out,const uint8_t *b,size_t n,char *e)
 {
-    enum{SECTIONS=6};
+    enum{SECTIONS=8};
     static const struct{char tag[5];uint32_t base,len;}want[SECTIONS]={
         {"SCR ",C3_SCRIPT_REGION_BASE,C3_SCRIPT_REGION_BYTES},{"EFF ",0x80379BFFu,C3_SCRIPT_EFFECTS*4u},
         {"WSD ",C3_SCRIPT_WSD_BASE,C3_SCRIPT_WSD_BYTES},{"WDT ",C3_SCRIPT_WDT_BASE,C3_SCRIPT_WDT_BYTES},
-        {"CNC ",0x80478B48u,4},{"CND ",0x8035BBA8u,C3_CONDITION_TABLE_BYTES}};
+        {"CNC ",0x80478B48u,4},{"CND ",0x8035BBA8u,C3_CONDITION_TABLE_BYTES},
+        {"HTC ",0x80478D70u,4},{"HIT ",0x80375DD0u,C3_ACCURACY_STAGES*2u}};
     static const uint8_t dol_sha1[20]={0x87,0x0e,0x8b,0x96,0x93,0xca,0x78,0x07,0x82,0xd8,
         0x0f,0x22,0xa6,0xa4,0x57,0x2d,0x8b,0xa9,0x45,0x8f};
     uint8_t digest[20];size_t expect=64+SECTIONS*12;const uint8_t *data[SECTIONS];
     if(!out||!b)return pack_fail(e,"Missing move-script pack.");
     for(unsigned i=0;i<SECTIONS;++i)expect+=want[i].len;
-    if(n!=expect||memcmp(b,"C3W1",4)||be32(b+4)!=2||be32(b+8)!=n||be32(b+12)!=SECTIONS||memcmp(b+16,dol_sha1,20))
+    if(n!=expect||memcmp(b,"C3W1",4)||be32(b+4)!=3||be32(b+8)!=n||be32(b+12)!=SECTIONS||memcmp(b+16,dol_sha1,20))
         return pack_fail(e,"Unsupported or damaged move-script pack.");
     for(unsigned i=56;i<64;++i)if(b[i])return pack_fail(e,"Unsupported or damaged move-script pack.");
     c3_save_codec_sha1(digest,b+64,(uint32_t)(n-64));
@@ -56,6 +57,8 @@ int c3_battle_script_pack_decode(C3BattleScriptPack *out,const uint8_t *b,size_t
     next.condition_count=be32(data[4]);next.conditions=data[5];
     if(next.condition_count>C3_CONDITION_TABLE_BYTES/C3_CONDITION_ROW_BYTES)
         return pack_fail(e,"Condition count exceeds the condition table.");
+    next.accuracy_count=be32(data[6]);next.accuracy=data[7];
+    if(next.accuracy_count!=C3_ACCURACY_STAGES)return pack_fail(e,"Unexpected accuracy-stage count.");
     *out=next;if(e)e[0]=0;return 1;
 }
 
@@ -135,7 +138,7 @@ int c3_battle_script_jump(C3BattleScript *s,uint32_t target){return s?jump(s,tar
 
 /* ---- handlers ------------------------------------------------------------ */
 
-enum { H_FAIL = 0, H_DONE = 1, H_WAIT = 2 };
+enum { H_FAIL = 0, H_DONE = 1, H_WAIT = 2, H_CALL = 4 };
 typedef int (*Handler)(C3BattleScript *, unsigned phase);
 
 /* 0x28 fn_80222ACC: PC = *(u8**)(PC + 1) */
@@ -250,6 +253,7 @@ int c3_battle_script_call(C3BattleScript *s,uint32_t start,uint32_t action,int t
     C3BattleScriptFrame *f=&s->frames[s->depth++];
     memset(f,0,sizeof *f);
     f->saved_pc=s->pc;f->saved_action=s->action;f->saved_state=s->state;f->top_level=top?1:0;
+    f->saved_handler_phase=s->handler_phase;
     f->phase=C3_SCRIPT_PHASE_RUN;
     s->pc=start;
     if(!top)s->state=0;
@@ -264,6 +268,7 @@ static int execute(C3BattleScript *s)
     if(!fetch(s,0,1,&op))return H_FAIL;
     Handler h=handler_for((uint8_t)op);
     int r;
+    unsigned depth_before=s->depth;
     if(h)r=h(s,s->handler_phase);
     else{
         r=s->services.handler?s->services.handler(s->services.user,s,(uint8_t)op,s->handler_phase):C3_SCRIPT_HANDLER_NONE;
@@ -271,6 +276,12 @@ static int execute(C3BattleScript *s)
             return fail(s,"Opcode 0x%02lx %s is not lowered yet",(unsigned long)op,c3_battle_script_opcode_name((uint8_t)op)),H_FAIL;
         if(r==C3_SCRIPT_HANDLER_FAIL&&s->status!=C3_SCRIPT_FAILED)
             return fail(s,"Opcode 0x%02lx %s failed",(unsigned long)op,c3_battle_script_opcode_name((uint8_t)op)),H_FAIL;
+        if(r==C3_SCRIPT_HANDLER_CALL){
+            /* The nested frame resumes this opcode at the next phase. */
+            if(s->depth!=depth_before+1u)return fail(s,"Nested sequence was not pushed"),H_FAIL;
+            s->frames[s->depth-1].saved_handler_phase=(uint8_t)(s->frames[s->depth-1].saved_handler_phase+1u);
+            return H_CALL;
+        }
     }
     if(r==H_WAIT){++s->handler_phase;s->status=C3_SCRIPT_WAITING;return H_WAIT;}
     if(r==H_DONE){s->handler_phase=0;++s->opcodes;}
@@ -309,6 +320,7 @@ static void exit_frame(C3BattleScript *s)
         if(!var_read(s,0x8047B618u,4,&flags)||!var_write(s,0x8047B618u,4,flags&0xFFF7FDFFu))return;
     }
     s->action=f->saved_action;s->state=f->saved_state;s->pc=f->saved_pc;
+    s->handler_phase=f->saved_handler_phase;
     --s->depth;
     s->status=s->depth?C3_SCRIPT_RUNNING:C3_SCRIPT_DONE;
 }

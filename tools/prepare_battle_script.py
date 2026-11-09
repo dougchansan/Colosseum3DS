@@ -4,7 +4,8 @@
 The pack holds original bytes only: the move-script bytecode region, the
 move-effect -> script table (lbl_80379BFF), the initial bytes of the two
 initialized-data windows that script operands address, and the condition
-table (lbl_8035BBA8) with its count (lbl_80478B48). It holds no battle state
+table (lbl_8035BBA8) with its count (lbl_80478B48), and the accuracy-stage
+table (lbl_80375DD0) with its count (lbl_80478D70). It holds no battle state
 or results. Keep it private: it is original game data and must never be added
 to the source checkout.
 
@@ -21,7 +22,7 @@ from pathlib import Path
 
 DOL_SHA1 = "870e8b9693ca780782d80f22a6a4572d8ba9458f"
 DOL_BYTES = 3779808
-VERSION = 2
+VERSION = 3
 HEADER_BYTES = 64
 EFFECT_COUNT = 214
 SECTIONS = (
@@ -31,6 +32,8 @@ SECTIONS = (
     (b"WDT ", 0x8038FF5A, 0x80390000 - 0x8038FF5A),   # .data script variables
     (b"CNC ", 0x80478B48, 4),                         # .sdata condition count
     (b"CND ", 0x8035BBA8, 0x6B8),                     # condition rows (0x14 each)
+    (b"HTC ", 0x80478D70, 4),                         # .sdata accuracy-stage count
+    (b"HIT ", 0x80375DD0, 13 * 2),                    # accuracy stages (multiplier, divisor)
 )
 CONDITION_ROW = 0x14
 
@@ -60,6 +63,8 @@ def make_pack(dol):
     count = u32(blobs[4], 0)
     if count * CONDITION_ROW > len(blobs[5]):
         raise ValueError(f"Condition count {count} exceeds the condition table")
+    if u32(blobs[6], 0) != 13:
+        raise ValueError("Unexpected accuracy-stage count")
     directory = b"".join(struct.pack(">4sII", tag, base, length) for tag, base, length in SECTIONS)
     payload = directory + b"".join(blobs)
     header = bytearray(HEADER_BYTES)

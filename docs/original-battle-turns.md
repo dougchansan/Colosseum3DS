@@ -185,6 +185,21 @@ interpreter yet.
   pass the attack canceler and stop at the accuracy check (`fn_802284B0`,
   0x80375F8F); a fainted attacker continues at `lbl_80375FBF` to move end.
 
+- More hit-script opcodes: `0x01` accuracy check (`fn_802284B0` with the
+  lock-on/never-miss checks `fn_80228DAC`, including their hit-marker
+  clears, the move-block test `fn_80229934`, Protect, weather
+  `fightFloorGetNowTenkouDataId`, held-item effects, the original
+  accuracy-stage table (DOL pack v3: 33/100 ... 1/1 ... 3/1) and one draw
+  from the shared random stream, which the battle state continues from the
+  entry session), `0x02` attack string (`fn_802282D8`: presentation requests
+  and, with no battler model, the nested pause sequence `lbl_80378964`, which
+  the interpreter runs through a handler CALL) and `0x03` PP reduce
+  (`fn_8022808C`, Pressure decided conservatively). Floor weather conditions
+  read through the condition table (kind 7). On the original hit script
+  Zigzagoon's Tackle hits on the entry stream's next draw, PP falls 35 to 34,
+  and the script stops at the critical-hit check; the miss path stops at the
+  type check it needs.
+
 ## Increments
 
 1. **Execution and end of turn through original code.** A minimal

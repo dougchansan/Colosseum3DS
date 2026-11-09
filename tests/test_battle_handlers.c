@@ -57,6 +57,7 @@ static void battle_reset(World *w,unsigned att_side,unsigned att_slot,unsigned d
     char error[C3_BATTLE_ERROR_SIZE];C3BattleState *s=w->state;
     CHECK(c3_battle_state_from_entry(s,w->entry,w->pack,error));
     s->conditions=(C3BattleDataRows){w->script_pack.conditions,w->script_pack.condition_count,C3_CONDITION_ROW_BYTES};
+    s->accuracy=(C3BattleDataRows){w->script_pack.accuracy,w->script_pack.accuracy_count,2};
     for(unsigned side=0;side<2;++side)for(unsigned k=0;k<2;++k)
         CHECK(c3_battle_fight_out_pokemon_create(&s->arena,c3_battle_state_fight_out(s,side,k),
             c3_battle_state_fight_pokemon(s,side,k),0,&s->species));
@@ -66,16 +67,25 @@ static void battle_reset(World *w,unsigned att_side,unsigned att_slot,unsigned d
     CHECK(c3_battle_waza_status_set(&s->arena,fw,0x27,0,move)&&c3_battle_waza_status_set(&s->arena,fw,0x28,0,move));
     CHECK(c3_battle_waza_status_set(&s->arena,fw,0x26,0,(uint8_t)move_slot));
 }
-typedef struct { C3BattleHandlers handlers;C3BattleScript script; } Run;
+typedef struct { char log[256];size_t used; } Presentation;
+static int present(void *u,C3BattlePresent req,uint32_t a,uint32_t b)
+{
+    Presentation *p=u;char t[48];
+    snprintf(t,sizeof t,"%d:%lx:%lx;",(int)req,(unsigned long)(a&0xFFFF),(unsigned long)b);
+    size_t n=strlen(t);CHECK(p->used+n<sizeof p->log);memcpy(p->log+p->used,t,n+1);p->used+=n;
+    return req==C3_PRESENT_ATTACK_STRING;          /* a message window opened */
+}
+typedef struct { C3BattleHandlers handlers;C3BattleScript script;Presentation presentation;unsigned waits; } Run;
 static C3BattleScriptStatus run_effect(World *w,Run *r,uint16_t effect)
 {
     memset(r,0,sizeof *r);r->handlers.state=w->state;
+    r->handlers.present=present;r->handlers.present_user=&r->presentation;
     C3BattleScriptServices sv=c3_battle_handler_services(&r->handlers);
     CHECK(c3_battle_script_init(&r->script,&w->script_pack,&sv));
     CHECK(c3_battle_script_call(&r->script,w->script_pack.effects[effect],1,1));
     for(unsigned i=0;i<64;++i){
         C3BattleScriptStatus st=c3_battle_script_step(&r->script);
-        if(st==C3_SCRIPT_WAITING){CHECK(c3_battle_script_resume(&r->script));continue;}
+        if(st==C3_SCRIPT_WAITING){++r->waits;CHECK(r->script.wait_frames==0x20);CHECK(c3_battle_script_resume(&r->script));continue;}
         if(st!=C3_SCRIPT_RUNNING)return st;
     }
     CHECK(0);return C3_SCRIPT_FAILED;
@@ -88,29 +98,72 @@ int main(void)
     static World w;world_init(&w,pack,newgame,script);
     static Run r;uint32_t v;
 
-    /* Zigzagoon A (opponent slot 0) uses Tackle (slot 0) on Umbreon. The hit
-     * script's Surf guard reads the attacker's move, jumps to the attack
-     * canceler, which passes, and the script stops at the accuracy check. */
+    /* Zigzagoon A (opponent slot 0) uses Tackle (slot 0) on Umbreon: Surf
+     * guard, attack canceler, accuracy (one draw from the shared stream),
+     * attack string (nested pause 0x20, then return), PP reduce; the script
+     * stops at the critical-hit check. A draw above the accuracy is a miss,
+     * which needs the type check and stops there instead. */
     battle_reset(&w,1,0,0,0,33,0);
+    C3BattleRng predicted=w.state->rng;uint16_t draw=0;CHECK(c3_battle_rng_next16(&predicted,&draw));
+    int hit=(int)(draw%100u)+1<=95;                       /* Tackle 95%, stage 6 (1/1) */
+    uint32_t fp=c3_battle_state_fight_pokemon(w.state,1,0);
+    uint8_t *tackle=c3_battle_arena_bytes(&w.state->arena,fp+4+0x78,4);
+    CHECK(tackle[0]==0&&tackle[1]==33);uint8_t pp_before=tackle[2];
     CHECK(run_effect(&w,&r,0)==C3_SCRIPT_FAILED);
-    printf("tackle: stops at %08lx: %s\n",(unsigned long)r.script.failure_pc,r.script.failure);
-    CHECK(r.script.failure_pc==0x80375F8Fu&&strstr(r.script.failure,"fn_802284B0"));
-    CHECK(c3_battle_script_read(&r.script,0x8047B618u,4,&v)&&v==0x02000000u);   /* hit marker */
-    CHECK(c3_battle_script_read(&r.script,0x8047B63Cu,2,&v)&&v==33);            /* Surf guard read */
-    CHECK(r.handlers.canceller_step==15&&r.script.opcodes==3);
+    printf("tackle: draw %u -> %s; stops at %08lx: %s\n",draw,hit?"hit":"miss",
+        (unsigned long)r.script.failure_pc,r.script.failure);
+    CHECK(w.state->rng.draws==predicted.draws&&w.state->rng.seed==predicted.seed);
+    if(hit){
+        CHECK(r.script.failure_pc==0x80375F98u&&strstr(r.script.failure,"WS_CRITICAL_CHECK"));
+        CHECK(c3_battle_script_read(&r.script,0x8047B618u,4,&v)&&v==0x02000400u);   /* hit marker */
+        CHECK(tackle[2]==pp_before-1);                                                  /* PP 35 -> 34 */
+        CHECK(c3_battle_fight_status_get(&w.state->arena,c3_battle_state_fight_out(w.state,1,0),0x111,0,&v)&&v==1);
+        CHECK(r.waits==1&&r.script.depth==1);
+        uint32_t att=c3_battle_state_fight_out(w.state,1,0);
+        char expect[160];
+        snprintf(expect,sizeof expect,"1:%lx:1;2:%lx:21;3:0:0;4:%lx:1;",(unsigned long)(att&0xFFFF),
+            (unsigned long)(att&0xFFFF),(unsigned long)(att&0xFFFF));
+        CHECK(!strcmp(r.presentation.log,expect));
+        CHECK(c3_battle_script_read(&r.script,0x80478D7Fu,1,&v)&&v==0);
+    }else{
+        CHECK(r.script.failure_pc==0x80375F8Fu&&strstr(r.script.failure,"miss"));
+        CHECK(tackle[2]==pp_before);
+    }
+    CHECK(r.handlers.canceller_step==15);
 
-    /* Espeon (player slot 1) uses Confusion (slot 0): same path. */
+    /* Espeon (player slot 1) uses Confusion (slot 0) on Zigzagoon A. */
     battle_reset(&w,0,1,1,0,93,0);
     CHECK(run_effect(&w,&r,76)==C3_SCRIPT_FAILED);
     printf("confusion: stops at %08lx: %s\n",(unsigned long)r.script.failure_pc,r.script.failure);
     CHECK(r.handlers.canceller_step==15&&!strstr(r.script.failure,"WS_HITCHECK"));
 
+    /* Accuracy stages: maximum evasion on the defender (stage 0: 33/100). */
+    battle_reset(&w,1,0,0,0,33,0);
+    uint8_t *def_fo=c3_battle_arena_bytes(&w.state->arena,c3_battle_state_fight_out(w.state,0,0),0x6E0);
+    def_fo[0x60A]=12;                                     /* 0xEC evasion stage +6 */
+    predicted=w.state->rng;CHECK(c3_battle_rng_next16(&predicted,&draw));
+    hit=(int)(draw%100u)+1<=95*33/100;
+    CHECK(run_effect(&w,&r,0)==C3_SCRIPT_FAILED);
+    printf("evasion +6: draw %u -> %s: %s\n",draw,hit?"hit":"miss",r.script.failure);
+    CHECK(hit?strstr(r.script.failure,"WS_CRITICAL_CHECK")!=NULL:strstr(r.script.failure,"miss")!=NULL);
+
+    /* Protect on the defender stops at the accuracy check's reflect test. */
+    battle_reset(&w,1,0,0,0,33,0);
+    {
+        const uint8_t *row=w.state->conditions.rows+0x2B*C3_CONDITION_ROW_BYTES;
+        CHECK(((uint16_t)row[8]<<8|row[9])==0xD8);
+        uint8_t *slot=c3_battle_arena_bytes(&w.state->arena,c3_battle_state_fight_out(w.state,0,0)+0x15C+row[1]*16u,2);
+        put16(slot,0x2B);
+        CHECK(run_effect(&w,&r,0)==C3_SCRIPT_FAILED&&strstr(r.script.failure,"Protect"));
+    }
+
     /* An asleep attacker: the canceller stops at its sleep step, named. */
     battle_reset(&w,1,0,0,0,33,0);
-    uint8_t *poke=c3_battle_arena_bytes(&w.state->arena,c3_battle_state_fight_pokemon(w.state,1,0)+4,0x138);
-    put16(poke+0x64,8);
+    uint8_t *sleeper=c3_battle_arena_bytes(&w.state->arena,c3_battle_state_fight_pokemon(w.state,1,0)+4,0x138);
+    put16(sleeper+0x64,8);
     CHECK(run_effect(&w,&r,0)==C3_SCRIPT_FAILED);
     CHECK(r.script.failure_pc==0x80375F8Eu&&strstr(r.script.failure,"sleep"));
+    uint8_t *poke;
 
     /* A fainted attacker: hit marker 0x80000 and the jump to lbl_80375FBF. */
     battle_reset(&w,1,0,0,0,33,0);
