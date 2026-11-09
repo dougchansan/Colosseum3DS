@@ -5,7 +5,9 @@ The pack holds original bytes only: the move-script bytecode region, the
 move-effect -> script table (lbl_80379BFF), the initial bytes of the two
 initialized-data windows that script operands address, and the condition
 table (lbl_8035BBA8) with its count (lbl_80478B48), and the accuracy-stage
-table (lbl_80375DD0) with its count (lbl_80478D70). It holds no battle state
+table (lbl_80375DD0) with its count (lbl_80478D70), the stat-stage ratios
+(lbl_80375D10), the critical-rate denominators (lbl_80478D58) and the
+damage formula's item/type table (lbl_80279ED0). It holds no battle state
 or results. Keep it private: it is original game data and must never be added
 to the source checkout.
 
@@ -22,7 +24,7 @@ from pathlib import Path
 
 DOL_SHA1 = "870e8b9693ca780782d80f22a6a4572d8ba9458f"
 DOL_BYTES = 3779808
-VERSION = 3
+VERSION = 4
 HEADER_BYTES = 64
 EFFECT_COUNT = 214
 SECTIONS = (
@@ -34,6 +36,11 @@ SECTIONS = (
     (b"CND ", 0x8035BBA8, 0x6B8),                     # condition rows (0x14 each)
     (b"HTC ", 0x80478D70, 4),                         # .sdata accuracy-stage count
     (b"HIT ", 0x80375DD0, 13 * 2),                    # accuracy stages (multiplier, divisor)
+    (b"ABC ", 0x80478D68, 4),                         # .sdata stat-stage ratio count
+    (b"ABR ", 0x80375D10, 13 * 2),                    # stat-stage ratios (multiplier, divisor)
+    (b"CRC ", 0x80478D60, 4),                         # .sdata critical-rate count
+    (b"CRT ", 0x80478D58, 8),                         # critical denominators
+    (b"ED0 ", 0x80279ED0, 0x24),                      # rodata lbl_80279ED0 (item -> type pairs)
 )
 CONDITION_ROW = 0x14
 
@@ -65,6 +72,8 @@ def make_pack(dol):
         raise ValueError(f"Condition count {count} exceeds the condition table")
     if u32(blobs[6], 0) != 13:
         raise ValueError("Unexpected accuracy-stage count")
+    if u32(blobs[8], 0) != 13 or u32(blobs[10], 0) != 5:
+        raise ValueError("Unexpected stat-stage or critical-rate count")
     directory = b"".join(struct.pack(">4sII", tag, base, length) for tag, base, length in SECTIONS)
     payload = directory + b"".join(blobs)
     header = bytearray(HEADER_BYTES)

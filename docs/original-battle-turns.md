@@ -40,7 +40,7 @@ It then disassembles the scripts in the canonical `main.dol`, starting from
 
 For encounter 10's moves (Tackle 0, Growl 18, Tail Whip 19, Bite 31, Struggle
 48, Reflect 65, Confusion 76, Return 121, Taunt 175, Helping Hand 176, Snatch
-195, Secret Power 197 — move effect IDs) the static closure over every branch
+195, Secret Power 197 â€” move effect IDs) the static closure over every branch
 is **46 opcodes in 18 scripts**, with no unresolved lengths and no run-time
 script selection reached. The scripts follow the Gen-3 battle-script layout;
 for example the ordinary hit script is the Surf/underwater guard, then attack
@@ -59,7 +59,7 @@ Design constraints found:
   (`0x8038FF76`, `0x8038FFFC`, `0x80478D7B`, `0x80478D7D`, `0x80478D80`,
   `0x8047B600`, `0x8047B618`, `0x8047B627`, `0x8047B63C`, `0x8047B63E`) and
   2 read-only message tables used by opcode 0x13 (`0x80279D70`, `0x80279DC0`).
-- The `WS_STATUS_GET*/SET*` opcodes (0xF9–0xFD) go through `statusGetStatus` /
+- The `WS_STATUS_GET*/SET*` opcodes (0xF9â€“0xFD) go through `statusGetStatus` /
   `statusSetStatus` with field IDs, so the FightOutPokemon/floor status model
   must cover the IDs these scripts use.
 - Several decomp files keep stale duplicate bodies under `#if` guards; only the
@@ -85,7 +85,7 @@ table and the initialized-data windows from `main.dol`):
 - Waits (`fightMainWaitFrame`) suspend the interpreter; the caller resumes it.
 - Lowered opcodes: goto (0x28), byte/halfword compares (0x29, 0x2A), set byte
   (0x2E), OR word (0x35), pause (0x39), skip (0x3A), return/ends (0x3C, 0x3D,
-  0x3E, 0xF6, 0xF7) and the status get/set family (0xF8–0xFD). Every other
+  0x3E, 0xF6, 0xF7) and the status get/set family (0xF8â€“0xFD). Every other
   opcode fails with its original handler name.
 
 On the original scripts the ordinary-hit script runs its Surf guard and stops
@@ -99,10 +99,10 @@ interpreter yet.
 ## Battle records
 
 - `src/battle_status.c` serves `pokemonGetStatus`/`pokemonSetStatus` for the
-  FightPokemon/FightOutPokemon selectors 0xCB–0x123 from a table generated
+  FightPokemon/FightOutPokemon selectors 0xCBâ€“0x123 from a table generated
   from the pinned accessors (`tools/prepare_battle_status_fields.py`): 65
   value fields and 11 address-of fields, with getter/setter agreement
-  asserted. The move fields 0xDA–0xE4 and 0x123 are computed and still to be
+  asserted. The move fields 0xDAâ€“0xE4 and 0x123 are computed and still to be
   lowered. Records live in an arena addressed by synthetic guest addresses
   (`0x90000000`+), so stored record pointers and pointer arithmetic behave as
   on the GameCube, with every access bounds-checked.
@@ -199,6 +199,40 @@ interpreter yet.
   Zigzagoon's Tackle hits on the entry stream's next draw, PP falls 35 to 34,
   and the script stops at the critical-hit check; the miss path stops at the
   type check it needs.
+
+- `0x04` critical check and `0x05` damage calculation (`fn_80227C40`).
+  - The critical check sums the original rate bonuses: Focus Energy
+    (condition 0x0F), the high-crit move effects, Scope Lens, Lucky Punch on
+    Chansey and Stick on Farfetch'd. It clamps the sum to the critical table
+    (DOL pack v4: `lbl_80478D58`, 16/8/4/3/2). It draws only when the
+    defender lacks Battle Armor and Shell Armor, and floor field 0x29 allows
+    critical hits.
+  - The damage step runs the pinned original arithmetic `fn_80232110` a
+    second time (`build/battle_damage_state.inc`, prefix `c3s_src_`), with
+    every engine service bound to the battle state
+    (`src/battle_damage_state.c`).
+  - Services not modelled yet reject the calculation by name: badge boosts,
+    held items, Cloud Nine and Air Lock, solar weather flags, and ability
+    and condition counts.
+  - The step then applies the critical multiplier, FightWaza 0x2C, Charge
+    and Helping Hand.
+
+  The damage formula always calls
+  `fightFloorGetValidFightOutPokemonCount(0, 1, defender, 0)`, so this
+  increment also lowers:
+  - `fightSideCreate`: the side data IDs from floor data field 3, set after
+    `fightFloorInit`, as in `fightActionFlowKaijou`.
+  - `fightSideCheckValid`, `heroCheckValid` and `fightTrainerCheckValid`.
+    `heroCheckValid` (0x8012A130) was read from the DOL, because the decomp's
+    `heroGetStatus` names the wrong callee: the name must not be empty and
+    hero byte 0xA80 must not be 2.
+  - `fightFloorLoopValidFightOutPokemon` with its count callback (modes 0
+    and 1; mode 2 is refused).
+
+  On the original data, Zigzagoon's Tackle deals 4 and Espeon's Confusion
+  deals 37, with no critical hit on the next draw. Both equal the preview
+  binding of the same arithmetic on the same records. The scripts stop at the
+  type check (`0x06`, `fn_802274F0`).
 
 ## Increments
 

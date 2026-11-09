@@ -104,6 +104,13 @@ int c3_battle_state_from_entry(C3BattleState *s,const C3BattleEntrySession *e,co
     s->arena.bytes=s->memory;s->arena.size=sizeof s->memory;
     s->floor=C3_ARENA_BASE;
     if(!c3_battle_floor_init(s,e->config.encounter_id))return fail(err,"FightFloor initialization failed.");
+    /* fightActionFlowKaijou: fightSideCreate(side target 4/5, floor data
+     * field 3 [side]) after fightFloorInit. Its condition, trainer and spikes
+     * resets repeat fightFloorInit's; the side data ID is the new state. */
+    for(unsigned side=0;side<2;++side){
+        uint8_t *sd=s->memory+C3_FIGHT_SIDE_OFFSET+side*C3_FIGHT_SIDE_BYTES;
+        sd[0]=(uint8_t)(e->config.side_data_id[side]>>8);sd[1]=(uint8_t)e->config.side_data_id[side];
+    }
     for(unsigned side=0;side<2;++side){
         uint32_t off=C3_FIGHT_SIDE_OFFSET+side*C3_FIGHT_SIDE_BYTES+C3_FIGHT_SIDE_TRAINER_OFFSET;
         s->trainer[side]=C3_ARENA_BASE+off;
@@ -143,20 +150,22 @@ int c3_battle_floor_value(const C3BattleState *s,uint32_t field,uint32_t *value)
 {
     if(!s||!value)return 0;
     field&=0xFFFFu;
-    if(field==0x14||field==0x16||field==0x18||field==0x1A||field==0x31||field==0x34){
+    if(field==0x14||field==0x16||field==0x18||field==0x19||field==0x1A||(field>=0x1C&&field<=0x34)){
         uint32_t encounter=0;
         if(!c3_battle_floor_status_get(&s->arena,&s->floors,s->floor,0,0,0x0D,0,&encounter))return 0;
         const uint8_t *er=row_at(&s->encounters,encounter&0xFFFFu);
-        if(field==0x14||field==0x16||field==0x18){
+        if(field==0x14||field==0x16||field==0x18||field==0x19){
             uint8_t type=er?er[1]:0;
             if(field==0x14){*value=type;return 1;}
             const uint8_t *tr=row_at(&s->types,type);
+            if(field==0x19){*value=tr?(uint32_t)tr[0]*tr[2]:0;return 1;}   /* fightTypeGetFightSideFightOutPokemonMax */
             *value=tr?tr[field==0x16?0:2]:0;return 1;
         }
         uint8_t kind=er?er[0]:0;
         if(field==0x1A){*value=kind;return 1;}
+        if(field==0x1B)return 0;                                     /* kind name: not a flag */
         const uint8_t *kr=row_at(&s->kinds,kind);
-        *value=kr?kr[field==0x31?0x16:0x18]:0;return 1;
+        *value=kr?kr[field-0x1C]:0;return 1;
     }
     return c3_battle_floor_status_get(&s->arena,&s->floors,s->floor,0,0,field,0,value);
 }
@@ -227,6 +236,29 @@ int c3_battle_fight_out_check_fight_out(const C3BattleState *s,uint32_t fo,int *
     return c3_battle_fight_pokemon_check_fight_out(s,status(s,fo,0xD6,fault),fault);
 }
 
+int c3_battle_side_check_valid(const C3BattleState *s,uint32_t side,int *fault)
+{
+    if(!s||!side||s->result==1)return 0;
+    const uint8_t *p=bytes(s,side,2,fault);
+    return p&&be16(p)!=0;                                        /* fightSideBiosGetFightSideDataId */
+}
+int c3_battle_hero_check_valid(const C3BattleState *s,uint32_t hero,int *fault)
+{
+    /* GScharCmp(name, "") == 0 exactly when the name's first code unit is
+     * the terminator (msgGetLength 0). */
+    if(!s||!hero)return 0;
+    const uint8_t *name=bytes(s,hero,2,fault),*flag=bytes(s,hero+0xA80,1,fault);
+    if(!name||!flag||!be16(name))return 0;
+    return flag[0]!=2;
+}
+int c3_battle_trainer_check_valid(const C3BattleState *s,uint32_t trainer,int *fault)
+{
+    if(!s||!trainer||s->result==1)return 0;
+    const uint8_t *id=bytes(s,trainer,2,fault);                 /* field 0x43 */
+    if(!id||!be16(id))return 0;
+    return c3_battle_hero_check_valid(s,trainer+4,fault);       /* field 0x44 */
+}
+
 /* ---- conditions (field_range_80117E58.c, fight_range_80201764.c) -------- */
 
 static const uint8_t *condition_row(const C3BattleState *s,uint16_t id)
@@ -243,6 +275,7 @@ static uint32_t condition_base(const C3BattleState *s,uint8_t kind,uint32_t obje
     uint32_t v=0;
     if(!object||kind==0||kind>9)return 0;                        /* statusGetStatus: 0 */
     if(kind==7&&selector==9)return object;                       /* fightFloorBiosGetJoutaiPtr(floor, 0) */
+    if(kind==8&&selector==6)return object+4;                     /* fightSideBiosGetJoutaiPtr(side, 0) */
     if(kind==5){
         if(selector==0x7C)return object+0x64;                    /* fn_8011F474: condition[16] */
         if(selector==0xC8)return object+0xE8;                    /* fn_8011EDC4: attest2[16] */
@@ -277,4 +310,95 @@ int c3_battle_condition_check(const C3BattleState *s,uint32_t fo,uint16_t id,int
     }
     if(category!=0xD8)return 0;
     return c3_battle_condition_present(s,fo,id,fault);
+}
+
+/* ---- shared battle queries ------------------------------------------------ */
+
+int c3_battle_state_ability_on_any_battler(const C3BattleState *s,uint16_t ability)
+{
+    for(unsigned side=0;side<2;++side)for(unsigned tr=0;tr<2;++tr)for(unsigned k=0;k<3;++k){
+        uint32_t trainer=s->floor+C3_FIGHT_SIDE_OFFSET+side*C3_FIGHT_SIDE_BYTES+C3_FIGHT_SIDE_TRAINER_OFFSET+
+            tr*C3_BATTLE_RUNTIME_TRAINER_BYTES;
+        uint32_t fo=trainer+(k<2?C3_RUNTIME_FIGHT_OUT_OFFSET+k*C3_FIGHT_OUT_POKEMON_BYTES:0x20D4u);
+        uint32_t v=0;
+        if(c3_battle_fight_status_get(&s->arena,fo,0x100,0,&v)&&(uint16_t)v==ability)return 1;
+    }
+    return 0;
+}
+int c3_battle_state_weather(const C3BattleState *s,int check,int *out)
+{
+    static const struct{uint16_t id;uint8_t w;}table[]={{0x4E,0},{0x4F,1},{0x50,2},{0x51,3},{0x52,4},{0x53,1},{0x54,2},{0x55,3}};
+    if(!s||!out)return 0;
+    if(check&&(c3_battle_state_ability_on_any_battler(s,13)||c3_battle_state_ability_on_any_battler(s,0x4D)))return 0;
+    *out=0;
+    for(unsigned i=0;i<sizeof table/sizeof *table;++i){
+        const uint8_t *row=s->conditions.rows&&table[i].id<s->conditions.count?
+            s->conditions.rows+table[i].id*s->conditions.stride:NULL;
+        if(row&&be16(row+8)==9&&c3_battle_condition_present(s,s->floor,table[i].id,NULL)){*out=table[i].w;return 1;}
+    }
+    return 1;
+}
+int c3_battle_state_held_item_effect(const C3BattleState *s,uint32_t fo,uint16_t *effect)
+{
+    uint32_t fp=0,poke=0;
+    if(!s||!effect)return 0;
+    *effect=0;
+    if(fo)(void)c3_battle_fight_status_get(&s->arena,fo,0xD6,0,&fp);
+    if(fp)(void)c3_battle_fight_status_get(&s->arena,fp,0xCC,0,&poke);
+    if(!poke||c3_battle_condition_check(s,fo,0x3D,NULL))return 1;
+    const uint8_t *p=c3_battle_arena_bytes(&s->arena,poke+0x88,2);
+    return p&&!p[0]&&!p[1];
+}
+uint32_t c3_battle_state_battler_side(const C3BattleState *s,uint32_t fo)
+{
+    /* fightFloorGetFightOutPokemonPtrToFightTrainerPtr, then its FightSide. */
+    uint32_t original=0;
+    if(!s||!fo||!c3_battle_fight_status_get(&s->arena,fo,0xD5,0,&original)||!original)return 0;
+    for(unsigned side=0;side<2;++side)for(unsigned tr=0;tr<2;++tr){
+        uint32_t trainer=s->floor+C3_FIGHT_SIDE_OFFSET+side*C3_FIGHT_SIDE_BYTES+C3_FIGHT_SIDE_TRAINER_OFFSET+
+            tr*C3_BATTLE_RUNTIME_TRAINER_BYTES;
+        for(unsigned k=0;k<6;++k)if(trainer+0xB1Cu+k*0x154u==original)
+            return s->floor+C3_FIGHT_SIDE_OFFSET+side*C3_FIGHT_SIDE_BYTES;
+    }
+    return 0;
+}
+int c3_battle_waza_set_use(C3BattleState *s,uint32_t fw,uint16_t move)
+{
+    uint32_t power=0,type=0;
+    if(!s)return 0;
+    if(!c3_battle_waza_status_set(&s->arena,fw,0x28,0,move))return 0;
+    if(!c3_battle_waza_status_get(&s->arena,&s->moves,0,move,7,0,&power)||
+       !c3_battle_waza_status_get(&s->arena,&s->moves,0,move,3,0,&type))return 0;
+    return c3_battle_waza_status_set(&s->arena,fw,0x2F,0,(uint16_t)power)&&
+           c3_battle_waza_status_set(&s->arena,fw,0x30,0,(uint16_t)type);
+}
+int c3_battle_state_valid_fight_out_count(const C3BattleState *s,uint32_t mode,uint32_t target,int check,uint16_t *count)
+{
+    uint32_t trainers=0,pokemons=0;
+    int fault=0;
+    if(!s||!count||mode>1)return 0;
+    if(!c3_battle_floor_value(s,0x16,&trainers)||!c3_battle_floor_value(s,0x18,&pokemons))return 0;
+    uint16_t n=0;
+    uint32_t target_side=target&&mode==1?c3_battle_state_battler_side(s,target):0;
+    for(uint16_t pokemon=0;pokemon<(uint16_t)pokemons;++pokemon)
+        for(uint16_t trainer=0;trainer<(uint16_t)trainers;++trainer)
+            for(uint16_t side=0;side<2;++side){
+                uint32_t sd=s->floor+C3_FIGHT_SIDE_OFFSET+side*C3_FIGHT_SIDE_BYTES;   /* floor field 0x35 */
+                if(!c3_battle_side_check_valid(s,sd,&fault))continue;
+                if(trainer>=2)return 0;                          /* beyond the side's two trainers */
+                uint32_t tr=sd+C3_FIGHT_SIDE_TRAINER_OFFSET+trainer*C3_BATTLE_RUNTIME_TRAINER_BYTES;
+                if(!c3_battle_trainer_check_valid(s,tr,&fault))continue;
+                if(pokemon>=2)return 0;                          /* trainer field 0x46 holds two */
+                uint32_t fo=tr+C3_RUNTIME_FIGHT_OUT_OFFSET+pokemon*C3_FIGHT_OUT_POKEMON_BYTES;
+                if(!c3_battle_fight_out_check_valid(s,fo,&fault))continue;
+                /* _fightFloorGetValidFightOutPokemonCountSub */
+                if(check&&!c3_battle_fight_out_check_fight_out(s,fo,&fault))continue;
+                if(mode==1){
+                    if(!target_side||target_side!=c3_battle_state_battler_side(s,fo))continue;
+                }else if(target&&target==fo)continue;
+                ++n;
+            }
+    if(fault)return 0;
+    *count=n;
+    return 1;
 }

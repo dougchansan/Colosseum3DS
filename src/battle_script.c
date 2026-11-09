@@ -25,18 +25,20 @@ static int pack_fail(char *e,const char *m){if(e)snprintf(e,C3_SCRIPT_ERROR_SIZE
 
 int c3_battle_script_pack_decode(C3BattleScriptPack *out,const uint8_t *b,size_t n,char *e)
 {
-    enum{SECTIONS=8};
+    enum{SECTIONS=13};
     static const struct{char tag[5];uint32_t base,len;}want[SECTIONS]={
         {"SCR ",C3_SCRIPT_REGION_BASE,C3_SCRIPT_REGION_BYTES},{"EFF ",0x80379BFFu,C3_SCRIPT_EFFECTS*4u},
         {"WSD ",C3_SCRIPT_WSD_BASE,C3_SCRIPT_WSD_BYTES},{"WDT ",C3_SCRIPT_WDT_BASE,C3_SCRIPT_WDT_BYTES},
         {"CNC ",0x80478B48u,4},{"CND ",0x8035BBA8u,C3_CONDITION_TABLE_BYTES},
-        {"HTC ",0x80478D70u,4},{"HIT ",0x80375DD0u,C3_ACCURACY_STAGES*2u}};
+        {"HTC ",0x80478D70u,4},{"HIT ",0x80375DD0u,C3_ACCURACY_STAGES*2u},
+        {"ABC ",0x80478D68u,4},{"ABR ",0x80375D10u,26},{"CRC ",0x80478D60u,4},{"CRT ",0x80478D58u,8},
+        {"ED0 ",0x80279ED0u,0x24}};
     static const uint8_t dol_sha1[20]={0x87,0x0e,0x8b,0x96,0x93,0xca,0x78,0x07,0x82,0xd8,
         0x0f,0x22,0xa6,0xa4,0x57,0x2d,0x8b,0xa9,0x45,0x8f};
     uint8_t digest[20];size_t expect=64+SECTIONS*12;const uint8_t *data[SECTIONS];
     if(!out||!b)return pack_fail(e,"Missing move-script pack.");
     for(unsigned i=0;i<SECTIONS;++i)expect+=want[i].len;
-    if(n!=expect||memcmp(b,"C3W1",4)||be32(b+4)!=3||be32(b+8)!=n||be32(b+12)!=SECTIONS||memcmp(b+16,dol_sha1,20))
+    if(n!=expect||memcmp(b,"C3W1",4)||be32(b+4)!=4||be32(b+8)!=n||be32(b+12)!=SECTIONS||memcmp(b+16,dol_sha1,20))
         return pack_fail(e,"Unsupported or damaged move-script pack.");
     for(unsigned i=56;i<64;++i)if(b[i])return pack_fail(e,"Unsupported or damaged move-script pack.");
     c3_save_codec_sha1(digest,b+64,(uint32_t)(n-64));
@@ -59,6 +61,9 @@ int c3_battle_script_pack_decode(C3BattleScriptPack *out,const uint8_t *b,size_t
         return pack_fail(e,"Condition count exceeds the condition table.");
     next.accuracy_count=be32(data[6]);next.accuracy=data[7];
     if(next.accuracy_count!=C3_ACCURACY_STAGES)return pack_fail(e,"Unexpected accuracy-stage count.");
+    next.stage_ratio_count=be32(data[8]);next.stage_ratios=data[9];
+    next.critical_count=be32(data[10]);next.critical=data[11];next.item_types=data[12];
+    if(next.stage_ratio_count!=13||next.critical_count!=5)return pack_fail(e,"Unexpected stage or critical table count.");
     *out=next;if(e)e[0]=0;return 1;
 }
 

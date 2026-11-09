@@ -96,7 +96,7 @@ static void original(const char *pack_path,const char *newgame)
         CHECK(c3_battle_runtime_trainer_init(fresh));
         for(unsigned side=0;side<2;++side){
             const uint8_t *sd=s->memory+0x14+side*0x5230;
-            CHECK(sd[0]==0&&sd[1]==0&&sd[0x522C]==0);                                         /* side ID, spikes */
+            CHECK(sd[0]==0&&sd[1]==(side?1:2)&&sd[0x522C]==0);                                /* fightSideCreate ID, spikes */
             CHECK(!memcmp(sd+0x64+0x28E4,fresh,sizeof fresh));                                /* unused slot */
         }
         CHECK(s->msgctrl[0x29]==C3_MSGREF_ITEM_NAME(0)&&s->msgctrl[0x1C]==C3_MSGREF_ABILITY_NAME(0));

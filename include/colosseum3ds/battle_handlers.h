@@ -2,6 +2,7 @@
 #define C3_BATTLE_HANDLERS_H
 
 #include "colosseum3ds/battle_canceler.h"
+#include "colosseum3ds/battle_damage_state.h"
 #include "colosseum3ds/battle_script.h"
 
 /* Battle-logic move-script opcodes lowered over a C3BattleState, and the
@@ -25,6 +26,9 @@ typedef struct {
     int (*present)(void *user, C3BattlePresent request, uint32_t a, uint32_t b);
     void *present_user;
     uint8_t message_open;     /* attack string window to close after the wait */
+    C3BattleDamageTables damage;     /* original tables for fn_80232110 */
+    const uint8_t *critical;         /* lbl_80478D58 critical denominators */
+    uint32_t critical_count;         /* lbl_80478D60 */
 } C3BattleHandlers;
 
 /* Services for c3_battle_script_init with user = handlers. end_of_move is
@@ -32,6 +36,7 @@ typedef struct {
 C3BattleScriptServices c3_battle_handler_services(C3BattleHandlers *handlers);
 
 /* Lowered opcodes so far: 0x00 WS_HITCHECK (attack canceler), 0x01
- * accuracy check, 0x02 attack string, 0x03 PP reduce. */
+ * accuracy check, 0x02 attack string, 0x03 PP reduce, 0x04 critical check,
+ * 0x05 damage calculation. */
 int c3_battle_handler_dispatch(void *user, C3BattleScript *script, uint8_t opcode, unsigned phase);
 #endif

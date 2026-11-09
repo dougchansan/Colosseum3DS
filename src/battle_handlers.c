@@ -5,6 +5,8 @@
  *                     fightFloorGetNowTenkouDataId)
  *   0x02 fn_802282D8  attack string
  *   0x03 fn_8022808C  PP reduce
+ *   0x04 WS_CRITICAL_CHECK
+ *   0x05 fn_80227C40  damage calculation (fn_80232110 via battle_damage_state)
  * Script variables (hit marker 0x8047B618, ...) are the interpreter's
  * windows; battle records are the state's arena. */
 #include "colosseum3ds/battle_handlers.h"
@@ -127,55 +129,13 @@ static int ws_hitcheck(C3BattleHandlers *h,C3BattleScript *sc)
 
 #define WORK_BASE 0x80478D78u /* lbl_80478D78 script work bytes */
 
-static int ability_on_any_battler(const C3BattleState *s,uint16_t ability)
-{
-    for(unsigned side=0;side<2;++side)for(unsigned t=0;t<2;++t)for(unsigned k=0;k<3;++k){
-        uint32_t trainer=s->floor+C3_FIGHT_SIDE_OFFSET+side*C3_FIGHT_SIDE_BYTES+C3_FIGHT_SIDE_TRAINER_OFFSET+
-            t*C3_BATTLE_RUNTIME_TRAINER_BYTES;
-        uint32_t fo=trainer+(k<2?C3_RUNTIME_FIGHT_OUT_OFFSET+k*C3_FIGHT_OUT_POKEMON_BYTES:0x20D4u);
-        if((uint16_t)get(s,fo,0x100)==ability)return 1;
-    }
-    return 0;
-}
-/* fightFloorGetNowTenkouDataId(floor, check_abilities): Cloud Nine (13) /
- * Air Lock (0x4D) on any valid battler -> 0 (decided conservatively: any
- * battler slot holding them is refused), then floor weather conditions. */
-static int weather(const C3BattleState *s,int check_abilities,int *out)
-{
-    static const struct{uint16_t id;uint8_t w;}table[]={{0x4E,0},{0x4F,1},{0x50,2},{0x51,3},{0x52,4},{0x53,1},{0x54,2},{0x55,3}};
-    if(check_abilities&&(ability_on_any_battler(s,13)||ability_on_any_battler(s,0x4D)))return 0;
-    *out=0;
-    for(unsigned i=0;i<sizeof table/sizeof *table;++i){
-        const uint8_t *row=s->conditions.rows&&table[i].id<s->conditions.count?
-            s->conditions.rows+table[i].id*s->conditions.stride:NULL;
-        if(row&&((uint16_t)row[8]<<8|row[9])==9&&c3_battle_condition_present(s,s->floor,table[i].id,NULL)){
-            *out=table[i].w;return 1;
-        }
-    }
-    return 1;
-}
-/* fightOutPokemonGetSoubiItemSoubiDataId / ...Buff: 0 under condition 0x3D
- * or with no held item (PokemonBios 0x82 at +0x88); a held item's effect is
- * read from the item table, which is not modelled yet. */
-static int held_item_effect(const C3BattleState *s,uint32_t fo,uint16_t *effect)
-{
-    uint32_t fp=get(s,fo,0xD6),poke=fp?get(s,fp,0xCC):0;
-    *effect=0;
-    if(!poke||c3_battle_condition_check(s,fo,0x3D,NULL))return 1;
-    const uint8_t *p=c3_battle_arena_bytes(&s->arena,poke+0x88,2);
-    return p&&!p[0]&&!p[1];
-}
+#define ability_on_any_battler c3_battle_state_ability_on_any_battler
+static int weather(const C3BattleState *s,int check,int *out){return c3_battle_state_weather(s,check,out);}
+static int held_item_effect(const C3BattleState *s,uint32_t fo,uint16_t *e){return c3_battle_state_held_item_effect(s,fo,e);}
 /* fightOutPokemonGetPokemonPtr. */
 static uint32_t battler_pokemon(const C3BattleState *s,uint32_t fo)
 {uint32_t fp=fo?get(s,fo,0xD6):0;return fp?get(s,fp,0xCC):0;}
-/* Side record holding a battler's trainer (fightTargetGetPtrAsNowFightType(2, fo)). */
-static uint32_t battler_side(const C3BattleState *s,uint32_t fo)
-{
-    uint32_t trainer=c3_battle_fight_out_trainer(s,fo);
-    if(!trainer)return 0;
-    uint32_t off=trainer-s->floor-C3_FIGHT_SIDE_OFFSET;
-    return s->floor+C3_FIGHT_SIDE_OFFSET+(off/C3_FIGHT_SIDE_BYTES)*C3_FIGHT_SIDE_BYTES;
-}
+#define battler_side c3_battle_state_battler_side
 static int present(C3BattleHandlers *h,C3BattlePresent r,uint32_t a,uint32_t b)
 {return h->present?h->present(h->present_user,r,a,b):0;}
 
@@ -327,6 +287,69 @@ static int op_pp_reduce(C3BattleHandlers *h,C3BattleScript *sc)
     return C3_SCRIPT_HANDLER_DONE;
 }
 
+/* ---- 0x04 WS_CRITICAL_CHECK --------------------------------------------- */
+
+static int op_critical(C3BattleHandlers *h,C3BattleScript *sc)
+{
+    C3BattleState *s=h->state;
+    uint32_t attacker=0,defender=0,flag=0;
+    if(!c3_battle_target(&s->arena,s->floor,0x11,0,&attacker)||!c3_battle_target(&s->arena,s->floor,0x12,0,&defender))
+        return stop(sc,"critical targets");
+    uint16_t item=0;
+    if(!held_item_effect(s,attacker,&item))return stop(sc,"attacker held-item effect");
+    uint32_t fw=get(s,attacker,0xD9),poke=battler_pokemon(s,attacker);
+    uint16_t move=(uint16_t)get(s,attacker,0xDA);
+    const uint8_t *pb=poke?c3_battle_arena_bytes(&s->arena,poke,2):NULL;
+    uint16_t species=pb?(uint16_t)((uint16_t)pb[0]<<8|pb[1]):0;
+    uint16_t effect=(uint16_t)waza(s,0,move,9);
+    int lucky=item==0x3F&&species==0x71,stick=item==0x42&&species==0x53;
+    uint16_t crit=(uint16_t)((has(s,attacker,0x0F)?2:0)+(effect==0x2B)+(effect==0x4B)+(effect==200)+(effect==0xD1)+
+        (item==0x29)+lucky*2+stick*2);
+    if(!h->critical||!h->critical_count)return stop(sc,"critical-rate table");
+    if(crit>h->critical_count-1u)crit=(uint16_t)(h->critical_count-1u);
+    uint16_t def_ability=(uint16_t)get(s,defender,0x100);
+    uint32_t value=1;
+    if(!c3_battle_floor_value(s,0x29,&flag))return stop(sc,"floor field 0x29");
+    if(def_ability!=4&&def_ability!=0x4B&&(flag&0xFF)==1){
+        uint8_t denominator=crit<h->critical_count?h->critical[crit]:0;
+        uint16_t r1=0,r2=0;
+        if(!denominator)return stop(sc,"critical denominator");
+        if(!c3_battle_rng_next16(&s->rng,&r1))return stop(sc,"random stream");
+        if(r1%denominator==0)value=2;
+        else if(has(s,attacker,0x3E)&&move==0x164){
+            if(!c3_battle_rng_next16(&s->rng,&r2))return stop(sc,"random stream");
+            if(r2%100<90)value=2;
+        }
+    }
+    if(!c3_battle_waza_status_set(&s->arena,fw,0x2B,0,value))return stop(sc,"FightWaza critical");
+    sc->pc+=1;
+    return C3_SCRIPT_HANDLER_DONE;
+}
+
+/* ---- 0x05 damage calculation (fn_80227C40) ------------------------------- */
+
+static int op_damage_calc(C3BattleHandlers *h,C3BattleScript *sc)
+{
+    C3BattleState *s=h->state;
+    uint32_t attacker=0,defender=0;
+    if(!c3_battle_target(&s->arena,s->floor,0x11,0,&attacker)||!c3_battle_target(&s->arena,s->floor,0x12,0,&defender))
+        return stop(sc,"damage targets");
+    uint32_t side=battler_side(s,defender);
+    uint16_t move=(uint16_t)get(s,attacker,0xDA);
+    uint32_t fw=get(s,attacker,0xD9);
+    uint16_t power=(uint16_t)waza(s,fw,0,0x2F),type=(uint16_t)waza(s,fw,0,0x30);
+    int32_t damage=0;
+    if(!c3_battle_state_damage(s,&h->damage,attacker,defender,side,move,power,type,&damage,h->reason,sizeof h->reason))
+        return stop(sc,h->reason);
+    damage*=(int32_t)(uint8_t)waza(s,fw,0,0x2B);
+    damage*=(int32_t)(uint8_t)waza(s,fw,0,0x2C);
+    if(has(s,attacker,0x24)&&type==0x0D)damage*=2;            /* Charge */
+    if(has(s,attacker,0x32))damage=damage*15/10;              /* Helping Hand */
+    if(!c3_battle_waza_status_set(&s->arena,fw,0x2D,0,(uint32_t)damage))return stop(sc,"FightWaza damage");
+    sc->pc+=1;
+    return C3_SCRIPT_HANDLER_DONE;
+}
+
 int c3_battle_handler_dispatch(void *user,C3BattleScript *sc,uint8_t op,unsigned phase)
 {
     C3BattleHandlers *h=user;(void)phase;
@@ -336,6 +359,8 @@ int c3_battle_handler_dispatch(void *user,C3BattleScript *sc,uint8_t op,unsigned
     case 0x01:return op_accuracy(h,sc);
     case 0x02:return op_attack_string(h,sc,phase);
     case 0x03:return op_pp_reduce(h,sc);
+    case 0x04:return op_critical(h,sc);
+    case 0x05:return op_damage_calc(h,sc);
     default:return C3_SCRIPT_HANDLER_NONE;
     }
 }

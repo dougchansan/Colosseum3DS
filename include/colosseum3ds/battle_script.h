@@ -46,6 +46,11 @@ typedef struct {
     uint32_t condition_count;               /* lbl_80478B48 */
     const uint8_t *accuracy;                /* lbl_80375DD0: (multiplier, divisor) x13 */
     uint32_t accuracy_count;                /* lbl_80478D70 */
+    const uint8_t *stage_ratios;            /* lbl_80375D10: (multiplier, divisor) x13 */
+    uint32_t stage_ratio_count;             /* lbl_80478D68 */
+    const uint8_t *critical;                /* lbl_80478D58: denominators */
+    uint32_t critical_count;                /* lbl_80478D60 */
+    const uint8_t *item_types;              /* lbl_80279ED0 (0x24 bytes) */
 } C3BattleScriptPack;
 
 /* Validates header, digest, section order/bases/lengths and every effect

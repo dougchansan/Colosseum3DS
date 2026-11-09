@@ -53,9 +53,27 @@ typedef struct {
 /* Computed fightFloorGetStatus fields read from the encounter tables:
  * 0x14 fight type (encounter row +1), 0x16 trainer count / 0x18 active count
  * (type row +0 / +2), 0x1A fight kind (encounter row +0), 0x31 Shadow Hyper
- * Mode flag (kind row +0x16), 0x34 host/enemy message flag (kind row +0x18). Other fields go to c3_battle_floor_status_get.
+ * Mode flag (kind row +0x16), 0x34 host/enemy message flag (kind row +0x18);
+ * generally 0x1C..0x34 read kind-row byte (field - 0x1C), and 0x19 is the
+ * side's active maximum (trainer count x active count). Other fields go to c3_battle_floor_status_get.
  * Returns 0 for a field neither handles. */
 int c3_battle_floor_value(const C3BattleState *state, uint32_t field, uint32_t *value);
+
+/* Shared battle queries (guarded lowering; 0 means "not modelled"):
+ *   weather: fightFloorGetNowTenkouDataId(floor, check_abilities); Cloud
+ *     Nine / Air Lock on any battler slot is refused, then floor weather
+ *     conditions 0x4E..0x55 give the weather.
+ *   held item effect: fightOutPokemonGetSoubiItemSoubiDataId; 0 under
+ *     condition 0x3D or with no held item, a held item is refused.
+ *   ability on any battler: whether any battler slot (a superset of the valid
+ *     battlers) has the ability.
+ *   battler side: the FightSide holding a battler's trainer (target kind 2).
+ *   fightWazaSetUseWazaStatus: used move, its power and type into FightWaza. */
+int c3_battle_state_weather(const C3BattleState *state, int check_abilities, int *weather);
+int c3_battle_state_held_item_effect(const C3BattleState *state, uint32_t fight_out, uint16_t *effect);
+int c3_battle_state_ability_on_any_battler(const C3BattleState *state, uint16_t ability);
+uint32_t c3_battle_state_battler_side(const C3BattleState *state, uint32_t fight_out);
+int c3_battle_waza_set_use(C3BattleState *state, uint32_t fight_waza, uint16_t move);
 
 /* msgctrlSetValue: stores into the original variable for a known ID (IDs
  * 0x2D, 0x2E, 0x39, 0x4E, 0x58, 0x59, 0x5D keep 16 bits); unknown IDs are
@@ -90,6 +108,19 @@ int c3_battle_fight_pokemon_check_valid(const C3BattleState *state, uint32_t fig
 int c3_battle_fight_pokemon_check_fight_out(const C3BattleState *state, uint32_t fight_pokemon, int *fault);
 int c3_battle_fight_out_check_valid(const C3BattleState *state, uint32_t fight_out, int *fault);
 int c3_battle_fight_out_check_fight_out(const C3BattleState *state, uint32_t fight_out, int *fault);
+/* fightSideCheckValid, heroCheckValid (0x8012A130: name not empty and hero
+ * byte 0xA80 != 2) and fightTrainerCheckValid (result != 1, trainer field
+ * 0x43 != 0, hero copy valid). */
+int c3_battle_side_check_valid(const C3BattleState *state, uint32_t side, int *fault);
+int c3_battle_hero_check_valid(const C3BattleState *state, uint32_t hero, int *fault);
+int c3_battle_trainer_check_valid(const C3BattleState *state, uint32_t trainer, int *fault);
+/* fightFloorGetValidFightOutPokemonCount(floor, mode, target, check_fight_out)
+ * through fightFloorLoopValidFightOutPokemon (loop flag 0: active slot <
+ * floor 0x18, trainer < floor 0x16, side < 2, each level validated). Mode 0
+ * counts every valid battler except target, mode 1 those on target's side.
+ * Mode 2 (the opposing side) is not modelled: returns 0. */
+int c3_battle_state_valid_fight_out_count(const C3BattleState *state, uint32_t mode, uint32_t target,
+                                          int check_fight_out, uint16_t *count);
 
 /* fn_8011B67C: is condition `id` stored in its slot of `object`? The
  * condition row gives the status kind (+0), slot index (+1) and record

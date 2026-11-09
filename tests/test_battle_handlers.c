@@ -1,6 +1,7 @@
 /* Original move scripts running battle-logic opcodes over the real trainer
  * entry. Needs C3_ENTRY_PACK, C3_ENTRY_NEWGAME and C3_SCRIPT_PACK. */
 #include "colosseum3ds/battle_handlers.h"
+#include "colosseum3ds/battle_preview.h"
 #include "colosseum3ds/game_state.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -64,7 +65,7 @@ static void battle_reset(World *w,unsigned att_side,unsigned att_slot,unsigned d
     uint32_t att=c3_battle_state_fight_out(s,att_side,att_slot),def=c3_battle_state_fight_out(s,def_side,def_slot);
     put32(s->memory+0xA474,att);put32(s->memory+0xA478,def);
     uint32_t fw=att+0x49C;
-    CHECK(c3_battle_waza_status_set(&s->arena,fw,0x27,0,move)&&c3_battle_waza_status_set(&s->arena,fw,0x28,0,move));
+    CHECK(c3_battle_waza_status_set(&s->arena,fw,0x27,0,move)&&c3_battle_waza_set_use(s,fw,move));
     CHECK(c3_battle_waza_status_set(&s->arena,fw,0x26,0,(uint8_t)move_slot));
 }
 typedef struct { char log[256];size_t used; } Presentation;
@@ -80,6 +81,9 @@ static C3BattleScriptStatus run_effect(World *w,Run *r,uint16_t effect)
 {
     memset(r,0,sizeof *r);r->handlers.state=w->state;
     r->handlers.present=present;r->handlers.present_user=&r->presentation;
+    r->handlers.damage=(C3BattleDamageTables){w->script_pack.stage_ratios,w->script_pack.stage_ratio_count,
+        w->script_pack.item_types,w->pack->sections[C3_PACK_T44].bytes,w->pack->sections[C3_PACK_T44].count};
+    r->handlers.critical=w->script_pack.critical;r->handlers.critical_count=w->script_pack.critical_count;
     C3BattleScriptServices sv=c3_battle_handler_services(&r->handlers);
     CHECK(c3_battle_script_init(&r->script,&w->script_pack,&sv));
     CHECK(c3_battle_script_call(&r->script,w->script_pack.effects[effect],1,1));
@@ -91,10 +95,36 @@ static C3BattleScriptStatus run_effect(World *w,Run *r,uint16_t effect)
     CHECK(0);return C3_SCRIPT_FAILED;
 }
 
+/* Base damage from the preview binding of the same original arithmetic
+ * (src/battle_damage.c), with preview mons built from the same records. */
+static uint32_t preview_base_damage(World *w,const char *dir,unsigned att_side,unsigned att_slot,
+    unsigned def_side,unsigned def_slot,uint16_t move,uint16_t power,unsigned type)
+{
+    char path[512],error[C3_BATTLE_ERROR_SIZE];
+    static C3BattlePreviewTables t;static C3BattlePreview b;
+    snprintf(path,sizeof path,"%s/willie.c3p",dir);CHECK(c3_battle_preview_load(&t,path,error));
+    memset(&b,0,sizeof b);
+    const unsigned sides[4]={0,0,1,1},slots[4]={0,1,0,1};
+    for(unsigned i=0;i<4;++i){
+        C3BattleState *s=w->state;uint32_t fp=c3_battle_state_fight_pokemon(s,sides[i],slots[i]);
+        const uint8_t *pk=c3_battle_arena_bytes(&s->arena,fp+4,0x138);uint32_t ab=0;
+        CHECK(c3_battle_fight_status_get(&s->arena,c3_battle_state_fight_out(s,sides[i],slots[i]),0x100,0,&ab));
+        C3BattlePreviewMon *m=&b.mons[i];
+        m->species=(uint16_t)(pk[0]<<8|pk[1]);m->level=pk[0x60];m->ability=(uint8_t)ab;
+        m->hp=(uint16_t)(pk[0x8A]<<8|pk[0x8B]);m->maximum_hp=(uint16_t)(pk[0x8C]<<8|pk[0x8D]);
+        static const unsigned order[]={C3_STAT_HP,C3_STAT_ATTACK,C3_STAT_DEFENSE,C3_STAT_SP_ATTACK,C3_STAT_SP_DEFENSE,C3_STAT_SPEED};
+        for(unsigned j=0;j<6;++j)m->stats[order[j]]=(uint16_t)(pk[0x8C+2*j]<<8|pk[0x8D+2*j]);
+    }
+    uint32_t out=0;
+    CHECK(c3_battle_preview_base_damage(&b,&t,att_side*2+att_slot,def_side*2+def_slot,move,power,type,1,&out));
+    return out;
+}
+
 int main(void)
 {
     const char *pack=getenv("C3_ENTRY_PACK"),*newgame=getenv("C3_ENTRY_NEWGAME"),*script=getenv("C3_SCRIPT_PACK");
-    if(!pack||!newgame||!script){puts("battle_handlers private inputs absent");return 0;}
+    const char *preview_dir=getenv("C3_PREVIEW_DIR");
+    if(!pack||!newgame||!script||!preview_dir){puts("battle_handlers private inputs absent");return 0;}
     static World w;world_init(&w,pack,newgame,script);
     static Run r;uint32_t v;
 
@@ -112,19 +142,42 @@ int main(void)
     CHECK(run_effect(&w,&r,0)==C3_SCRIPT_FAILED);
     printf("tackle: draw %u -> %s; stops at %08lx: %s\n",draw,hit?"hit":"miss",
         (unsigned long)r.script.failure_pc,r.script.failure);
-    CHECK(w.state->rng.draws==predicted.draws&&w.state->rng.seed==predicted.seed);
+    if(!hit)CHECK(w.state->rng.draws==predicted.draws&&w.state->rng.seed==predicted.seed);
+    {   /* fightSideCreate data IDs (floor data field 3) and the valid count. */
+        const uint8_t *sd=c3_battle_arena_bytes(&w.state->arena,w.state->floor+C3_FIGHT_SIDE_OFFSET,C3_FIGHT_SIDE_BYTES+2);
+        CHECK(sd[0]==0&&sd[1]==2&&sd[C3_FIGHT_SIDE_BYTES]==0&&sd[C3_FIGHT_SIDE_BYTES+1]==1);
+        uint32_t own=c3_battle_state_fight_out(w.state,0,0);uint16_t n=0;
+        CHECK(c3_battle_state_valid_fight_out_count(w.state,1,own,0,&n)&&n==2);   /* own side */
+        CHECK(c3_battle_state_valid_fight_out_count(w.state,0,own,0,&n)&&n==3);   /* all but own */
+        CHECK(c3_battle_state_valid_fight_out_count(w.state,0,0,1,&n)&&n==4);     /* all out */
+        CHECK(!c3_battle_state_valid_fight_out_count(w.state,2,own,0,&n));        /* not modelled */
+    }
     if(hit){
-        CHECK(r.script.failure_pc==0x80375F98u&&strstr(r.script.failure,"WS_CRITICAL_CHECK"));
+        /* Critical check (one draw when critical hits are possible), damage
+         * calculation, then the type check (not lowered yet). */
+        uint16_t crit_draw=0;C3BattleRng after=predicted;CHECK(c3_battle_rng_next16(&after,&crit_draw));
+        uint32_t crit=crit_draw%16u==0?2u:1u,flag=0;
+        CHECK(c3_battle_floor_value(w.state,0x29,&flag));
+        if(!(flag&0xFF)){crit=1;after=predicted;}
+        CHECK(w.state->rng.draws==after.draws&&w.state->rng.seed==after.seed);
+        CHECK(r.script.failure_pc==0x80375F9Au&&strstr(r.script.failure,"WS_TYPE_CHECK"));
         CHECK(c3_battle_script_read(&r.script,0x8047B618u,4,&v)&&v==0x02000400u);   /* hit marker */
         CHECK(tackle[2]==pp_before-1);                                                  /* PP 35 -> 34 */
         CHECK(c3_battle_fight_status_get(&w.state->arena,c3_battle_state_fight_out(w.state,1,0),0x111,0,&v)&&v==1);
         CHECK(r.waits==1&&r.script.depth==1);
-        uint32_t att=c3_battle_state_fight_out(w.state,1,0);
+        uint32_t att=c3_battle_state_fight_out(w.state,1,0),fw=att+0x49C;
         char expect[160];
         snprintf(expect,sizeof expect,"1:%lx:1;2:%lx:21;3:0:0;4:%lx:1;",(unsigned long)(att&0xFFFF),
             (unsigned long)(att&0xFFFF),(unsigned long)(att&0xFFFF));
         CHECK(!strcmp(r.presentation.log,expect));
         CHECK(c3_battle_script_read(&r.script,0x80478D7Fu,1,&v)&&v==0);
+        uint32_t stored_crit=0,damage=0;
+        CHECK(c3_battle_waza_status_get(&w.state->arena,&w.state->moves,fw,0,0x2B,0,&stored_crit)&&stored_crit==crit);
+        CHECK(c3_battle_waza_status_get(&w.state->arena,&w.state->moves,fw,0,0x2D,0,&damage));
+        uint32_t base=preview_base_damage(&w,preview_dir,1,0,0,0,33,35,0);
+        printf("tackle damage: base %u x crit %u = %u (critical-hit flag %u, crit draw %u)\n",base,crit,damage,
+            (unsigned)flag,crit_draw);
+        CHECK(damage==base*crit);
     }else{
         CHECK(r.script.failure_pc==0x80375F8Fu&&strstr(r.script.failure,"miss"));
         CHECK(tackle[2]==pp_before);
@@ -136,6 +189,16 @@ int main(void)
     CHECK(run_effect(&w,&r,76)==C3_SCRIPT_FAILED);
     printf("confusion: stops at %08lx: %s\n",(unsigned long)r.script.failure_pc,r.script.failure);
     CHECK(r.handlers.canceller_step==15&&!strstr(r.script.failure,"WS_HITCHECK"));
+    {   /* Espeon's Confusion: special, Psychic, power 50, cross-checked too. */
+        uint32_t fw=c3_battle_state_fight_out(w.state,0,1)+0x49C,damage=0,crit=0;
+        if(strstr(r.script.failure,"WS_TYPE_CHECK")){
+            CHECK(c3_battle_waza_status_get(&w.state->arena,&w.state->moves,fw,0,0x2D,0,&damage));
+            CHECK(c3_battle_waza_status_get(&w.state->arena,&w.state->moves,fw,0,0x2B,0,&crit));
+            uint32_t base=preview_base_damage(&w,preview_dir,0,1,1,0,93,50,14);
+            printf("confusion damage: base %u x crit %u = %u\n",base,crit,damage);
+            CHECK(damage==base*crit);
+        }
+    }
 
     /* Accuracy stages: maximum evasion on the defender (stage 0: 33/100). */
     battle_reset(&w,1,0,0,0,33,0);
@@ -145,7 +208,7 @@ int main(void)
     hit=(int)(draw%100u)+1<=95*33/100;
     CHECK(run_effect(&w,&r,0)==C3_SCRIPT_FAILED);
     printf("evasion +6: draw %u -> %s: %s\n",draw,hit?"hit":"miss",r.script.failure);
-    CHECK(hit?strstr(r.script.failure,"WS_CRITICAL_CHECK")!=NULL:strstr(r.script.failure,"miss")!=NULL);
+    CHECK(hit?strstr(r.script.failure,"WS_TYPE_CHECK")!=NULL:strstr(r.script.failure,"miss")!=NULL);
 
     /* Protect on the defender stops at the accuracy check's reflect test. */
     battle_reset(&w,1,0,0,0,33,0);
