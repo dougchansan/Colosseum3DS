@@ -11,6 +11,8 @@
  *                     (fn_802279F8), Wonder Guard
  *   0x07 WS_DAMAGE_LOSS / 0x08 WS_DAMAGE_LOSS_ONLY  fn_802271E0(1|0, 1):
  *                     random 85-100%, Focus Band, False Swipe / Endure
+ *   0x09 fn_80226FD4  move effect (fightWazaDoEffectFunc) or, on a miss, the
+ *                     status-menu close and the target's motion
  * Script variables (hit marker 0x8047B618, ...) are the interpreter's
  * windows; battle records are the state's arena. */
 #include "colosseum3ds/battle_handlers.h"
@@ -558,6 +560,51 @@ static int damage_loss(C3BattleHandlers *h,C3BattleScript *sc,uint8_t r3,uint8_t
     return C3_SCRIPT_HANDLER_DONE;
 }
 
+/* ---- 0x09 move effect (fn_80226FD4) ------------------------------------ */
+
+#define EFFECT_DONE_COUNT 0x8038FF5Au  /* lbl_80379F58[0x16002] */
+#define EFFECT_COUNT 0x8038FFF9u       /* lbl_80379F58[0x160a1] */
+
+static int effect_counters(C3BattleScript *sc)
+{
+    uint32_t done=0,count=0;
+    if(!c3_battle_script_read(sc,EFFECT_DONE_COUNT,1,&done)||!c3_battle_script_read(sc,EFFECT_COUNT,1,&count))return 0;
+    c3_battle_script_write(sc,EFFECT_DONE_COUNT,1,(done+1u)&0xFFu);
+    c3_battle_script_write(sc,EFFECT_COUNT,1,(count+1u)&0xFFu);
+    sc->pc+=1;
+    return 1;
+}
+static int op_move_effect(C3BattleHandlers *h,C3BattleScript *sc,unsigned phase)
+{
+    C3BattleState *s=h->state;
+    if(phase==1)return effect_counters(sc)?C3_SCRIPT_HANDLER_DONE:stop(sc,"effect counters");
+    uint32_t attacker=0,target=0,flags=0,count=0;
+    int fault=0;
+    if(!c3_battle_target(&s->arena,s->floor,0x11,0,&attacker)||!c3_battle_target(&s->arena,s->floor,0x12,0,&target))
+        return stop(sc,"move effect targets");
+    uint32_t fw=get(s,attacker,0xD9);
+    uint16_t move=fw?(uint16_t)waza(s,fw,0,0x28):0;              /* fightOutPokemonGetUseWazaDataId */
+    int hit=waza_hit(s,fw,&fault);
+    if(fault)return stop(sc,"move effect hit check");
+    if(hit){
+        if(!c3_battle_script_read(sc,HIT_MARKER,4,&flags))return stop(sc,"hit marker");
+        if((flags&0x80u)&&move!=0x90&&move!=0xA4){
+            /* fn_80211B94(lbl_8047B62C, lbl_80378964, 0): the pause sequence. */
+            if(!c3_battle_script_call(sc,0x80378964u,sc->action,0))return stop(sc,"move effect sequence");
+            return C3_SCRIPT_HANDLER_CALL;
+        }
+        if(!c3_battle_script_read(sc,EFFECT_COUNT,1,&count))return stop(sc,"effect counter");
+        if(!h->present_move)return stop(sc,"move effect presentation (fightWazaDoEffectFunc)");
+        if(h->present_move(h->present_user,move,attacker,target,(uint8_t)count)!=1)
+            return stop(sc,"move effect presentation failed");
+        return effect_counters(sc)?C3_SCRIPT_HANDLER_DONE:stop(sc,"effect counters");
+    }
+    present(h,C3_PRESENT_STATUS_MENUS_CLOSE,0,0);
+    if(get(s,target,0xEE))return stop(sc,"target model motion (fn_801DDD28 0x57)");
+    sc->pc+=1;
+    return C3_SCRIPT_HANDLER_DONE;
+}
+
 int c3_battle_handler_dispatch(void *user,C3BattleScript *sc,uint8_t op,unsigned phase)
 {
     C3BattleHandlers *h=user;(void)phase;
@@ -572,6 +619,7 @@ int c3_battle_handler_dispatch(void *user,C3BattleScript *sc,uint8_t op,unsigned
     case 0x06:return type_check(h,sc,1,1,1,0);
     case 0x07:return damage_loss(h,sc,1,1);
     case 0x08:return damage_loss(h,sc,0,1);
+    case 0x09:return op_move_effect(h,sc,phase);
     default:return C3_SCRIPT_HANDLER_NONE;
     }
 }

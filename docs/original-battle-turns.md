@@ -285,6 +285,26 @@ interpreter yet.
 
   After the set-byte step (`0x2E`), hits stop at `0x09` (`fn_80226FD4`).
 
+- `0x09` move effect (`fn_80226FD4`).
+  - **Hit** (`fightWazaIsHit`): the move's effect plays through the new
+    `present_move` request: `fightWazaDoEffectFunc(move, attacker, target,
+    count)`, whose WZX type and variation functions come from move-row
+    fields 0x20/0x21. With hit-marker bit 0x80 (and not move 0x90 or 0xA4),
+    the original runs the pause sequence `lbl_80378964` as a nested call
+    instead. Either way it then increments the effect counters
+    `0x8038FF5A` and `0x8038FFF9` (initially 0 in the DOL data window).
+  - **Miss or no effect:** the status menus close (new request
+    `C3_PRESENT_STATUS_MENUS_CLOSE`). The target's motion needs a battler
+    model and is refused by name.
+  - Without a `present_move` callback the step refuses rather than skipping
+    the effect.
+
+  On the original data, Tackle requests the effect of move 33 from
+  Zigzagoon to Umbreon with count 0, and the counters become 1. The
+  no-effect case closes the menus with no effect request, and bit 0x80
+  gives a second 0x20-frame wait instead. Hits now stop at `0x0A`
+  (`fn_80226F0C`).
+
 ## Increments
 
 1. **Execution and end of turn through original code.** A minimal
