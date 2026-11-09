@@ -401,6 +401,41 @@ interpreter yet.
   passes straight on to `0x0F` (`fn_8022631C`). With the forced critical
   hit, the message waits 0x40 frames, closes, and work byte 7 returns to 0.
 
+- `0x0F` effectiveness message (`fn_8022631C`).
+  - Clears work byte 7, then picks a message from the attacker's FightWaza
+    conditions:
+    - **Missed** (0x40, unless no effect 0x43 with work byte 6 below 3): the
+      miss message for work byte 6 (`lbl_80279D18`: 0x753E 0x753F 0x7542
+      0x7540 0x7541 0x7645 0x7645 0x7549).
+    - **One result only** (fewer than two of 0x41..0x47, `fightWazaIsMix`):
+      super effective 0x7637, not very effective 0x7636, no effect 0x7543,
+      0x44 → 0x7632, 0x45 → 0x7647, Endure 0x75C9.
+    - **Combined results:** no effect 0x7543 or 0x45 → 0x7647. Otherwise
+      0x44 or Endure clear their conditions and run a nested sequence
+      (`0x803791C7`, `0x803791BE`). The original then returns without
+      advancing, so the step runs again from the start; here each resumed
+      phase is that fresh run.
+  - A chosen message goes into floor field 0x53 and opens through the new
+    `C3_PRESENT_EFFECT_MESSAGE` request (`fightMenuWazaKoukaMsg(message,
+    target, item)`). An opened window sets work byte 7.
+  - **Refused by name:**
+    - Focus Band (0x47), whose sequence needs its item.
+    - Any message that would carry a held item.
+  - The unused `fightOutPokemonGetNicknamePtr` call has no effect.
+
+  On the original data:
+
+  | Case | Result |
+  |---|---|
+  | Neutral Tackle | no message |
+  | Fighting-typed Tackle | "super effective" (0x7637) on Umbreon |
+  | Normal on Ghost-typed Umbreon | 0x7543 |
+  | Endure | 0x75C9 |
+  | Super effective into Endure | Endure sequence called at `0x803791BE` (stops at its unlowered `0x10`) |
+
+  Each message closes through the next `0x12` after 0x40 frames. Hits now
+  stop at `0x0C` (`fn_802267E8`).
+
 ## Increments
 
 1. **Execution and end of turn through original code.** A minimal

@@ -18,6 +18,7 @@
  *                     AI damage memory, Transform copy, HP bar
  *   0x0D fn_80226730  critical-hit message 0x7631 (floor 0x52, work byte 7)
  *   0x0E fn_802266EC  reads the attacker's FightWaza (0xD9), nothing else
+ *   0x0F fn_8022631C  effectiveness message from the FightWaza conditions
  *   0x12 fn_8022622C  with a message open (work byte 7): wait the operand's
  *                     frames, close the message, clear the flag
  *   0x5C fn_8021E9F4  target damage blink (fightOutPokemonDamageEffect) on a
@@ -827,6 +828,81 @@ static int op_message_close(C3BattleHandlers *h,C3BattleScript *sc,unsigned phas
     return C3_SCRIPT_HANDLER_DONE;
 }
 
+/* ---- 0x0F effectiveness message (fn_8022631C) ---------------------------- */
+
+/* fightOutPokemonGetSoubiItemDataId (0x802040E8): 0 without a Pokemon or
+ * under condition 0x3D, else the held item (PokemonBios +0x88). */
+static int held_item_id(const C3BattleState *s,uint32_t fo,uint16_t *item,int *fault)
+{
+    uint32_t pokemon=battler_pokemon(s,fo);
+    *item=0;
+    if(!pokemon)return 1;
+    if(c3_battle_condition_check(s,fo,0x3D,fault)==1)return 1;
+    const uint8_t *p=c3_battle_arena_bytes(&s->arena,pokemon+0x88,2);
+    if(!p)return 0;
+    *item=(uint16_t)((uint16_t)p[0]<<8|p[1]);
+    return 1;
+}
+/* fightWazaIsMix: two or more of conditions 0x41..0x47 (lbl_80279D08). */
+static int waza_mix(const C3BattleState *s,uint32_t fw,int *fault)
+{
+    unsigned n=0;
+    for(uint16_t id=0x41;id<=0x47;++id)n+=(unsigned)waza_is(s,fw,id,fault);
+    return n>=2;
+}
+/* Miss messages by work byte 6 (lbl_80279D18). */
+static const uint16_t miss_messages[8]={0x753E,0x753F,0x7542,0x7540,0x7541,0x7645,0x7645,0x7549};
+
+/* The nested sequences are fn_80211B94 calls; the original then returns
+ * without advancing, so the opcode runs again from the start: every phase
+ * here is a fresh execution. */
+static int op_effect_message(C3BattleHandlers *h,C3BattleScript *sc)
+{
+    C3BattleState *s=h->state;
+    uint32_t attacker=0,defender=0,work=0;
+    uint16_t item=0,message=0;
+    int fault=0;
+    if(!c3_battle_target(&s->arena,s->floor,0x11,0,&attacker)||!c3_battle_target(&s->arena,s->floor,0x12,0,&defender))
+        return stop(sc,"effectiveness message targets");
+    uint32_t fw=get(s,attacker,0xD9);
+    if(!held_item_id(s,defender,&item,&fault))return stop(sc,"defender held item");
+    c3_battle_script_write(sc,WORK_BASE+7,1,0);
+    if(!c3_battle_script_read(sc,WORK_BASE+6,1,&work))return stop(sc,"work byte 6");
+    int missed=waza_is(s,fw,0x40,&fault),immune=waza_is(s,fw,0x43,&fault);
+    if((missed&&!immune)||(missed&&work>=3)){
+        if(work>=8)return stop(sc,"miss message index");
+        message=miss_messages[work];
+    }else if(!waza_mix(s,fw,&fault)){
+        if(waza_is(s,fw,0x41,&fault))message=0x7637;
+        else if(waza_is(s,fw,0x42,&fault))message=0x7636;
+        else if(waza_is(s,fw,0x43,&fault))message=0x7543;
+        else if(waza_is(s,fw,0x44,&fault))message=0x7632;
+        else if(waza_is(s,fw,0x45,&fault))message=0x7647;
+        else if(waza_is(s,fw,0x46,&fault))message=0x75C9;
+        else if(waza_is(s,fw,0x47,&fault))return stop(sc,"Focus Band message sequence (lbl_80379BE7)");
+    }else{
+        if(waza_is(s,fw,0x43,&fault))message=0x7543;
+        else if(waza_is(s,fw,0x44,&fault)){
+            waza_erase(s,fw,0x44,&fault);waza_erase(s,fw,0x41,&fault);waza_erase(s,fw,0x42,&fault);
+            if(fault)return stop(sc,"effectiveness condition");
+            return c3_battle_script_call(sc,0x803791C7u,sc->action,0)?C3_SCRIPT_HANDLER_CALL:stop(sc,"sequence 0x803791C7");
+        }else if(waza_is(s,fw,0x46,&fault)){
+            waza_erase(s,fw,0x46,&fault);waza_erase(s,fw,0x47,&fault);
+            if(fault)return stop(sc,"effectiveness condition");
+            return c3_battle_script_call(sc,0x803791BEu,sc->action,0)?C3_SCRIPT_HANDLER_CALL:stop(sc,"sequence 0x803791BE");
+        }else if(waza_is(s,fw,0x47,&fault))return stop(sc,"Focus Band message sequence (lbl_80379BE7)");
+        else if(waza_is(s,fw,0x45,&fault))message=0x7647;
+    }
+    if(fault)return stop(sc,"effectiveness condition");
+    if(message){
+        if(!c3_battle_floor_status_set(&s->arena,s->floor,s->floor,0x53,0,message))return stop(sc,"floor effect message");
+        if(item)return stop(sc,"held item in the effectiveness message");
+        if(present(h,C3_PRESENT_EFFECT_MESSAGE,message,defender)==1)c3_battle_script_write(sc,WORK_BASE+7,1,1);
+    }
+    sc->pc+=1;
+    return C3_SCRIPT_HANDLER_DONE;
+}
+
 int c3_battle_handler_dispatch(void *user,C3BattleScript *sc,uint8_t op,unsigned phase)
 {
     C3BattleHandlers *h=user;(void)phase;
@@ -846,6 +922,7 @@ int c3_battle_handler_dispatch(void *user,C3BattleScript *sc,uint8_t op,unsigned
     case 0x0B:return op_hp_update(h,sc);
     case 0x0D:return op_critical_message(h,sc);
     case 0x0E:return op_fight_waza_touch(h,sc);
+    case 0x0F:return op_effect_message(h,sc);
     case 0x12:return op_message_close(h,sc,phase);
     case 0x5C:return op_damage_blink(h,sc);
     default:return C3_SCRIPT_HANDLER_NONE;

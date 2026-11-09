@@ -20,7 +20,9 @@ typedef enum {
     C3_PRESENT_STATUS_MENUS_CLOSE, /* fightMenuAllFightOutPokemonCloseStatusMenu(0) */
     C3_PRESENT_STATUS_MENU_SHOWN, /* menuIsCheck(status menu of a, fight type b): 1 shown */
     C3_PRESENT_HP_BAR,            /* menuFightStatusStartAnimHP(status menu of a, HP b) */
-    C3_PRESENT_MESSAGE_OPEN       /* fightMenuOpenMsg(message a): 1 when a window opened */
+    C3_PRESENT_MESSAGE_OPEN,      /* fightMenuOpenMsg(message a): 1 when a window opened */
+    C3_PRESENT_EFFECT_MESSAGE     /* fightMenuWazaKoukaMsg(message a, target b, item 0):
+                                     1 when a window opened */
 } C3BattlePresent;
 
 /* fightWazaDoEffectFunc(move, attacker, target, count): the move's effect
@@ -54,7 +56,7 @@ C3BattleScriptServices c3_battle_handler_services(C3BattleHandlers *handlers);
  * accuracy check, 0x02 attack string, 0x03 PP reduce, 0x04 critical check,
  * 0x05 damage calculation, 0x06 type check, 0x07/0x08 damage loss, 0x09
  * move effect, 0x0A effect wait, 0x0B HP update, 0x0D critical-hit message,
- * 0x0E (FightWaza read, no effect), 0x12 timed message close, 0x5C target
- * damage blink (no-op without a battler model). */
+ * 0x0E (FightWaza read, no effect), 0x0F effectiveness message, 0x12 timed
+ * message close, 0x5C target damage blink (no-op without a battler model). */
 int c3_battle_handler_dispatch(void *user, C3BattleScript *script, uint8_t opcode, unsigned phase);
 #endif
