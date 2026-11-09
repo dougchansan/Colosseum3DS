@@ -25,6 +25,9 @@ typedef enum {
  * the effect counter byte 0x8038FFF9. Returns 1 when the effect has run; the
  * script continues after it returns. */
 typedef int (*C3BattlePresentMove)(void *user, uint16_t move, uint32_t attacker, uint32_t target, uint8_t count);
+/* fn_801DA5C4(signal): has the running move effect reached `signal`?
+ * 1 yes, 0 not yet (the step waits one frame and asks again), -1 error. */
+typedef int (*C3BattleEffectSignal)(void *user, uint8_t signal);
 
 typedef struct {
     C3BattleState *state;
@@ -33,6 +36,7 @@ typedef struct {
     int (*present)(void *user, C3BattlePresent request, uint32_t a, uint32_t b);
     void *present_user;
     C3BattlePresentMove present_move;  /* NULL: the move effect step refuses */
+    C3BattleEffectSignal effect_signal; /* NULL: the effect wait step refuses */
     uint8_t message_open;     /* attack string window to close after the wait */
     C3BattleDamageTables damage;     /* original tables for fn_80232110 */
     const uint8_t *critical;         /* lbl_80478D58 critical denominators */
@@ -46,6 +50,6 @@ C3BattleScriptServices c3_battle_handler_services(C3BattleHandlers *handlers);
 /* Lowered opcodes so far: 0x00 WS_HITCHECK (attack canceler), 0x01
  * accuracy check, 0x02 attack string, 0x03 PP reduce, 0x04 critical check,
  * 0x05 damage calculation, 0x06 type check, 0x07/0x08 damage loss, 0x09
- * move effect. */
+ * move effect, 0x0A effect wait. */
 int c3_battle_handler_dispatch(void *user, C3BattleScript *script, uint8_t opcode, unsigned phase);
 #endif

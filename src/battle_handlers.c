@@ -13,6 +13,7 @@
  *                     random 85-100%, Focus Band, False Swipe / Endure
  *   0x09 fn_80226FD4  move effect (fightWazaDoEffectFunc) or, on a miss, the
  *                     status-menu close and the target's motion
+ *   0x0A fn_80226F0C  wait for the move effect's signal (operand byte)
  * Script variables (hit marker 0x8047B618, ...) are the interpreter's
  * windows; battle records are the state's arena. */
 #include "colosseum3ds/battle_handlers.h"
@@ -605,6 +606,29 @@ static int op_move_effect(C3BattleHandlers *h,C3BattleScript *sc,unsigned phase)
     return C3_SCRIPT_HANDLER_DONE;
 }
 
+/* ---- 0x0A effect wait (fn_80226F0C) -------------------------------------- */
+
+static int op_effect_wait(C3BattleHandlers *h,C3BattleScript *sc)
+{
+    C3BattleState *s=h->state;
+    uint32_t attacker=0,flags=0,signal=0;
+    if(!c3_battle_target(&s->arena,s->floor,0x11,0,&attacker))return stop(sc,"effect wait attacker");
+    uint32_t fw=get(s,attacker,0xD9);
+    uint16_t move=fw?(uint16_t)waza(s,fw,0,0x28):0;
+    if(!c3_battle_script_read(sc,HIT_MARKER,4,&flags))return stop(sc,"hit marker");
+    /* With bit 0x80 the original skips the wait and tests r29, which then
+     * still holds the interpreter's own register. */
+    if((flags&0x80u)&&move!=0x90&&move!=0xA4)return stop(sc,"effect wait skipped (menu close reads the caller's r29)");
+    if(!c3_battle_script_fetch(sc,1,1,&signal))return C3_SCRIPT_HANDLER_FAIL;
+    if(!h->effect_signal)return stop(sc,"move effect signal (fn_801DA5C4)");
+    int reached=h->effect_signal(h->present_user,(uint8_t)signal);
+    if(reached<0)return stop(sc,"move effect signal failed");
+    if(reached==0){sc->wait_frames=1;return C3_SCRIPT_HANDLER_WAIT;}   /* _threadSwitch */
+    if(signal==2||signal==6)present(h,C3_PRESENT_STATUS_MENUS_CLOSE,0,0);
+    sc->pc+=2;
+    return C3_SCRIPT_HANDLER_DONE;
+}
+
 int c3_battle_handler_dispatch(void *user,C3BattleScript *sc,uint8_t op,unsigned phase)
 {
     C3BattleHandlers *h=user;(void)phase;
@@ -620,6 +644,7 @@ int c3_battle_handler_dispatch(void *user,C3BattleScript *sc,uint8_t op,unsigned
     case 0x07:return damage_loss(h,sc,1,1);
     case 0x08:return damage_loss(h,sc,0,1);
     case 0x09:return op_move_effect(h,sc,phase);
+    case 0x0A:return op_effect_wait(h,sc);
     default:return C3_SCRIPT_HANDLER_NONE;
     }
 }

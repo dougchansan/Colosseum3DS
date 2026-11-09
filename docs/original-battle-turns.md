@@ -305,6 +305,21 @@ interpreter yet.
   gives a second 0x20-frame wait instead. Hits now stop at `0x0A`
   (`fn_80226F0C`).
 
+- `0x0A` effect wait (`fn_80226F0C`, operand: signal byte).
+  - The original polls `fn_801DA5C4(signal)` once per frame
+    (`_threadSwitch`), scanning the running effect objects. Here that is
+    the new `effect_signal` request: 1 reached, 0 not yet (the step waits
+    one frame and asks again), −1 error. Without the callback the step
+    refuses.
+  - Signals 2 and 6 then close the status menus.
+  - With hit-marker bit 0x80 (and not move 0x90 or 0xA4), the original
+    skips the poll and tests `r29`, which still holds the interpreter's
+    register. That path is refused by name.
+
+  On the original hit script Tackle waits for signal 5 and the script goes
+  on to `0x0E` (`fn_802266EC`). A signal arriving after two polls gives two
+  one-frame waits.
+
 ## Increments
 
 1. **Execution and end of turn through original code.** A minimal
