@@ -14,6 +14,7 @@
  *   0x09 fn_80226FD4  move effect (fightWazaDoEffectFunc) or, on a miss, the
  *                     status-menu close and the target's motion
  *   0x0A fn_80226F0C  wait for the move effect's signal (operand byte)
+ *   0x0E fn_802266EC  reads the attacker's FightWaza (0xD9), nothing else
  * Script variables (hit marker 0x8047B618, ...) are the interpreter's
  * windows; battle records are the state's arena. */
 #include "colosseum3ds/battle_handlers.h"
@@ -629,6 +630,20 @@ static int op_effect_wait(C3BattleHandlers *h,C3BattleScript *sc)
     return C3_SCRIPT_HANDLER_DONE;
 }
 
+/* ---- 0x0E fn_802266EC ----------------------------------------------------- */
+
+/* pokemonGetStatus(attacker, 0xD9) with the result unused (0x802266EC
+ * disassembly: no other call or store), then PC + 1. */
+static int op_fight_waza_touch(C3BattleHandlers *h,C3BattleScript *sc)
+{
+    C3BattleState *s=h->state;
+    uint32_t attacker=0;
+    if(!c3_battle_target(&s->arena,s->floor,0x11,0,&attacker))return stop(sc,"attacker");
+    (void)get(s,attacker,0xD9);
+    sc->pc+=1;
+    return C3_SCRIPT_HANDLER_DONE;
+}
+
 int c3_battle_handler_dispatch(void *user,C3BattleScript *sc,uint8_t op,unsigned phase)
 {
     C3BattleHandlers *h=user;(void)phase;
@@ -645,6 +660,7 @@ int c3_battle_handler_dispatch(void *user,C3BattleScript *sc,uint8_t op,unsigned
     case 0x08:return damage_loss(h,sc,0,1);
     case 0x09:return op_move_effect(h,sc,phase);
     case 0x0A:return op_effect_wait(h,sc);
+    case 0x0E:return op_fight_waza_touch(h,sc);
     default:return C3_SCRIPT_HANDLER_NONE;
     }
 }

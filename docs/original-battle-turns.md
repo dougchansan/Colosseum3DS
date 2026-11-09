@@ -320,6 +320,11 @@ interpreter yet.
   on to `0x0E` (`fn_802266EC`). A signal arriving after two polls gives two
   one-frame waits.
 
+- `0x0E` (`fn_802266EC`) reads the attacker's FightWaza (selector 0xD9),
+  ignores the result and advances one byte. The 0x802266EC disassembly
+  confirms there is no other call or store. Hits now stop at `0x5C`
+  (`fn_8021E9F4`).
+
 ## Increments
 
 1. **Execution and end of turn through original code.** A minimal

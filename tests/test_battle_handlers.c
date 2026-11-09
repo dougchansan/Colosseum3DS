@@ -192,14 +192,14 @@ int main(void)
          * calculation, type check (same-type bonus; Normal on Dark is
          * neutral), damage loss (one draw: 85-100%), the set-byte step, the
          * move effect (fightWazaDoEffectFunc, effect counters 0 -> 1), the
-         * effect wait for signal 5, then fn_802266EC (not lowered yet). */
+         * effect wait for signal 5, 0x0E, then fn_8021E9F4 (not lowered yet). */
         uint16_t crit_draw=0,loss_draw=0;C3BattleRng after=predicted;CHECK(c3_battle_rng_next16(&after,&crit_draw));
         uint32_t crit=crit_draw%16u==0?2u:1u,flag=0;
         CHECK(c3_battle_floor_value(w.state,0x29,&flag));
         if(!(flag&0xFF)){crit=1;after=predicted;}
         CHECK(c3_battle_rng_next16(&after,&loss_draw));
         CHECK(w.state->rng.draws==after.draws&&w.state->rng.seed==after.seed);
-        CHECK(r.script.failure_pc==0x80375FA5u&&strstr(r.script.failure,"fn_802266EC"));
+        CHECK(r.script.failure_pc==0x80375FA6u&&strstr(r.script.failure,"fn_8021E9F4"));
         CHECK(r.effect_waits==0);
         CHECK(c3_battle_script_read(&r.script,0x8038FF5Au,1,&v)&&v==1);           /* effect done count */
         CHECK(c3_battle_script_read(&r.script,0x8038FFF9u,1,&v)&&v==1);           /* effect counter */
@@ -241,7 +241,7 @@ int main(void)
     CHECK(r.handlers.canceller_step==15&&!strstr(r.script.failure,"WS_HITCHECK"));
     {   /* Espeon's Confusion: special, Psychic, power 50, cross-checked too. */
         uint32_t fw=c3_battle_state_fight_out(w.state,0,1)+0x49C,damage=0,crit=0;
-        if(strstr(r.script.failure,"fn_802266EC")){
+        if(strstr(r.script.failure,"fn_8021E9F4")){
             CHECK(c3_battle_waza_status_get(&w.state->arena,&w.state->moves,fw,0,0x2D,0,&damage));
             CHECK(c3_battle_waza_status_get(&w.state->arena,&w.state->moves,fw,0,0x2B,0,&crit));
             uint32_t base=preview_base_damage(&w,preview_dir,0,1,1,0,93,50,14);
@@ -258,7 +258,7 @@ int main(void)
     hit=(int)(draw%100u)+1<=95*33/100;
     CHECK(run_effect(&w,&r,0)==C3_SCRIPT_FAILED);
     printf("evasion +6: draw %u -> %s: %s\n",draw,hit?"hit":"miss",r.script.failure);
-    if(hit)CHECK(strstr(r.script.failure,"fn_802266EC")!=NULL);
+    if(hit)CHECK(strstr(r.script.failure,"fn_8021E9F4")!=NULL);
     else{   /* fightWazaIsHit fails: miss condition 0x40, the defender's hit
              * move cleared (0xF3 0, 0xF4 9) and the miss branch taken. */
         uint32_t fw=c3_battle_state_fight_out(w.state,1,0)+0x49C,att_type=0,hit_move=1,hit_type=0;
@@ -279,7 +279,7 @@ int main(void)
         CHECK(c3_battle_waza_status_set(&w.state->arena,fw,0x30,0,1));
         start=w.state->rng;
         CHECK(run_effect(&w,&r,0)==C3_SCRIPT_FAILED);
-        CHECK(strstr(r.script.failure,"fn_802266EC")!=NULL);
+        CHECK(strstr(r.script.failure,"fn_8021E9F4")!=NULL);
         CHECK(c3_battle_waza_status_get(&w.state->arena,&w.state->moves,fw,0,0x2D,0,&damage));
         CHECK(c3_battle_waza_status_get(&w.state->arena,&w.state->moves,fw,0,0x2B,0,&crit));
         /* The preview admits types 0/14/17 only; Fighting is physical like
@@ -302,7 +302,7 @@ int main(void)
         CHECK(c3_battle_condition_check(w.state,def,0x2C,NULL)==1);
         CHECK(run_effect(&w,&r,0)==C3_SCRIPT_FAILED);
         printf("endure: %s\n",r.script.failure);
-        CHECK(strstr(r.script.failure,"fn_802266EC")!=NULL);
+        CHECK(strstr(r.script.failure,"fn_8021E9F4")!=NULL);
         CHECK(c3_battle_waza_status_get(&w.state->arena,&w.state->moves,fw,0,0x2D,0,&damage)&&damage==2);
         CHECK(c3_battle_condition_present(w.state,fw,0x46,NULL));
     }
@@ -323,7 +323,7 @@ int main(void)
         uint32_t v2=1;
         CHECK(strstr(r.presentation.log,"5:0:0;")!=NULL&&!strstr(r.presentation.log,"M:"));
         CHECK(c3_battle_script_read(&r.script,0x8038FFF9u,1,&v2)&&v2==0);
-        CHECK(strstr(r.script.failure,"fn_802266EC")!=NULL);
+        CHECK(strstr(r.script.failure,"fn_8021E9F4")!=NULL);
     }
     /* Hit-marker bit 0x80: the effect is replaced by the pause sequence
      * (lbl_80378964, a second 0x20-frame wait); the counters still advance. */
@@ -373,7 +373,7 @@ int main(void)
             }
         }
         printf("delayed signal: %s (one-frame waits %u)\n",r.script.failure,r.effect_waits);
-        CHECK(strstr(r.script.failure,"fn_802266EC")!=NULL&&r.effect_waits==2&&strstr(r.presentation.log,"S:5;"));
+        CHECK(strstr(r.script.failure,"fn_8021E9F4")!=NULL&&r.effect_waits==2&&strstr(r.presentation.log,"S:5;"));
     }
 
     /* Protect on the defender stops at the accuracy check's reflect test. */
