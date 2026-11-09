@@ -15,6 +15,8 @@
  *                     status-menu close and the target's motion
  *   0x0A fn_80226F0C  wait for the move effect's signal (operand byte)
  *   0x0E fn_802266EC  reads the attacker's FightWaza (0xD9), nothing else
+ *   0x5C fn_8021E9F4  target damage blink (fightOutPokemonDamageEffect) on a
+ *                     hit with hit-marker bit 0x80 and not 0x100
  * Script variables (hit marker 0x8047B618, ...) are the interpreter's
  * windows; battle records are the state's arena. */
 #include "colosseum3ds/battle_handlers.h"
@@ -644,6 +646,30 @@ static int op_fight_waza_touch(C3BattleHandlers *h,C3BattleScript *sc)
     return C3_SCRIPT_HANDLER_DONE;
 }
 
+/* ---- 0x5C fn_8021E9F4 ----------------------------------------------------- */
+
+/* Operand: target kind. fightOutPokemonDamageEffect returns at once when the
+ * target has no battler model (0xEE); with one it blinks it eight times
+ * (3 + 2 frames), which needs the model and is refused. */
+static int op_damage_blink(C3BattleHandlers *h,C3BattleScript *sc)
+{
+    C3BattleState *s=h->state;
+    uint32_t kind=0,target=0,attacker=0,flags=0;
+    int fault=0;
+    if(!c3_battle_script_fetch(sc,1,1,&kind))return C3_SCRIPT_HANDLER_FAIL;
+    if(!c3_battle_target(&s->arena,s->floor,(uint8_t)kind,0,&target))return stop(sc,"damage blink target kind");
+    if(!c3_battle_target(&s->arena,s->floor,0x11,0,&attacker))return stop(sc,"attacker");
+    uint32_t fw=get(s,attacker,0xD9);
+    int hit=waza_hit(s,fw,&fault);
+    if(fault)return stop(sc,"damage blink hit check");
+    if(hit){
+        if(!c3_battle_script_read(sc,HIT_MARKER,4,&flags))return stop(sc,"hit marker");
+        if(!(flags&0x100u)&&(flags&0x80u)&&get(s,target,0xEE))return stop(sc,"target damage blink (battler model)");
+    }
+    sc->pc+=2;
+    return C3_SCRIPT_HANDLER_DONE;
+}
+
 int c3_battle_handler_dispatch(void *user,C3BattleScript *sc,uint8_t op,unsigned phase)
 {
     C3BattleHandlers *h=user;(void)phase;
@@ -661,6 +687,7 @@ int c3_battle_handler_dispatch(void *user,C3BattleScript *sc,uint8_t op,unsigned
     case 0x09:return op_move_effect(h,sc,phase);
     case 0x0A:return op_effect_wait(h,sc);
     case 0x0E:return op_fight_waza_touch(h,sc);
+    case 0x5C:return op_damage_blink(h,sc);
     default:return C3_SCRIPT_HANDLER_NONE;
     }
 }

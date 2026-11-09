@@ -192,14 +192,15 @@ int main(void)
          * calculation, type check (same-type bonus; Normal on Dark is
          * neutral), damage loss (one draw: 85-100%), the set-byte step, the
          * move effect (fightWazaDoEffectFunc, effect counters 0 -> 1), the
-         * effect wait for signal 5, 0x0E, then fn_8021E9F4 (not lowered yet). */
+         * effect wait for signal 5, 0x0E, 0x5C (no battler model: no blink), the
+         * skip, then fn_80226914 (not lowered yet). */
         uint16_t crit_draw=0,loss_draw=0;C3BattleRng after=predicted;CHECK(c3_battle_rng_next16(&after,&crit_draw));
         uint32_t crit=crit_draw%16u==0?2u:1u,flag=0;
         CHECK(c3_battle_floor_value(w.state,0x29,&flag));
         if(!(flag&0xFF)){crit=1;after=predicted;}
         CHECK(c3_battle_rng_next16(&after,&loss_draw));
         CHECK(w.state->rng.draws==after.draws&&w.state->rng.seed==after.seed);
-        CHECK(r.script.failure_pc==0x80375FA6u&&strstr(r.script.failure,"fn_8021E9F4"));
+        CHECK(r.script.failure_pc==0x80375FA9u&&strstr(r.script.failure,"fn_80226914"));
         CHECK(r.effect_waits==0);
         CHECK(c3_battle_script_read(&r.script,0x8038FF5Au,1,&v)&&v==1);           /* effect done count */
         CHECK(c3_battle_script_read(&r.script,0x8038FFF9u,1,&v)&&v==1);           /* effect counter */
@@ -241,7 +242,7 @@ int main(void)
     CHECK(r.handlers.canceller_step==15&&!strstr(r.script.failure,"WS_HITCHECK"));
     {   /* Espeon's Confusion: special, Psychic, power 50, cross-checked too. */
         uint32_t fw=c3_battle_state_fight_out(w.state,0,1)+0x49C,damage=0,crit=0;
-        if(strstr(r.script.failure,"fn_8021E9F4")){
+        if(strstr(r.script.failure,"fn_80226914")){
             CHECK(c3_battle_waza_status_get(&w.state->arena,&w.state->moves,fw,0,0x2D,0,&damage));
             CHECK(c3_battle_waza_status_get(&w.state->arena,&w.state->moves,fw,0,0x2B,0,&crit));
             uint32_t base=preview_base_damage(&w,preview_dir,0,1,1,0,93,50,14);
@@ -258,7 +259,7 @@ int main(void)
     hit=(int)(draw%100u)+1<=95*33/100;
     CHECK(run_effect(&w,&r,0)==C3_SCRIPT_FAILED);
     printf("evasion +6: draw %u -> %s: %s\n",draw,hit?"hit":"miss",r.script.failure);
-    if(hit)CHECK(strstr(r.script.failure,"fn_8021E9F4")!=NULL);
+    if(hit)CHECK(strstr(r.script.failure,"fn_80226914")!=NULL);
     else{   /* fightWazaIsHit fails: miss condition 0x40, the defender's hit
              * move cleared (0xF3 0, 0xF4 9) and the miss branch taken. */
         uint32_t fw=c3_battle_state_fight_out(w.state,1,0)+0x49C,att_type=0,hit_move=1,hit_type=0;
@@ -279,7 +280,7 @@ int main(void)
         CHECK(c3_battle_waza_status_set(&w.state->arena,fw,0x30,0,1));
         start=w.state->rng;
         CHECK(run_effect(&w,&r,0)==C3_SCRIPT_FAILED);
-        CHECK(strstr(r.script.failure,"fn_8021E9F4")!=NULL);
+        CHECK(strstr(r.script.failure,"fn_80226914")!=NULL);
         CHECK(c3_battle_waza_status_get(&w.state->arena,&w.state->moves,fw,0,0x2D,0,&damage));
         CHECK(c3_battle_waza_status_get(&w.state->arena,&w.state->moves,fw,0,0x2B,0,&crit));
         /* The preview admits types 0/14/17 only; Fighting is physical like
@@ -302,7 +303,7 @@ int main(void)
         CHECK(c3_battle_condition_check(w.state,def,0x2C,NULL)==1);
         CHECK(run_effect(&w,&r,0)==C3_SCRIPT_FAILED);
         printf("endure: %s\n",r.script.failure);
-        CHECK(strstr(r.script.failure,"fn_8021E9F4")!=NULL);
+        CHECK(strstr(r.script.failure,"fn_80226914")!=NULL);
         CHECK(c3_battle_waza_status_get(&w.state->arena,&w.state->moves,fw,0,0x2D,0,&damage)&&damage==2);
         CHECK(c3_battle_condition_present(w.state,fw,0x46,NULL));
     }
@@ -323,7 +324,7 @@ int main(void)
         uint32_t v2=1;
         CHECK(strstr(r.presentation.log,"5:0:0;")!=NULL&&!strstr(r.presentation.log,"M:"));
         CHECK(c3_battle_script_read(&r.script,0x8038FFF9u,1,&v2)&&v2==0);
-        CHECK(strstr(r.script.failure,"fn_8021E9F4")!=NULL);
+        CHECK(strstr(r.script.failure,"fn_80226914")!=NULL);
     }
     /* Hit-marker bit 0x80: the effect is replaced by the pause sequence
      * (lbl_80378964, a second 0x20-frame wait); the counters still advance. */
@@ -373,7 +374,33 @@ int main(void)
             }
         }
         printf("delayed signal: %s (one-frame waits %u)\n",r.script.failure,r.effect_waits);
-        CHECK(strstr(r.script.failure,"fn_8021E9F4")!=NULL&&r.effect_waits==2&&strstr(r.presentation.log,"S:5;"));
+        CHECK(strstr(r.script.failure,"fn_80226914")!=NULL&&r.effect_waits==2&&strstr(r.presentation.log,"S:5;"));
+    }
+    /* 0x5C with hit-marker bit 0x80 (set just before it): no battler model
+     * means no blink and the script goes on; a target model is refused. */
+    for(int model=0;model<2;++model){
+        battle_reset(&w,1,0,0,0,33,0);
+        if(model)CHECK(c3_battle_fight_status_set(&w.state->arena,c3_battle_state_fight_out(w.state,0,0),0xEE,0,1));
+        memset(&r,0,sizeof r);r.handlers.state=w.state;
+        r.handlers.present=present;r.handlers.present_user=&r.presentation;r.handlers.present_move=present_move;
+        r.handlers.effect_signal=effect_signal;
+        r.handlers.damage=(C3BattleDamageTables){w.script_pack.stage_ratios,w.script_pack.stage_ratio_count,
+            w.script_pack.item_types,w.pack->sections[C3_PACK_T44].bytes,w.pack->sections[C3_PACK_T44].count};
+        r.handlers.critical=w.script_pack.critical;r.handlers.critical_count=w.script_pack.critical_count;
+        C3BattleScriptServices sv=c3_battle_handler_services(&r.handlers);
+        CHECK(c3_battle_script_init(&r.script,&w.script_pack,&sv));
+        CHECK(c3_battle_script_call(&r.script,w.script_pack.effects[0],1,1));
+        C3BattleScriptStatus st=C3_SCRIPT_RUNNING;
+        for(unsigned i=0;i<64&&st!=C3_SCRIPT_FAILED;++i){
+            if(r.script.pc==0x80375FA6u){
+                uint32_t m=0;CHECK(c3_battle_script_read(&r.script,0x8047B618u,4,&m));
+                c3_battle_script_write(&r.script,0x8047B618u,4,m|0x80u);
+            }
+            st=c3_battle_script_step(&r.script);
+            if(st==C3_SCRIPT_WAITING)CHECK(c3_battle_script_resume(&r.script));
+        }
+        printf("0x5C bit 0x80, model %d: %s\n",model,r.script.failure);
+        CHECK(strstr(r.script.failure,model?"battler model":"fn_80226914")!=NULL);
     }
 
     /* Protect on the defender stops at the accuracy check's reflect test. */

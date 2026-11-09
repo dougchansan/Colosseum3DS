@@ -50,6 +50,7 @@ C3BattleScriptServices c3_battle_handler_services(C3BattleHandlers *handlers);
 /* Lowered opcodes so far: 0x00 WS_HITCHECK (attack canceler), 0x01
  * accuracy check, 0x02 attack string, 0x03 PP reduce, 0x04 critical check,
  * 0x05 damage calculation, 0x06 type check, 0x07/0x08 damage loss, 0x09
- * move effect, 0x0A effect wait, 0x0E (FightWaza read, no effect). */
+ * move effect, 0x0A effect wait, 0x0E (FightWaza read, no effect), 0x5C
+ * target damage blink (no-op without a battler model). */
 int c3_battle_handler_dispatch(void *user, C3BattleScript *script, uint8_t opcode, unsigned phase);
 #endif

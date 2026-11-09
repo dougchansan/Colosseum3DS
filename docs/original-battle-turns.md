@@ -325,6 +325,17 @@ interpreter yet.
   confirms there is no other call or store. Hits now stop at `0x5C`
   (`fn_8021E9F4`).
 
+- `0x5C` (`fn_8021E9F4`, operand: target kind).
+  - On a hit with hit-marker bit 0x80 and not 0x100, it calls
+    `fightOutPokemonDamageEffect(target)`, then advances two bytes.
+  - That function returns at once when the target has no battler model
+    (selector 0xEE). This holds for the battle state, so the step is exact.
+    With a model it blinks it eight times (3 + 2 frames each); that path is
+    refused by name.
+
+  After 0x5C and the skip opcode (`0x3A`), hits now stop at `0x0B`
+  (`fn_80226914`).
+
 ## Increments
 
 1. **Execution and end of turn through original code.** A minimal
