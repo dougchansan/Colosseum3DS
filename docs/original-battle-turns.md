@@ -377,6 +377,18 @@ interpreter yet.
 
   Hits now stop at `0x0D` (`fn_80226730`).
 
+- `0x0D` critical-hit message (`fn_80226730`).
+  - Only when FightWaza 0x2B is 2 (a critical hit) and the move hit.
+  - Stores message 0x7631 in floor field 0x52 (critical message ID) and
+    opens it through the new `C3_PRESENT_MESSAGE_OPEN` request.
+  - When a window opened, sets work byte 7 (`0x80478D7F`), the same
+    open-window flag the attack string uses.
+
+  Without a critical hit the step only advances; Tackle on the original
+  data goes on to `0x12` (`fn_8022622C`). With 0x2B forced to 2 before the
+  step, floor 0x52 holds 0x7631, the message is requested and work byte 7
+  is 1.
+
 ## Increments
 
 1. **Execution and end of turn through original code.** A minimal

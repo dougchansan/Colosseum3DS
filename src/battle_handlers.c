@@ -16,6 +16,7 @@
  *   0x0A fn_80226F0C  wait for the move effect's signal (operand byte)
  *   0x0B fn_80226914  HP update: damage records, physical/special counters,
  *                     AI damage memory, Transform copy, HP bar
+ *   0x0D fn_80226730  critical-hit message 0x7631 (floor 0x52, work byte 7)
  *   0x0E fn_802266EC  reads the attacker's FightWaza (0xD9), nothing else
  *   0x5C fn_8021E9F4  target damage blink (fightOutPokemonDamageEffect) on a
  *                     hit with hit-marker bit 0x80 and not 0x100
@@ -781,6 +782,29 @@ static int op_hp_update(C3BattleHandlers *h,C3BattleScript *sc)
     return C3_SCRIPT_HANDLER_DONE;
 }
 
+/* ---- 0x0D critical-hit message (fn_80226730) ----------------------------- */
+
+#define CRITICAL_MESSAGE 0x7631u
+static int op_critical_message(C3BattleHandlers *h,C3BattleScript *sc)
+{
+    C3BattleState *s=h->state;
+    uint32_t attacker=0;
+    int fault=0;
+    if(!c3_battle_target(&s->arena,s->floor,0x11,0,&attacker))return stop(sc,"attacker");
+    uint32_t fw=get(s,attacker,0xD9);
+    if((uint8_t)waza(s,fw,0,0x2B)==2){
+        int hit=waza_hit(s,fw,&fault);
+        if(fault)return stop(sc,"critical message hit check");
+        if(hit){
+            if(!c3_battle_floor_status_set(&s->arena,s->floor,s->floor,0x52,0,CRITICAL_MESSAGE))
+                return stop(sc,"floor critical message");
+            if(present(h,C3_PRESENT_MESSAGE_OPEN,CRITICAL_MESSAGE,0)==1)c3_battle_script_write(sc,WORK_BASE+7,1,1);
+        }
+    }
+    sc->pc+=1;
+    return C3_SCRIPT_HANDLER_DONE;
+}
+
 int c3_battle_handler_dispatch(void *user,C3BattleScript *sc,uint8_t op,unsigned phase)
 {
     C3BattleHandlers *h=user;(void)phase;
@@ -798,6 +822,7 @@ int c3_battle_handler_dispatch(void *user,C3BattleScript *sc,uint8_t op,unsigned
     case 0x09:return op_move_effect(h,sc,phase);
     case 0x0A:return op_effect_wait(h,sc);
     case 0x0B:return op_hp_update(h,sc);
+    case 0x0D:return op_critical_message(h,sc);
     case 0x0E:return op_fight_waza_touch(h,sc);
     case 0x5C:return op_damage_blink(h,sc);
     default:return C3_SCRIPT_HANDLER_NONE;
