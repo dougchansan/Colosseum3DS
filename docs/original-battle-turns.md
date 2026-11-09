@@ -336,6 +336,47 @@ interpreter yet.
   After 0x5C and the skip opcode (`0x3A`), hits now stop at `0x0B`
   (`fn_80226914`).
 
+- `0x0B` HP update (`fn_80226914`, operand: target kind).
+  - **Hit, damage:** HP falls by the damage, to no less than 0. When
+    hit-marker bit 0x20 is clear, the target also records:
+    - the running damage total 0xF5
+    - the source's relative target ID 0xF6 (the attacker for target 0x12,
+      else the defender)
+    - an addition to the attacker's AI damage memory for the target
+  - **First hit:** the first damage of the move goes into 0x11B.
+  - **Physical/special records** (type row +0 = 1 or 2): value and source in
+    0x102/0x103 with 0x11C/0x11D (physical, not move 0xDC), or 0x104/0x105
+    with 0x11E/0x11F (special). Hit-marker bit 0x100000 suppresses these
+    and 0x11B.
+  - **Healing** (negative damage) restores up to the maximum.
+  - **After either:**
+    - The step stores FightWaza 0x2E and the new HP.
+    - If the target uses its Transform copy (0xD6 = 0xD7), it copies that HP
+      to the original FightPokemon.
+    - It asks the presenter whether the target's status menu is shown (new
+      `C3_PRESENT_STATUS_MENU_SHOWN`); if not, it brings in the actor
+      (`C3_PRESENT_ACTOR_BEGIN`). Then it starts the HP bar (new
+      `C3_PRESENT_HP_BAR`).
+  - **Miss:** 0x11B becomes 0xFFFF if it is unset.
+  - **Refused by name:** Substitute (condition 0x14 without bit 0x100), whose
+    message path is not lowered.
+  - **New state pieces:**
+    - `fightTargetGetPtr` (0x801F02AC) with its side lookup and the
+      relative-target search over the target-kind table. That table is in DOL
+      pack v5 (`TGC`/`TGT`, `lbl_80375AC8`, 30 rows).
+    - `fightFloorCreateFightPokemonEnemyAryEnemySideAll`, the battle-start
+      step that creates the AI damage memory. The start-of-battle stages
+      (increment 3) are not lowered yet, so tests run that one step at setup.
+      The HP update refuses when the attacker's memory was never created.
+
+  On the original data:
+  - Tackle takes Umbreon from 86 to 81 HP. Umbreon records 5 damage from
+    relative target 15 (Zigzagoon A) as physical.
+  - Zigzagoon A's memory lists Umbreon (initial HP 86, damage 5), then Espeon.
+  - Espeon's Confusion records special damage from relative target 13.
+
+  Hits now stop at `0x0D` (`fn_80226730`).
+
 ## Increments
 
 1. **Execution and end of turn through original code.** A minimal

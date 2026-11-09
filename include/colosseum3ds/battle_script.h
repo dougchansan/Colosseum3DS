@@ -36,6 +36,7 @@
 #define C3_CONDITION_ROW_BYTES 0x14u
 #define C3_CONDITION_TABLE_BYTES 0x6B8u
 #define C3_ACCURACY_STAGES 13u
+#define C3_TARGET_KINDS 30u
 
 typedef struct {
     const uint8_t *script;                  /* borrowed: C3_SCRIPT_REGION_BYTES */
@@ -51,6 +52,9 @@ typedef struct {
     const uint8_t *critical;                /* lbl_80478D58: denominators */
     uint32_t critical_count;                /* lbl_80478D60 */
     const uint8_t *item_types;              /* lbl_80279ED0 (0x24 bytes) */
+    const uint8_t *target_kinds;            /* lbl_80375AC8: fight-target kinds, 8 bytes each
+                                               (+0 status kind, +1 relative flag, +4 buff) */
+    uint32_t target_kind_count;             /* lbl_80478D40 */
 } C3BattleScriptPack;
 
 /* Validates header, digest, section order/bases/lengths and every effect

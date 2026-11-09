@@ -14,6 +14,8 @@
  *   0x09 fn_80226FD4  move effect (fightWazaDoEffectFunc) or, on a miss, the
  *                     status-menu close and the target's motion
  *   0x0A fn_80226F0C  wait for the move effect's signal (operand byte)
+ *   0x0B fn_80226914  HP update: damage records, physical/special counters,
+ *                     AI damage memory, Transform copy, HP bar
  *   0x0E fn_802266EC  reads the attacker's FightWaza (0xD9), nothing else
  *   0x5C fn_8021E9F4  target damage blink (fightOutPokemonDamageEffect) on a
  *                     hit with hit-marker bit 0x80 and not 0x100
@@ -670,6 +672,115 @@ static int op_damage_blink(C3BattleHandlers *h,C3BattleScript *sc)
     return C3_SCRIPT_HANDLER_DONE;
 }
 
+/* ---- 0x0B HP update (fn_80226914) --------------------------------------- */
+
+static int set_field(C3BattleState *s,uint32_t fo,uint32_t sel,uint32_t value,int *fault)
+{if(!c3_battle_fight_status_set(&s->arena,fo,sel,0,value))*fault=1;return 1;}
+/* fightOutPokemonAddFightOutPokemonEnemyDamage(self, other, amount): the
+ * other battler's enemy entry (0x122, 4 x 12 bytes) whose target is self. */
+static void enemy_damage(C3BattleState *s,uint32_t self,uint32_t other,uint16_t amount,int *fault)
+{
+    if(!self||!other||self==other)return;
+    uint8_t *entries=c3_battle_arena_bytes(&s->arena,other+0x6B0u,48);
+    if(!entries){*fault=1;return;}
+    int created=0;
+    for(unsigned i=0;i<4;++i)if(entries[12*i]|entries[12*i+1]|entries[12*i+2]|entries[12*i+3])created=1;
+    if(!created){*fault=2;return;}           /* battle-start enemy arrays were never created */
+    for(unsigned i=0;i<4;++i){                                   /* fightOutPokemonEnemySearchAry */
+        uint8_t *e=entries+12*i;
+        uint32_t target=(uint32_t)e[0]<<24|(uint32_t)e[1]<<16|(uint32_t)e[2]<<8|e[3];
+        if(!target||target!=self)continue;
+        uint16_t damage=(uint16_t)(((uint16_t)e[8]<<8|e[9])+amount);
+        e[8]=(uint8_t)(damage>>8);e[9]=(uint8_t)damage;
+        return;
+    }
+}
+static uint16_t pokemon_hp(const C3BattleState *s,uint32_t pokemon,uint32_t offset,int *fault)
+{
+    const uint8_t *p=pokemon?c3_battle_arena_bytes(&s->arena,pokemon+offset,2):NULL;
+    if(!p){*fault=1;return 0;}
+    return (uint16_t)((uint16_t)p[0]<<8|p[1]);
+}
+static int op_hp_update(C3BattleHandlers *h,C3BattleScript *sc)
+{
+    C3BattleState *s=h->state;
+    uint32_t type=0,attacker=0,ally=0,kind=0,flags=0,target=0;
+    int fault=0;
+    if(!c3_battle_floor_value(s,0x14,&type))return stop(sc,"fight type");
+    if(!c3_battle_target(&s->arena,s->floor,0x11,0,&attacker)||!c3_battle_target(&s->arena,s->floor,0x12,0,&ally))
+        return stop(sc,"HP update targets");
+    uint32_t fw=get(s,attacker,0xD9);
+    uint16_t move=fw?(uint16_t)waza(s,fw,0,0x28):0;
+    int32_t damage=(int32_t)waza(s,fw,0,0x2D);
+    uint32_t initial=waza(s,fw,0,0x2E);
+    uint16_t category=(uint16_t)waza(s,fw,0,0x30);
+    if(!c3_battle_script_fetch(sc,1,1,&kind))return C3_SCRIPT_HANDLER_FAIL;
+    if(!c3_battle_state_target_now(s,(uint16_t)kind,0,&target))return stop(sc,"HP update target kind");
+    int hit=waza_hit(s,fw,&fault);
+    if(fault)return stop(sc,"HP update hit check");
+    if(!hit){
+        if(get(s,target,0x11B)==0)set_field(s,target,0x11B,0xFFFF,&fault);
+        if(fault)return stop(sc,"HP update record");
+        sc->pc+=2;
+        return C3_SCRIPT_HANDLER_DONE;
+    }
+    uint32_t pokemon=battler_pokemon(s,target);
+    int32_t hp=pokemon_hp(s,pokemon,0x8A,&fault),maximum=pokemon_hp(s,pokemon,0x8C,&fault);
+    if(fault)return stop(sc,"target Pokemon record");
+    if(!c3_battle_script_read(sc,HIT_MARKER,4,&flags))return stop(sc,"hit marker");
+    if(c3_battle_condition_check(s,target,0x14,&fault)==1&&!(flags&0x100u))
+        return stop(sc,"Substitute damage (fightOutPokemonGetJoutaiMigawariHp)");
+    flags&=~0x100u;
+    uint32_t effect;int32_t final;
+    uint32_t source=kind==0x12?attacker:ally;
+    uint16_t relative=0;
+    if(damage<0){                                                /* healing */
+        effect=initial;final=hp-damage;
+        if(final>maximum)final=maximum;
+    }else{
+        if(hp>damage){effect=(uint32_t)damage;final=hp-damage;}else{effect=(uint32_t)hp;final=0;}
+        if(flags&0x20u)flags&=~0x20u;
+        else{
+            int16_t previous=(int16_t)get(s,target,0xF5);
+            previous=(int16_t)(previous+damage);
+            set_field(s,target,0xF5,(uint16_t)previous,&fault);
+            if(!c3_battle_state_relative_target_id(s,source,(uint16_t)type,&relative))return stop(sc,"relative target ID");
+            set_field(s,target,0xF6,relative,&fault);
+            enemy_damage(s,target,attacker,(uint16_t)effect,&fault);
+            if(fault==2)return stop(sc,"AI damage memory not created (battle start fightFloorCreateFightPokemonEnemyAryEnemySideAll)");
+        }
+        if(get(s,target,0x11B)==0&&!(flags&0x100000u))set_field(s,target,0x11B,effect,&fault);
+        const C3BattleDamageTables *t=&h->damage;
+        uint8_t mode=t->types&&category<t->type_count?t->types[(uint32_t)category*44u]:0;   /* fn_8010C4A0 */
+        if((mode==1&&!(flags&0x100000u)&&move!=0xDC)||(mode==2&&!(flags&0x100000u))){
+            uint32_t value=mode==1?0x102:0x104,mine=mode==1?0x11C:0x11E;
+            set_field(s,target,value,effect,&fault);set_field(s,target,mine,effect,&fault);
+            if(!c3_battle_state_relative_target_id(s,source,(uint16_t)type,&relative))return stop(sc,"relative target ID");
+            set_field(s,target,value+1,relative,&fault);set_field(s,target,mine+1,relative,&fault);
+        }
+    }
+    flags&=~0x100000u;
+    c3_battle_script_write(sc,HIT_MARKER,4,flags);
+    if(!c3_battle_waza_status_set(&s->arena,fw,0x2E,0,effect))fault=1;
+    uint8_t *hp_bytes=c3_battle_arena_bytes(&s->arena,pokemon+0x8A,2);
+    if(!hp_bytes)return stop(sc,"target Pokemon record");
+    hp_bytes[0]=(uint8_t)((uint32_t)final>>8);hp_bytes[1]=(uint8_t)final;
+    if(get(s,target,0xD6)==get(s,target,0xD7)){                   /* fightOutPokemonIsUseHensinBuff */
+        uint32_t from=get(s,target,0xD7),to=get(s,target,0xD5);  /* SetHensinPokemonStatusId(0x83, 0, 0) */
+        if(from&&to){
+            uint32_t src=get(s,from,0xCC),dst=get(s,to,0xCC);
+            uint16_t copied=pokemon_hp(s,src,0x8A,&fault);
+            uint8_t *d=dst?c3_battle_arena_bytes(&s->arena,dst+0x8A,2):NULL;
+            if(!d)fault=1;else{d[0]=(uint8_t)(copied>>8);d[1]=(uint8_t)copied;}
+        }
+    }
+    if(fault)return stop(sc,"HP update record");
+    if(present(h,C3_PRESENT_STATUS_MENU_SHOWN,target,type)!=1)present(h,C3_PRESENT_ACTOR_BEGIN,target,type);
+    present(h,C3_PRESENT_HP_BAR,target,(uint16_t)final);
+    sc->pc+=2;
+    return C3_SCRIPT_HANDLER_DONE;
+}
+
 int c3_battle_handler_dispatch(void *user,C3BattleScript *sc,uint8_t op,unsigned phase)
 {
     C3BattleHandlers *h=user;(void)phase;
@@ -686,6 +797,7 @@ int c3_battle_handler_dispatch(void *user,C3BattleScript *sc,uint8_t op,unsigned
     case 0x08:return damage_loss(h,sc,0,1);
     case 0x09:return op_move_effect(h,sc,phase);
     case 0x0A:return op_effect_wait(h,sc);
+    case 0x0B:return op_hp_update(h,sc);
     case 0x0E:return op_fight_waza_touch(h,sc);
     case 0x5C:return op_damage_blink(h,sc);
     default:return C3_SCRIPT_HANDLER_NONE;

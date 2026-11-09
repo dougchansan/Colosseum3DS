@@ -9,7 +9,8 @@
 #include <string.h>
 
 #define CHECK(x) do{if(!(x)){fprintf(stderr,"%s:%d: CHECK(%s)\n",__FILE__,__LINE__,#x);exit(1);}}while(0)
-#define PACK_BYTES (64u+156u+C3_SCRIPT_REGION_BYTES+C3_SCRIPT_EFFECTS*4u+C3_SCRIPT_WSD_BYTES+C3_SCRIPT_WDT_BYTES+4u+C3_CONDITION_TABLE_BYTES+4u+C3_ACCURACY_STAGES*2u+4u+26u+4u+8u+0x24u)
+#define DIRECTORY_END (64u+15u*12u)
+#define PACK_BYTES (DIRECTORY_END+C3_SCRIPT_REGION_BYTES+C3_SCRIPT_EFFECTS*4u+C3_SCRIPT_WSD_BYTES+C3_SCRIPT_WDT_BYTES+4u+C3_CONDITION_TABLE_BYTES+4u+C3_ACCURACY_STAGES*2u+4u+26u+4u+8u+0x24u+4u+C3_TARGET_KINDS*8u)
 #define AT(a) ((a)-C3_SCRIPT_REGION_BASE)
 
 static void put32(uint8_t *p,uint32_t v){p[0]=(uint8_t)(v>>24);p[1]=(uint8_t)(v>>16);p[2]=(uint8_t)(v>>8);p[3]=(uint8_t)v;}
@@ -33,21 +34,23 @@ static int spass(void *u,C3BattleScriptPass p,uint8_t a){Services *s=u;char t[32
 static uint8_t *synthetic_pack(void)
 {
     static uint8_t b[PACK_BYTES];memset(b,0,sizeof b);
-    static const char *tags[13]={"SCR ","EFF ","WSD ","WDT ","CNC ","CND ","HTC ","HIT ","ABC ","ABR ","CRC ","CRT ","ED0 "};
-    const uint32_t bases[13]={C3_SCRIPT_REGION_BASE,0x80379BFFu,C3_SCRIPT_WSD_BASE,C3_SCRIPT_WDT_BASE,0x80478B48u,0x8035BBA8u,
-        0x80478D70u,0x80375DD0u,0x80478D68u,0x80375D10u,0x80478D60u,0x80478D58u,0x80279ED0u};
-    const uint32_t lens[13]={C3_SCRIPT_REGION_BYTES,C3_SCRIPT_EFFECTS*4u,C3_SCRIPT_WSD_BYTES,C3_SCRIPT_WDT_BYTES,4u,
-        C3_CONDITION_TABLE_BYTES,4u,C3_ACCURACY_STAGES*2u,4u,26u,4u,8u,0x24u};
-    memcpy(b,"C3W1",4);put32(b+4,4);put32(b+8,PACK_BYTES);put32(b+12,13);
+    static const char *tags[15]={"SCR ","EFF ","WSD ","WDT ","CNC ","CND ","HTC ","HIT ","ABC ","ABR ","CRC ","CRT ","ED0 ",
+        "TGC ","TGT "};
+    const uint32_t bases[15]={C3_SCRIPT_REGION_BASE,0x80379BFFu,C3_SCRIPT_WSD_BASE,C3_SCRIPT_WDT_BASE,0x80478B48u,0x8035BBA8u,
+        0x80478D70u,0x80375DD0u,0x80478D68u,0x80375D10u,0x80478D60u,0x80478D58u,0x80279ED0u,0x80478D40u,0x80375AC8u};
+    const uint32_t lens[15]={C3_SCRIPT_REGION_BYTES,C3_SCRIPT_EFFECTS*4u,C3_SCRIPT_WSD_BYTES,C3_SCRIPT_WDT_BYTES,4u,
+        C3_CONDITION_TABLE_BYTES,4u,C3_ACCURACY_STAGES*2u,4u,26u,4u,8u,0x24u,4u,C3_TARGET_KINDS*8u};
+    memcpy(b,"C3W1",4);put32(b+4,5);put32(b+8,PACK_BYTES);put32(b+12,15);
     static const uint8_t dol[20]={0x87,0x0e,0x8b,0x96,0x93,0xca,0x78,0x07,0x82,0xd8,0x0f,0x22,0xa6,0xa4,0x57,0x2d,0x8b,0xa9,0x45,0x8f};
     memcpy(b+16,dol,20);
-    for(unsigned i=0;i<13;++i){memcpy(b+64+12*i,tags[i],4);put32(b+68+12*i,bases[i]);put32(b+72+12*i,lens[i]);}
-    uint8_t *eff=b+220+C3_SCRIPT_REGION_BYTES;
-    {   /* counts: accuracy 13, stage ratios 13, critical 5 */
-        size_t at=220;for(unsigned i=0;i<13;++i){
+    for(unsigned i=0;i<15;++i){memcpy(b+64+12*i,tags[i],4);put32(b+68+12*i,bases[i]);put32(b+72+12*i,lens[i]);}
+    uint8_t *eff=b+DIRECTORY_END+C3_SCRIPT_REGION_BYTES;
+    {   /* counts: accuracy 13, stage ratios 13, critical 5, target kinds 30 */
+        size_t at=DIRECTORY_END;for(unsigned i=0;i<15;++i){
             if(i==6)put32(b+at,C3_ACCURACY_STAGES);
             if(i==8)put32(b+at,13);
             if(i==10)put32(b+at,5);
+            if(i==13)put32(b+at,C3_TARGET_KINDS);
             at+=lens[i];}
     }
     for(unsigned i=0;i<C3_SCRIPT_EFFECTS;++i)put32(eff+4*i,C3_SCRIPT_REGION_BASE+i);
@@ -56,7 +59,7 @@ static uint8_t *synthetic_pack(void)
     return b;
 }
 static void seal(uint8_t *b){c3_save_codec_sha1(b+36,b+64,PACK_BYTES-64u);}
-static uint8_t *script_bytes(uint8_t *b){return b+220;}
+static uint8_t *script_bytes(uint8_t *b){return b+DIRECTORY_END;}
 
 static void run(C3BattleScript *s,unsigned limit)
 {
@@ -74,7 +77,7 @@ static void pack_rejection(void)
     CHECK(c3_battle_script_pack_decode(&p,b,PACK_BYTES,e));
     CHECK(!c3_battle_script_pack_decode(&p,b,PACK_BYTES-1,e));
     b[200]^=1;CHECK(!c3_battle_script_pack_decode(&p,b,PACK_BYTES,e)&&strstr(e,"checksum"));b[200]^=1;
-    put32(b+220+C3_SCRIPT_REGION_BYTES,0x80000000u);seal(b);       /* effect 0 outside the region */
+    put32(b+DIRECTORY_END+C3_SCRIPT_REGION_BYTES,0x80000000u);seal(b);       /* effect 0 outside the region */
     CHECK(!c3_battle_script_pack_decode(&p,b,PACK_BYTES,e)&&strstr(e,"outside"));
 }
 

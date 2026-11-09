@@ -60,9 +60,11 @@ static void battle_reset(World *w,unsigned att_side,unsigned att_slot,unsigned d
     CHECK(c3_battle_state_from_entry(s,w->entry,w->pack,error));
     s->conditions=(C3BattleDataRows){w->script_pack.conditions,w->script_pack.condition_count,C3_CONDITION_ROW_BYTES};
     s->accuracy=(C3BattleDataRows){w->script_pack.accuracy,w->script_pack.accuracy_count,2};
+    s->target_kinds=(C3BattleDataRows){w->script_pack.target_kinds,w->script_pack.target_kind_count,8};
     for(unsigned side=0;side<2;++side)for(unsigned k=0;k<2;++k)
         CHECK(c3_battle_fight_out_pokemon_create(&s->arena,c3_battle_state_fight_out(s,side,k),
             c3_battle_state_fight_pokemon(s,side,k),0,&s->species));
+    CHECK(c3_battle_state_create_enemy_arrays(s));    /* battle-start step the move scripts read */
     uint32_t att=c3_battle_state_fight_out(s,att_side,att_slot),def=c3_battle_state_fight_out(s,def_side,def_slot);
     put32(s->memory+0xA474,att);put32(s->memory+0xA478,def);
     uint32_t fw=att+0x49C;
@@ -174,6 +176,8 @@ int main(void)
     uint32_t fp=c3_battle_state_fight_pokemon(w.state,1,0);
     uint8_t *tackle=c3_battle_arena_bytes(&w.state->arena,fp+4+0x78,4);
     CHECK(tackle[0]==0&&tackle[1]==33);uint8_t pp_before=tackle[2];
+    const uint8_t *umbreon_hp=c3_battle_arena_bytes(&w.state->arena,c3_battle_state_fight_pokemon(w.state,0,0)+4+0x8A,2);
+    uint16_t hp_before=(uint16_t)(umbreon_hp[0]<<8|umbreon_hp[1]);
     CHECK(run_effect(&w,&r,0)==C3_SCRIPT_FAILED);
     printf("tackle: draw %u -> %s; stops at %08lx: %s\n",draw,hit?"hit":"miss",
         (unsigned long)r.script.failure_pc,r.script.failure);
@@ -193,14 +197,14 @@ int main(void)
          * neutral), damage loss (one draw: 85-100%), the set-byte step, the
          * move effect (fightWazaDoEffectFunc, effect counters 0 -> 1), the
          * effect wait for signal 5, 0x0E, 0x5C (no battler model: no blink), the
-         * skip, then fn_80226914 (not lowered yet). */
+         * skip, the HP update (0x0B), then fn_80226730 (not lowered yet). */
         uint16_t crit_draw=0,loss_draw=0;C3BattleRng after=predicted;CHECK(c3_battle_rng_next16(&after,&crit_draw));
         uint32_t crit=crit_draw%16u==0?2u:1u,flag=0;
         CHECK(c3_battle_floor_value(w.state,0x29,&flag));
         if(!(flag&0xFF)){crit=1;after=predicted;}
         CHECK(c3_battle_rng_next16(&after,&loss_draw));
         CHECK(w.state->rng.draws==after.draws&&w.state->rng.seed==after.seed);
-        CHECK(r.script.failure_pc==0x80375FA9u&&strstr(r.script.failure,"fn_80226914"));
+        CHECK(r.script.failure_pc==0x80375FABu&&strstr(r.script.failure,"fn_80226730"));
         CHECK(r.effect_waits==0);
         CHECK(c3_battle_script_read(&r.script,0x8038FF5Au,1,&v)&&v==1);           /* effect done count */
         CHECK(c3_battle_script_read(&r.script,0x8038FFF9u,1,&v)&&v==1);           /* effect counter */
@@ -211,9 +215,13 @@ int main(void)
         CHECK(r.waits==1&&r.script.depth==1);
         uint32_t att=c3_battle_state_fight_out(w.state,1,0),fw=att+0x49C;
         char expect[160];
-        snprintf(expect,sizeof expect,"1:%lx:1;2:%lx:21;3:0:0;4:%lx:1;M:33:%lx:%lx:0;S:5;",(unsigned long)(att&0xFFFF),
-            (unsigned long)(att&0xFFFF),(unsigned long)(att&0xFFFF),(unsigned long)(att&0xFFFF),
-            (unsigned long)(c3_battle_state_fight_out(w.state,0,0)&0xFFFF));
+        uint32_t def=c3_battle_state_fight_out(w.state,0,0);
+        uint16_t hp_after=(uint16_t)(umbreon_hp[0]<<8|umbreon_hp[1]);
+        snprintf(expect,sizeof expect,"1:%lx:1;2:%lx:21;3:0:0;4:%lx:1;M:33:%lx:%lx:0;S:5;6:%lx:1;1:%lx:1;7:%lx:%x;",
+            (unsigned long)(att&0xFFFF),(unsigned long)(att&0xFFFF),(unsigned long)(att&0xFFFF),(unsigned long)(att&0xFFFF),
+            (unsigned long)(def&0xFFFF),(unsigned long)(def&0xFFFF),(unsigned long)(def&0xFFFF),(unsigned long)(def&0xFFFF),
+            (unsigned)hp_after);
+        printf("presentation: %s\n",r.presentation.log);
         CHECK(!strcmp(r.presentation.log,expect));
         CHECK(c3_battle_script_read(&r.script,0x80478D7Fu,1,&v)&&v==0);
         uint32_t stored_crit=0,damage=0;
@@ -225,6 +233,40 @@ int main(void)
         printf("tackle damage: base %u x crit %u x 1.5 = %u, x %u%% = %u (crit draw %u, loss draw %u)\n",base,crit,
             typed,percent,damage,crit_draw,loss_draw);
         CHECK(damage==lost);
+        /* HP update: Umbreon loses the damage; records name Zigzagoon A by its
+         * relative target ID (other side, first active: kind 15). */
+        printf("umbreon hp %u -> %u\n",hp_before,hp_after);
+        CHECK(hp_after==(hp_before>lost?hp_before-lost:0));
+        uint32_t f=0;
+        CHECK(c3_battle_waza_status_get(&w.state->arena,&w.state->moves,fw,0,0x2E,0,&f)&&f==lost);
+        static const uint16_t sel[7]={0xF5,0x11B,0x102,0x11C,0xF6,0x103,0x11D};
+        for(unsigned i=0;i<7;++i){
+            CHECK(c3_battle_fight_status_get(&w.state->arena,def,sel[i],0,&f));
+            CHECK(f==(i<4?lost:15u));
+        }
+        CHECK(c3_battle_fight_status_get(&w.state->arena,def,0x104,0,&f)&&f==0);  /* special: untouched */
+        {
+            uint16_t id=0;
+            static const uint16_t ids[4]={12,13,15,16};
+            for(unsigned i=0;i<4;++i){
+                CHECK(c3_battle_state_relative_target_id(w.state,c3_battle_state_fight_out(w.state,i/2,i%2),1,&id));
+                CHECK(id==ids[i]);
+            }
+            uint32_t p=0;
+            CHECK(c3_battle_state_target(w.state,2,att,1,&p)&&p==w.state->floor+C3_FIGHT_SIDE_OFFSET+C3_FIGHT_SIDE_BYTES);
+            CHECK(c3_battle_state_target(w.state,3,att,1,&p)&&p==w.state->floor+C3_FIGHT_SIDE_OFFSET);
+            CHECK(c3_battle_state_target(w.state,0xE,att,1,&p)&&p==c3_battle_state_fight_out(w.state,1,1));
+            CHECK(c3_battle_state_target(w.state,0x10,att,1,&p)&&p==c3_battle_state_fight_out(w.state,0,1));
+            CHECK(!c3_battle_state_target(w.state,0xE,0,1,&p));                         /* unset local */
+            /* Zigzagoon A's enemy array (battle start): Umbreon then Espeon;
+             * the hit adds its damage to Umbreon's entry. */
+            const uint8_t *e=c3_battle_arena_bytes(&w.state->arena,att+0x6B0,48);
+            uint32_t espeon=c3_battle_state_fight_out(w.state,0,1);
+            CHECK(e[0]==(uint8_t)(def>>24)&&e[1]==(uint8_t)(def>>16)&&e[2]==(uint8_t)(def>>8)&&e[3]==(uint8_t)def);
+            CHECK((uint16_t)(e[6]<<8|e[7])==hp_before&&(uint16_t)(e[8]<<8|e[9])==lost);
+            CHECK(e[12]==(uint8_t)(espeon>>24)&&e[15]==(uint8_t)espeon&&e[20]==0&&e[21]==0);
+            CHECK(!e[24]&&!e[25]&&!e[26]&&!e[27]&&!e[36]&&!e[37]&&!e[38]&&!e[39]);
+        }
         CHECK(c3_battle_condition_present(w.state,fw,0x3F,NULL));                    /* fightWazaInit default */
         for(uint16_t id=0x40;id<=0x45;++id)CHECK(!c3_battle_condition_present(w.state,fw,id,NULL));
         CHECK(c3_battle_script_read(&r.script,0x80478D7Eu,1,&v)&&v==0);           /* work byte 6 */
@@ -242,12 +284,18 @@ int main(void)
     CHECK(r.handlers.canceller_step==15&&!strstr(r.script.failure,"WS_HITCHECK"));
     {   /* Espeon's Confusion: special, Psychic, power 50, cross-checked too. */
         uint32_t fw=c3_battle_state_fight_out(w.state,0,1)+0x49C,damage=0,crit=0;
-        if(strstr(r.script.failure,"fn_80226914")){
+        if(strstr(r.script.failure,"fn_80226730")){
             CHECK(c3_battle_waza_status_get(&w.state->arena,&w.state->moves,fw,0,0x2D,0,&damage));
             CHECK(c3_battle_waza_status_get(&w.state->arena,&w.state->moves,fw,0,0x2B,0,&crit));
             uint32_t base=preview_base_damage(&w,preview_dir,0,1,1,0,93,50,14);
             printf("confusion damage: base %u x crit %u x 1.5, loss = %u\n",base,crit,damage);
             CHECK(damage==after_loss(start,base*crit*15/10));     /* Psychic on Psychic Espeon */
+            /* Special damage records on Zigzagoon A name Espeon (relative 13). */
+            uint32_t zig=c3_battle_state_fight_out(w.state,1,0),f=0;
+            CHECK(c3_battle_fight_status_get(&w.state->arena,zig,0x104,0,&f)&&f==damage);
+            CHECK(c3_battle_fight_status_get(&w.state->arena,zig,0x105,0,&f)&&f==13);
+            CHECK(c3_battle_fight_status_get(&w.state->arena,zig,0x11E,0,&f)&&f==damage);
+            CHECK(c3_battle_fight_status_get(&w.state->arena,zig,0x102,0,&f)&&f==0);
         }
     }
 
@@ -259,7 +307,7 @@ int main(void)
     hit=(int)(draw%100u)+1<=95*33/100;
     CHECK(run_effect(&w,&r,0)==C3_SCRIPT_FAILED);
     printf("evasion +6: draw %u -> %s: %s\n",draw,hit?"hit":"miss",r.script.failure);
-    if(hit)CHECK(strstr(r.script.failure,"fn_80226914")!=NULL);
+    if(hit)CHECK(strstr(r.script.failure,"fn_80226730")!=NULL);
     else{   /* fightWazaIsHit fails: miss condition 0x40, the defender's hit
              * move cleared (0xF3 0, 0xF4 9) and the miss branch taken. */
         uint32_t fw=c3_battle_state_fight_out(w.state,1,0)+0x49C,att_type=0,hit_move=1,hit_type=0;
@@ -280,7 +328,7 @@ int main(void)
         CHECK(c3_battle_waza_status_set(&w.state->arena,fw,0x30,0,1));
         start=w.state->rng;
         CHECK(run_effect(&w,&r,0)==C3_SCRIPT_FAILED);
-        CHECK(strstr(r.script.failure,"fn_80226914")!=NULL);
+        CHECK(strstr(r.script.failure,"fn_80226730")!=NULL);
         CHECK(c3_battle_waza_status_get(&w.state->arena,&w.state->moves,fw,0,0x2D,0,&damage));
         CHECK(c3_battle_waza_status_get(&w.state->arena,&w.state->moves,fw,0,0x2B,0,&crit));
         /* The preview admits types 0/14/17 only; Fighting is physical like
@@ -303,7 +351,7 @@ int main(void)
         CHECK(c3_battle_condition_check(w.state,def,0x2C,NULL)==1);
         CHECK(run_effect(&w,&r,0)==C3_SCRIPT_FAILED);
         printf("endure: %s\n",r.script.failure);
-        CHECK(strstr(r.script.failure,"fn_80226914")!=NULL);
+        CHECK(strstr(r.script.failure,"fn_80226730")!=NULL);
         CHECK(c3_battle_waza_status_get(&w.state->arena,&w.state->moves,fw,0,0x2D,0,&damage)&&damage==2);
         CHECK(c3_battle_condition_present(w.state,fw,0x46,NULL));
     }
@@ -324,7 +372,7 @@ int main(void)
         uint32_t v2=1;
         CHECK(strstr(r.presentation.log,"5:0:0;")!=NULL&&!strstr(r.presentation.log,"M:"));
         CHECK(c3_battle_script_read(&r.script,0x8038FFF9u,1,&v2)&&v2==0);
-        CHECK(strstr(r.script.failure,"fn_80226914")!=NULL);
+        CHECK(strstr(r.script.failure,"fn_80226730")!=NULL);
     }
     /* Hit-marker bit 0x80: the effect is replaced by the pause sequence
      * (lbl_80378964, a second 0x20-frame wait); the counters still advance. */
@@ -374,7 +422,7 @@ int main(void)
             }
         }
         printf("delayed signal: %s (one-frame waits %u)\n",r.script.failure,r.effect_waits);
-        CHECK(strstr(r.script.failure,"fn_80226914")!=NULL&&r.effect_waits==2&&strstr(r.presentation.log,"S:5;"));
+        CHECK(strstr(r.script.failure,"fn_80226730")!=NULL&&r.effect_waits==2&&strstr(r.presentation.log,"S:5;"));
     }
     /* 0x5C with hit-marker bit 0x80 (set just before it): no battler model
      * means no blink and the script goes on; a target model is refused. */
@@ -400,8 +448,15 @@ int main(void)
             if(st==C3_SCRIPT_WAITING)CHECK(c3_battle_script_resume(&r.script));
         }
         printf("0x5C bit 0x80, model %d: %s\n",model,r.script.failure);
-        CHECK(strstr(r.script.failure,model?"battler model":"fn_80226914")!=NULL);
+        CHECK(strstr(r.script.failure,model?"battler model":"fn_80226730")!=NULL);
     }
+
+    /* Without the battle-start enemy arrays the HP update refuses. */
+    battle_reset(&w,1,0,0,0,33,0);
+    memset(c3_battle_arena_bytes(&w.state->arena,c3_battle_state_fight_out(w.state,1,0)+0x6B0,48),0,48);
+    CHECK(run_effect(&w,&r,0)==C3_SCRIPT_FAILED);
+    printf("no enemy arrays: %s\n",r.script.failure);
+    CHECK(strstr(r.script.failure,"AI damage memory not created")!=NULL);
 
     /* Protect on the defender stops at the accuracy check's reflect test. */
     battle_reset(&w,1,0,0,0,33,0);

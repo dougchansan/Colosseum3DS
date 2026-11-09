@@ -48,6 +48,8 @@ typedef struct {
                                     the caller from the battle DOL-table pack */
     C3BattleRng rng;             /* the shared fn_800E0C54 stream; continues from
                                     the entry session at handoff */
+    C3BattleDataRows target_kinds; /* lbl_80375AC8 rows (8), set by the caller from
+                                    the battle DOL-table pack */
 } C3BattleState;
 
 /* Computed fightFloorGetStatus fields read from the encounter tables:
@@ -119,6 +121,28 @@ int c3_battle_trainer_check_valid(const C3BattleState *state, uint32_t trainer, 
  * floor 0x18, trainer < floor 0x16, side < 2, each level validated). Mode 0
  * counts every valid battler except target, mode 1 those on target's side.
  * Mode 2 (the opposing side) is not modelled: returns 0. */
+/* fightTargetGetPtr(kind, ptr, fight_type) (0x801F02AC): kinds 0/1, the
+ * floor kinds 0x11..0x1D, sides (2 own / 3 other relative to ptr's side, 4/5
+ * absolute), trainers (6/7 own, 8 own other than ptr, 9/10 other, 0xB side 0
+ * trainer 0) and active Pokemon (0xC/0xD own, 0xE own other than ptr,
+ * 0xF/0x10 other), counting trainers and active slots from the fight-type
+ * row. Writes *target (0 when the original returns 0) and returns 1; returns
+ * 0 when a branch is not modelled (kinds 8/0xE without ptr, more than two
+ * trainers or active slots). _now uses floor field 0x14 as the fight type.
+ * The relative ID (fightTargetGetTragetPtrToRelativeHostSideFightTargetId)
+ * is the first relative kind (target row +1 != 0) whose pointer from side 0
+ * is `target`, or 0. */
+int c3_battle_state_target(const C3BattleState *state, uint16_t kind, uint32_t ptr, uint16_t fight_type,
+                           uint32_t *target);
+int c3_battle_state_target_now(const C3BattleState *state, uint16_t kind, uint32_t ptr, uint32_t *target);
+int c3_battle_state_relative_target_id(const C3BattleState *state, uint32_t target, uint16_t fight_type,
+                                       uint16_t *id);
+/* fightFloorCreateFightPokemonEnemyAryEnemySideAll (0x801F2F3C), one step of
+ * the battle-start sequence fightActionFlowKaisiPost: every battler in battle
+ * on a valid side registers each opposing battler in battle in its enemy
+ * array (selector 0x122, 4 entries of 12 bytes: target +0, mimic move +4,
+ * initial HP +6, damage +8). Returns 0 when a branch is not modelled. */
+int c3_battle_state_create_enemy_arrays(C3BattleState *state);
 int c3_battle_state_valid_fight_out_count(const C3BattleState *state, uint32_t mode, uint32_t target,
                                           int check_fight_out, uint16_t *count);
 
