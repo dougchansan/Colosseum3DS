@@ -22,6 +22,7 @@
  *   0x0F fn_8022631C  effectiveness message from the FightWaza conditions
  *   0x15 fn_80224820  secondary-effect chance roll (work byte 3)
  *   0x19 fn_80224158  faint check: fainted flag, faint sequence
+ *   0x49 fn_8021FAD4  move end: after-move reactions and bookkeeping
  *   0x12 fn_8022622C  with a message open (work byte 7): wait the operand's
  *                     frames, close the message, clear the flag
  *   0x5C fn_8021E9F4  target damage blink (fightOutPokemonDamageEffect) on a
@@ -1061,6 +1062,239 @@ static int op_faint_check(C3BattleHandlers *h,C3BattleScript *sc,unsigned phase)
     return c3_battle_script_call(sc,sequence,sc->action,0)?C3_SCRIPT_HANDLER_CALL:stop(sc,"faint sequence");
 }
 
+/* ---- 0x49 move end (fn_8021FAD4) ----------------------------------------- */
+
+#define MOVE_END_STAGE 0x8047B627u   /* lbl_8047B627: next stage, 0x11 when done */
+/* fightOutPokemonIsJoutaiKie: the first semi-invulnerable condition held
+ * (0x1F, 0x20, 0x21: lbl_8047E510), else 0. */
+static uint16_t joutai_kie(const C3BattleState *s,uint32_t fo,int *fault)
+{
+    static const uint16_t ids[3]={0x1F,0x20,0x21};
+    if(!fo)return 0;
+    for(unsigned i=0;i<3;++i)if(c3_battle_condition_check(s,fo,ids[i],fault)==1)return ids[i];
+    return 0;
+}
+static int checked_get(const C3BattleState *s,uint32_t obj,uint32_t sel,uint32_t *v,int *fault)
+{if(!c3_battle_fight_status_get(&s->arena,obj,sel,0,v)){*fault=1;*v=0;return 0;}return 1;}
+static int fight_out(const C3BattleState *s,uint32_t fo,int *fault)
+{return fo&&c3_battle_fight_out_check_fight_out(s,fo,fault)==1;}
+/* fightFloorSetStatus(0x56, item): message variable 0x29 (the item's name)
+ * and the appointed item (FightFloor +0xA4BC). */
+static int floor_appoint_item(C3BattleState *s,uint16_t item)
+{
+    uint8_t *p=c3_battle_arena_bytes(&s->arena,s->floor+0xA4BCu,2);
+    if(!p)return 0;
+    c3_battle_msgctrl_set(s,0x29,C3_MSGREF_ITEM_NAME(item));
+    p[0]=(uint8_t)(item>>8);p[1]=(uint8_t)item;
+    return 1;
+}
+/* fightOutPokemonSetOumuWazaDataId(self, other, move): self's 0xF7, then
+ * the mimic move (+4) of self's enemy entry for other. */
+static int set_oumu(C3BattleState *s,uint32_t self,uint32_t other,uint16_t move)
+{
+    if(!self)return 1;
+    if(!c3_battle_fight_status_set(&s->arena,self,0xF7,0,move))return 0;
+    if(!other)return 0;                                           /* every-entry branch: not reached here */
+    uint8_t *entries=c3_battle_arena_bytes(&s->arena,self+0x6B0u,48);
+    if(!entries)return 0;
+    for(unsigned i=0;i<4;++i){                                    /* fightOutPokemonEnemySearchAry(.., 4, other) */
+        uint8_t *e=entries+12*i;
+        uint32_t t=(uint32_t)e[0]<<24|(uint32_t)e[1]<<16|(uint32_t)e[2]<<8|e[3];
+        if(!t||t!=other)continue;
+        e[4]=(uint8_t)(move>>8);e[5]=(uint8_t)move;
+        return 1;
+    }
+    return 1;
+}
+/* fn_8022D394 status-curing abilities: ability, conditions cured. */
+static const struct{uint16_t ability,c1,c2;}curing[]={
+    {0x11,3,4},{0x14,9,9},{7,5,5},{0xF,8,8},{0x48,8,8},{0x29,6,6},{0x28,7,7},{0xC,10,10}};
+/* fn_8022D6BC after-hit abilities of the defender. */
+static const uint16_t after_hit[]={0x10,0x18,0x1B,0x26,0x09,0x31,0x38};
+
+/* Operands: mode byte, stop stage. The original runs stages 0..16 in one
+ * call (a do-while that leaves as soon as the stage reaches 0x11), each a
+ * reaction that may call a nested sequence and stop. Stage 17, which closes
+ * the menus and the message in mode 0, runs only when the command is entered
+ * at stage 17 (after a reaction at stage 16). Mode 1 runs one stage; mode 2
+ * stops after the given stage. Every reaction that would start a sequence,
+ * draw a random number, or reach a battler model is refused by name before
+ * it changes anything; the stages that only keep records (11, 14, 15) run as
+ * the original does. Held items: their effect IDs come from the item table,
+ * which the state does not hold yet, so a held item on a battler a stage
+ * inspects is refused. */
+static int op_move_end(C3BattleHandlers *h,C3BattleScript *sc)
+{
+    C3BattleState *s=h->state;
+    uint32_t mode=0,stop_stage=0,stage=0,flags=0,type=0,attacker=0,defender=0;
+    int fault=0;
+    if(!c3_battle_script_fetch(sc,1,1,&mode)||!c3_battle_script_fetch(sc,2,1,&stop_stage))return C3_SCRIPT_HANDLER_FAIL;
+    if(!c3_battle_floor_value(s,0x14,&type))return stop(sc,"fight type");
+    if(!c3_battle_state_target_now(s,0x11,0,&attacker)||!c3_battle_state_target_now(s,0x12,0,&defender))
+        return stop(sc,"move end targets");
+    uint32_t fw=attacker?get(s,attacker,0xD9):0;
+    int hit=attacker?waza_hit(s,fw,&fault):0;
+    uint16_t used=attacker&&fw?(uint16_t)waza(s,fw,0,0x28):0;
+    uint16_t original=attacker&&fw?(uint16_t)waza(s,fw,0,0x27):0;
+    uint16_t valid_original=original==0xFFFF?0:original;
+    uint16_t power=attacker?(uint16_t)waza(s,fw,0,0x30):9;
+    uint8_t move_target=attacker?(uint8_t)waza(s,0,used,5):1;
+    uint16_t move_joutai=attacker?(uint16_t)waza(s,0,used,7):0;
+    int16_t dealt_hp=0,dealt_other=0;
+    if(defender){
+        uint32_t v1=0,v2=0;
+        checked_get(s,defender,0x11C,&v1,&fault);checked_get(s,defender,0x11E,&v2,&fault);
+        dealt_hp=(int16_t)v1;dealt_other=(int16_t)v2;
+    }
+    int dealt=dealt_hp!=0||dealt_other!=0;
+    if(fault)return stop(sc,"move end records");
+    uint32_t list[8];unsigned n=0;
+    if(!c3_battle_state_valid_fight_outs(s,list,&n))return stop(sc,"valid battlers");
+    for(;;){
+        if(!c3_battle_script_read(sc,MOVE_END_STAGE,1,&stage)||!c3_battle_script_read(sc,HIT_MARKER,4,&flags))
+            return stop(sc,"move end stage");
+        if(stage>0x11)return stop(sc,"move end stage out of range");
+        switch(stage){
+        case 0:                                                    /* Rage */
+            if(c3_battle_condition_check(s,defender,0x13,&fault)==1&&hit&&dealt&&move_joutai)
+                return stop(sc,"Rage (lbl_80378D02)");
+            break;
+        case 1:                                                    /* thaw by a fire move */
+            if(c3_battle_condition_check(s,defender,7,&fault)==1&&hit&&(uint16_t)waza(s,0,used,3)==10)
+                return stop(sc,"thaw (lbl_803792C9)");
+            break;
+        case 2:case 5:{                                            /* Synchronize (fn_8022D2CC / fn_8022D20C) */
+            uint32_t who=stage==2?defender:attacker;
+            if(fight_out(s,who,&fault)&&(uint16_t)get(s,who,0x100)==0x1C&&(flags&0x4000u))
+                return stop(sc,"Synchronize (lbl_80379945)");
+            break;
+        }
+        case 3:{                                                   /* fn_8022D6BC */
+            uint16_t ability=(uint16_t)get(s,defender,0x100);
+            for(unsigned i=0;i<sizeof after_hit/sizeof *after_hit;++i)
+                if(ability==after_hit[i]&&hit&&dealt)return stop(sc,"after-hit ability (fn_8022D6BC)");
+            break;
+        }
+        case 4:                                                    /* fn_8022D394 over the battlers */
+            for(unsigned i=0;i<n;++i){
+                if(!fight_out(s,list[i],&fault))continue;
+                uint16_t ability=(uint16_t)get(s,list[i],0x100);
+                for(unsigned k=0;k<sizeof curing/sizeof *curing;++k)
+                    if(ability==curing[k].ability&&(c3_battle_condition_check(s,list[i],curing[k].c1,&fault)==1||
+                       c3_battle_condition_check(s,list[i],curing[k].c2,&fault)==1))
+                        return stop(sc,"status-curing ability (lbl_8037994A)");
+            }
+            break;
+        case 6:{                                                   /* Choice Band lock */
+            uint16_t effect=0;
+            if((flags&0x2000000u)&&!held_item_effect(s,attacker,&effect))return stop(sc,"held item (Choice Band check)");
+            if(c3_battle_condition_check(s,attacker,0x36,&fault)==1)return stop(sc,"Choice lock (condition 0x36)");
+            break;
+        }
+        case 7:                                                    /* fn_802207D4 over the battlers */
+            for(unsigned i=0;i<n;++i){
+                uint32_t pending=0;
+                checked_get(s,list[i],0xFB,&pending,&fault);
+                if((uint16_t)pending)return stop(sc,"pending held item (0xFB, fn_802207D4)");
+            }
+            break;
+        case 8:                                                    /* fn_8022B5C8 over the battlers */
+            for(unsigned i=0;i<n;++i){
+                uint16_t item=0;
+                if(!fight_out(s,list[i],&fault))continue;
+                if(!held_item_id(s,list[i],&item,&fault))return stop(sc,"held item");
+                if(!floor_appoint_item(s,item))return stop(sc,"floor appointed item");
+                if(item)return stop(sc,"held item reaction (fn_8022B5C8)");
+            }
+            break;
+        case 9:{                                                   /* fn_8022BB84 */
+            uint16_t effect=0;
+            if(fw&&waza(s,fw,0,0x2D)&&!held_item_effect(s,attacker,&effect))
+                return stop(sc,"held item after damage (fn_8022BB84)");
+            break;
+        }
+        case 10:                                                   /* semi-invulnerable attacker */
+            if(fight_out(s,attacker,&fault)&&joutai_kie(s,attacker,&fault))
+                return stop(sc,"semi-invulnerable visibility (battler model)");
+            break;
+        case 11:
+            /* Stage 10 refused a semi-invulnerable attacker in battle, so
+             * the condition reduces to the attacker being in battle; no
+             * semi-invulnerable condition is left for InitJoutaiKie. */
+            if(fight_out(s,attacker,&fault)){
+                if(!c3_battle_fight_status_set(&s->arena,attacker,0x115,0,1))return stop(sc,"attacker field 0x115");
+                if(get(s,attacker,0xEE))return stop(sc,"attacker visibility (battler model)");
+            }
+            break;
+        case 12:
+            if(fight_out(s,defender,&fault)){
+                uint32_t shown=0;
+                checked_get(s,defender,0x115,&shown,&fault);
+                if(!shown&&!joutai_kie(s,defender,&fault)&&get(s,defender,0xEE))
+                    return stop(sc,"defender visibility (battler model)");
+            }
+            break;
+        case 13:                                                   /* Substitute over the battlers */
+            for(unsigned i=0;i<n;++i)
+                if(c3_battle_condition_check(s,list[i],0x14,&fault)==1)return stop(sc,"Substitute end (condition 0x14)");
+            break;
+        case 14:{                                                  /* last-move bookkeeping */
+            if(flags&0x1000u)return stop(sc,"attacker/defender swap (fightFloorReplaceFightOutPokemonAttackToDefense)");
+            uint16_t effect=(uint16_t)waza(s,0,valid_original,9);
+            if(effect!=0x7F||!hit)set_field(s,attacker,0xEF,original,&fault);
+            if(fight_out(s,attacker,&fault)&&effect!=0x7F){
+                if(flags&0x2000000u){set_field(s,attacker,0xF0,original,&fault);set_field(s,attacker,0xF1,used,&fault);}
+                else{set_field(s,attacker,0xF0,0xFFFF,&fault);set_field(s,attacker,0xF1,0xFFFF,&fault);}
+                if(fight_out(s,defender,&fault)){
+                    uint16_t id=0;
+                    if(!c3_battle_state_relative_target_id(s,attacker,(uint16_t)type,&id))return stop(sc,"relative target ID");
+                    set_field(s,defender,0xF2,id,&fault);
+                }
+                if((flags&0x2000000u)&&hit){
+                    if(original==0xFFFF)set_field(s,defender,0xF3,original,&fault);
+                    else{set_field(s,defender,0xF3,used,&fault);set_field(s,defender,0xF4,power,&fault);}
+                }else set_field(s,defender,0xF3,0xFFFF,&fault);
+            }
+            break;
+        }
+        case 15:{                                                  /* Mirror Move record */
+            int av=attacker&&c3_battle_fight_out_check_valid(s,attacker,&fault)==1;
+            int dv=defender&&c3_battle_fight_out_check_valid(s,defender,&fault)==1;
+            if(av&&(uint8_t)waza(s,0,valid_original,0x11)==1&&(flags&0x2000000u)&&attacker!=defender&&dv&&hit&&
+               !set_oumu(s,defender,attacker,original))return stop(sc,"Mirror Move record");
+            break;
+        }
+        case 16:{                                                  /* spread move: next target */
+            uint32_t active=0,locked=0;
+            if(!c3_battle_floor_value(s,0x19,&active))return stop(sc,"floor field 0x19");
+            if(attacker)checked_get(s,attacker,0x109,&locked,&fault);
+            if(!(flags&0x80000u)&&(uint16_t)active>=2&&!locked&&move_target==4&&!(flags&0x200u)){
+                uint32_t other=0;
+                if(!c3_battle_state_target_now(s,0xE,defender,&other))return stop(sc,"spread move partner");
+                if(fight_out(s,other,&fault))return stop(sc,"spread move second target (lbl_80379BF4)");
+                c3_battle_script_write(sc,HIT_MARKER,4,flags|0x200u);
+            }
+            break;
+        }
+        case 17:
+            if(mode==0){
+                present(h,C3_PRESENT_TRAINER_MENUS_CLOSE,0,0);
+                present(h,C3_PRESENT_STATUS_MENUS_CLOSE,0,0);
+                present(h,C3_PRESENT_MESSAGE_CLOSE,0,0);
+            }
+            break;
+        }
+        if(fault)return stop(sc,"move end records");
+        if(stage<0x11)++stage;
+        if(mode==1)stage=0x11;
+        if(mode==2&&(uint8_t)stop_stage==stage)stage=0x11;
+        c3_battle_script_write(sc,MOVE_END_STAGE,1,stage);
+        if(stage==0x11)break;
+    }
+    sc->pc+=3;
+    return C3_SCRIPT_HANDLER_DONE;
+}
+
 int c3_battle_handler_dispatch(void *user,C3BattleScript *sc,uint8_t op,unsigned phase)
 {
     C3BattleHandlers *h=user;(void)phase;
@@ -1085,6 +1319,7 @@ int c3_battle_handler_dispatch(void *user,C3BattleScript *sc,uint8_t op,unsigned
     case 0x12:return op_message_close(h,sc,phase);
     case 0x15:return op_effect_chance(h,sc);
     case 0x19:return op_faint_check(h,sc,phase);
+    case 0x49:return op_move_end(h,sc);
     case 0x5C:return op_damage_blink(h,sc);
     default:return C3_SCRIPT_HANDLER_NONE;
     }

@@ -153,6 +153,10 @@ int c3_battle_fight_out_is_fainted(const C3BattleState *state, uint32_t fight_ou
 int c3_battle_fight_out_is_gc_hero(const C3BattleState *state, uint32_t fight_out);
 int c3_battle_state_valid_fight_out_count(const C3BattleState *state, uint32_t mode, uint32_t target,
                                           int check_fight_out, uint16_t *count);
+/* The battlers fightFloorLoopValidFightOutPokemon (loop flag 0) visits, in
+ * its order (active slot, trainer, side). Returns 0 when a branch is not
+ * modelled or a record is unreadable. */
+int c3_battle_state_valid_fight_outs(const C3BattleState *state, uint32_t out[8], unsigned *count);
 
 /* fn_8011B67C: is condition `id` stored in its slot of `object`? The
  * condition row gives the status kind (+0), slot index (+1) and record

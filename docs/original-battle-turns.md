@@ -502,6 +502,50 @@ interpreter yet.
   - Umbreon itself fainting stops at the friendship loss (floor 0x27 is 1
     in this encounter).
 
+- `0x49` move end (`fn_8021FAD4`, operands: mode, stop stage).
+  - The stage counter is `lbl_8047B627`, which the script's preceding
+    set-byte step zeroes. One call runs stages 0..16 in a do-while that
+    leaves as soon as the stage reaches 0x11. Stage 17 (mode 0: close the
+    menus and the message) runs only when the command is entered at 17,
+    after a reaction at stage 16. Mode 1 runs a single stage; mode 2 stops
+    after the given stage.
+  - **Kept as the original does:**
+    - stage 11: the attacker in battle gets 0x115 = 1. Stage 10 has
+      already refused a semi-invulnerable attacker, so no condition is left
+      for `fightOutPokemonInitJoutaiKie`.
+    - stage 14: last-move records. The attacker gets 0xEF, 0xF0 and 0xF1
+      (move IDs, or 0xFFFF without hit marker 0x2000000). The defender gets
+      0xF2 (the attacker's relative target ID), 0xF3 (the move) and 0xF4
+      (FightWaza field 0x30).
+    - stage 15: Mirror Move. The defender gets 0xF7, plus the mimic move in
+      its enemy entry for the attacker.
+    - stage 16: in a double battle, a move with target type 4 (both foes)
+      sets hit marker 0x200 when no partner is left in battle.
+    - stage 8 appoints each battler's held item (floor 0x56: message
+      variable 0x29, then FightFloor `+0xA4BC`).
+    - `fightFloorLoopValidFightOutPokemon` (loop flag 0) is a new state
+      query that lists the battlers in the original's order.
+  - **Refused by name, before anything changes or a number is drawn:**
+    - each reaction that would start a sequence: Rage; thaw by a Fire
+      move; Synchronize; the after-hit abilities of `fn_8022D6BC`; the
+      status-curing abilities; Choice lock; the pending item (0xFB);
+      Substitute ending; the spread move's second target
+    - semi-invulnerable visibility, and visibility with a battler model
+    - the attacker/defender swap (hit marker 0x1000)
+    - held items wherever a stage inspects one (the Choice Band check,
+      `fn_8022B5C8`, `fn_8022BB84`). Their effect IDs come from the item
+      table, which the state does not hold yet.
+
+  On the original data:
+  - Zigzagoon's Tackle on Umbreon runs move end with no reaction applying
+    and writes the records: 0xEF, 0xF0 and 0xF1 are 0x21 (Tackle); Umbreon's
+    0xF3 and 0xF7 are 0x21 and its 0xF2 is the relative ID 0xF.
+  - The script then reaches `0x3D` WAZAEND (`0x80375FC8`). Its first
+    end-of-move pass (the faint mark, `0x8023011C`) is not lowered yet, so
+    every hit now stops there.
+  - A held item on Espeon, the partner outside the exchange, stops at stage
+    8 after appointing the item.
+
 ## Increments
 
 1. **Execution and end of turn through original code.** A minimal

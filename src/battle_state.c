@@ -458,6 +458,32 @@ int c3_battle_state_valid_fight_out_count(const C3BattleState *s,uint32_t mode,u
     return 1;
 }
 
+int c3_battle_state_valid_fight_outs(const C3BattleState *s,uint32_t out[8],unsigned *count)
+{
+    uint32_t trainers=0,pokemons=0;
+    int fault=0;
+    if(!s||!out||!count)return 0;
+    if(!c3_battle_floor_value(s,0x16,&trainers)||!c3_battle_floor_value(s,0x18,&pokemons))return 0;
+    unsigned n=0;
+    for(uint16_t pokemon=0;pokemon<(uint16_t)pokemons;++pokemon)
+        for(uint16_t trainer=0;trainer<(uint16_t)trainers;++trainer)
+            for(uint16_t side=0;side<2;++side){
+                uint32_t sd=s->floor+C3_FIGHT_SIDE_OFFSET+side*C3_FIGHT_SIDE_BYTES;
+                if(!c3_battle_side_check_valid(s,sd,&fault))continue;
+                if(trainer>=2)return 0;
+                uint32_t tr=sd+C3_FIGHT_SIDE_TRAINER_OFFSET+trainer*C3_BATTLE_RUNTIME_TRAINER_BYTES;
+                if(!c3_battle_trainer_check_valid(s,tr,&fault))continue;
+                if(pokemon>=2)return 0;
+                uint32_t fo=tr+C3_RUNTIME_FIGHT_OUT_OFFSET+pokemon*C3_FIGHT_OUT_POKEMON_BYTES;
+                if(!c3_battle_fight_out_check_valid(s,fo,&fault))continue;
+                if(n>=8)return 0;
+                out[n++]=fo;
+            }
+    if(fault)return 0;
+    *count=n;
+    return 1;
+}
+
 /* ---- fight targets (fight_target.c) -------------------------------------- */
 
 static uint32_t side_at(const C3BattleState *s,unsigned i)                    /* floor field 0x35 */

@@ -62,6 +62,7 @@ C3BattleScriptServices c3_battle_handler_services(C3BattleHandlers *handlers);
  * move effect, 0x0A effect wait, 0x0B HP update, 0x0D critical-hit message,
  * 0x0C HP bar wait, 0x0E (FightWaza read, no effect), 0x0F effectiveness
  * message, 0x12 timed message close, 0x15 secondary-effect chance, 0x19
- * faint check, 0x5C target damage blink (no-op without a battler model). */
+ * faint check, 0x49 move end, 0x5C target damage blink (no-op without a
+ * battler model). */
 int c3_battle_handler_dispatch(void *user, C3BattleScript *script, uint8_t opcode, unsigned phase);
 #endif
