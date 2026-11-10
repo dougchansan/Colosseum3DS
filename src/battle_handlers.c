@@ -16,6 +16,7 @@
  *   0x0A fn_80226F0C  wait for the move effect's signal (operand byte)
  *   0x0B fn_80226914  HP update: damage records, physical/special counters,
  *                     AI damage memory, Transform copy, HP bar
+ *   0x0C fn_802267E8  wait for the target's HP bar, faint flag, Substitute break
  *   0x0D fn_80226730  critical-hit message 0x7631 (floor 0x52, work byte 7)
  *   0x0E fn_802266EC  reads the attacker's FightWaza (0xD9), nothing else
  *   0x0F fn_8022631C  effectiveness message from the FightWaza conditions
@@ -903,6 +904,33 @@ static int op_effect_message(C3BattleHandlers *h,C3BattleScript *sc)
     return C3_SCRIPT_HANDLER_DONE;
 }
 
+/* ---- 0x0C HP bar wait (fn_802267E8) ------------------------------------- */
+
+/* Operand: target kind. With the target's status menu shown, the original
+ * loops one frame at a time (menuFightStatusWaitAnimeHP) until its HP bar
+ * stops; each resumed phase here repeats the step from the start, which
+ * re-asks the same questions. fightOutPokemonSetWazaEffectDownFlag after
+ * fightOutPokemonIsHinsi only reaches a battler model (0xEE), so without one
+ * it has no effect; the Substitute-break sequence (condition 0x14) is
+ * refused, as in the HP update. */
+static int op_hp_bar_wait(C3BattleHandlers *h,C3BattleScript *sc)
+{
+    C3BattleState *s=h->state;
+    uint32_t type=0,kind=0,target=0;
+    int fault=0;
+    if(!c3_battle_floor_value(s,0x14,&type))return stop(sc,"fight type");
+    if(!c3_battle_script_fetch(sc,1,1,&kind))return C3_SCRIPT_HANDLER_FAIL;
+    if(!c3_battle_state_target_now(s,(uint16_t)kind,0,&target))return stop(sc,"HP bar target kind");
+    if(present(h,C3_PRESENT_STATUS_MENU_SHOWN,target,type)==1&&present(h,C3_PRESENT_HP_BAR_BUSY,target,0)==1){
+        sc->wait_frames=1;return C3_SCRIPT_HANDLER_WAIT;           /* _threadSwitch */
+    }
+    if(get(s,target,0xEE))return stop(sc,"fainting effect flag (battler model)");
+    if(c3_battle_condition_check(s,target,0x14,&fault)==1)return stop(sc,"Substitute break sequence (lbl_80379A22)");
+    if(fault)return stop(sc,"HP bar wait condition");
+    sc->pc+=2;
+    return C3_SCRIPT_HANDLER_DONE;
+}
+
 int c3_battle_handler_dispatch(void *user,C3BattleScript *sc,uint8_t op,unsigned phase)
 {
     C3BattleHandlers *h=user;(void)phase;
@@ -920,6 +948,7 @@ int c3_battle_handler_dispatch(void *user,C3BattleScript *sc,uint8_t op,unsigned
     case 0x09:return op_move_effect(h,sc,phase);
     case 0x0A:return op_effect_wait(h,sc);
     case 0x0B:return op_hp_update(h,sc);
+    case 0x0C:return op_hp_bar_wait(h,sc);
     case 0x0D:return op_critical_message(h,sc);
     case 0x0E:return op_fight_waza_touch(h,sc);
     case 0x0F:return op_effect_message(h,sc);

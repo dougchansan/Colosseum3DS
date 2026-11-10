@@ -436,6 +436,22 @@ interpreter yet.
   Each message closes through the next `0x12` after 0x40 frames. Hits now
   stop at `0x0C` (`fn_802267E8`).
 
+- `0x0C` HP bar wait (`fn_802267E8`, operand: target kind).
+  - When the target's status menu is shown, the original loops one frame at
+    a time (`menuFightStatusWaitAnimeHP`) until the HP bar stops. Here that
+    is the new `C3_PRESENT_HP_BAR_BUSY` poll; each resumed phase repeats the
+    step from the start.
+  - `fightOutPokemonSetWazaEffectDownFlag` after `fightOutPokemonIsHinsi`
+    only reaches a battler model (0xEE), so without one it has no effect. A
+    target with a model is refused by name.
+  - The Substitute-break sequence (condition 0x14, `lbl_80379A22`) is
+    refused by name, as in the HP update.
+
+  On the original hit script the status menu is not shown, so there is no
+  wait. With the menu shown and the bar busy for two polls, the step waits
+  two frames. The effect wait for signal 6 follows (closing the status
+  menus), and hits now stop at `0x15` (`fn_80224820`).
+
 ## Increments
 
 1. **Execution and end of turn through original code.** A minimal
