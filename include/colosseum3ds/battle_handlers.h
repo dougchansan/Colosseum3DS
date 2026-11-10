@@ -25,7 +25,9 @@ typedef enum {
                                      1 when a window opened */
     C3_PRESENT_HP_BAR_BUSY,       /* menuFightStatusWaitAnimeHP poll: 1 while the HP bar
                                      of target a is still animating */
-    C3_PRESENT_TRAINER_MENUS_CLOSE /* fightMenuAllFightTrainerCloseStatusMenu(0) */
+    C3_PRESENT_TRAINER_MENUS_CLOSE, /* fightMenuAllFightTrainerCloseStatusMenu(0) */
+    C3_PRESENT_CRY                /* the cry of battler a, species b (fn_80166A50 with
+                                     its species' voice, data field 0x61) */
 } C3BattlePresent;
 
 /* fightWazaDoEffectFunc(move, attacker, target, count): the move's effect
@@ -63,7 +65,7 @@ C3BattleScriptServices c3_battle_handler_services(C3BattleHandlers *handlers);
  * move effect, 0x0A effect wait, 0x0B HP update, 0x0D critical-hit message,
  * 0x0C HP bar wait, 0x0E (FightWaza read, no effect), 0x0F effectiveness
  * message, 0x12 timed message close, 0x15 secondary-effect chance, 0x19
- * faint check, 0x24 battle end check, 0x49 move end, 0x5C target damage blink (no-op without a
+ * faint check, 0x1A / 0x56 / 0x10 / 0x1B faint sequence, 0x24 battle end check, 0x49 move end, 0x5C target damage blink (no-op without a
  * battler model). */
 int c3_battle_handler_dispatch(void *user, C3BattleScript *script, uint8_t opcode, unsigned phase);
 #endif

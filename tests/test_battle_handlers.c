@@ -422,8 +422,10 @@ int main(void)
         CHECK(strstr(r.presentation.log,want)!=NULL);                    /* "endured the hit" */
     }
     /* Super effective into Endure (0x41 + 0x46, "mix"): 0x0F erases 0x46/0x47
-     * and calls the Endure sequence 0x803791BE (0x10 message, 0x12, return);
-     * 0x10 is not lowered yet. */
+     * and calls the Endure sequence 0x803791BE (0x10 opens "endured the hit"
+     * 0x75C9, 0x12 closes it, return); 0x0F then runs again, now without
+     * the mix, and shows "super effective" (0x7637), and the hit script runs
+     * on to its end. */
     battle_reset(&w,1,0,0,0,33,0);
     {
         uint32_t fw=c3_battle_state_fight_out(w.state,1,0)+0x49C,def=c3_battle_state_fight_out(w.state,0,0);
@@ -434,7 +436,10 @@ int main(void)
         CHECK(stopped(run_effect(&w,&r,0)));
         printf("endure + super effective: stops at %08lx: %s (depth %u)\n",(unsigned long)r.script.failure_pc,
             why(&r),(unsigned)r.script.depth);
-        CHECK(r.script.failure_pc==0x803791BEu&&strstr(why(&r),"fn_802262D0")&&r.script.depth==2);
+        CHECK(r.reached_end&&r.end_pc==0x80375FC8u);
+        CHECK(strstr(r.presentation.log,"8:75c9:0;3:0:0;")!=NULL);
+        char want[32];snprintf(want,sizeof want,"9:7637:%lx;",(unsigned long)def);
+        CHECK(strstr(r.presentation.log,want)!=NULL);
         CHECK(c3_battle_condition_present(w.state,fw,0x41,NULL)&&!c3_battle_condition_present(w.state,fw,0x46,NULL));
     }
     /* Umbreon retyped Ghost (7/7): Normal has no effect: damage 0, condition
@@ -614,24 +619,55 @@ int main(void)
         CHECK(c3_battle_script_read(&r.script,0x8047B618u,4,&f)&&(f&0x400000u));
     }
     /* Umbreon's Tackle knocks out Zigzagoon A at 1 HP: 0x19 marks it fainted
-     * (0x120), appoints it (floor 0x4B, message variables 0x1E/0x1C) and calls
-     * the defender faint sequence 0x80378703, which stops at its unlowered
-     * 0x1A. */
+     * (0x120), appoints it (floor 0x4B) and calls the defender faint sequence
+     * 0x80378703: 0x1A opens its status panel, 0x56 its cry, 0x10 "fainted"
+     * (0x7545), 0x12 closes the message after 0x40 frames, 0x1B closes the
+     * panel, clears its status slot and makes both opponents forget it (0xF7
+     * and their enemy entry for it); then 0x4B is restored, move end runs
+     * and WAZAEND's faint mark pass stops at the faint mark sequence
+     * (lbl_80378721, opcode 0x23), not lowered yet. */
     battle_reset(&w,0,0,1,0,33,0);
     {
-        uint32_t def=c3_battle_state_fight_out(w.state,1,0),f=0;
-        uint8_t *hp=c3_battle_arena_bytes(&w.state->arena,c3_battle_state_fight_pokemon(w.state,1,0)+4+0x8A,2);
+        uint32_t def=c3_battle_state_fight_out(w.state,1,0),f=0,type=0;
+        uint32_t umbreon=c3_battle_state_fight_out(w.state,0,0),espeon=c3_battle_state_fight_out(w.state,0,1);
+        uint32_t zig_poke=c3_battle_state_fight_pokemon(w.state,1,0)+4;
+        uint8_t *hp=c3_battle_arena_bytes(&w.state->arena,zig_poke+0x8A,2);
+        uint8_t *status=c3_battle_arena_bytes(&w.state->arena,zig_poke+0x64,16);
+        const uint8_t *species=c3_battle_arena_bytes(&w.state->arena,zig_poke,2);
         hp[0]=0;hp[1]=1;
+        status[0]=0;status[1]=3;                                         /* a status condition to clear */
         CHECK(c3_battle_fight_out_is_fainted(w.state,def)==0);
-        CHECK(stopped(run_effect(&w,&r,0)));
+        CHECK(c3_battle_floor_value(w.state,0x14,&type));
+        int entry_before=0;
+        {
+            const uint8_t *e=c3_battle_arena_bytes(&w.state->arena,umbreon+0x6B0,48);
+            for(unsigned k=0;k<4;++k)
+                if(((uint32_t)e[12*k]<<24|(uint32_t)e[12*k+1]<<16|(uint32_t)e[12*k+2]<<8|e[12*k+3])==def)entry_before=1;
+        }
+        CHECK(entry_before);
+        CHECK(stopped(run_effect_mode(&w,&r,0,1)));
         printf("zigzagoon knocked out: stops at %08lx: %s (depth %u)\n",(unsigned long)r.script.failure_pc,
             why(&r),(unsigned)r.script.depth);
-        CHECK(r.script.failure_pc==0x80378703u&&strstr(why(&r),"fn_80224060")&&r.script.depth==2);
+        printf("zigzagoon faint presentation: %s\n",r.presentation.log);
+        CHECK(strstr(why(&r),"faint mark sequence (lbl_80378721)")!=NULL&&r.script.depth==1);
         CHECK(hp[0]==0&&hp[1]==0&&c3_battle_fight_out_is_fainted(w.state,def)==1);
         CHECK(c3_battle_fight_status_get(&w.state->arena,def,0x120,0,&f)&&f==1);
-        const uint8_t *ap=c3_battle_arena_bytes(&w.state->arena,w.state->floor+0xA494,4);       /* floor 0x4B */
-        CHECK(ap&&((uint32_t)ap[0]<<24|(uint32_t)ap[1]<<16|(uint32_t)ap[2]<<8|ap[3])==def);
-        CHECK(w.state->msgctrl[0x1E]==def);
+        CHECK(status[0]==0&&status[1]==0);                               /* pokemonInitJoutai */
+        char want[160];
+        snprintf(want,sizeof want,"1:%lx:%lx;12:%lx:%x;8:7545:0;3:0:0;4:%lx:%lx;",
+            (unsigned long)(def&0xFFFF),(unsigned long)type,(unsigned long)(def&0xFFFF),
+            (unsigned)(species[0]<<8|species[1]),(unsigned long)(def&0xFFFF),(unsigned long)type);
+        CHECK(strstr(r.presentation.log,want)!=NULL);
+        CHECK(r.message_waits>=1);
+        const uint8_t *ap=c3_battle_arena_bytes(&w.state->arena,w.state->floor+0xA494,4);       /* floor 0x4B restored */
+        CHECK(ap&&((uint32_t)ap[0]<<24|(uint32_t)ap[1]<<16|(uint32_t)ap[2]<<8|ap[3])!=def);
+        for(int o=0;o<2;++o){
+            uint32_t opp=o?espeon:umbreon;
+            CHECK(c3_battle_fight_status_get(&w.state->arena,opp,0xF7,0,&f)&&f==0);
+            const uint8_t *e=c3_battle_arena_bytes(&w.state->arena,opp+0x6B0,48);
+            for(unsigned k=0;k<4;++k)
+                CHECK(((uint32_t)e[12*k]<<24|(uint32_t)e[12*k+1]<<16|(uint32_t)e[12*k+2]<<8|e[12*k+3])!=def);
+        }
         CHECK(c3_battle_script_read(&r.script,0x8047B618u,4,&f)&&!(f&0x400000u));
     }
 

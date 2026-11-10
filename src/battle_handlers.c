@@ -22,6 +22,10 @@
  *   0x0F fn_8022631C  effectiveness message from the FightWaza conditions
  *   0x15 fn_80224820  secondary-effect chance roll (work byte 3)
  *   0x19 fn_80224158  faint check: fainted flag, faint sequence
+ *   0x1A fn_80224060  faint begin (status panel; Substitute refused)
+ *   0x56 fn_8021EE48  cry
+ *   0x10 fn_802262D0  open a message
+ *   0x1B fn_80223F1C  faint end: status slot, opponents' records
  *   0x24 fn_80222C44  battle end check (faint script lbl_80378798)
  *   0x49 fn_8021FAD4  move end: after-move reactions and bookkeeping
  *   0x12 fn_8022622C  with a message open (work byte 7): wait the operand's
@@ -1435,6 +1439,123 @@ static int op_battle_end_check(C3BattleHandlers *h,C3BattleScript *sc)
     return C3_SCRIPT_HANDLER_DONE;
 }
 
+/* ---- faint sequence: 0x1A, 0x56, 0x10, 0x1B ------------------------------ */
+
+/* fightOutPokemonWriteJoutaiDataId(fo, id): erase condition `id` from the
+ * record its category names (0x7C / 0xC8 the Pokemon, 0xCD the
+ * FightPokemon, 0xD8 the battler; fn_80121B4C / fn_8011B788). Its model
+ * calls (ids 0, 7, 8) are the caller's to refuse. */
+static void battler_erase(C3BattleState *s,uint32_t fo,uint16_t id,int *fault)
+{
+    uint16_t category=condition_category(s,id);
+    uint32_t fp=fo?get(s,fo,0xD6):0;
+    if(category==0x7C||category==0xC8)c3_battle_condition_erase(s,fp?get(s,fp,0xCC):0,id,fault);
+    else if(category==0xCD)c3_battle_condition_erase(s,fp,id,fault);
+    else if(category==0xD8)c3_battle_condition_erase(s,fo,id,fault);
+}
+/* fightOutPokemonIsUseHensinBuff (0xD6 == 0xD7), then
+ * fightOutPokemonSetHensinPokemonStatusId(fo, field, 0, 0): copies the
+ * field from 0xD7's Pokemon to 0xD5's. With 0xD5 == 0xD7 (not transformed)
+ * that copies the field onto itself; a transformed battler is refused. */
+static int hensin_sync(const C3BattleState *s,uint32_t fo)
+{
+    uint32_t d5=get(s,fo,0xD5),d6=get(s,fo,0xD6),d7=get(s,fo,0xD7);
+    return d6!=d7||d5==d7;
+}
+/* 0x1A fn_80224060 (operand: target kind): the battler starts fainting.
+ * A Substitute with HP left would be broken first (fightWazaWzxTypeFuncMigawari
+ * and a wait on the effect): refused. fightOutPokemonFreeAllSequenceWaza and
+ * fightOutPokemonKizetuEffect 0 / 1 only reach a battler model: refused with
+ * one. Then fn_80265598 opens the battler's status panel. */
+static int op_faint_begin(C3BattleHandlers *h,C3BattleScript *sc)
+{
+    C3BattleState *s=h->state;
+    uint32_t kind=0,type=0,fo=0;
+    int fault=0;
+    if(!c3_battle_floor_value(s,0x14,&type))return stop(sc,"fight type");
+    if(!c3_battle_script_fetch(sc,1,1,&kind))return C3_SCRIPT_HANDLER_FAIL;
+    if(!c3_battle_state_target_now(s,(uint16_t)kind,0,&fo))return stop(sc,"fainting battler");
+    if(c3_battle_condition_check(s,fo,0x14,&fault)==1)return stop(sc,"Substitute break on fainting (fightWazaWzxTypeFuncMigawari)");
+    if(fault)return stop(sc,"fainting battler condition");
+    if(get(s,fo,0xEE))return stop(sc,"fainting effect (battler model)");
+    present(h,C3_PRESENT_ACTOR_BEGIN,fo,type);
+    sc->pc+=2;
+    return C3_SCRIPT_HANDLER_DONE;
+}
+/* 0x56 fn_8021EE48 (operand: target kind): the battler's cry. The original
+ * plays fightOutPokemonGetVoiceSndId (species data 0x61 of the Pokemon's
+ * species, selector 0x6E); the request carries the species, whose voice the
+ * presenter looks up. */
+static int op_cry(C3BattleHandlers *h,C3BattleScript *sc)
+{
+    C3BattleState *s=h->state;
+    uint32_t kind=0,fo=0;
+    if(!c3_battle_script_fetch(sc,1,1,&kind))return C3_SCRIPT_HANDLER_FAIL;
+    if(!c3_battle_state_target_now(s,(uint16_t)kind,0,&fo))return stop(sc,"cry target");
+    uint32_t pokemon=battler_pokemon(s,fo);
+    const uint8_t *p=pokemon?c3_battle_arena_bytes(&s->arena,pokemon,2):NULL;
+    present(h,C3_PRESENT_CRY,fo,p?(uint32_t)((uint16_t)p[0]<<8|p[1]):0);
+    sc->pc+=2;
+    return C3_SCRIPT_HANDLER_DONE;
+}
+/* 0x10 fn_802262D0 (operand: u32 message): fightMenuOpenMsg; work byte 7
+ * records an opened window. */
+static int op_message_open(C3BattleHandlers *h,C3BattleScript *sc)
+{
+    uint32_t message=0;
+    if(!c3_battle_script_fetch(sc,1,4,&message))return C3_SCRIPT_HANDLER_FAIL;
+    if(present(h,C3_PRESENT_MESSAGE_OPEN,message,0)==1)c3_battle_script_write(sc,WORK_BASE+7,1,1);
+    sc->pc+=5;
+    return C3_SCRIPT_HANDLER_DONE;
+}
+/* 0x1B fn_80223F1C (operand: target kind): the battler has fainted.
+ * fightOutPokemonKizetuEffect 2 / 3 and fightOutPokemonResetSeqStatus only
+ * reach a battler model (refused with one); fn_8026532C closes its status
+ * panel. Over the battlers (fn_80232FE4): a condition aimed at it (0x16,
+ * 0x0A, 0x0E) is refused; each opponent forgets it as a Mimic source
+ * (fightOutPokemonSetOumuWazaDataId(.., 0): 0xF7 and the entry's move) and
+ * drops its enemy entry (fn_80203198: the entry's move is now 0, so only
+ * fightOutPokemonEnemyInit). Then its Pokemon's status slot is cleared
+ * (pokemonInitJoutai), condition 0x17 and 0x3E erased, with the Transform
+ * copies (0x7C, 0xC8) refused for a transformed battler. */
+static int op_faint_end(C3BattleHandlers *h,C3BattleScript *sc)
+{
+    C3BattleState *s=h->state;
+    uint32_t kind=0,type=0,fo=0;
+    int fault=0;
+    if(!c3_battle_floor_value(s,0x14,&type))return stop(sc,"fight type");
+    if(!c3_battle_script_fetch(sc,1,1,&kind))return C3_SCRIPT_HANDLER_FAIL;
+    if(!c3_battle_state_target_now(s,(uint16_t)kind,0,&fo)||!fo)return stop(sc,"fainted battler");
+    if(get(s,fo,0xEE))return stop(sc,"fainted effect (battler model)");
+    if(!hensin_sync(s,fo))return stop(sc,"Transform status copy (fightOutPokemonSetHensinPokemonStatusId)");
+    present(h,C3_PRESENT_ACTOR_END,fo,type);
+    uint32_t list[8];unsigned n=0;
+    if(!c3_battle_state_valid_fight_outs(s,list,&n))return stop(sc,"valid battlers");
+    uint32_t side=battler_side(s,fo);
+    for(unsigned i=0;i<n;++i){
+        uint32_t p=list[i];
+        if(!fight_out(s,p,&fault)||p==fo)continue;
+        if(c3_battle_condition_check(s,p,0x16,&fault)==1||c3_battle_condition_check(s,p,0x0A,&fault)==1||
+           c3_battle_condition_check(s,p,0x0E,&fault)==1)return stop(sc,"condition aimed at the fainted battler (fn_80232FE4)");
+        if(side&&battler_side(s,p)==side)continue;                      /* fightOutPokemonIsAlly */
+        if(!set_oumu(s,p,fo,0))return stop(sc,"Mimic record");
+        uint8_t *entries=c3_battle_arena_bytes(&s->arena,p+0x6B0u,48);
+        if(!entries)return stop(sc,"enemy entries");
+        for(unsigned k=0;k<4;++k){                                       /* fightOutPokemonEnemySearchAry */
+            uint8_t *e=entries+12*k;
+            uint32_t t=(uint32_t)e[0]<<24|(uint32_t)e[1]<<16|(uint32_t)e[2]<<8|e[3];
+            if(t&&t==fo){memset(e,0,10);break;}                         /* fightOutPokemonEnemyInit */
+        }
+    }
+    uint32_t pokemon=battler_pokemon(s,fo);
+    if(!pokemon||!c3_battle_pokemon_init_joutai(s,pokemon))return stop(sc,"status slot");
+    battler_erase(s,fo,0x17,&fault);
+    if(c3_battle_condition_check(s,fo,0x3E,&fault)==1)battler_erase(s,fo,0x3E,&fault);
+    if(fault)return stop(sc,"fainted battler records");
+    sc->pc+=2;
+    return C3_SCRIPT_HANDLER_DONE;
+}
+
 int c3_battle_handler_dispatch(void *user,C3BattleScript *sc,uint8_t op,unsigned phase)
 {
     C3BattleHandlers *h=user;(void)phase;
@@ -1456,11 +1577,15 @@ int c3_battle_handler_dispatch(void *user,C3BattleScript *sc,uint8_t op,unsigned
     case 0x0D:return op_critical_message(h,sc);
     case 0x0E:return op_fight_waza_touch(h,sc);
     case 0x0F:return op_effect_message(h,sc);
+    case 0x10:return op_message_open(h,sc);
     case 0x12:return op_message_close(h,sc,phase);
     case 0x15:return op_effect_chance(h,sc);
     case 0x19:return op_faint_check(h,sc,phase);
+    case 0x1A:return op_faint_begin(h,sc);
+    case 0x1B:return op_faint_end(h,sc);
     case 0x24:return op_battle_end_check(h,sc);
     case 0x49:return op_move_end(h,sc);
+    case 0x56:return op_cry(h,sc);
     case 0x5C:return op_damage_blink(h,sc);
     default:return C3_SCRIPT_HANDLER_NONE;
     }

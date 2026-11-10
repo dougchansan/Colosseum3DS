@@ -160,6 +160,9 @@ int c3_battle_state_valid_fight_outs(const C3BattleState *state, uint32_t out[8]
 /* fightSideGetFightPokemonNokoriHp(side, trainers, pokemon): the summed HP
  * (selector 0x83) of each valid trainer's valid FightPokemon in battle.
  * Returns 0 when a branch is not modelled or a record is unreadable. */
+/* pokemonInitJoutai: clears the Pokemon's status condition slot (selector
+ * 0x7C, PokemonBios +0x64; fn_8011B950, padding kept). */
+int c3_battle_pokemon_init_joutai(C3BattleState *state, uint32_t pokemon);
 int c3_battle_side_remaining_hp(const C3BattleState *state, uint32_t side, uint16_t trainers,
                                 uint16_t pokemon, uint32_t *hp);
 

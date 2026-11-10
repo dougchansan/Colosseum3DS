@@ -561,6 +561,13 @@ int c3_battle_state_target_now(const C3BattleState *s,uint16_t kind,uint32_t ptr
     if(!s||!c3_battle_floor_value(s,0x14,&type))return 0;
     return c3_battle_state_target(s,kind,ptr,(uint16_t)type,out);
 }
+int c3_battle_pokemon_init_joutai(C3BattleState *s,uint32_t pokemon)
+{
+    uint8_t *p=s&&pokemon?c3_battle_arena_bytes(&s->arena,pokemon+0x64u,16):NULL;
+    if(!p)return 0;
+    condition_init(p,1);
+    return 1;
+}
 int c3_battle_side_remaining_hp(const C3BattleState *s,uint32_t side,uint16_t trainers,uint16_t pokemon,uint32_t *hp)
 {
     int fault=0;

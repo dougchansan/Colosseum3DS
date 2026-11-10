@@ -588,6 +588,48 @@ interpreter yet.
   - The handler tests now stop by default where the move script ends, and
     check the turn's intermediate records there.
 
+- Faint sequence (`lbl_803786F4` attacker, `lbl_80378703` defender,
+  `lbl_80378712` kind 0x15): `0x1A`, `0x56`, `0x10` (the fainted message:
+  0x7544 / 0x7545 / 0x7701), `0x12`, `0x1B`, then the return.
+  - `0x1A` (`fn_80224060`) starts the faint and opens the battler's status
+    panel (`fn_80265598`, the same request as `C3_PRESENT_ACTOR_BEGIN`).
+    Refused: a Substitute (condition 0x14), which the original breaks
+    first; and the free/faint effects, which only reach a battler model.
+  - `0x56` (`fn_8021EE48`) plays the cry: new `C3_PRESENT_CRY` with the
+    battler and its species. The original plays the species' voice (species
+    data 0x61); the state holds no species table, so the presenter looks it
+    up.
+  - `0x10` (`fn_802262D0`) is `fightMenuOpenMsg(message)`. Work byte 7
+    records an opened window.
+  - `0x1B` (`fn_80223F1C`):
+    - closes the status panel (`fn_8026532C`, as `C3_PRESENT_ACTOR_END`);
+    - for every other battler in battle (`fn_80232FE4`), a condition aimed
+      at the fainted one (0x16, 0x0A, 0x0E) is refused. Each opponent
+      forgets it as a Mimic source (`fightOutPokemonSetOumuWazaDataId(..,
+      0)`: 0xF7 and the entry's move). `fn_80203198` then finds the entry's
+      move at 0 and only clears the entry (`fightOutPokemonEnemyInit`);
+    - clears its Pokemon's status slot (`pokemonInitJoutai`, PokemonBios
+      `+0x64`, a new state call);
+    - erases condition 0x17, and 0x3E when it is held
+      (`fightOutPokemonWriteJoutaiDataId`: by category, the Pokemon,
+      FightPokemon or battler).
+    - The Transform copies (`fightOutPokemonSetHensinPokemonStatusId` 0x7C
+      / 0xC8) copy a field onto itself unless the battler is transformed
+      (0xD5 != 0xD7). A transformed battler is refused. The battler-model
+      calls are refused when a model exists.
+
+  On the original data:
+  - Umbreon's Tackle on Zigzagoon A at 1 HP runs the whole faint sequence:
+    status panel, cry (species 0x120), "fainted" (0x7545), the 0x40-frame
+    close, and the panel closing.
+  - Zigzagoon's status slot is cleared. Umbreon and Espeon forget it (0xF7
+    0 and no enemy entry for it), and floor 0x4B is restored.
+  - The hit script then runs move end and WAZAEND. The faint mark pass
+    stops at Zigzagoon's faint mark sequence (`lbl_80378721`: opcode `0x23`
+    `fn_802232F4`), not lowered yet.
+  - Endure + super effective now shows "endured the hit" (0x75C9), then
+    "super effective" (0x7637), and reaches the end of the move script.
+
 ## Increments
 
 1. **Execution and end of turn through original code.** A minimal
