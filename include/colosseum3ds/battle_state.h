@@ -50,6 +50,7 @@ typedef struct {
                                     the entry session at handoff */
     C3BattleDataRows target_kinds; /* lbl_80375AC8 rows (8), set by the caller from
                                     the battle DOL-table pack */
+    C3BattleDataRows trainers;   /* trainer data rows (52), from the entry pack */
 } C3BattleState;
 
 /* Computed fightFloorGetStatus fields read from the encounter tables:
@@ -143,6 +144,13 @@ int c3_battle_state_relative_target_id(const C3BattleState *state, uint32_t targ
  * array (selector 0x122, 4 entries of 12 bytes: target +0, mimic move +4,
  * initial HP +6, damage +8). Returns 0 when a branch is not modelled. */
 int c3_battle_state_create_enemy_arrays(C3BattleState *state);
+/* fightOutPokemonIsHinsi (0x802038A4): 1 when the battler is not valid
+ * (fightOutPokemonCheckValid) or its Pokemon has 0 HP (selector 0x7B).
+ * fightOutPokemonIsGcHeroFightOutPokemon: the battler's trainer is the
+ * player (trainer data field 4 == 1, fightTrainerIsGcHero); 0 without one.
+ * Both return -1 when a record is unreadable. */
+int c3_battle_fight_out_is_fainted(const C3BattleState *state, uint32_t fight_out);
+int c3_battle_fight_out_is_gc_hero(const C3BattleState *state, uint32_t fight_out);
 int c3_battle_state_valid_fight_out_count(const C3BattleState *state, uint32_t mode, uint32_t target,
                                           int check_fight_out, uint16_t *count);
 

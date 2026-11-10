@@ -139,6 +139,8 @@ int c3_battle_state_from_entry(C3BattleState *s,const C3BattleEntrySession *e,co
      * the pack carries that boundary row. */
     s->types=(C3BattleDataRows){typ->bytes,typ->count+1u,8};
     s->kinds=(C3BattleDataRows){knd->bytes,knd->count+1u,32};
+    const C3BattleEntryPackView *trn=&p->sections[C3_PACK_TRN];
+    s->trainers=(C3BattleDataRows){trn->bytes,trn->count,52};
     s->rng=e->rng;                                              /* shared stream continues */
     if(err)err[0]=0;
     return 1;
@@ -604,4 +606,37 @@ int c3_battle_state_create_enemy_arrays(C3BattleState *s)
         }
     }
     return !fault;
+}
+
+/* ---- fainted / player battler (fight_out_pokemon*.c) --------------------- */
+
+int c3_battle_fight_out_is_fainted(const C3BattleState *s,uint32_t fo)
+{
+    int fault=0;
+    if(!s)return -1;
+    int valid=c3_battle_fight_out_check_valid(s,fo,&fault);
+    if(fault)return -1;
+    if(!valid)return 1;
+    uint32_t fp=status(s,fo,0xD6,&fault),poke=fp?status(s,fp,0xCC,&fault):0;
+    if(fault)return -1;
+    if(!poke)return 1;
+    const uint8_t *hp=bytes(s,poke+0x8A,2,&fault);
+    if(!hp)return -1;
+    return be16(hp)==0;
+}
+int c3_battle_fight_out_is_gc_hero(const C3BattleState *s,uint32_t fo)
+{
+    if(!s)return -1;
+    int fault=0;
+    uint32_t original=fo?status(s,fo,0xD5,&fault):0,trainer=0;  /* fightFloorGetFightOutPokemonPtrToFightTrainerPtr */
+    for(unsigned side=0;side<2&&original&&!trainer;++side)for(unsigned t=0;t<2&&!trainer;++t){
+        uint32_t tr=side_trainer(side_at(s,side),t);
+        for(unsigned k=0;k<6;++k)if(trainer_fight_pokemon(tr,k)==original){trainer=tr;break;}
+    }
+    if(!trainer)return 0;
+    const uint8_t *id=bytes(s,trainer,2,&fault);                   /* trainer field 0x43 */
+    if(!id)return -1;
+    const uint8_t *row=row_at(&s->trainers,be16(id));
+    if(!row)return -1;
+    return be16(row+2)==1;                                         /* trainer data field 4 */
 }

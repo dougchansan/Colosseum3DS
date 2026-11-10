@@ -47,6 +47,7 @@ typedef struct {
     C3BattleEffectSignal effect_signal; /* NULL: the effect wait step refuses */
     uint8_t message_open;     /* attack string window to close after the wait */
     C3BattleDamageTables damage;     /* original tables for fn_80232110 */
+    uint32_t saved_appoint;          /* floor 0x4B held across the faint sequence */
     const uint8_t *critical;         /* lbl_80478D58 critical denominators */
     uint32_t critical_count;         /* lbl_80478D60 */
 } C3BattleHandlers;
@@ -60,7 +61,7 @@ C3BattleScriptServices c3_battle_handler_services(C3BattleHandlers *handlers);
  * 0x05 damage calculation, 0x06 type check, 0x07/0x08 damage loss, 0x09
  * move effect, 0x0A effect wait, 0x0B HP update, 0x0D critical-hit message,
  * 0x0C HP bar wait, 0x0E (FightWaza read, no effect), 0x0F effectiveness
- * message, 0x12 timed message close, 0x15 secondary-effect chance, 0x5C
- * target damage blink (no-op without a battler model). */
+ * message, 0x12 timed message close, 0x15 secondary-effect chance, 0x19
+ * faint check, 0x5C target damage blink (no-op without a battler model). */
 int c3_battle_handler_dispatch(void *user, C3BattleScript *script, uint8_t opcode, unsigned phase);
 #endif

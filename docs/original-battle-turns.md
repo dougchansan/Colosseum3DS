@@ -470,6 +470,38 @@ interpreter yet.
   Tackle has no pending effect: one draw, then the script goes on to `0x19`
   (`fn_80224158`). A forced guaranteed effect is refused without drawing.
 
+- `0x19` faint check (`fn_80224158`, operands: target kind, mode, jump
+  address).
+  - Closes the status menus and the message, as 0x15 does.
+  - **Mode 0** checks the attacker (0x11, sequence `lbl_803786F4`), the
+    defender (0x12, `lbl_80378703`) or kind 0x15 (`lbl_80378712`).
+  - `fightOutPokemonIsHinsi` (0x802038A4, read from the DOL) is now a state
+    query: fainted when the battler is not valid or its Pokemon has 0 HP.
+  - **A fainted battler:**
+    - gets 0x120 = 1;
+    - if it is the player's (`fightOutPokemonIsGcHeroFightOutPokemon`:
+      trainer data field 4 == 1, from the entry pack's trainer rows), sets
+      hit marker 0x400000;
+    - is appointed (floor 0x4B: message variables 0x1E and 0x1C, then
+      FightFloor `+0xA494`) while its faint sequence runs as a nested call;
+    - afterwards 0x4B is restored and the script advances seven bytes.
+  - **Refused by name:**
+    - the player's friendship loss when floor 0x27 is 1
+      (`AdjustFriendshipOnBattleFaint`)
+    - Grudge (condition 0x28)
+    - Destiny Bond (hit marker 0x40)
+    - mode 1's fainted-side branch
+
+  On the original data:
+  - Tackle leaves Umbreon standing and the hit script runs to its end at
+    move end (`0x49` `fn_8021FAD4`, `0x80375FC5`), the same point a fainted
+    attacker reaches.
+  - Umbreon's Tackle on Zigzagoon A at 1 HP marks it fainted, appoints it
+    and enters the defender faint sequence, which stops at its first opcode
+    `0x1A` (`fn_80224060`).
+  - Umbreon itself fainting stops at the friendship loss (floor 0x27 is 1
+    in this encounter).
+
 ## Increments
 
 1. **Execution and end of turn through original code.** A minimal

@@ -21,6 +21,7 @@
  *   0x0E fn_802266EC  reads the attacker's FightWaza (0xD9), nothing else
  *   0x0F fn_8022631C  effectiveness message from the FightWaza conditions
  *   0x15 fn_80224820  secondary-effect chance roll (work byte 3)
+ *   0x19 fn_80224158  faint check: fainted flag, faint sequence
  *   0x12 fn_8022622C  with a message open (work byte 7): wait the operand's
  *                     frames, close the message, clear the flag
  *   0x5C fn_8021E9F4  target damage blink (fightOutPokemonDamageEffect) on a
@@ -973,6 +974,93 @@ static int op_effect_chance(C3BattleHandlers *h,C3BattleScript *sc)
     return C3_SCRIPT_HANDLER_DONE;
 }
 
+/* ---- 0x19 faint check (fn_80224158) -------------------------------------- */
+
+/* fightFloorSetStatus(0x4B, fo): message variables 0x1E (the battler) and
+ * 0x1C (its ability's name), cleared for 0 or an invalid battler, then the
+ * appointed-Pokemon field (fightFloorBiosSetAppointPokemonPtr, FightFloor
+ * +0xA494; the generic floor setter leaves such target fields out). */
+#define APPOINT_OFFSET 0xA494u
+static int appointed_get(const C3BattleState *s,uint32_t *fo)
+{
+    const uint8_t *p=c3_battle_arena_bytes(&s->arena,s->floor+APPOINT_OFFSET,4);
+    if(!p)return 0;
+    *fo=(uint32_t)p[0]<<24|(uint32_t)p[1]<<16|(uint32_t)p[2]<<8|p[3];
+    return 1;
+}
+static int floor_appoint(C3BattleState *s,uint32_t fo)
+{
+    int fault=0;
+    if(fo&&c3_battle_fight_out_check_valid(s,fo,&fault)){
+        c3_battle_msgctrl_set(s,0x1E,fo);
+        c3_battle_msgctrl_set(s,0x1C,C3_MSGREF_ABILITY_NAME((uint16_t)get(s,fo,0x100)));
+    }else{
+        c3_battle_msgctrl_set(s,0x1E,0);
+        c3_battle_msgctrl_set(s,0x1C,0);
+    }
+    uint8_t *p=c3_battle_arena_bytes(&s->arena,s->floor+APPOINT_OFFSET,4);
+    if(fault||!p)return 0;
+    p[0]=(uint8_t)(fo>>24);p[1]=(uint8_t)(fo>>16);p[2]=(uint8_t)(fo>>8);p[3]=(uint8_t)fo;
+    return 1;
+}
+/* Operands: target kind, mode byte, jump address. Mode 0 with kind 0x11 /
+ * 0x12 / 0x15 checks that battler; when it fainted it gets 0x120 = 1 and the
+ * faint sequence runs with it appointed (floor 0x4B), after which 0x4B is
+ * restored and the script continues. */
+static int op_faint_check(C3BattleHandlers *h,C3BattleScript *sc,unsigned phase)
+{
+    C3BattleState *s=h->state;
+    uint32_t kind=0,mode=0,flags=0;
+    if(phase==1){
+        if(!floor_appoint(s,h->saved_appoint))return stop(sc,"floor appointed Pokemon");
+        sc->pc+=7;
+        return C3_SCRIPT_HANDLER_DONE;
+    }
+    present(h,C3_PRESENT_TRAINER_MENUS_CLOSE,0,0);
+    present(h,C3_PRESENT_STATUS_MENUS_CLOSE,0,0);
+    present(h,C3_PRESENT_MESSAGE_CLOSE,0,0);
+    if(!c3_battle_script_fetch(sc,1,1,&kind)||!c3_battle_script_fetch(sc,2,1,&mode))return C3_SCRIPT_HANDLER_FAIL;
+    if(mode){
+        uint32_t target=0;
+        if(!c3_battle_state_target_now(s,(uint16_t)kind,0,&target))return stop(sc,"faint check target kind");
+        int fainted=c3_battle_fight_out_is_fainted(s,target);
+        if(fainted<0)return stop(sc,"faint check record");
+        if(fainted)return stop(sc,"fainted side branch (fightSideSetStatus 8)");
+        sc->pc+=7;
+        return C3_SCRIPT_HANDLER_DONE;
+    }
+    uint32_t fainter=0;uint32_t sequence=0x80378703u;            /* lbl_80378703 */
+    uint8_t subject=0;
+    if(kind==0x11){subject=0x11;sequence=0x803786F4u;}
+    else if(kind==0x12)subject=0x12;
+    else if(kind==0x15){subject=0x15;sequence=0x80378712u;}
+    if(subject&&!c3_battle_target(&s->arena,s->floor,subject,0,&fainter))return stop(sc,"faint check battler");
+    int fainted=c3_battle_fight_out_is_fainted(s,fainter);
+    if(fainted<0)return stop(sc,"faint check record");
+    if(!fainted){sc->pc+=7;return C3_SCRIPT_HANDLER_DONE;}
+    if(!fainter)return stop(sc,"faint sequence without a battler");
+    if(!c3_battle_fight_status_set(&s->arena,fainter,0x120,0,1))return stop(sc,"fainted flag");
+    int hero=c3_battle_fight_out_is_gc_hero(s,fainter);
+    if(hero<0)return stop(sc,"player battler check");
+    if(!c3_battle_script_read(sc,HIT_MARKER,4,&flags))return stop(sc,"hit marker");
+    if(hero){
+        uint32_t friendship=0;
+        flags|=0x400000u;c3_battle_script_write(sc,HIT_MARKER,4,flags);
+        if(!c3_battle_floor_value(s,0x27,&friendship))return stop(sc,"floor field 0x27");
+        if((friendship&0xFF)==1)return stop(sc,"faint friendship loss (fn_80224158_faintFriendship)");
+    }
+    if(!(flags&0x1000000u)){
+        uint32_t defender=0;int fault=0;
+        if(!c3_battle_target(&s->arena,s->floor,0x12,0,&defender))return stop(sc,"defender");
+        if(c3_battle_condition_check(s,defender,0x28,&fault)==1)return stop(sc,"Grudge (lbl_80379167)");
+        if(fault)return stop(sc,"Grudge condition");
+    }
+    if(flags&0x40u)return stop(sc,"Destiny Bond (lbl_80378D54)");
+    if(!appointed_get(s,&h->saved_appoint))return stop(sc,"floor appointed Pokemon");
+    if(!floor_appoint(s,fainter))return stop(sc,"floor appointed Pokemon");
+    return c3_battle_script_call(sc,sequence,sc->action,0)?C3_SCRIPT_HANDLER_CALL:stop(sc,"faint sequence");
+}
+
 int c3_battle_handler_dispatch(void *user,C3BattleScript *sc,uint8_t op,unsigned phase)
 {
     C3BattleHandlers *h=user;(void)phase;
@@ -996,6 +1084,7 @@ int c3_battle_handler_dispatch(void *user,C3BattleScript *sc,uint8_t op,unsigned
     case 0x0F:return op_effect_message(h,sc);
     case 0x12:return op_message_close(h,sc,phase);
     case 0x15:return op_effect_chance(h,sc);
+    case 0x19:return op_faint_check(h,sc,phase);
     case 0x5C:return op_damage_blink(h,sc);
     default:return C3_SCRIPT_HANDLER_NONE;
     }
