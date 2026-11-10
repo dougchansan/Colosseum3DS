@@ -23,8 +23,9 @@ typedef enum {
     C3_PRESENT_MESSAGE_OPEN,      /* fightMenuOpenMsg(message a): 1 when a window opened */
     C3_PRESENT_EFFECT_MESSAGE,    /* fightMenuWazaKoukaMsg(message a, target b, item 0):
                                      1 when a window opened */
-    C3_PRESENT_HP_BAR_BUSY        /* menuFightStatusWaitAnimeHP poll: 1 while the HP bar
+    C3_PRESENT_HP_BAR_BUSY,       /* menuFightStatusWaitAnimeHP poll: 1 while the HP bar
                                      of target a is still animating */
+    C3_PRESENT_TRAINER_MENUS_CLOSE /* fightMenuAllFightTrainerCloseStatusMenu(0) */
 } C3BattlePresent;
 
 /* fightWazaDoEffectFunc(move, attacker, target, count): the move's effect
@@ -59,7 +60,7 @@ C3BattleScriptServices c3_battle_handler_services(C3BattleHandlers *handlers);
  * 0x05 damage calculation, 0x06 type check, 0x07/0x08 damage loss, 0x09
  * move effect, 0x0A effect wait, 0x0B HP update, 0x0D critical-hit message,
  * 0x0C HP bar wait, 0x0E (FightWaza read, no effect), 0x0F effectiveness
- * message, 0x12 timed message close, 0x5C target damage blink (no-op
- * without a battler model). */
+ * message, 0x12 timed message close, 0x15 secondary-effect chance, 0x5C
+ * target damage blink (no-op without a battler model). */
 int c3_battle_handler_dispatch(void *user, C3BattleScript *script, uint8_t opcode, unsigned phase);
 #endif

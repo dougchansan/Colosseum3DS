@@ -204,15 +204,20 @@ int main(void)
          * without a critical hit), the timed message close (0x12: no window
          * open), the effectiveness message (0x0F: neutral, none), the timed
          * close again, the HP bar wait (0x0C: status menu not shown, no wait),
-         * the effect wait for signal 6 (closes the status menus), then
-         * fn_80224820 (not lowered yet). */
+         * the effect wait for signal 6 (closes the status menus), the
+         * secondary-effect chance (0x15: one draw, Tackle has no effect
+         * pending), then fn_80224158 (not lowered yet). */
         uint16_t crit_draw=0,loss_draw=0;C3BattleRng after=predicted;CHECK(c3_battle_rng_next16(&after,&crit_draw));
         uint32_t crit=crit_draw%16u==0?2u:1u,flag=0;
         CHECK(c3_battle_floor_value(w.state,0x29,&flag));
         if(!(flag&0xFF)){crit=1;after=predicted;}
         CHECK(c3_battle_rng_next16(&after,&loss_draw));
+        uint16_t chance_draw=0;C3BattleRng after_loss_rng=after;CHECK(c3_battle_rng_next16(&after,&chance_draw));
+        (void)after_loss_rng;
         CHECK(w.state->rng.draws==after.draws&&w.state->rng.seed==after.seed);
-        CHECK(r.script.failure_pc==0x80375FB7u&&strstr(r.script.failure,"fn_80224820"));
+        CHECK(r.script.failure_pc==0x80375FB8u&&strstr(r.script.failure,"fn_80224158"));
+        CHECK(c3_battle_script_read(&r.script,0x80478D7Bu,1,&v)&&v==0);           /* effect byte cleared */
+        CHECK(c3_battle_script_read(&r.script,0x8047B625u,1,&v)&&v==0);
         CHECK(r.effect_waits==0);
         CHECK(c3_battle_script_read(&r.script,0x8038FF5Au,1,&v)&&v==1);           /* effect done count */
         CHECK(c3_battle_script_read(&r.script,0x8038FFF9u,1,&v)&&v==1);           /* effect counter */
@@ -226,7 +231,7 @@ int main(void)
         uint32_t def=c3_battle_state_fight_out(w.state,0,0);
         uint16_t hp_after=(uint16_t)(umbreon_hp[0]<<8|umbreon_hp[1]);
         snprintf(expect,sizeof expect,
-            "1:%lx:1;2:%lx:21;3:0:0;4:%lx:1;M:33:%lx:%lx:0;S:5;6:%lx:1;1:%lx:1;7:%lx:%x;6:%lx:1;S:6;5:0:0;",
+            "1:%lx:1;2:%lx:21;3:0:0;4:%lx:1;M:33:%lx:%lx:0;S:5;6:%lx:1;1:%lx:1;7:%lx:%x;6:%lx:1;S:6;5:0:0;11:0:0;5:0:0;3:0:0;",
             (unsigned long)(att&0xFFFF),(unsigned long)(att&0xFFFF),(unsigned long)(att&0xFFFF),(unsigned long)(att&0xFFFF),
             (unsigned long)(def&0xFFFF),(unsigned long)(def&0xFFFF),(unsigned long)(def&0xFFFF),(unsigned long)(def&0xFFFF),
             (unsigned)hp_after,(unsigned long)(def&0xFFFF));
@@ -293,7 +298,7 @@ int main(void)
     CHECK(r.handlers.canceller_step==15&&!strstr(r.script.failure,"WS_HITCHECK"));
     {   /* Espeon's Confusion: special, Psychic, power 50, cross-checked too. */
         uint32_t fw=c3_battle_state_fight_out(w.state,0,1)+0x49C,damage=0,crit=0;
-        if(strstr(r.script.failure,"fn_80224820")){
+        if(strstr(r.script.failure,"fn_80224158")){
             CHECK(c3_battle_waza_status_get(&w.state->arena,&w.state->moves,fw,0,0x2D,0,&damage));
             CHECK(c3_battle_waza_status_get(&w.state->arena,&w.state->moves,fw,0,0x2B,0,&crit));
             uint32_t base=preview_base_damage(&w,preview_dir,0,1,1,0,93,50,14);
@@ -316,7 +321,7 @@ int main(void)
     hit=(int)(draw%100u)+1<=95*33/100;
     CHECK(run_effect(&w,&r,0)==C3_SCRIPT_FAILED);
     printf("evasion +6: draw %u -> %s: %s\n",draw,hit?"hit":"miss",r.script.failure);
-    if(hit)CHECK(strstr(r.script.failure,"fn_80224820")!=NULL);
+    if(hit)CHECK(strstr(r.script.failure,"fn_80224158")!=NULL);
     else{   /* fightWazaIsHit fails: miss condition 0x40, the defender's hit
              * move cleared (0xF3 0, 0xF4 9) and the miss branch taken. */
         uint32_t fw=c3_battle_state_fight_out(w.state,1,0)+0x49C,att_type=0,hit_move=1,hit_type=0;
@@ -337,7 +342,7 @@ int main(void)
         CHECK(c3_battle_waza_status_set(&w.state->arena,fw,0x30,0,1));
         start=w.state->rng;
         CHECK(run_effect(&w,&r,0)==C3_SCRIPT_FAILED);
-        CHECK(strstr(r.script.failure,"fn_80224820")!=NULL);
+        CHECK(strstr(r.script.failure,"fn_80224158")!=NULL);
         CHECK(c3_battle_waza_status_get(&w.state->arena,&w.state->moves,fw,0,0x2D,0,&damage));
         CHECK(c3_battle_waza_status_get(&w.state->arena,&w.state->moves,fw,0,0x2B,0,&crit));
         /* The preview admits types 0/14/17 only; Fighting is physical like
@@ -366,7 +371,7 @@ int main(void)
         CHECK(c3_battle_condition_check(w.state,def,0x2C,NULL)==1);
         CHECK(run_effect(&w,&r,0)==C3_SCRIPT_FAILED);
         printf("endure: %s\n",r.script.failure);
-        CHECK(strstr(r.script.failure,"fn_80224820")!=NULL);
+        CHECK(strstr(r.script.failure,"fn_80224158")!=NULL);
         CHECK(c3_battle_waza_status_get(&w.state->arena,&w.state->moves,fw,0,0x2D,0,&damage)&&damage==2);
         CHECK(c3_battle_condition_present(w.state,fw,0x46,NULL));
         char want[32];
@@ -409,7 +414,7 @@ int main(void)
         uint32_t v2=1;
         CHECK(strstr(r.presentation.log,"5:0:0;")!=NULL&&!strstr(r.presentation.log,"M:"));
         CHECK(c3_battle_script_read(&r.script,0x8038FFF9u,1,&v2)&&v2==0);
-        CHECK(strstr(r.script.failure,"fn_80224820")!=NULL);
+        CHECK(strstr(r.script.failure,"fn_80224158")!=NULL);
     }
     /* Hit-marker bit 0x80: the effect is replaced by the pause sequence
      * (lbl_80378964, a second 0x20-frame wait); the counters still advance. */
@@ -459,7 +464,7 @@ int main(void)
             }
         }
         printf("delayed signal: %s (one-frame waits %u)\n",r.script.failure,r.effect_waits);
-        CHECK(strstr(r.script.failure,"fn_80224820")!=NULL&&r.effect_waits==2&&strstr(r.presentation.log,"S:5;"));
+        CHECK(strstr(r.script.failure,"fn_80224158")!=NULL&&r.effect_waits==2&&strstr(r.presentation.log,"S:5;"));
     }
     /* 0x5C with hit-marker bit 0x80 (set just before it): no battler model
      * means no blink and the script goes on; a target model is refused. */
@@ -516,7 +521,7 @@ int main(void)
         printf("critical message: %s (floor 0x52 %lx, window opened %lu, now %lu, 0x40-frame waits %u)\n",
             r.script.failure,(unsigned long)msg,(unsigned long)opened,(unsigned long)open,long_waits);
         CHECK(msg==0x7631&&opened==1&&open==0&&long_waits==1&&strstr(r.presentation.log,"8:7631:0;3:0:0;"));
-        CHECK(strstr(r.script.failure,"fn_80224820")!=NULL);
+        CHECK(strstr(r.script.failure,"fn_80224158")!=NULL);
     }
 
     /* Status menu shown and the HP bar busy for two polls: 0x0C waits two
@@ -542,7 +547,30 @@ int main(void)
         char want[96],one[24];uint32_t def=c3_battle_state_fight_out(w.state,0,0);
         snprintf(one,sizeof one,"6:%lx:1;10:%lx:0;",(unsigned long)(def&0xFFFF),(unsigned long)(def&0xFFFF));
         snprintf(want,sizeof want,"%s%s%s",one,one,one);                /* three polls */
-        CHECK(strstr(r.script.failure,"fn_80224820")!=NULL&&frame_waits==2&&strstr(r.presentation.log,want)!=NULL);
+        CHECK(strstr(r.script.failure,"fn_80224158")!=NULL&&frame_waits==2&&strstr(r.presentation.log,want)!=NULL);
+    }
+
+    /* A guaranteed secondary effect pending (work byte 3 bit 0x80, set just
+     * before 0x15) on a hit needs fn_802249B8: refused, with no draw. */
+    battle_reset(&w,1,0,0,0,33,0);
+    {
+        memset(&r,0,sizeof r);r.handlers.state=w.state;
+        r.handlers.present=present;r.handlers.present_user=&r.presentation;r.handlers.present_move=present_move;
+        r.handlers.effect_signal=effect_signal;
+        r.handlers.damage=(C3BattleDamageTables){w.script_pack.stage_ratios,w.script_pack.stage_ratio_count,
+            w.script_pack.item_types,w.pack->sections[C3_PACK_T44].bytes,w.pack->sections[C3_PACK_T44].count};
+        r.handlers.critical=w.script_pack.critical;r.handlers.critical_count=w.script_pack.critical_count;
+        C3BattleScriptServices sv=c3_battle_handler_services(&r.handlers);
+        CHECK(c3_battle_script_init(&r.script,&w.script_pack,&sv));
+        CHECK(c3_battle_script_call(&r.script,w.script_pack.effects[0],1,1));
+        C3BattleScriptStatus st=C3_SCRIPT_RUNNING;uint64_t draws=0;
+        for(unsigned i=0;i<64&&st!=C3_SCRIPT_FAILED;++i){
+            if(r.script.pc==0x80375FB7u){c3_battle_script_write(&r.script,0x80478D7Bu,1,0x85);draws=w.state->rng.draws;}
+            st=c3_battle_script_step(&r.script);
+            if(st==C3_SCRIPT_WAITING)CHECK(c3_battle_script_resume(&r.script));
+        }
+        printf("guaranteed effect: %s\n",r.script.failure);
+        CHECK(strstr(r.script.failure,"guaranteed secondary effect")!=NULL&&w.state->rng.draws==draws);
     }
 
     /* Without the battle-start enemy arrays the HP update refuses. */

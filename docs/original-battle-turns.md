@@ -452,6 +452,24 @@ interpreter yet.
   two frames. The effect wait for signal 6 follows (closing the status
   menus), and hits now stop at `0x15` (`fn_80224820`).
 
+- `0x15` secondary-effect chance (`fn_80224820`).
+  - Closes the trainer and battler status menus (new
+    `C3_PRESENT_TRAINER_MENUS_CLOSE`, then `C3_PRESENT_STATUS_MENUS_CLOSE`)
+    and the message.
+  - The chance is move row 0xC, doubled by Serene Grace (ability 0x20). The
+    original also forces 99 when `fn_8000817C` is set: that reads the debug
+    menu's always-apply toggle (`lbl_8047A271`, `.sbss`, written only by the
+    debug settings menu `fn_80007B30`), which is 0 in play.
+  - With work byte 3 bit 0x80 on a hit, the original applies the effect
+    unconditionally. Otherwise it draws once, even when no effect is pending,
+    and a pending effect (work byte 3) applies when `draw % 100 <= chance` on
+    a hit. Applying an effect is `fn_802249B8`, which is not lowered yet:
+    both paths are refused by name.
+  - Clears work byte 3 and `0x8047B625`.
+
+  Tackle has no pending effect: one draw, then the script goes on to `0x19`
+  (`fn_80224158`). A forced guaranteed effect is refused without drawing.
+
 ## Increments
 
 1. **Execution and end of turn through original code.** A minimal

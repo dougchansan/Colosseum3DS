@@ -20,6 +20,7 @@
  *   0x0D fn_80226730  critical-hit message 0x7631 (floor 0x52, work byte 7)
  *   0x0E fn_802266EC  reads the attacker's FightWaza (0xD9), nothing else
  *   0x0F fn_8022631C  effectiveness message from the FightWaza conditions
+ *   0x15 fn_80224820  secondary-effect chance roll (work byte 3)
  *   0x12 fn_8022622C  with a message open (work byte 7): wait the operand's
  *                     frames, close the message, clear the flag
  *   0x5C fn_8021E9F4  target damage blink (fightOutPokemonDamageEffect) on a
@@ -931,6 +932,47 @@ static int op_hp_bar_wait(C3BattleHandlers *h,C3BattleScript *sc)
     return C3_SCRIPT_HANDLER_DONE;
 }
 
+/* ---- 0x15 secondary-effect chance (fn_80224820) -------------------------- */
+
+#define EFFECT_ID_BYTE (WORK_BASE+3)   /* lbl_80478D78[3]: pending secondary effect */
+#define EFFECT_FLAG_BYTE 0x8047B625u   /* lbl_8047B625 */
+/* Closes the status menus and the message, then rolls the move's effect
+ * chance (move row 0xC, doubled by Serene Grace 0x20). fn_8000817C reads the
+ * debug menu's always-apply toggle (lbl_8047A271, .sbss, only written by the
+ * debug settings menu fn_80007B30), which is 0 in play. A pending effect
+ * that applies runs fn_802249B8, which is not lowered yet: refused. The
+ * draw happens whenever the first (bit 0x80) branch is not taken, even with
+ * no effect pending. */
+static int op_effect_chance(C3BattleHandlers *h,C3BattleScript *sc)
+{
+    C3BattleState *s=h->state;
+    uint32_t attacker=0,effect=0;
+    int fault=0;
+    present(h,C3_PRESENT_TRAINER_MENUS_CLOSE,0,0);
+    present(h,C3_PRESENT_STATUS_MENUS_CLOSE,0,0);
+    present(h,C3_PRESENT_MESSAGE_CLOSE,0,0);
+    if(!c3_battle_target(&s->arena,s->floor,0x11,0,&attacker))return stop(sc,"attacker");
+    uint32_t fw=get(s,attacker,0xD9);
+    uint16_t move=fw?(uint16_t)waza(s,fw,0,0x28):0;
+    uint16_t ability=(uint16_t)get(s,attacker,0x100);
+    uint16_t chance=(uint16_t)(uint8_t)waza(s,0,move,0xC);
+    if(ability==0x20)chance=(uint16_t)(chance*2u);
+    if(!c3_battle_script_read(sc,EFFECT_ID_BYTE,1,&effect))return stop(sc,"effect byte");
+    if((effect&0x80u)&&waza_hit(s,fw,&fault))return stop(sc,"guaranteed secondary effect (fn_802249B8)");
+    if(fault)return stop(sc,"effect chance hit check");
+    uint16_t random=0;
+    if(!c3_battle_rng_next16(&s->rng,&random))return stop(sc,"random stream");
+    if(random%100u<=chance&&effect!=0){
+        int hit=waza_hit(s,fw,&fault);
+        if(fault)return stop(sc,"effect chance hit check");
+        if(hit)return stop(sc,"secondary effect (fn_802249B8)");
+    }
+    sc->pc+=1;
+    c3_battle_script_write(sc,EFFECT_ID_BYTE,1,0);
+    c3_battle_script_write(sc,EFFECT_FLAG_BYTE,1,0);
+    return C3_SCRIPT_HANDLER_DONE;
+}
+
 int c3_battle_handler_dispatch(void *user,C3BattleScript *sc,uint8_t op,unsigned phase)
 {
     C3BattleHandlers *h=user;(void)phase;
@@ -953,6 +995,7 @@ int c3_battle_handler_dispatch(void *user,C3BattleScript *sc,uint8_t op,unsigned
     case 0x0E:return op_fight_waza_touch(h,sc);
     case 0x0F:return op_effect_message(h,sc);
     case 0x12:return op_message_close(h,sc,phase);
+    case 0x15:return op_effect_chance(h,sc);
     case 0x5C:return op_damage_blink(h,sc);
     default:return C3_SCRIPT_HANDLER_NONE;
     }
