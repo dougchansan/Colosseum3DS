@@ -22,6 +22,7 @@
  *   0x0F fn_8022631C  effectiveness message from the FightWaza conditions
  *   0x15 fn_80224820  secondary-effect chance roll (work byte 3)
  *   0x19 fn_80224158  faint check: fainted flag, faint sequence
+ *   0x24 fn_80222C44  battle end check (faint script lbl_80378798)
  *   0x49 fn_8021FAD4  move end: after-move reactions and bookkeeping
  *   0x12 fn_8022622C  with a message open (work byte 7): wait the operand's
  *                     frames, close the message, clear the flag
@@ -71,7 +72,7 @@ static int status_set(void *u,uint8_t kind,uint32_t a1,uint32_t a2,uint32_t fiel
 }
 static int target(void *u,uint8_t kind,uint32_t arg,uint32_t *handle)
 {C3BattleState *s=((C3BattleHandlers *)u)->state;return c3_battle_target(&s->arena,s->floor,kind,arg,handle);}
-static int end_of_move(void *u,C3BattleScriptPass pass,uint8_t arg){(void)u;(void)pass;(void)arg;return 0;}
+static int end_of_move(void *u,struct C3BattleScript *sc,C3BattleScriptPass pass,uint8_t arg);
 
 C3BattleScriptServices c3_battle_handler_services(C3BattleHandlers *h)
 {
@@ -1288,10 +1289,149 @@ static int op_move_end(C3BattleHandlers *h,C3BattleScript *sc)
         if(stage<0x11)++stage;
         if(mode==1)stage=0x11;
         if(mode==2&&(uint8_t)stop_stage==stage)stage=0x11;
-        c3_battle_script_write(sc,MOVE_END_STAGE,1,stage);
+        if(!c3_battle_script_write(sc,MOVE_END_STAGE,1,stage))return stop(sc,"move end stage");
         if(stage==0x11)break;
     }
     sc->pc+=3;
+    return C3_SCRIPT_HANDLER_DONE;
+}
+
+/* ---- end-of-move passes (fn_80211B94) ------------------------------------ */
+
+/* fightFloorSetStatus(0x36, fo): message variables 0x0F, 0x1A (its ability's
+ * name), 0x1F, 0x21, 0x20, cleared for 0 or an invalid battler, then the
+ * attacker field (FightFloor +0xA474). */
+static int floor_set_attacker(C3BattleState *s,uint32_t fo)
+{
+    int fault=0;
+    uint8_t *p=c3_battle_arena_bytes(&s->arena,s->floor+0xA474u,4);
+    if(!p)return 0;
+    int valid=fo&&c3_battle_fight_out_check_valid(s,fo,&fault)==1;
+    c3_battle_msgctrl_set(s,0x0F,valid?fo:0);
+    c3_battle_msgctrl_set(s,0x1A,valid?C3_MSGREF_ABILITY_NAME((uint16_t)get(s,fo,0x100)):0);
+    c3_battle_msgctrl_set(s,0x1F,valid?fo:0);
+    c3_battle_msgctrl_set(s,0x21,valid?fo:0);
+    c3_battle_msgctrl_set(s,0x20,valid?fo:0);
+    p[0]=(uint8_t)(fo>>24);p[1]=(uint8_t)(fo>>16);p[2]=(uint8_t)(fo>>8);p[3]=(uint8_t)fo;
+    return !fault;
+}
+static int fail_pass(C3BattleScript *sc,const char *what){(void)stop(sc,what);return 0;}
+static int appointed_attacker(const C3BattleState *s,uint32_t *fo)              /* floor 0x36 */
+{
+    const uint8_t *p=c3_battle_arena_bytes(&s->arena,s->floor+0xA474u,4);
+    if(!p)return 0;
+    *fo=(uint32_t)p[0]<<24|(uint32_t)p[1]<<16|(uint32_t)p[2]<<8|p[3];
+    return 1;
+}
+
+/* Each pass is fightFloorLoopValidFightOutPokemon(0, callback, &arg, 0).
+ * The callbacks that would run a nested sequence (fn_80211B94 inside the
+ * loop) are refused by name; the rest run as the original does. */
+static int end_of_move(void *u,struct C3BattleScript *sc,C3BattleScriptPass pass,uint8_t arg)
+{
+    C3BattleHandlers *h=u;
+    C3BattleState *s=h->state;
+    uint32_t list[8];unsigned n=0;
+    int fault=0;
+    (void)arg;
+    if(!c3_battle_state_valid_fight_outs(s,list,&n))return fail_pass(sc,"valid battlers");
+    switch(pass){
+    case C3_SCRIPT_PASS_FAINT_MARK:                                   /* fn_8023011C */
+        for(unsigned i=0;i<n;++i){
+            uint32_t fainted=0;
+            if(!checked_get(s,list[i],0x120,&fainted,&fault))return fail_pass(sc,"fainted flag");
+            if((uint8_t)fainted==1)return fail_pass(sc,"faint mark sequence (lbl_80378721)");
+        }
+        return 1;
+    case C3_SCRIPT_PASS_POST_FAINT_A:                                 /* fn_8022E34C: Intimidate */
+        for(unsigned i=0;i<n;++i)
+            if(fight_out(s,list[i],&fault)&&(uint16_t)get(s,list[i],0x100)==0x16&&
+               c3_battle_condition_check(s,list[i],0x3B,&fault)==1)return fail_pass(sc,"Intimidate (lbl_803795F5)");
+        break;
+    case C3_SCRIPT_PASS_POST_FAINT_B:                                 /* fn_8022E1F8: Trace */
+        for(unsigned i=0;i<n;++i)
+            if(fight_out(s,list[i],&fault)&&(uint16_t)get(s,list[i],0x100)==0x24&&
+               c3_battle_condition_check(s,list[i],0x3C,&fault)==1)return fail_pass(sc,"Trace (lbl_80379667)");
+        break;
+    case C3_SCRIPT_PASS_POST_FAINT_C:{                                /* fn_80230088: held items */
+        uint32_t saved=0;
+        if(!appointed_attacker(s,&saved))return fail_pass(sc,"floor attacker");
+        for(unsigned i=0;i<n;++i){
+            uint16_t item=0;
+            if(!fight_out(s,list[i],&fault))continue;
+            if(!floor_set_attacker(s,list[i]))return fail_pass(sc,"floor attacker");
+            /* fn_8022BE2C(fo, 1): appoints the held item, then its effect. */
+            if(!held_item_id(s,list[i],&item,&fault))return fail_pass(sc,"held item");
+            if(!floor_appoint_item(s,item))return fail_pass(sc,"floor appointed item");
+            if(item)return fail_pass(sc,"held item effect (fn_8022BE2C)");
+            if(!floor_set_attacker(s,saved))return fail_pass(sc,"floor attacker");
+        }
+        break;
+    }
+    case C3_SCRIPT_PASS_POST_FAINT_D:                                 /* fn_8022EB9C: Forecast */
+        /* fn_8022EC40 needs species 0x181 and ability 0x3B: refused on the
+         * ability alone. */
+        for(unsigned i=0;i<n;++i)
+            if(fight_out(s,list[i],&fault)&&(uint16_t)get(s,list[i],0x100)==0x3B)
+                return fail_pass(sc,"Forecast (lbl_803796D7)");
+        break;
+    case C3_SCRIPT_PASS_MOVE_CLEANUP:                                 /* fn_802136A4 */
+        for(unsigned i=0;i<n;++i)                                     /* fightOutPokemonInitOneSelfTurn */
+            for(uint32_t sel=0x113;sel<=0x11F;++sel)set_field(s,list[i],sel,0,&fault);
+        break;
+    default:return fail_pass(sc,"unknown end-of-move pass");
+    }
+    if(fault)return fail_pass(sc,"end-of-move pass records");
+    return 1;
+}
+
+/* ---- 0x24 battle end check (fn_80222C44) --------------------------------- */
+
+/* Operand: u32 whose low byte selects the replacement check. Each side's
+ * remaining HP (fightSideGetFightPokemonNokoriHp over kinds 5 and 4); a side
+ * at 0 sets the fight result (fightFloorSetFightResultId 2 / 3), which is
+ * refused by name, as is an already decided battle. With the low byte 1 a
+ * battler out of battle needs the replacement check
+ * (fightFloorIsIrekaeFightOutPokemon) or fn_80222EF0's cleanup: refused.
+ * With every battler in battle neither does anything. */
+static int op_battle_end_check(C3BattleHandlers *h,C3BattleScript *sc)
+{
+    C3BattleState *s=h->state;
+    uint32_t operand=0,trainers=0,pokemon=0,active=0;
+    int fault=0;
+    if(!c3_battle_script_fetch(sc,1,4,&operand))return C3_SCRIPT_HANDLER_FAIL;
+    if(!c3_battle_floor_value(s,0x16,&trainers)||!c3_battle_floor_value(s,0x17,&pokemon)||
+       !c3_battle_floor_value(s,0x18,&active))return stop(sc,"floor counts");
+    static const uint16_t kinds[2]={5,4};
+    for(unsigned i=0;i<2;++i){
+        uint32_t side=0,hp=0;
+        if(!c3_battle_state_target_now(s,kinds[i],0,&side))return stop(sc,"side target");
+        if(!c3_battle_side_remaining_hp(s,side,(uint16_t)trainers,(uint16_t)pokemon,&hp))return stop(sc,"side remaining HP");
+        if(!hp)return stop(sc,"battle result: a side has no HP left (fightFloorSetFightResultId)");
+    }
+    if(s->result)return stop(sc,"decided battle (fn_80222C44 result branch)");
+    if((operand&0xFFu)==1){
+        for(unsigned side=0;side<2;++side){
+            uint32_t sd=s->floor+C3_FIGHT_SIDE_OFFSET+side*C3_FIGHT_SIDE_BYTES;
+            if(!c3_battle_side_check_valid(s,sd,&fault))continue;
+            for(uint32_t t=0;t<(uint16_t)trainers;++t){
+                if(t>=2)return stop(sc,"more than two trainers");
+                uint32_t tr=sd+C3_FIGHT_SIDE_TRAINER_OFFSET+t*C3_BATTLE_RUNTIME_TRAINER_BYTES;
+                if(!c3_battle_trainer_check_valid(s,tr,&fault))continue;
+                for(uint32_t k=0;k<(uint16_t)active;++k){
+                    if(k>=2)return stop(sc,"more than two active slots");
+                    uint32_t fo=tr+C3_RUNTIME_FIGHT_OUT_OFFSET+k*C3_FIGHT_OUT_POKEMON_BYTES;
+                    if(!fight_out(s,fo,&fault))return stop(sc,"replacement Pokemon (fightFloorIsIrekaeFightOutPokemon)");
+                }
+            }
+        }
+        uint32_t list[8];unsigned n=0;
+        if(!c3_battle_state_valid_fight_outs(s,list,&n))return stop(sc,"valid battlers");
+        for(unsigned i=0;i<n;++i)
+            if(!fight_out(s,list[i],&fault))return stop(sc,"battler out of battle (fn_80222EF0)");
+    }
+    if(fault)return stop(sc,"battle end records");
+    sc->pc+=5;
     return C3_SCRIPT_HANDLER_DONE;
 }
 
@@ -1319,6 +1459,7 @@ int c3_battle_handler_dispatch(void *user,C3BattleScript *sc,uint8_t op,unsigned
     case 0x12:return op_message_close(h,sc,phase);
     case 0x15:return op_effect_chance(h,sc);
     case 0x19:return op_faint_check(h,sc,phase);
+    case 0x24:return op_battle_end_check(h,sc);
     case 0x49:return op_move_end(h,sc);
     case 0x5C:return op_damage_blink(h,sc);
     default:return C3_SCRIPT_HANDLER_NONE;

@@ -29,7 +29,7 @@ static int sget(void *u,uint8_t k,uint32_t a1,uint32_t a2,uint32_t f,uint32_t a4
 static int sset(void *u,uint8_t k,uint32_t a1,uint32_t a2,uint32_t f,uint32_t a4,uint32_t v)
 {Services *s=u;char t[96];snprintf(t,sizeof t,"set %u %lx %lx %lx %lx=%lx",k,(unsigned long)a1,(unsigned long)a2,(unsigned long)f,(unsigned long)a4,(unsigned long)v);logf_(s,t);return 1;}
 static int starget(void *u,uint8_t k,uint32_t a,uint32_t *h){Services *s=u;char t[32];snprintf(t,sizeof t,"target %x %lx",k,(unsigned long)a);logf_(s,t);*h=s->attacker;return 1;}
-static int spass(void *u,C3BattleScriptPass p,uint8_t a){Services *s=u;char t[32];snprintf(t,sizeof t,"pass %d %u",(int)p,a);logf_(s,t);return !s->fail_pass;}
+static int spass(void *u,struct C3BattleScript *sc,C3BattleScriptPass p,uint8_t a){(void)sc;Services *s=u;char t[32];snprintf(t,sizeof t,"pass %d %u",(int)p,a);logf_(s,t);return !s->fail_pass;}
 
 static uint8_t *synthetic_pack(void)
 {

@@ -152,16 +152,16 @@ int c3_battle_floor_value(const C3BattleState *s,uint32_t field,uint32_t *value)
 {
     if(!s||!value)return 0;
     field&=0xFFFFu;
-    if(field==0x14||field==0x16||field==0x18||field==0x19||field==0x1A||(field>=0x1C&&field<=0x34)){
+    if((field>=0x14&&field<=0x1A&&field!=0x15)||(field>=0x1C&&field<=0x34)){
         uint32_t encounter=0;
         if(!c3_battle_floor_status_get(&s->arena,&s->floors,s->floor,0,0,0x0D,0,&encounter))return 0;
         const uint8_t *er=row_at(&s->encounters,encounter&0xFFFFu);
-        if(field==0x14||field==0x16||field==0x18||field==0x19){
+        if(field==0x14||(field>=0x16&&field<=0x19)){
             uint8_t type=er?er[1]:0;
             if(field==0x14){*value=type;return 1;}
             const uint8_t *tr=row_at(&s->types,type);
             if(field==0x19){*value=tr?(uint32_t)tr[0]*tr[2]:0;return 1;}   /* fightTypeGetFightSideFightOutPokemonMax */
-            *value=tr?tr[field==0x16?0:2]:0;return 1;
+            *value=tr?tr[field-0x16]:0;return 1;                         /* trainers, entries, active */
         }
         uint8_t kind=er?er[0]:0;
         if(field==0x1A){*value=kind;return 1;}
@@ -560,6 +560,30 @@ int c3_battle_state_target_now(const C3BattleState *s,uint16_t kind,uint32_t ptr
     uint32_t type=0;
     if(!s||!c3_battle_floor_value(s,0x14,&type))return 0;
     return c3_battle_state_target(s,kind,ptr,(uint16_t)type,out);
+}
+int c3_battle_side_remaining_hp(const C3BattleState *s,uint32_t side,uint16_t trainers,uint16_t pokemon,uint32_t *hp)
+{
+    int fault=0;
+    uint32_t total=0;
+    if(!s||!hp)return 0;
+    for(uint16_t t=0;t<trainers&&side;++t){
+        if(t>=2)return 0;
+        uint32_t tr=side_trainer(side,t);
+        if(!c3_battle_trainer_check_valid(s,tr,&fault))continue;
+        for(uint16_t j=0;j<pokemon;++j){
+            if(j>=6)return 0;
+            uint32_t fp=trainer_fight_pokemon(tr,j);                 /* fightTrainerGetValidFightPokemonPtr */
+            if(!c3_battle_fight_pokemon_check_valid(s,fp,&fault))continue;
+            uint32_t poke=status(s,fp,0xCC,&fault);
+            if(!poke||!c3_battle_fight_pokemon_check_fight_out(s,fp,&fault))continue;
+            const uint8_t *p=bytes(s,poke+0x8A,2,&fault);
+            if(!p)return 0;
+            total+=be16(p);
+        }
+    }
+    if(fault)return 0;
+    *hp=total;
+    return 1;
 }
 int c3_battle_state_relative_target_id(const C3BattleState *s,uint32_t target,uint16_t fight_type,uint16_t *id)
 {

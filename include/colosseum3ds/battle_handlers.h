@@ -52,8 +52,9 @@ typedef struct {
     uint32_t critical_count;         /* lbl_80478D60 */
 } C3BattleHandlers;
 
-/* Services for c3_battle_script_init with user = handlers. end_of_move is
- * not lowered yet and fails when reached. */
+/* Services for c3_battle_script_init with user = handlers. end_of_move runs
+ * the end-of-move passes; a pass that would run a nested sequence fails the
+ * script by name. */
 C3BattleScriptServices c3_battle_handler_services(C3BattleHandlers *handlers);
 
 /* Lowered opcodes so far: 0x00 WS_HITCHECK (attack canceler), 0x01
@@ -62,7 +63,7 @@ C3BattleScriptServices c3_battle_handler_services(C3BattleHandlers *handlers);
  * move effect, 0x0A effect wait, 0x0B HP update, 0x0D critical-hit message,
  * 0x0C HP bar wait, 0x0E (FightWaza read, no effect), 0x0F effectiveness
  * message, 0x12 timed message close, 0x15 secondary-effect chance, 0x19
- * faint check, 0x49 move end, 0x5C target damage blink (no-op without a
+ * faint check, 0x24 battle end check, 0x49 move end, 0x5C target damage blink (no-op without a
  * battler model). */
 int c3_battle_handler_dispatch(void *user, C3BattleScript *script, uint8_t opcode, unsigned phase);
 #endif

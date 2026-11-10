@@ -84,7 +84,8 @@ typedef struct {
                       uint32_t field, uint32_t a4, uint32_t value);
     /* fightTargetGetPtrAsNowFightType(kind, arg) -> FightOutPokemon handle */
     int (*target)(void *user, uint8_t kind, uint32_t arg, uint32_t *handle);
-    int (*end_of_move)(void *user, C3BattleScriptPass pass, uint8_t arg);
+    /* Returns 0 to stop; it may first fail the script with its own reason. */
+    int (*end_of_move)(void *user, struct C3BattleScript *script, C3BattleScriptPass pass, uint8_t arg);
     /* Optional battle-logic opcodes lowered outside the interpreter. Called
      * for an opcode the interpreter does not handle itself; returns one of
      * C3_SCRIPT_HANDLER_*. NULL means none. */

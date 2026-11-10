@@ -546,6 +546,48 @@ interpreter yet.
   - A held item on Espeon, the partner outside the exchange, stops at stage
     8 after appointing the item.
 
+- End-of-move passes (`fn_80211B94`) and the faint script (`lbl_80378798`).
+  - The `end_of_move` service now receives the script, so a refused pass
+    fails it with a named reason.
+  - Each pass runs `fightFloorLoopValidFightOutPokemon(0, callback, &arg,
+    0)` over the battlers.
+  - **Faint mark** (`fn_8023011C`): a battler with 0x120 == 1 runs
+    `lbl_80378721` inside the loop. Refused by name.
+  - **Faint script:** opcode `0x24` (`fn_80222C44`, battle end check), then
+    `WS_SEQEND`.
+    - It sums each side's remaining HP (`fightSideGetFightPokemonNokoriHp`,
+      a new state query over target kinds 5 and 4). A side at 0 would set
+      the fight result (`fightFloorSetFightResultId`), and an already
+      decided battle (`lbl_8047B5D8`, the state's `result`) takes the result
+      branch. Both are refused by name.
+    - With operand low byte 1, a battler out of battle would need the
+      replacement check (`fightFloorIsIrekaeFightOutPokemon`) or
+      `fn_80222EF0`'s cleanup. Refused by name.
+    - Floor field 0x17 (Pokemon per trainer, fight-type row byte 1) is now
+      modelled.
+  - **Post-faint passes:**
+    - A, `fn_8022E34C`: Intimidate (ability 0x16 with condition 0x3B).
+      Refused when it applies.
+    - B, `fn_8022E1F8`: Trace (0x24 with 0x3C). Refused when it applies.
+    - C, `fn_80230088`: each battler in battle becomes the floor attacker
+      (0x36: message variables 0x0F, 0x1A, 0x1F, 0x21, 0x20, then
+      `+0xA474`). Its held item is appointed (`fn_8022BE2C`, floor 0x56), and
+      then the saved attacker is restored. A held item's effect is refused.
+    - D, `fn_8022EB9C`: Forecast. Refused on ability 0x3B.
+  - **Cleanup:** `fightOutPokemonInitOneSelfTurn` clears 0x113..0x11F on
+    every battler, then the interpreter's own end-of-call writes.
+
+  On the original data:
+  - Zigzagoon's Tackle on Umbreon completes the whole call (`C3_SCRIPT_DONE`,
+    depth 0). Umbreon keeps the HP loss (86 -> 81) and move end's records.
+    The turn's records are reset: 0x113..0x11F on all four battlers, the
+    attacker's 0xF3 / 0xF4 (0 / 9), the damage, the hit marker and the
+    effect counters.
+  - Nothing is drawn or presented after the move script.
+  - A Forecast battler in battle is refused at pass D.
+  - The handler tests now stop by default where the move script ends, and
+    check the turn's intermediate records there.
+
 ## Increments
 
 1. **Execution and end of turn through original code.** A minimal

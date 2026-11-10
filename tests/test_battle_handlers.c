@@ -82,7 +82,24 @@ static int present(void *u,C3BattlePresent req,uint32_t a,uint32_t b)
     return req==C3_PRESENT_ATTACK_STRING||req==C3_PRESENT_MESSAGE_OPEN||req==C3_PRESENT_EFFECT_MESSAGE;
 }
 typedef struct { C3BattleHandlers handlers;C3BattleScript script;Presentation presentation;unsigned waits;
-    unsigned effect_waits,signal_delay,message_waits; } Run;
+    unsigned effect_waits,signal_delay,message_waits;
+    int full_turn,reached_end;uint32_t end_pc; } Run;
+/* The failure, or "reached move end" when run_effect stopped where the move
+ * script ended (before the faint script, the passes and the cleanup reset
+ * the turn's records). */
+/* Where the move script ended: the WAZAEND PC saved for the faint script,
+ * or the PC itself when the script returned (state 2) to the cleanup. */
+static uint32_t end_pc(const Run *r)
+{return r->script.frames[0].phase==C3_SCRIPT_PHASE_FAINT_SCRIPT?r->script.frames[0].faint_pc:r->script.pc;}
+static uint32_t stop_pc(const Run *r){return r->reached_end?r->end_pc:r->script.failure_pc;}
+static const char *why(const Run *r){return r->reached_end?"reached move end":r->script.failure;}
+static int stopped(C3BattleScriptStatus st){return st==C3_SCRIPT_FAILED||st==C3_SCRIPT_RUNNING;}
+/* For hand-driven loops: marks and reports the point run_effect stops at. */
+static int at_end(Run *r)
+{
+    if(r->script.status!=C3_SCRIPT_RUNNING||r->script.depth!=1||r->script.frames[0].phase==C3_SCRIPT_PHASE_RUN)return 0;
+    r->reached_end=1;r->end_pc=end_pc(r);return 1;
+}
 /* Effect signal: reached after signal_delay polls; logs each signal asked. */
 static int effect_signal(void *u,uint8_t signal)
 {
@@ -101,9 +118,13 @@ static int present_move(void *u,uint16_t move,uint32_t attacker,uint32_t target,
     size_t n=strlen(t);CHECK(p->used+n<sizeof p->log);memcpy(p->log+p->used,t,n+1);p->used+=n;
     return 1;
 }
-static C3BattleScriptStatus run_effect(World *w,Run *r,uint16_t effect)
+static C3BattleScriptStatus run_effect_mode(World *w,Run *r,uint16_t effect,int full_turn);
+static C3BattleScriptStatus run_effect(World *w,Run *r,uint16_t effect){return run_effect_mode(w,r,effect,0);}
+/* Stops where the top-level move script ended (returns RUNNING with
+ * reached_end) unless full_turn, which runs on to the end of the call. */
+static C3BattleScriptStatus run_effect_mode(World *w,Run *r,uint16_t effect,int full_turn)
 {
-    memset(r,0,sizeof *r);r->handlers.state=w->state;
+    memset(r,0,sizeof *r);r->handlers.state=w->state;r->full_turn=full_turn;
     r->handlers.present=present;r->handlers.present_user=&r->presentation;r->handlers.present_move=present_move;
     r->handlers.effect_signal=effect_signal;
     r->handlers.damage=(C3BattleDamageTables){w->script_pack.stage_ratios,w->script_pack.stage_ratio_count,
@@ -121,6 +142,9 @@ static C3BattleScriptStatus run_effect(World *w,Run *r,uint16_t effect)
             CHECK(c3_battle_script_resume(&r->script));continue;
         }
         if(st!=C3_SCRIPT_RUNNING)return st;
+        if(!r->full_turn&&r->script.depth==1&&r->script.frames[0].phase!=C3_SCRIPT_PHASE_RUN){
+            r->reached_end=1;r->end_pc=end_pc(r);return st;
+        }
     }
     CHECK(0);return C3_SCRIPT_FAILED;
 }
@@ -181,9 +205,9 @@ int main(void)
     CHECK(tackle[0]==0&&tackle[1]==33);uint8_t pp_before=tackle[2];
     const uint8_t *umbreon_hp=c3_battle_arena_bytes(&w.state->arena,c3_battle_state_fight_pokemon(w.state,0,0)+4+0x8A,2);
     uint16_t hp_before=(uint16_t)(umbreon_hp[0]<<8|umbreon_hp[1]);
-    CHECK(run_effect(&w,&r,0)==C3_SCRIPT_FAILED);
+    CHECK(stopped(run_effect(&w,&r,0)));
     printf("tackle: draw %u -> %s; stops at %08lx: %s\n",draw,hit?"hit":"miss",
-        (unsigned long)r.script.failure_pc,r.script.failure);
+        (unsigned long)stop_pc(&r),why(&r));
     if(!hit)CHECK(w.state->rng.draws==predicted.draws&&w.state->rng.seed==predicted.seed);
     {   /* fightSideCreate data IDs (floor data field 3) and the valid count. */
         const uint8_t *sd=c3_battle_arena_bytes(&w.state->arena,w.state->floor+C3_FIGHT_SIDE_OFFSET,C3_FIGHT_SIDE_BYTES+2);
@@ -218,7 +242,7 @@ int main(void)
         uint16_t chance_draw=0;C3BattleRng after_loss_rng=after;CHECK(c3_battle_rng_next16(&after,&chance_draw));
         (void)after_loss_rng;
         CHECK(w.state->rng.draws==after.draws&&w.state->rng.seed==after.seed);
-        CHECK(r.script.failure_pc==0x80375FC8u&&strstr(r.script.failure,"End-of-move pass 1"));
+        CHECK(r.end_pc==0x80375FC8u&&strstr(why(&r),"reached move end"));
         {
             uint32_t a=c3_battle_state_fight_out(w.state,1,0),d=c3_battle_state_fight_out(w.state,0,0);
             uint32_t ef=0,f0=0,f1=0,shown=0,f2=0,f3=0,f4=0,f7=0,power=0;uint16_t rel=0;
@@ -304,7 +328,7 @@ int main(void)
         for(uint16_t id=0x40;id<=0x45;++id)CHECK(!c3_battle_condition_present(w.state,fw,id,NULL));
         CHECK(c3_battle_script_read(&r.script,0x80478D7Eu,1,&v)&&v==0);           /* work byte 6 */
     }else{
-        CHECK(!strstr(r.script.failure,"miss"));
+        CHECK(!strstr(why(&r),"miss"));
         CHECK(tackle[2]==pp_before);
     }
     CHECK(r.handlers.canceller_step==15);
@@ -312,12 +336,12 @@ int main(void)
     /* Espeon (player slot 1) uses Confusion (slot 0) on Zigzagoon A. */
     battle_reset(&w,0,1,1,0,93,0);
     C3BattleRng start=w.state->rng;
-    CHECK(run_effect(&w,&r,76)==C3_SCRIPT_FAILED);
-    printf("confusion: stops at %08lx: %s\n",(unsigned long)r.script.failure_pc,r.script.failure);
-    CHECK(r.handlers.canceller_step==15&&!strstr(r.script.failure,"WS_HITCHECK"));
+    CHECK(stopped(run_effect(&w,&r,76)));
+    printf("confusion: stops at %08lx: %s\n",(unsigned long)stop_pc(&r),why(&r));
+    CHECK(r.handlers.canceller_step==15&&!strstr(why(&r),"WS_HITCHECK"));
     {   /* Espeon's Confusion: special, Psychic, power 50, cross-checked too. */
         uint32_t fw=c3_battle_state_fight_out(w.state,0,1)+0x49C,damage=0,crit=0;
-        if(strstr(r.script.failure,"End-of-move pass 1")){
+        if(strstr(why(&r),"reached move end")){
             CHECK(c3_battle_waza_status_get(&w.state->arena,&w.state->moves,fw,0,0x2D,0,&damage));
             CHECK(c3_battle_waza_status_get(&w.state->arena,&w.state->moves,fw,0,0x2B,0,&crit));
             uint32_t base=preview_base_damage(&w,preview_dir,0,1,1,0,93,50,14);
@@ -338,9 +362,9 @@ int main(void)
     def_fo[0x60A]=12;                                     /* 0xEC evasion stage +6 */
     predicted=w.state->rng;CHECK(c3_battle_rng_next16(&predicted,&draw));
     hit=(int)(draw%100u)+1<=95*33/100;
-    CHECK(run_effect(&w,&r,0)==C3_SCRIPT_FAILED);
-    printf("evasion +6: draw %u -> %s: %s\n",draw,hit?"hit":"miss",r.script.failure);
-    if(hit)CHECK(strstr(r.script.failure,"End-of-move pass 1")!=NULL);
+    CHECK(stopped(run_effect(&w,&r,0)));
+    printf("evasion +6: draw %u -> %s: %s\n",draw,hit?"hit":"miss",why(&r));
+    if(hit)CHECK(strstr(why(&r),"reached move end")!=NULL);
     else{   /* fightWazaIsHit fails: miss condition 0x40, the defender's hit
              * move cleared (0xF3 0, 0xF4 9) and the miss branch taken. */
         uint32_t fw=c3_battle_state_fight_out(w.state,1,0)+0x49C,att_type=0,hit_move=1,hit_type=0;
@@ -349,7 +373,7 @@ int main(void)
         CHECK(c3_battle_fight_status_get(&w.state->arena,def,0xF3,0,&hit_move)&&hit_move==0);
         CHECK(c3_battle_fight_status_get(&w.state->arena,def,0xF4,0,&hit_type)&&hit_type==9);
         CHECK(c3_battle_waza_status_get(&w.state->arena,&w.state->moves,fw,0,0x30,0,&att_type)&&att_type==0);
-        CHECK(!strstr(r.script.failure,"miss"));
+        CHECK(!strstr(why(&r),"miss"));
         printf("evasion +6 miss continues at %08lx\n",(unsigned long)r.script.failure_pc);
     }
 
@@ -360,8 +384,8 @@ int main(void)
         uint32_t att=c3_battle_state_fight_out(w.state,1,0),fw=att+0x49C,damage=0,crit=0;
         CHECK(c3_battle_waza_status_set(&w.state->arena,fw,0x30,0,1));
         start=w.state->rng;
-        CHECK(run_effect(&w,&r,0)==C3_SCRIPT_FAILED);
-        CHECK(strstr(r.script.failure,"End-of-move pass 1")!=NULL);
+        CHECK(stopped(run_effect(&w,&r,0)));
+        CHECK(strstr(why(&r),"reached move end")!=NULL);
         CHECK(c3_battle_waza_status_get(&w.state->arena,&w.state->moves,fw,0,0x2D,0,&damage));
         CHECK(c3_battle_waza_status_get(&w.state->arena,&w.state->moves,fw,0,0x2B,0,&crit));
         /* The preview admits types 0/14/17 only; Fighting is physical like
@@ -388,9 +412,9 @@ int main(void)
         uint8_t *slot=c3_battle_arena_bytes(&w.state->arena,def+0x15C+0x23*16,16);   /* row 0x2C: slot 0x23 */
         slot[0]=0;slot[1]=0x2C;
         CHECK(c3_battle_condition_check(w.state,def,0x2C,NULL)==1);
-        CHECK(run_effect(&w,&r,0)==C3_SCRIPT_FAILED);
-        printf("endure: %s\n",r.script.failure);
-        CHECK(strstr(r.script.failure,"End-of-move pass 1")!=NULL);
+        CHECK(stopped(run_effect(&w,&r,0)));
+        printf("endure: %s\n",why(&r));
+        CHECK(strstr(why(&r),"reached move end")!=NULL);
         CHECK(c3_battle_waza_status_get(&w.state->arena,&w.state->moves,fw,0,0x2D,0,&damage)&&damage==2);
         CHECK(c3_battle_condition_present(w.state,fw,0x46,NULL));
         char want[32];
@@ -407,10 +431,10 @@ int main(void)
         hp[0]=0;hp[1]=3;
         uint8_t *slot=c3_battle_arena_bytes(&w.state->arena,def+0x15C+0x23*16,16);slot[0]=0;slot[1]=0x2C;
         CHECK(c3_battle_waza_status_set(&w.state->arena,fw,0x30,0,1));
-        CHECK(run_effect(&w,&r,0)==C3_SCRIPT_FAILED);
+        CHECK(stopped(run_effect(&w,&r,0)));
         printf("endure + super effective: stops at %08lx: %s (depth %u)\n",(unsigned long)r.script.failure_pc,
-            r.script.failure,(unsigned)r.script.depth);
-        CHECK(r.script.failure_pc==0x803791BEu&&strstr(r.script.failure,"fn_802262D0")&&r.script.depth==2);
+            why(&r),(unsigned)r.script.depth);
+        CHECK(r.script.failure_pc==0x803791BEu&&strstr(why(&r),"fn_802262D0")&&r.script.depth==2);
         CHECK(c3_battle_condition_present(w.state,fw,0x41,NULL)&&!c3_battle_condition_present(w.state,fw,0x46,NULL));
     }
     /* Umbreon retyped Ghost (7/7): Normal has no effect: damage 0, condition
@@ -420,8 +444,8 @@ int main(void)
         uint32_t att=c3_battle_state_fight_out(w.state,1,0),fw=att+0x49C,def=c3_battle_state_fight_out(w.state,0,0);
         uint32_t damage=1,flag=0;
         CHECK(c3_battle_fight_status_set(&w.state->arena,def,0xFF,0,7)&&c3_battle_fight_status_set(&w.state->arena,def,0xFF,1,7));
-        CHECK(run_effect(&w,&r,0)==C3_SCRIPT_FAILED);
-        printf("ghost umbreon: %s\n",r.script.failure);
+        CHECK(stopped(run_effect(&w,&r,0)));
+        printf("ghost umbreon: %s\n",why(&r));
         CHECK(c3_battle_waza_status_get(&w.state->arena,&w.state->moves,fw,0,0x2D,0,&damage)&&damage==0);
         CHECK(c3_battle_condition_present(w.state,fw,0x43,NULL));
         CHECK(c3_battle_fight_status_get(&w.state->arena,att,0x108,0,&flag)&&flag==1);
@@ -433,7 +457,7 @@ int main(void)
         uint32_t v2=1;
         CHECK(strstr(r.presentation.log,"5:0:0;")!=NULL&&!strstr(r.presentation.log,"M:"));
         CHECK(c3_battle_script_read(&r.script,0x8038FFF9u,1,&v2)&&v2==0);
-        CHECK(strstr(r.script.failure,"End-of-move pass 1")!=NULL);
+        CHECK(strstr(why(&r),"reached move end")!=NULL);
     }
     /* Hit-marker bit 0x80: the effect is replaced by the pause sequence
      * (lbl_80378964, a second 0x20-frame wait); the counters still advance. */
@@ -454,11 +478,12 @@ int main(void)
                 c3_battle_script_write(&r.script,0x8047B618u,4,m|0x80u);
             }
             st=c3_battle_script_step(&r.script);
+            if(at_end(&r))break;
             if(st==C3_SCRIPT_WAITING){++r.waits;CHECK(r.script.wait_frames==0x20);CHECK(c3_battle_script_resume(&r.script));}
         }
         uint32_t v2=0;
-        printf("hit marker 0x80: %s (waits %u)\n",r.script.failure,r.waits);
-        CHECK(strstr(r.script.failure,"effect wait skipped")!=NULL&&r.waits==2&&!strstr(r.presentation.log,"M:"));
+        printf("hit marker 0x80: %s (waits %u)\n",why(&r),r.waits);
+        CHECK(strstr(why(&r),"effect wait skipped")!=NULL&&r.waits==2&&!strstr(r.presentation.log,"M:"));
         CHECK(c3_battle_script_read(&r.script,0x8038FFF9u,1,&v2)&&v2==1);
     }
 
@@ -477,13 +502,14 @@ int main(void)
         C3BattleScriptStatus st=C3_SCRIPT_RUNNING;
         for(unsigned i=0;i<64&&st!=C3_SCRIPT_FAILED;++i){
             st=c3_battle_script_step(&r.script);
+            if(at_end(&r))break;
             if(st==C3_SCRIPT_WAITING){
                 if(r.script.wait_frames==1)++r.effect_waits;else ++r.waits;
                 CHECK(c3_battle_script_resume(&r.script));
             }
         }
-        printf("delayed signal: %s (one-frame waits %u)\n",r.script.failure,r.effect_waits);
-        CHECK(strstr(r.script.failure,"End-of-move pass 1")!=NULL&&r.effect_waits==2&&strstr(r.presentation.log,"S:5;"));
+        printf("delayed signal: %s (one-frame waits %u)\n",why(&r),r.effect_waits);
+        CHECK(strstr(why(&r),"reached move end")!=NULL&&r.effect_waits==2&&strstr(r.presentation.log,"S:5;"));
     }
     /* 0x5C with hit-marker bit 0x80 (set just before it): no battler model
      * means no blink and the script goes on; a target model is refused. */
@@ -506,10 +532,11 @@ int main(void)
                 c3_battle_script_write(&r.script,0x8047B618u,4,m|0x80u);
             }
             st=c3_battle_script_step(&r.script);
+            if(at_end(&r))break;
             if(st==C3_SCRIPT_WAITING)CHECK(c3_battle_script_resume(&r.script));
         }
-        printf("0x5C bit 0x80, model %d: %s\n",model,r.script.failure);
-        CHECK(strstr(r.script.failure,model?"battler model":"effect wait skipped")!=NULL);   /* 0x0A at 80375FB5 sees bit 0x80 */
+        printf("0x5C bit 0x80, model %d: %s\n",model,why(&r));
+        CHECK(strstr(why(&r),model?"battler model":"effect wait skipped")!=NULL);   /* 0x0A at 80375FB5 sees bit 0x80 */
     }
 
     /* A critical hit (FightWaza 0x2B = 2, set just before 0x0D) stores and
@@ -531,6 +558,7 @@ int main(void)
         for(unsigned i=0;i<64&&st!=C3_SCRIPT_FAILED;++i){
             if(r.script.pc==0x80375FABu)CHECK(c3_battle_waza_status_set(&w.state->arena,fw,0x2B,0,2));
             st=c3_battle_script_step(&r.script);
+            if(at_end(&r))break;
             if(r.script.pc==0x80375FACu&&!opened)CHECK(c3_battle_script_read(&r.script,0x80478D7Fu,1,&opened));
             if(st==C3_SCRIPT_WAITING){if(r.script.wait_frames==0x40)++long_waits;CHECK(c3_battle_script_resume(&r.script));}
         }
@@ -538,9 +566,9 @@ int main(void)
               c3_battle_floor_status_get(&w.state->arena,&w.state->floors,w.state->floor,0,0,0x52,0,&msg));
         CHECK(c3_battle_script_read(&r.script,0x80478D7Fu,1,&open));
         printf("critical message: %s (floor 0x52 %lx, window opened %lu, now %lu, 0x40-frame waits %u)\n",
-            r.script.failure,(unsigned long)msg,(unsigned long)opened,(unsigned long)open,long_waits);
+            why(&r),(unsigned long)msg,(unsigned long)opened,(unsigned long)open,long_waits);
         CHECK(msg==0x7631&&opened==1&&open==0&&long_waits==1&&strstr(r.presentation.log,"8:7631:0;3:0:0;"));
-        CHECK(strstr(r.script.failure,"End-of-move pass 1")!=NULL);
+        CHECK(strstr(why(&r),"reached move end")!=NULL);
     }
 
     /* Status menu shown and the HP bar busy for two polls: 0x0C waits two
@@ -560,13 +588,14 @@ int main(void)
         unsigned frame_waits=0;
         for(unsigned i=0;i<64&&st!=C3_SCRIPT_FAILED;++i){
             st=c3_battle_script_step(&r.script);
+            if(at_end(&r))break;
             if(st==C3_SCRIPT_WAITING){if(r.script.wait_frames==1)++frame_waits;CHECK(c3_battle_script_resume(&r.script));}
         }
-        printf("HP bar busy: %s (one-frame waits %u)\n",r.script.failure,frame_waits);
+        printf("HP bar busy: %s (one-frame waits %u)\n",why(&r),frame_waits);
         char want[96],one[24];uint32_t def=c3_battle_state_fight_out(w.state,0,0);
         snprintf(one,sizeof one,"6:%lx:1;10:%lx:0;",(unsigned long)(def&0xFFFF),(unsigned long)(def&0xFFFF));
         snprintf(want,sizeof want,"%s%s%s",one,one,one);                /* three polls */
-        CHECK(strstr(r.script.failure,"End-of-move pass 1")!=NULL&&frame_waits==2&&strstr(r.presentation.log,want)!=NULL);
+        CHECK(strstr(why(&r),"reached move end")!=NULL&&frame_waits==2&&strstr(r.presentation.log,want)!=NULL);
     }
 
     /* The player's Umbreon fainting needs the friendship loss (floor 0x27 is 1
@@ -578,9 +607,9 @@ int main(void)
         hp[0]=0;hp[1]=1;
         CHECK(c3_battle_fight_out_is_gc_hero(w.state,def)==1);
         CHECK(c3_battle_fight_out_is_gc_hero(w.state,c3_battle_state_fight_out(w.state,1,0))==0);
-        CHECK(run_effect(&w,&r,0)==C3_SCRIPT_FAILED);
-        printf("umbreon knocked out: %s\n",r.script.failure);
-        CHECK(strstr(r.script.failure,"faint friendship loss")!=NULL);
+        CHECK(stopped(run_effect(&w,&r,0)));
+        printf("umbreon knocked out: %s\n",why(&r));
+        CHECK(strstr(why(&r),"faint friendship loss")!=NULL);
         CHECK(c3_battle_fight_status_get(&w.state->arena,def,0x120,0,&f)&&f==1);
         CHECK(c3_battle_script_read(&r.script,0x8047B618u,4,&f)&&(f&0x400000u));
     }
@@ -594,16 +623,67 @@ int main(void)
         uint8_t *hp=c3_battle_arena_bytes(&w.state->arena,c3_battle_state_fight_pokemon(w.state,1,0)+4+0x8A,2);
         hp[0]=0;hp[1]=1;
         CHECK(c3_battle_fight_out_is_fainted(w.state,def)==0);
-        CHECK(run_effect(&w,&r,0)==C3_SCRIPT_FAILED);
+        CHECK(stopped(run_effect(&w,&r,0)));
         printf("zigzagoon knocked out: stops at %08lx: %s (depth %u)\n",(unsigned long)r.script.failure_pc,
-            r.script.failure,(unsigned)r.script.depth);
-        CHECK(r.script.failure_pc==0x80378703u&&strstr(r.script.failure,"fn_80224060")&&r.script.depth==2);
+            why(&r),(unsigned)r.script.depth);
+        CHECK(r.script.failure_pc==0x80378703u&&strstr(why(&r),"fn_80224060")&&r.script.depth==2);
         CHECK(hp[0]==0&&hp[1]==0&&c3_battle_fight_out_is_fainted(w.state,def)==1);
         CHECK(c3_battle_fight_status_get(&w.state->arena,def,0x120,0,&f)&&f==1);
         const uint8_t *ap=c3_battle_arena_bytes(&w.state->arena,w.state->floor+0xA494,4);       /* floor 0x4B */
         CHECK(ap&&((uint32_t)ap[0]<<24|(uint32_t)ap[1]<<16|(uint32_t)ap[2]<<8|ap[3])==def);
         CHECK(w.state->msgctrl[0x1E]==def);
         CHECK(c3_battle_script_read(&r.script,0x8047B618u,4,&f)&&!(f&0x400000u));
+    }
+
+    /* The whole turn: Zigzagoon's Tackle on Umbreon runs past WAZAEND. The
+     * faint mark pass finds no fainted battler, the faint script's battle
+     * end check (0x24) finds both sides with HP and every battler in battle,
+     * the four post-faint passes find no Intimidate, Trace, held item or
+     * Forecast, and the cleanup resets the turn: each battler's 0x113..0x11F,
+     * the attacker's 0xF3 / 0xF4 (0 / 9), the damage (0x2D), the hit marker
+     * and the effect bytes. The HP loss and move end's records stay; no
+     * number is drawn and nothing is presented after the move script. */
+    battle_reset(&w,1,0,0,0,33,0);
+    {
+        C3BattleScriptStatus st=run_effect(&w,&r,0);
+        CHECK(st==C3_SCRIPT_RUNNING&&r.reached_end);
+        C3BattleRng at_end_rng=w.state->rng;
+        char log_at_end[sizeof r.presentation.log];memcpy(log_at_end,r.presentation.log,sizeof log_at_end);
+        battle_reset(&w,1,0,0,0,33,0);
+        st=run_effect_mode(&w,&r,0,1);
+        printf("full turn: status %d, depth %u: %s\n",(int)st,(unsigned)r.script.depth,why(&r));
+        CHECK(st==C3_SCRIPT_DONE&&r.script.depth==0);
+        CHECK(w.state->rng.draws==at_end_rng.draws&&w.state->rng.seed==at_end_rng.seed);
+        CHECK(strcmp(r.presentation.log,log_at_end)==0);
+        uint32_t a=c3_battle_state_fight_out(w.state,1,0),d=c3_battle_state_fight_out(w.state,0,0),v=0;
+        uint32_t list[8];unsigned n=0;
+        CHECK(c3_battle_state_valid_fight_outs(w.state,list,&n)&&n==4);
+        for(unsigned i=0;i<n;++i)for(uint32_t sel=0x113;sel<=0x11F;++sel)
+            CHECK(c3_battle_fight_status_get(&w.state->arena,list[i],sel,0,&v)&&v==0);
+        CHECK(c3_battle_fight_status_get(&w.state->arena,a,0xF3,0,&v)&&v==0);
+        CHECK(c3_battle_fight_status_get(&w.state->arena,a,0xF4,0,&v)&&v==9);
+        CHECK(c3_battle_fight_status_get(&w.state->arena,a,0xEF,0,&v)&&v==0x21);       /* move end record */
+        CHECK(c3_battle_fight_status_get(&w.state->arena,d,0xF3,0,&v)&&v==0x21);
+        CHECK(c3_battle_waza_status_get(&w.state->arena,&w.state->moves,a+0x49C,0,0x2D,0,&v)&&v==0);
+        CHECK(c3_battle_script_read(&r.script,0x8047B618u,4,&v)&&v==0);                /* hit marker */
+        CHECK(c3_battle_script_read(&r.script,0x8038FF5Au,1,&v)&&v==0);
+        CHECK(c3_battle_script_read(&r.script,0x8038FFF9u,1,&v)&&v==0);
+        const uint8_t *hp=c3_battle_arena_bytes(&w.state->arena,c3_battle_state_fight_pokemon(w.state,0,0)+4+0x8A,2);
+        printf("full turn: umbreon hp %u\n",(unsigned)(hp[0]<<8|hp[1]));
+        CHECK((hp[0]<<8|hp[1])==81);
+        const uint8_t *att=c3_battle_arena_bytes(&w.state->arena,w.state->floor+0xA474,4);  /* floor 0x36 restored */
+        CHECK(att&&((uint32_t)att[0]<<24|(uint32_t)att[1]<<16|(uint32_t)att[2]<<8|att[3])==a&&w.state->msgctrl[0x0F]==a);
+        CHECK(w.state->msgctrl[0x29]==C3_MSGREF_ITEM_NAME(0));
+        CHECK(w.state->result==0);
+    }
+    /* A Forecast battler in battle: the fourth post-faint pass is refused. */
+    battle_reset(&w,1,0,0,0,33,0);
+    {
+        uint32_t partner=c3_battle_state_fight_out(w.state,0,1);
+        CHECK(c3_battle_fight_status_set(&w.state->arena,partner,0x100,0,0x3B));
+        CHECK(run_effect_mode(&w,&r,0,1)==C3_SCRIPT_FAILED);
+        printf("forecast partner: %s\n",why(&r));
+        CHECK(strstr(why(&r),"Forecast")!=NULL);
     }
 
     /* A held item on Espeon (Umbreon's partner, outside this exchange): move
@@ -616,11 +696,11 @@ int main(void)
         uint8_t *item=c3_battle_arena_bytes(&w.state->arena,c3_battle_state_fight_pokemon(w.state,0,1)+4+0x88,2);
         CHECK(item!=NULL);
         item[0]=0;item[1]=1;
-        CHECK(run_effect(&w,&r,0)==C3_SCRIPT_FAILED);
-        printf("partner held item: stops at %08lx: %s\n",(unsigned long)r.script.failure_pc,r.script.failure);
+        CHECK(stopped(run_effect(&w,&r,0)));
+        printf("partner held item: stops at %08lx: %s\n",(unsigned long)stop_pc(&r),why(&r));
         uint32_t v=0;
         const uint8_t *ap=c3_battle_arena_bytes(&w.state->arena,w.state->floor+0xA4BC,2);
-        CHECK(r.script.failure_pc==0x80375FC5u&&strstr(r.script.failure,"fn_8022B5C8"));
+        CHECK(r.script.failure_pc==0x80375FC5u&&strstr(why(&r),"fn_8022B5C8"));
         CHECK(c3_battle_script_read(&r.script,0x8047B627u,1,&v)&&v==8);
         CHECK(ap&&ap[0]==0&&ap[1]==1&&w.state->msgctrl[0x29]==C3_MSGREF_ITEM_NAME(1));
     }
@@ -642,18 +722,19 @@ int main(void)
         for(unsigned i=0;i<64&&st!=C3_SCRIPT_FAILED;++i){
             if(r.script.pc==0x80375FB7u){c3_battle_script_write(&r.script,0x80478D7Bu,1,0x85);draws=w.state->rng.draws;}
             st=c3_battle_script_step(&r.script);
+            if(at_end(&r))break;
             if(st==C3_SCRIPT_WAITING)CHECK(c3_battle_script_resume(&r.script));
         }
-        printf("guaranteed effect: %s\n",r.script.failure);
-        CHECK(strstr(r.script.failure,"guaranteed secondary effect")!=NULL&&w.state->rng.draws==draws);
+        printf("guaranteed effect: %s\n",why(&r));
+        CHECK(strstr(why(&r),"guaranteed secondary effect")!=NULL&&w.state->rng.draws==draws);
     }
 
     /* Without the battle-start enemy arrays the HP update refuses. */
     battle_reset(&w,1,0,0,0,33,0);
     memset(c3_battle_arena_bytes(&w.state->arena,c3_battle_state_fight_out(w.state,1,0)+0x6B0,48),0,48);
-    CHECK(run_effect(&w,&r,0)==C3_SCRIPT_FAILED);
-    printf("no enemy arrays: %s\n",r.script.failure);
-    CHECK(strstr(r.script.failure,"AI damage memory not created")!=NULL);
+    CHECK(stopped(run_effect(&w,&r,0)));
+    printf("no enemy arrays: %s\n",why(&r));
+    CHECK(strstr(why(&r),"AI damage memory not created")!=NULL);
 
     /* Protect on the defender stops at the accuracy check's reflect test. */
     battle_reset(&w,1,0,0,0,33,0);
@@ -662,35 +743,35 @@ int main(void)
         CHECK(((uint16_t)row[8]<<8|row[9])==0xD8);
         uint8_t *slot=c3_battle_arena_bytes(&w.state->arena,c3_battle_state_fight_out(w.state,0,0)+0x15C+row[1]*16u,2);
         put16(slot,0x2B);
-        CHECK(run_effect(&w,&r,0)==C3_SCRIPT_FAILED&&strstr(r.script.failure,"Protect"));
+        CHECK(stopped(run_effect(&w,&r,0))&&strstr(why(&r),"Protect"));
     }
 
     /* An asleep attacker: the canceller stops at its sleep step, named. */
     battle_reset(&w,1,0,0,0,33,0);
     uint8_t *sleeper=c3_battle_arena_bytes(&w.state->arena,c3_battle_state_fight_pokemon(w.state,1,0)+4,0x138);
     put16(sleeper+0x64,8);
-    CHECK(run_effect(&w,&r,0)==C3_SCRIPT_FAILED);
-    CHECK(r.script.failure_pc==0x80375F8Eu&&strstr(r.script.failure,"sleep"));
+    CHECK(stopped(run_effect(&w,&r,0)));
+    CHECK(r.script.failure_pc==0x80375F8Eu&&strstr(why(&r),"sleep"));
     uint8_t *poke;
 
     /* A fainted attacker: hit marker 0x80000 and the jump to lbl_80375FBF. */
     battle_reset(&w,1,0,0,0,33,0);
     poke=c3_battle_arena_bytes(&w.state->arena,c3_battle_state_fight_pokemon(w.state,1,0)+4,0x138);
     put16(poke+0x8A,0);
-    CHECK(run_effect(&w,&r,0)==C3_SCRIPT_FAILED);
+    CHECK(stopped(run_effect(&w,&r,0)));
     CHECK(c3_battle_script_read(&r.script,0x8047B618u,4,&v)&&(v&0x80000u));
-    printf("fainted attacker: continues at %08lx: %s\n",(unsigned long)r.script.failure_pc,r.script.failure);
-    CHECK(r.script.failure_pc>=0x80375FBFu);
+    printf("fainted attacker: continues at %08lx: %s\n",(unsigned long)stop_pc(&r),why(&r));
+    CHECK(stop_pc(&r)>=0x80375FBFu);
 
     /* Battle already decided: the canceler ends the script (state 2). */
     battle_reset(&w,1,0,0,0,33,0);w.state->result=2;
-    CHECK(run_effect(&w,&r,0)==C3_SCRIPT_FAILED&&strstr(r.script.failure,"End-of-move pass"));
+    CHECK(stopped(run_effect(&w,&r,0))&&strstr(why(&r),"reached move end")&&r.script.frames[0].phase==C3_SCRIPT_PHASE_CLEANUP);
 
     /* No PP left in the move's slot. */
     battle_reset(&w,1,0,0,0,33,0);
     poke=c3_battle_arena_bytes(&w.state->arena,c3_battle_state_fight_pokemon(w.state,1,0)+4,0x138);
     poke[0x78+2]=0;
-    CHECK(run_effect(&w,&r,0)==C3_SCRIPT_FAILED&&strstr(r.script.failure,"no PP"));
+    CHECK(stopped(run_effect(&w,&r,0))&&strstr(why(&r),"no PP"));
 
     puts("battle_handlers OK");
     return 0;

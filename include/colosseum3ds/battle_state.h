@@ -157,6 +157,11 @@ int c3_battle_state_valid_fight_out_count(const C3BattleState *state, uint32_t m
  * its order (active slot, trainer, side). Returns 0 when a branch is not
  * modelled or a record is unreadable. */
 int c3_battle_state_valid_fight_outs(const C3BattleState *state, uint32_t out[8], unsigned *count);
+/* fightSideGetFightPokemonNokoriHp(side, trainers, pokemon): the summed HP
+ * (selector 0x83) of each valid trainer's valid FightPokemon in battle.
+ * Returns 0 when a branch is not modelled or a record is unreadable. */
+int c3_battle_side_remaining_hp(const C3BattleState *state, uint32_t side, uint16_t trainers,
+                                uint16_t pokemon, uint32_t *hp);
 
 /* fn_8011B67C: is condition `id` stored in its slot of `object`? The
  * condition row gives the status kind (+0), slot index (+1) and record

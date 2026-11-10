@@ -297,7 +297,8 @@ static int execute(C3BattleScript *s)
 
 static int pass(C3BattleScript *s,C3BattleScriptPass p,uint8_t arg)
 {
-    if(s->services.end_of_move(s->services.user,p,arg))return 1;
+    if(s->services.end_of_move(s->services.user,s,p,arg))return 1;
+    if(s->status==C3_SCRIPT_FAILED)return 0;
     return fail(s,"End-of-move pass %d failed",(int)p);
 }
 
