@@ -44,9 +44,36 @@ def load_scene(archive, identity):
     return data, sections[0].root_node, describe_scene(sections, options)
 
 
+JOBJ_INSTANCE = 1 << 12
+
+
+def base_descriptor(descriptor):
+    """The structural descriptor whose rest pose an instance copy reuses."""
+    return descriptor[3] if descriptor[0] == "instance" else descriptor
+
+
+def joint_nodes(root):
+    """Joint order of HSD_JObjResolveRefsAll and the pinned importer.
+
+    An instance joint's child pointer names a shared subtree that is already
+    present elsewhere in the sibling chain; it is not a structural child.
+    Without instances this is exactly prepare_title.tree_nodes.
+    """
+    result, stack = [], [root]
+    while stack:
+        node = stack.pop()
+        if node is None:
+            continue
+        result.append(node)
+        stack.append(node.next)
+        if not node.flags & JOBJ_INSTANCE:
+            stack.append(node.child)
+    return result
+
+
 def raw_meshes(raw_model):
     result = []
-    for index, joint in enumerate(title.tree_nodes(raw_model.root_joint)):
+    for index, joint in enumerate(joint_nodes(raw_model.root_joint)):
         dobj = joint.property
         while dobj is not None and hasattr(dobj, "pobject"):
             pobj = dobj.pobject
@@ -124,14 +151,30 @@ def constant_material_byte(keys):
 
 
 class Model:
-    def __init__(self, model, raw, allow_image_swaps=False, constant_material_colors=False):
+    def __init__(self, model, raw, allow_image_swaps=False, constant_material_colors=False,
+                 allow_instances=False):
         self.model, self.raw = model, raw
-        self.joints = title.tree_nodes(raw.root_joint)
+        self.joints = joint_nodes(raw.root_joint)
         self.meshes = raw_meshes(raw)
         if len(self.joints) != len(model.bones) or len(self.meshes) != len(model.meshes):
             raise ValueError("Raw and IR field topology differ")
-        if any(b.flags & ((1 << 12) | (1 << 17)) for b in model.bones):
-            raise ValueError("Instanced/quaternion field joints are unsupported")
+        if any(b.flags & (1 << 17) for b in model.bones):
+            raise ValueError("Quaternion field joints are unsupported")
+        self.instances = []
+        for index, (bone, joint) in enumerate(zip(model.bones, self.joints)):
+            if not bone.flags & JOBJ_INSTANCE:
+                continue
+            if not allow_instances:
+                raise ValueError("Instanced field joints are unsupported")
+            if joint.flags != bone.flags or joint.property is not None or joint.child is None:
+                raise ValueError("Unreviewed HSD instance joint")
+            targets = [i for i, other in enumerate(self.joints) if other is joint.child]
+            if len(targets) != 1:
+                raise ValueError("HSD instance target is not a structural joint")
+            self.instances.append((index, targets[0]))
+        if any(target == instance or self.joints[target].flags & JOBJ_INSTANCE or
+               self.in_subtree(instance, target) for instance, target in self.instances):
+            raise ValueError("Nested or self-referencing HSD instances are unsupported")
         if any(getattr(model, name) for name in ("track_to_constraints", "copy_rotation_constraints",
                                                 "limit_rotation_constraints", "limit_location_constraints")):
             raise ValueError("Unreviewed field constraint")
@@ -214,12 +257,25 @@ class Model:
             self.image_swaps.append(swaps)
         self.upper, self.lower, self.effector = {}, {}, {}
         for constraint in model.ik_constraints:
-            if constraint.chain_length != 3 or constraint.pole_target_bone or not constraint.target_bone:
+            if (constraint.chain_length != 3 or constraint.pole_target_bone or
+                    (not constraint.target_bone and not allow_instances)):
                 raise ValueError("Unreviewed HSD IK chain")
             end = self.names[constraint.bone_name]
             lower = model.bones[end].parent_index
             upper = model.bones[lower].parent_index
-            target = self.names[constraint.target_bone]
+            if constraint.target_bone:
+                target = self.names[constraint.target_bone]
+            else:
+                # jobj_get_effector_checked returns NULL without the
+                # effector's REFTYPE_JOBJ RObj: resolveIKJoint1/2 keep the
+                # animated FK matrices; only the effector case still places
+                # the end joint along joint2's X axis by its IK-hint length.
+                reference = self.joints[end].reference
+                while reference:
+                    if reference.flags & 0x70000000 == 0x10000000:
+                        raise ValueError("Targetless HSD IK effector has a JObj reference")
+                    reference = reference.next
+                target = None
             lengths = []
             for index in (upper, lower):
                 refs = []
@@ -233,7 +289,10 @@ class Model:
                     raise ValueError("Missing original HSD IK length")
                 lengths.append(refs[0])
             desc = (upper, lower, end, target, *lengths, constraint.pole_flip)
-            self.upper[upper] = self.lower[lower] = self.effector[end] = desc
+            if target is None:
+                self.effector[end] = desc
+            else:
+                self.upper[upper] = self.lower[lower] = self.effector[end] = desc
         self.copy_position = {}
         for constraint in model.copy_location_constraints:
             if constraint.influence != 1:
@@ -312,7 +371,27 @@ class Model:
         self._cache[key] = result
         return result
 
+    def in_subtree(self, index, root):
+        """True for root and its structural descendants, not its siblings."""
+        while index is not None:
+            if index == root:
+                return True
+            index = self.model.bones[index].parent_index
+        return False
+
+    @staticmethod
+    def base_descriptor(descriptor):
+        return base_descriptor(descriptor)
+
     def deform(self, descriptor, world):
+        if descriptor[0] == "baked":
+            # bake_mesh already applied this sample's transform to vertices.
+            return np.eye(4)
+        if descriptor[0] == "instance":
+            # JObjSetupInstanceMtx: instance.mtx * inverse(child.mtx), then
+            # the shared subtree draws with its own joint matrices.
+            _, instance, target, base = descriptor
+            return world[instance] @ np.linalg.inv(world[target]) @ self.deform(base, world)
         if descriptor[0] == "rigid":
             return world[descriptor[1]]
         _, owner, weights = descriptor
@@ -435,9 +514,19 @@ def build_mesh(model, mesh_index, max_envelope_weights=3, source_materials=False
                         raw_textures[0].tev is None and raw_textures[1].tev is not None and
                         raw_textures[1].tev.active==0 and raw_textures[1].blending==1 and
                         not mesh.uv_layers)
-    dual = len(raw_textures) == 2 and raw_textures[1].flags == 0x40010
+    # M1_out (Phenac City): BLEND factor1 discards the incoming material
+    # color, then an inactive-TEV MODULATE layer multiplies texture1. The
+    # result is exactly T0*T1 with material alpha; it is serialized as the
+    # dual-modulate stage with konst1 and a white diffuse raster.
+    blend_modulate = (len(raw_textures) == 2 and
+                      [t.flags for t in raw_textures] == [0x30010, 0x40010] and
+                      raw_textures[0].blending == 1 and raw_textures[0].tev is None and
+                      (raw_textures[1].tev is None or raw_textures[1].tev.active == 0) and
+                      [t.source for t in raw_textures] == [4, 5] and len(mesh.uv_layers) == 2 and
+                      dobj.mobject.render_mode & 7 == 1)
+    dual = len(raw_textures) == 2 and raw_textures[1].flags == 0x40010 and not blend_modulate
     reflection = len(raw_textures) == 2 and raw_textures[1].flags == 0x30081
-    if len(raw_textures)==2 and not (dual or reflection or source_blend or source_normal_pair):
+    if len(raw_textures)==2 and not (dual or reflection or source_blend or source_normal_pair or blend_modulate):
         raise ValueError("Unreviewed second field texture expression")
     if dual:
         if len(mesh.uv_layers) != 2 or [t.source for t in raw_textures] != [4,5]:
@@ -467,7 +556,7 @@ def build_mesh(model, mesh_index, max_envelope_weights=3, source_materials=False
     if raw_textures:
         dobj_copy.mobject.texture = copy.copy(raw_textures[0])
         dobj_copy.mobject.texture.next = None
-        if source_normal_pair:
+        if source_normal_pair or blend_modulate:
             dobj_copy.mobject.texture.flags=0x40010
         if source_materials and dobj_copy.mobject.texture.wrap_t==2:
             dobj_copy.mobject.texture.wrap_t=0
@@ -488,8 +577,14 @@ def build_mesh(model, mesh_index, max_envelope_weights=3, source_materials=False
         textures[batch[2]]=(8,8,b"\xff"*256,0,0)
     if source_materials and raw_textures and raw_textures[0].flags==0x30010 and raw_textures[0].blending==1 and (reflection or source_blend):
         batch[8:11]=[1.,1.,1.]
+    if blend_modulate:
+        if batch[3] & (title.LIT | title.VERTEX_COLOR | title.TEV_LERP):
+            raise ValueError("Blend-modulate material is not unlit material color")
+        batch[8:11] = [1., 1., 1.]
     for channel in range(1, 10):
         value = model.constant_material_colors.get((dobj.address, channel))
+        if value is not None and blend_modulate:
+            raise ValueError("Animated diffuse on a blend-modulate material")
         if value is not None:
             # HSD channels 1..3 ambient, 4..6 diffuse, 7..9 specular.
             index = (11 + channel - 1 if channel <= 3 else
@@ -502,9 +597,9 @@ def build_mesh(model, mesh_index, max_envelope_weights=3, source_materials=False
         batch[3] = pixel_engine_flags(pe, batch[3])
         batch[20:26] = [pe.reference_0,pe.reference_1,pe.alpha_component_0,
                        pe.alpha_component_1,pe.alpha_op,pe.z_comp]
-    if dual or reflection or source_blend or source_normal_pair:
+    if dual or reflection or source_blend or source_normal_pair or blend_modulate:
         textures.append(_texture(raw_textures[1],mesh.material.texture_layers[0 if source_reflection_only else 1].image))
-        batch[3] |= DUAL_MODULATE if dual else REFLECTION_BLEND
+        batch[3] |= DUAL_MODULATE | title.TEV_LERP if blend_modulate else DUAL_MODULATE if dual else REFLECTION_BLEND
         if source_blend:batch[3] |= 16384
         if source_normal_pair:batch[3] |= 65536
         batch[26] = 1
@@ -542,7 +637,7 @@ def build_mesh(model, mesh_index, max_envelope_weights=3, source_materials=False
     if len(vertices) != len(descriptors):
         raise ValueError("Triangulated field envelope mapping differs")
     vertices = [tuple(v) + ((mesh.uv_layers[1].uvs[loop][0],1-mesh.uv_layers[1].uvs[loop][1])
-                            if dual or source_blend else (0.,0.)) for v,loop in zip(vertices,loops)]
+                            if dual or source_blend or blend_modulate else (0.,0.)) for v,loop in zip(vertices,loops)]
     return {"model":model,"index":mesh_index,"bone":bone,"dobj":dobj,"textures":textures,
             "raw_textures":raw_textures,"vertices":vertices,"batch":batch,"descriptors":descriptors}
 
@@ -638,7 +733,7 @@ def material_state(mesh, clip, frame, visible):
         transforms.append((1.,1.,0.,0.))
         crosses.append((0.,0.))
     alpha = title.material_alpha(title.curve_value(mat_track[10],frame)) if 10 in mat_track else dobj.mobject.material.alpha
-    draw_visible=visible[mesh["bone"]] and (clip, frame) not in mesh.get("collapsed_samples", set())
+    draw_visible=visible[mesh["bone"]] and visible[mesh.get("instance",mesh["bone"])] and (clip, frame) not in mesh.get("collapsed_samples", set())
     if "image_variant" in mesh:
         image_track=tex_tracks.get(0,{}).get(1)
         if not image_track:
@@ -647,8 +742,81 @@ def material_state(mesh, clip, frame, visible):
     return (*transforms[0],alpha,float(draw_visible),*tev0,*konst,*transforms[1],*crosses[0],*crosses[1])
 
 
+def instance_meshes(model, meshes):
+    """One additional draw of each shared subtree per HSD instance joint.
+
+    HSD_JObjDispAll draws the instance child and its descendants (not the
+    child's siblings) after JObjSetupInstanceMtx. The shared subtree also
+    keeps its ordinary draw at its structural position in the tree.
+    """
+    result = []
+    for instance, target in model.instances:
+        for mesh in meshes:
+            if mesh["model"] is not model or not model.in_subtree(mesh["bone"], target):
+                continue
+            item = dict(mesh)
+            item["descriptors"] = [("instance", instance, target, d) for d in mesh["descriptors"]]
+            item["instance"] = instance
+            result.append(item)
+    return result
+
+
+def bake_mesh(mesh, clip, frame):
+    """Apply one sample's deformation to the vertices; no sampled bone remains.
+
+    Used for meshes proven static by split_static, and for explicitly
+    reviewed instance copies drawn at a fixed sample. Returns None when a
+    corner's transform is singular (a collapsed part keeps its sampled path).
+    """
+    model = mesh["model"]
+    world, _ = model.world(clip if model.tracks else 0, frame)
+    transforms = {}
+    for descriptor in dict.fromkeys(mesh["descriptors"]):
+        value = model.deform(descriptor, world) @ np.linalg.inv(
+            model.deform(base_descriptor(descriptor), model.rest))
+        if not np.isfinite(value).all() or abs(np.linalg.det(value[:3, :3])) < 1e-12:
+            return None
+        transforms[descriptor] = (value, np.linalg.inv(value[:3, :3]).T)
+    vertices = []
+    for vertex, descriptor in zip(mesh["vertices"], mesh["descriptors"]):
+        value, normal_matrix = transforms[descriptor]
+        position = value @ np.array((*vertex[:3], 1.))
+        normal = normal_matrix @ np.asarray(vertex[3:6])
+        normal /= max(float(np.linalg.norm(normal)), 1e-30)
+        vertices.append((*(float(x) for x in position[:3]), *(float(x) for x in normal), *vertex[6:]))
+    item = dict(mesh)
+    item.update(vertices=vertices, descriptors=[("baked",)] * len(vertices), baked_frame=frame)
+    return item
+
+
+def split_static(meshes, clip, frames, tolerance=1e-6):
+    """Partition meshes whose sampled transforms and materials never change.
+
+    A static mesh needs one sample instead of the whole clock. Transforms are
+    compared after deformation (within `tolerance`), material states exactly.
+    """
+    static, animated = [], []
+    for mesh in meshes:
+        model = mesh["model"]
+        source_clip = clip if model.tracks else 0
+        states = [model.world(source_clip, frame) for frame in frames]
+        moving = False
+        for descriptor in dict.fromkeys(mesh["descriptors"]):
+            first = model.deform(descriptor, states[0][0])
+            if any(np.max(np.abs(model.deform(descriptor, world) - first)) > tolerance
+                   for world, _ in states[1:]):
+                moving = True
+                break
+        if not moving:
+            first = material_state(mesh, source_clip, frames[0], states[0][1])
+            moving = any(material_state(mesh, source_clip, frame, visible) != first
+                         for frame, (_, visible) in zip(frames[1:], states[1:]))
+        (animated if moving else static).append(mesh)
+    return static, animated
+
+
 def _sample_descriptor(model, descriptor, states, attachment=None):
-    rest_inverse = np.linalg.inv(model.deform(descriptor,model.rest))
+    rest_inverse = np.linalg.inv(model.deform(base_descriptor(descriptor),model.rest))
     result = np.asarray([model.deform(descriptor,world) @ rest_inverse for world,_ in states])
     if attachment is not None:
         result = attachment @ result
@@ -658,7 +826,7 @@ def _sample_descriptor(model, descriptor, states, attachment=None):
     # prepare_pack_set hides its batch at these samples; provide an invertible
     # unused normal matrix instead of serializing a singular GPU transform.
     collapsed = np.all(result[:, :3, :3] == 0, axis=(1, 2))
-    if descriptor[0] == "rigid":
+    if base_descriptor(descriptor)[0] == "rigid":
         result[collapsed, :3, :3] = np.eye(3)
     else:
         approvals = getattr(model, "_collapsed_world_descriptors", {})
@@ -721,16 +889,20 @@ def prepare_pack_set(meshes, schedules, fps, camera_frames, lights, archive_hash
                     raise ValueError("Full UV affine rotation requires C3T3")
                 material=material[:16]
             material_tracks[id(mesh)].append(material)
-    chunks, current, keys, count = [], [], set(), 0
+    chunks, current, keys, count, images = [], [], set(), 0, set()
     for mesh in meshes:
         used = {signatures[(mesh["model"],d)] for d in mesh["descriptors"]}
+        # C3_TITLE_MAX_TEXTURES: distinct (size, pixels, wrap) per pack.
+        textures = {(w,h,hashlib.sha256(pixels).digest(),s,t) for w,h,pixels,s,t in mesh["textures"]}
         if len(used)>64:
             raise ValueError("Single field mesh exceeds sampled bone limit")
-        if len(keys|used)>64 or count+len(mesh["vertices"])>32768 or len(current)==64:
+        if (len(keys|used)>64 or count+len(mesh["vertices"])>32768 or len(current)==64 or
+                len(images|textures)>32):
             chunks.append(current)
-            current,keys,count=[],set(),0
+            current,keys,count,images=[],set(),0,set()
         current.append(mesh)
         keys |= used
+        images |= textures
         count += len(mesh["vertices"])
     if current:
         chunks.append(current)

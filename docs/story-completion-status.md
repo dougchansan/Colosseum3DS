@@ -67,7 +67,7 @@ not yet established. These observations never authorize granting those flags.
 | Source-legal commands, AI scoring, ordering, effects, statuses, items and full-party replacements | Selected preview behavior only; authoritative complete turns still required |
 | Terminal results, EXP/EV/rewards/capture/evolution and source party copyback | Isolated result rules qualified; complete result transaction and original witnesses still required |
 | Exactly-once native 98 continuation and authentic story flags | Native98 remains waiting; no preview outcome is accepted |
-| All mandatory floors, actors, collision, natives, dialogue, media and interactions | Full source index now available; only floors 1/2 playable |
+| All mandatory floors, actors, collision, natives, dialogue, media and interactions | Full source index now available; only floors 1/2 playable. Phenac City (floor 0x03, the only world-map destination Outskirt Stand unlocks) is viewable through the separate [developer floor loader](dev-floor-loader.md) only; that is not story progress |
 | Source-legal party/action/capture/Shadow/storage/purification/loss branches | Some menu/stat/save foundations; original-compatible main-story behavior remains incomplete |
 | Ending, full credits, clear-save and fresh-process Continue | Source guards identified; native sequence and full chronological acceptance missing |
 | Native resource/lifecycle/playability through the entire story | Early-area/device subsets only; later content and full-run qualification missing |

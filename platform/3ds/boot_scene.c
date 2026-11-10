@@ -1,5 +1,6 @@
 #include "boot_scene.h"
 #include "field_scene.h"
+#include "dev_floor_scene.h"
 #include "game_menu.h"
 #include "bottom_screen.h"
 #include "movie_player.h"
@@ -102,7 +103,7 @@ static void load_card(C3GameState *state, C3GameMenuSave *view,
 /* Return 0 with a prepared in-memory game, 1 on application exit, -1 on
  * rendering/asset failure. Native menus borrow the live title background. */
 static int run_title(FILE *trace, C3GameState *state,
-                      int *new_game, int start_at_menu, C3GameMenuOptions *session_options,
+                      int *new_game, int *dev_floor, int start_at_menu, C3GameMenuOptions *session_options,
                       int *options_edited, char *error, size_t capacity)
 {
     C3Title *title = calloc(1, sizeof(*title));
@@ -118,6 +119,9 @@ static int run_title(FILE *trace, C3GameState *state,
     float clip_seconds = 0.0f, phase_seconds = start_at_menu ? 1.0f : 0.0f;
     uint64_t previous, next_status = 0;
     int menu_open = 0, result = -1;
+#ifndef C3_DEV_FLOOR
+    (void)dev_floor;
+#endif
     if (!title) { snprintf(error, capacity, "Title allocation failed."); return -1; }
     if (!c3_title_load(title, BOOT_ROOT "title.c3t", error, capacity)) goto done;
     if (title->clip_count != 3 || !(title->fps > 0.0f)) {
@@ -164,6 +168,13 @@ static int run_title(FILE *trace, C3GameState *state,
             if (phase_seconds >= 0.5f) {
                 phase = TITLE_WAIT_START; phase_seconds = 0.0f; fade = 1.0f;
             }
+#ifdef C3_DEV_FLOOR
+        } else if (phase == TITLE_WAIT_START && (input.pressed & C3_PAD_Y)) {
+            /* Developer build only: leave the title renderer, touch no state. */
+            *dev_floor = 1; result = 0;
+            if (trace) { fprintf(trace, "dev_floor_request input=%04x\n", input.pressed); fflush(trace); }
+            break;
+#endif
         } else if (phase == TITLE_WAIT_START && (input.pressed & (C3_PAD_A | C3_PAD_START))) {
             phase = TITLE_ACCEPTED; phase_seconds = 0.0f;
         } else if (phase == TITLE_ACCEPTED && phase_seconds >= 1.0f) {
@@ -251,6 +262,13 @@ static int run_title(FILE *trace, C3GameState *state,
         }
         if (phase == TITLE_MENU) c3_game_menu_draw(&menu);
         else if (now >= next_status) {
+#ifdef C3_DEV_FLOOR
+            if (phase == TITLE_WAIT_START)
+                c3_bottom_screen_notice("DEVELOPER BUILD",
+                    "A/START: normal game.\n\nY: DEVELOPER FLOOR LOADER (Phenac City).\n"
+                    "Not story progress. Nothing is saved.", "C3_DEV_FLOOR=1");
+            else
+#endif
             c3_bottom_screen_title(phase == TITLE_WAIT_START,phase == TITLE_ACCEPTED);
             next_status = now + UINT64_C(250000);
         }
@@ -296,10 +314,16 @@ int c3_boot_scene_run(int core_status)
     if (!result) result = c3_movie_player_run(BOOT_ROOT "gs_logo.c3v", "gs_logo", trace, error, sizeof(error));
     int from_game = 0;
     while (!result) {
-        int new_game = 0;
-        result = run_title(trace, &state, &new_game, from_game,
+        int new_game = 0, dev_floor = 0;
+        result = run_title(trace, &state, &new_game, &dev_floor, from_game,
                            &session_options, &options_edited, error, sizeof(error));
         if (result) break;
+        if (dev_floor) {
+            /* No game state crosses this call; return to the title menu. */
+            result = c3_dev_floor_scene_run(trace, error, sizeof(error));
+            from_game = 1;
+            continue;
+        }
         if (new_game) {
             uint64_t before = c3_n3ds_active_time_us();
             if (trace) { fprintf(trace, "game_link floor=928 name=openingdemo\n"); fflush(trace); }

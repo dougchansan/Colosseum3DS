@@ -48,6 +48,14 @@ int main(int argc,char **argv)
     word(p+184,7);CHECK(!c3_field_parse(&map,p,bytes,error,sizeof error));
     CHECK(map.arrival_pack_count==0);
     word(p+184,1);CHECK(c3_field_parse(&map,p,bytes,error,sizeof error));
+    /* Developer floors split large maps; Wes keeps the last stage slot. */
+    word(p+180,14);CHECK(c3_field_parse(&map,p,bytes,error,sizeof error));
+    CHECK(map.map_pack_count==14 && map.arrival_pack_count==1);
+    word(p+180,15);CHECK(!c3_field_parse(&map,p,bytes,error,sizeof error));
+    word(p+184,0);CHECK(c3_field_parse(&map,p,bytes,error,sizeof error));
+    word(p+180,16);CHECK(!c3_field_parse(&map,p,bytes,error,sizeof error));
+    CHECK(map.map_pack_count==15);
+    word(p+180,1);word(p+184,1);CHECK(c3_field_parse(&map,p,bytes,error,sizeof error));
     CHECK(map.floor==1 && map.spawn_count==1 && map.wall_count==2 && map.object_count==1);
     CHECK(c3_field_spawn(&map,0,&player));CHECK(!c3_field_spawn(&map,1,&player));
     CHECK(c3_field_move(&map,&player,0,127,0,0,1.0f/60));

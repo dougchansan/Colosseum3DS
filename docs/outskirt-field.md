@@ -103,7 +103,7 @@ Maximum file size is512KiB; limits are64 entrances and4096 triangles per table.
 | 140..152 | 4f32 | Follow height/distance/yaw/target-height |
 | 156,160,164 | 3u32 | Actor first vertex/count/bone; separate actor uses first0,boneFFFFFFFF |
 | 168,172,176 | 3u32 | Idle/walk/run clip indices |
-| 180,184 | 2u32 | Required map/arrival C3T pack counts; sum+Wes must fit8 |
+| 180,184 | 2u32 | Required map/arrival C3T pack counts; map 1..15, arrival 0..6, sum at most 15 (`C3_FIELD_MAX_MODEL_PACKS`) |
 | 188..255 | bytes | Zero |
 
 An entrance is position3f32, yawf32, original indexu32, reserved0u32.
