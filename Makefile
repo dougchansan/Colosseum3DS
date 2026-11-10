@@ -8,7 +8,7 @@ UPSTREAM = vendor/colosseum/src/hsd/random.c vendor/colosseum/src/game/GScolsys2
 
 .PHONY: all test clean 3ds verify-source
 all: build/test_bottom_ui
-all: build/test_core build/test_data build/test_pokemon build/test_model build/test_movie build/test_save build/test_title build/test_field build/test_game_menu build/test_game_state build/test_render_recovery build/test_area build/test_area_camera build/test_area_lights build/test_story build/test_field_story build/test_battle build/test_battle_action build/test_battle_rng
+all: build/test_core build/test_data build/test_pokemon build/test_model build/test_movie build/test_save build/test_title build/test_field build/test_dev_floor build/test_game_menu build/test_game_state build/test_render_recovery build/test_area build/test_area_camera build/test_area_lights build/test_story build/test_field_story build/test_battle build/test_battle_action build/test_battle_rng
 
 build:
 	mkdir -p $@
@@ -33,6 +33,9 @@ build/test_title: tests/test_title.c src/title.c include/colosseum3ds/title.h | 
 
 build/test_field: tests/test_field.c src/field.c include/colosseum3ds/field.h include/colosseum3ds/title.h | build
 	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_field.c src/field.c $(LDFLAGS) -lm -o $@
+
+build/test_dev_floor: tests/test_dev_floor.c src/dev_floor.c src/field.c include/colosseum3ds/dev_floor.h include/colosseum3ds/field.h include/colosseum3ds/title.h | build
+	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_dev_floor.c src/dev_floor.c src/field.c $(LDFLAGS) -lm -o $@
 
 build/test_area: tests/test_area.c src/area.c src/field.c include/colosseum3ds/area.h include/colosseum3ds/field.h | build
 	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_area.c src/area.c src/field.c $(LDFLAGS) -lm -o $@
@@ -115,6 +118,7 @@ test: all
 	./build/test_save
 	./build/test_title
 	./build/test_field
+	./build/test_dev_floor
 	./build/test_game_menu
 	./build/test_game_state
 	./build/test_render_recovery
@@ -135,7 +139,7 @@ verify-source:
 	$(MAKE) -f Makefile.3ds
 
 clean:
-	rm -rf build build-3ds build-3ds-boot
+	rm -rf build build-3ds build-3ds-boot build-3ds-devfloor build-3ds-boot-devfloor
 
 include tests/battle-init.mk
 

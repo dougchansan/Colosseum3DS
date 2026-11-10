@@ -1,6 +1,8 @@
 /build/
 /build-3ds/
 /build-3ds-boot/
+/build-3ds-devfloor/
+/build-3ds-boot-devfloor/
 /dist/
 /private/
 /data/

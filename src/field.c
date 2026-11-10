@@ -67,8 +67,8 @@ int c3_field_parse(C3FieldMap *map,const void *data,size_t bytes,char *error,siz
         return fail(error,capacity,"Field sections must be contiguous and exact.");
     next.map_pack_count=le32(p+180);
     next.arrival_pack_count=le32(p+184);
-    if(!next.map_pack_count||next.map_pack_count>6u||
-       next.arrival_pack_count>6u||next.map_pack_count+next.arrival_pack_count>7u)
+    if(!next.map_pack_count||next.map_pack_count>C3_FIELD_MAX_MODEL_PACKS||
+       next.arrival_pack_count>6u||next.map_pack_count+next.arrival_pack_count>C3_FIELD_MAX_MODEL_PACKS)
         return fail(error,capacity,"Invalid field model count.");
     for(unsigned i=188;i<HEADER_BYTES;++i)if(p[i])return fail(error,capacity,"Unknown field header extension.");
     next.scale=flt(p+64);next.radius=flt(p+68);next.walk_distance=flt(p+72);next.run_distance=flt(p+76);

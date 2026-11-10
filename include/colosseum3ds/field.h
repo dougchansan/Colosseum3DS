@@ -8,6 +8,9 @@
 #define C3_FIELD_MAX_BYTES (512u * 1024u)
 #define C3_FIELD_MAX_SPAWNS 64u
 #define C3_FIELD_MAX_TRIANGLES 4096u
+/* Map plus arrival packs; Wes takes the stage's sixteenth model slot.
+ * Scenes with NPC/TV models still check their complete model count. */
+#define C3_FIELD_MAX_MODEL_PACKS 15u
 
 typedef struct {
     float vertices[9], normal[3];
