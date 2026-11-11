@@ -36,6 +36,7 @@
  * Script variables (hit marker 0x8047B618, ...) are the interpreter's
  * windows; battle records are the state's arena. */
 #include "colosseum3ds/battle_handlers.h"
+#include "colosseum3ds/battle_runtime_trainer.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -1421,6 +1422,35 @@ static int end_of_move(void *u,struct C3BattleScript *sc,C3BattleScriptPass pass
 
 /* ---- 0x24 battle end check (fn_80222C44) --------------------------------- */
 
+/* fn_801F8A18: does the trainer have a party Pokemon it can send in
+ * (fightTrainerCheckCanIrekaeInline 0: in battle-ready health, not the
+ * FightPokemon of one of its battlers, not reserved by one of them)? -1 when
+ * the reserve check would read a battler's switch action (0xFE), which is
+ * not modelled. */
+static int can_get_exp(const C3BattleState *s,uint32_t trainer);   /* trainer type 1: the player */
+static int can_send_in(const C3BattleState *s,uint32_t trainer,int *fault)
+{
+    for(unsigned j=0;j<6;++j){
+        uint32_t fp=trainer+0xB1Cu+j*0x154u;
+        if(!c3_battle_fight_pokemon_check_fight_out(s,fp,fault))continue;          /* 1 */
+        int taken=0;
+        for(unsigned i=0;i<2&&!taken;++i){
+            uint32_t fo=trainer+C3_RUNTIME_FIGHT_OUT_OFFSET+i*C3_FIGHT_OUT_POKEMON_BYTES;
+            if(c3_battle_fight_out_check_valid(s,fo,fault)&&get(s,fo,0xD5)==fp)taken=1; /* 2 */
+        }
+        if(taken)continue;
+        int16_t entry=(int16_t)(uint16_t)get(s,fp,0xCE);
+        for(unsigned i=0;i<2&&!taken&&entry>=0;++i){                                     /* 3 */
+            uint32_t fo=trainer+C3_RUNTIME_FIGHT_OUT_OFFSET+i*C3_FIGHT_OUT_POKEMON_BYTES;
+            if(!c3_battle_fight_out_check_valid(s,fo,fault))continue;
+            if((int16_t)(uint16_t)get(s,fo,0x121)==entry)taken=1;
+            else if(get(s,fo,0xFE))return -1;
+        }
+        if(!taken)return 1;
+    }
+    return 0;
+}
+
 /* Operand: u32 whose low byte selects the replacement check. Each side's
  * remaining HP (fightSideGetFightPokemonNokoriHp over kinds 5 and 4); a side
  * at 0 sets the fight result (fightFloorSetFightResultId 2 / 3), which is
@@ -1445,6 +1475,11 @@ static int op_battle_end_check(C3BattleHandlers *h,C3BattleScript *sc)
     }
     if(s->result)return stop(sc,"decided battle (fn_80222C44 result branch)");
     if((operand&0xFFu)==1){
+        /* fightFloorIsIrekaeFightOutPokemon: over the valid trainers
+         * (fightFloorLoopValidFightTrainer, no threads), a trainer with a
+         * party Pokemon it can send in (fn_801F8A18) and an active slot out
+         * of battle needs a replacement: 2 for the player, else 1. */
+        uint8_t needed=0;
         for(unsigned side=0;side<2;++side){
             uint32_t sd=s->floor+C3_FIGHT_SIDE_OFFSET+side*C3_FIGHT_SIDE_BYTES;
             if(!c3_battle_side_check_valid(s,sd,&fault))continue;
@@ -1452,17 +1487,38 @@ static int op_battle_end_check(C3BattleHandlers *h,C3BattleScript *sc)
                 if(t>=2)return stop(sc,"more than two trainers");
                 uint32_t tr=sd+C3_FIGHT_SIDE_TRAINER_OFFSET+t*C3_BATTLE_RUNTIME_TRAINER_BYTES;
                 if(!c3_battle_trainer_check_valid(s,tr,&fault))continue;
+                int can=can_send_in(s,tr,&fault);
+                if(can<0)return stop(sc,"switch action reserve check (fightOutPokemonCheckIrekaeReserveFightPokemon)");
+                if(!can)continue;
                 for(uint32_t k=0;k<(uint16_t)active;++k){
                     if(k>=2)return stop(sc,"more than two active slots");
                     uint32_t fo=tr+C3_RUNTIME_FIGHT_OUT_OFFSET+k*C3_FIGHT_OUT_POKEMON_BYTES;
-                    if(!fight_out(s,fo,&fault))return stop(sc,"replacement Pokemon (fightFloorIsIrekaeFightOutPokemon)");
+                    if(!fight_out(s,fo,&fault)&&needed!=2)needed=can_get_exp(s,tr)?2:1;   /* fightTrainerIsGcHero */
                 }
             }
         }
+        if(needed)return stop(sc,"replacement choice (fn_802230BC: fightTrainerSelectIrekaeFightPokemon, AI or party menu)");
+        /* fn_80222EF0 over the battlers: one out of battle with no
+         * replacement entry (0x121 < 0) is cleared when it fainted (0x120:
+         * fightOutPokemonInit, then the battle grid); a replacement entry
+         * would run the send-out sequence lbl_8037879E. */
         uint32_t list[8];unsigned n=0;
         if(!c3_battle_state_valid_fight_outs(s,list,&n))return stop(sc,"valid battlers");
-        for(unsigned i=0;i<n;++i)
-            if(!fight_out(s,list[i],&fault))return stop(sc,"battler out of battle (fn_80222EF0)");
+        for(unsigned i=0;i<n;++i){
+            uint32_t fo=list[i],entry=0,fainted=0,reset=0;
+            if(fight_out(s,fo,&fault))continue;
+            checked_get(s,fo,0x121,&entry,&fault);checked_get(s,fo,0x120,&fainted,&fault);
+            uint32_t fp=get(s,fo,0xD6);
+            if(fp)checked_get(s,fp,0xD2,&reset,&fault);
+            if(fault)return stop(sc,"battle end records");
+            if((int32_t)entry>=0)return stop(sc,"send-out sequence (lbl_8037879E)");
+            if((uint8_t)reset==1)return stop(sc,"fainted Pokemon re-initialization (FightPokemon 0xD2)");
+            if((uint8_t)fainted==1){
+                uint8_t *record=c3_battle_arena_bytes(&s->arena,fo,C3_BATTLE_FIGHT_OUT_POKEMON_RECORD);
+                if(!record||!c3_battle_fight_out_pokemon_init(record))return stop(sc,"fightOutPokemonInit");
+                present(h,C3_PRESENT_GRID_UPDATE,0,0);
+            }
+        }
     }
     if(fault)return stop(sc,"battle end records");
     sc->pc+=5;

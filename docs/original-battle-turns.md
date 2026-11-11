@@ -684,6 +684,38 @@ interpreter yet.
     Willie has Pokemon left.
   - Umbreon one EXP short of level 27 is refused at the level up.
 
+- Replacement check (`0x24` with operand low byte 1).
+  - `fightFloorIsIrekaeFightOutPokemon`, over the valid trainers: a trainer
+    that has a party Pokemon it can send in (`fn_801F8A18`) needs a
+    replacement for each active slot out of battle (2 for the player, else
+    1). A party Pokemon can be sent in when:
+    - it is in battle-ready health (`fightPokemonCheckFightOut`);
+    - it is not the FightPokemon of one of the trainer's battlers;
+    - no battler has reserved it (0x121).
+    The reserve check through a battler's switch action (0xFE, kind 9) is
+    refused.
+  - A needed replacement is refused by name: the choice is
+    `fightTrainerSelectIrekaeFightPokemon`, which is the AI
+    (`fightTrainerAiSelectIrekaeDasuFightPokemon`, 0x1224 bytes) for a
+    computer trainer and the party menu for the player.
+  - Without one, `fn_80222EF0` runs over the battlers. One out of battle
+    with no replacement entry (0x121 < 0) that fainted (0x120) is cleared
+    (`fightOutPokemonInit`, the existing record port), and the battle grid
+    updates (new `C3_PRESENT_GRID_UPDATE`). Refused by name: a replacement
+    entry (the send-out sequence `lbl_8037879E`) and FightPokemon 0xD2 (the
+    re-initialization).
+
+  On the original data:
+  - Willie has exactly two Zigzagoon, both in battle. When Umbreon knocks
+    out Zigzagoon A he has nobody to send in, so there is no replacement
+    choice.
+  - Zigzagoon A's battler is cleared (0xD5 0, 0x120 0), the grid updates,
+    and the post-faint passes and the cleanup run over the three remaining
+    battlers. The knockout turn completes (`C3_SCRIPT_DONE`), with Zigzagoon
+    B still in battle and the result 0.
+  - With Zigzagoon B also at 0 HP, the end check finds Willie's side with
+    no HP and is refused before any fight result is written.
+
 ## Increments
 
 1. **Execution and end of turn through original code.** A minimal

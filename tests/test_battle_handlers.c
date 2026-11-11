@@ -630,8 +630,11 @@ int main(void)
      * it, so each gets base EXP x 24 / 7, halved, x1.5 (floor 0x2D): the EXP
      * camera, the panel, message 0x7532, its effort values (Zigzagoon gives
      * 1 Speed), the EXP and the bar, and the panel renewed and closed. The
-     * faint script's battle end check then stops at the replacement check:
-     * Zigzagoon A is out of battle. */
+     * faint script's battle end check finds Willie's side with HP left and
+     * no Pokemon to send in (his two Zigzagoon were both in battle), so
+     * there is no replacement choice: fn_80222EF0 clears Zigzagoon A's
+     * battler (fightOutPokemonInit) and updates the battle grid. The passes
+     * and the cleanup follow and the whole call completes. */
     battle_reset(&w,0,0,1,0,33,0);
     {
         uint32_t def=c3_battle_state_fight_out(w.state,1,0),f=0,type=0;
@@ -662,11 +665,19 @@ int main(void)
         uint32_t gain=(uint16_t)((uint32_t)base*24u/7u)/2u;gain=gain*150u/100u;
         printf("zigzagoon EXP: base %u -> %lu each; speed effort yield %u\n",(unsigned)base,(unsigned long)gain,
             (unsigned)(zrow[0x9A]<<8|zrow[0x9B]));
-        CHECK(stopped(run_effect_mode(&w,&r,0,1)));
-        printf("zigzagoon knocked out: stops at %08lx: %s (depth %u)\n",(unsigned long)r.script.failure_pc,
-            why(&r),(unsigned)r.script.depth);
+        C3BattleScriptStatus ko=run_effect_mode(&w,&r,0,1);
+        printf("zigzagoon knocked out: status %d, depth %u: %s\n",(int)ko,(unsigned)r.script.depth,why(&r));
+        CHECK(ko==C3_SCRIPT_DONE&&r.script.depth==0);
         printf("zigzagoon faint presentation: %s\n",r.presentation.log);
-        CHECK(strstr(why(&r),"replacement Pokemon")!=NULL&&r.script.depth==1);
+        CHECK(c3_battle_fight_status_get(&w.state->arena,def,0xD5,0,&f)&&f==0);       /* fightOutPokemonInit */
+        CHECK(c3_battle_fight_status_get(&w.state->arena,def,0x120,0,&f)&&f==0);
+        CHECK(strstr(r.presentation.log,"4:1a6c:1;17:0:0;")!=NULL);                /* after the last award */
+        CHECK(w.state->result==0);
+        {
+            uint32_t list[8];unsigned n=0;int fault=0;
+            CHECK(c3_battle_state_valid_fight_outs(w.state,list,&n)&&n==3);
+            CHECK(c3_battle_fight_out_check_fight_out(w.state,c3_battle_state_fight_out(w.state,1,1),&fault)==1);
+        }
         CHECK(((uint32_t)umb[0x5c]<<24|(uint32_t)umb[0x5d]<<16|(uint32_t)umb[0x5e]<<8|umb[0x5f])==umb_exp+gain);
         CHECK(((uint32_t)esp[0x5c]<<24|(uint32_t)esp[0x5d]<<16|(uint32_t)esp[0x5e]<<8|esp[0x5f])==esp_exp+gain);
         CHECK((uint16_t)(umb[0xA2]<<8|umb[0xA3])==umb_spe+(zrow[0x9A]<<8|zrow[0x9B]));
@@ -683,7 +694,6 @@ int main(void)
             CHECK(strstr(r.presentation.log,exp_want)!=NULL);
         }
         CHECK(hp[0]==0&&hp[1]==0&&c3_battle_fight_out_is_fainted(w.state,def)==1);
-        CHECK(c3_battle_fight_status_get(&w.state->arena,def,0x120,0,&f)&&f==1);
         CHECK(status[0]==0&&status[1]==0);                               /* pokemonInitJoutai */
         char want[160];
         snprintf(want,sizeof want,"1:%lx:%lx;12:%lx:%x;8:7545:0;3:0:0;4:%lx:%lx;",
@@ -769,6 +779,20 @@ int main(void)
         printf("level up: %s\n",why(&r));
         CHECK(strstr(why(&r),"level up")!=NULL);
         CHECK(((uint32_t)umb[0x5c]<<24|(uint32_t)umb[0x5d]<<16|(uint32_t)umb[0x5e]<<8|umb[0x5f])==next);
+    }
+
+    /* Willie's last Pokemon: Zigzagoon B already at 0 HP when Umbreon knocks
+     * out Zigzagoon A. The battle end check finds his side with no HP left,
+     * which would set the fight result: refused by name before anything is
+     * written, the result still 0. */
+    battle_reset(&w,0,0,1,0,33,0);
+    {
+        uint8_t *a_hp=c3_battle_arena_bytes(&w.state->arena,c3_battle_state_fight_pokemon(w.state,1,0)+4+0x8A,2);
+        uint8_t *b_hp=c3_battle_arena_bytes(&w.state->arena,c3_battle_state_fight_pokemon(w.state,1,1)+4+0x8A,2);
+        a_hp[0]=0;a_hp[1]=1;b_hp[0]=0;b_hp[1]=0;
+        CHECK(run_effect_mode(&w,&r,0,1)==C3_SCRIPT_FAILED);
+        printf("last knockout: %s\n",why(&r));
+        CHECK(strstr(why(&r),"battle result")!=NULL&&w.state->result==0);
     }
 
     /* A held item on Espeon (Umbreon's partner, outside this exchange): move
