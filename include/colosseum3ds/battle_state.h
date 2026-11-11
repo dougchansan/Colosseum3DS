@@ -173,6 +173,27 @@ int c3_battle_fight_out_is_gc_hero(const C3BattleState *state, uint32_t fight_ou
  * revise tables) are not modelled: 0. Returns 0 when the trainer or rows are
  * unreadable; *value is 0 for an AI id past the table, as the getter's NULL. */
 int c3_battle_trainer_ai_value(const C3BattleState *state, uint32_t trainer, uint32_t selector, uint32_t *value);
+/* fightWazaInit / fightWazaCreate(fw, order, move, target, flag): reset the
+ * FightWaza (its 9 condition slots, then condition 0x3F when it is a
+ * FightWaza condition) and set the move, its power (data 7) and type (data
+ * 3). Return 0 when a record is unreadable. */
+int c3_battle_waza_init(C3BattleState *state, uint32_t fight_waza);
+int c3_battle_waza_create(C3BattleState *state, uint32_t fight_waza, int8_t order, uint16_t move,
+                          uint16_t target, uint8_t flag);
+/* The trainer's enemy registry (trainer +0x27F4, 12 x 0x14: s16 entry ID,
+ * negative = free; flags +0xE..+0x12). _enemy finds a valid entry by ID
+ * (fightTrainerEnemyPokemonSearchAry); _register adds one
+ * (fightTrainerEnemyPokemonRegistAry, fightTrainerSetStatus 0x57); _flag is
+ * fightTrainerSetStatus 0x52..0x56 (lowest HP, lowest level, lowest
+ * defenses, strongest damage, highest stats). The battle-start step
+ * fightFloorRegistFightTrainerEnemyPokemonFightSideAll (0x801F3074) registers
+ * each valid trainer's opposing battlers in battle; it runs between the met
+ * lists and the enemy arrays. Return 0 when a branch is not modelled. */
+uint8_t *c3_battle_trainer_enemy(const C3BattleState *state, uint32_t trainer, int16_t entry);
+int c3_battle_trainer_enemy_register(C3BattleState *state, uint32_t trainer, int16_t entry);
+int c3_battle_trainer_enemy_flag(C3BattleState *state, uint32_t trainer, int16_t entry, uint32_t selector,
+                                 uint8_t value);
+int c3_battle_state_register_enemies(C3BattleState *state);
 int c3_battle_state_valid_fight_out_count(const C3BattleState *state, uint32_t mode, uint32_t target,
                                           int check_fight_out, uint16_t *count);
 /* The battlers fightFloorLoopValidFightOutPokemon (loop flag 0) visits, in

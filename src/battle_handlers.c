@@ -2011,6 +2011,56 @@ static int op_status_animation(C3BattleHandlers *h,C3BattleScript *sc)
     return C3_SCRIPT_HANDLER_DONE;
 }
 
+/* ---- fightSeqGetNromalWazaDamage (fight_seq.c) --------------------------- */
+
+/* The AI's damage estimate: the move script's own damage calculation and
+ * type check on the real records, inside a save and restore of everything
+ * they touch (floor 0x36 / 0x42, the script PC, the hit marker, work bytes
+ * 0..7, both battlers' records with the attacker's FightWaza). No critical
+ * check and no damage loss (r7 = r8 = 0). pre_return is
+ * _fightTrainerAiWazaDamage121SubPre (Return): the move's power becomes
+ * fn_80217BEC(friendship) = friendship * 10 / 25. Returns 0 (the script
+ * failed by name) when a step is refused. */
+int c3_battle_handlers_normal_damage(C3BattleHandlers *h,C3BattleScript *sc,uint16_t move,uint32_t attacker,
+                                     uint32_t defender,int pre_return,uint32_t *out)
+{
+    C3BattleState *s=h->state;
+    uint32_t saved36=0,saved42=0,flags=0,work[8],damage=0;
+    uint8_t *ra=c3_battle_arena_bytes(&s->arena,attacker,C3_BATTLE_FIGHT_OUT_POKEMON_RECORD);
+    uint8_t *rd=c3_battle_arena_bytes(&s->arena,defender,C3_BATTLE_FIGHT_OUT_POKEMON_RECORD);
+    const uint8_t *p42=c3_battle_arena_bytes(&s->arena,s->floor+0xA478u,4);
+    static uint8_t keep_a[C3_BATTLE_FIGHT_OUT_POKEMON_RECORD],keep_d[C3_BATTLE_FIGHT_OUT_POKEMON_RECORD];
+    *out=0;
+    if(!ra||!rd||!p42||!appointed_attacker(s,&saved36))return stop(sc,"AI damage records"),0;
+    saved42=(uint32_t)p42[0]<<24|(uint32_t)p42[1]<<16|(uint32_t)p42[2]<<8|p42[3];
+    uint32_t saved_pc=sc->pc;
+    if(!c3_battle_script_read(sc,HIT_MARKER,4,&flags))return stop(sc,"hit marker"),0;
+    for(unsigned i=0;i<8;++i)if(!c3_battle_script_read(sc,WORK_BASE+i,1,&work[i]))return stop(sc,"work bytes"),0;
+    memcpy(keep_a,ra,sizeof keep_a);memcpy(keep_d,rd,sizeof keep_d);   /* fn_801FCEC4 */
+    int ok=floor_set_attacker(s,attacker)&&floor_set_defender(s,defender);
+    uint32_t fw=get(s,attacker,0xD9);
+    ok=ok&&c3_battle_waza_init(s,fw)&&c3_battle_waza_create(s,fw,0,move,0,0);
+    c3_battle_script_write(sc,HIT_MARKER,4,0);
+    for(unsigned i=0;i<8;++i)c3_battle_script_write(sc,WORK_BASE+i,1,0);
+    if(ok&&pre_return){
+        uint32_t pokemon=battler_pokemon(s,attacker);
+        const uint8_t *fr=pokemon?c3_battle_arena_bytes(&s->arena,pokemon+0xB0u,2):NULL;   /* 0x99 */
+        ok=fr&&c3_battle_waza_status_set(&s->arena,fw,0x2F,0,(uint16_t)((uint32_t)((uint16_t)fr[0]<<8|fr[1])*10u/25u));
+    }
+    int stepped=ok&&op_damage_calc(h,sc)==C3_SCRIPT_HANDLER_DONE&&type_check(h,sc,1,1,1,0)==C3_SCRIPT_HANDLER_DONE;
+    int fault=0;
+    if(stepped&&waza_hit(s,fw,&fault))damage=waza(s,fw,0,0x2D);
+    /* restore */
+    floor_set_attacker(s,saved36);floor_set_defender(s,saved42);
+    sc->pc=saved_pc;
+    c3_battle_script_write(sc,HIT_MARKER,4,flags);
+    for(unsigned i=0;i<8;++i)c3_battle_script_write(sc,WORK_BASE+i,1,work[i]);
+    memcpy(ra,keep_a,sizeof keep_a);memcpy(rd,keep_d,sizeof keep_d);
+    if(!stepped||fault){if(sc->status!=C3_SCRIPT_FAILED)stop(sc,"AI damage estimate");return 0;}
+    *out=damage;
+    return 1;
+}
+
 int c3_battle_handler_dispatch(void *user,C3BattleScript *sc,uint8_t op,unsigned phase)
 {
     C3BattleHandlers *h=user;(void)phase;

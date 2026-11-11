@@ -65,6 +65,8 @@ typedef struct {
     uint16_t exp_species;            /* defeated species (effort values) */
     uint32_t exp_battler;            /* recipient in battle whose EXP bar is filling */
     unsigned pass_cursor;            /* faint mark pass: next battler after a nested call */
+    const uint8_t *ai_moves;         /* lbl_8035C430 move AI rows (0x14), from the battle DOL-table pack */
+    uint32_t ai_move_count;          /* lbl_80478B50 */
     const uint8_t *critical;         /* lbl_80478D58 critical denominators */
     uint32_t critical_count;         /* lbl_80478D60 */
 } C3BattleHandlers;
@@ -73,6 +75,14 @@ typedef struct {
  * the end-of-move passes; a pass that would run a nested sequence fails the
  * script by name. */
 C3BattleScriptServices c3_battle_handler_services(C3BattleHandlers *handlers);
+
+/* fightSeqGetNromalWazaDamage(trainer, move, attacker, defender, 0, 0, pre, 0):
+ * the move's damage from the damage calculation and type check (no critical
+ * check, no damage loss), 0 on a miss, with every record it touches
+ * restored. pre_return selects the Return pre-hook (power from friendship).
+ * Returns 0 when a step is refused (sc failed by name). */
+int c3_battle_handlers_normal_damage(C3BattleHandlers *handlers, C3BattleScript *sc, uint16_t move,
+                                     uint32_t attacker, uint32_t defender, int pre_return, uint32_t *damage);
 
 /* Lowered opcodes so far: 0x00 WS_HITCHECK (attack canceler), 0x01
  * accuracy check, 0x02 attack string, 0x03 PP reduce, 0x04 critical check,

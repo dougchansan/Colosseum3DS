@@ -814,14 +814,51 @@ only. Every other path is refused by name, as elsewhere.
      range.
   The debug messages around the rolls only appear with the debug menu flag
   `fn_80008164`.
-- **Preparation `fn_80234A0C`:**
-  - initializes the trainer's enemy records
-    (`fightTrainerInitEnemyPokemonFightOutStatus`);
-  - for each of its battlers in battle: HP percentage, level, base stats
-    (data 5 + 7), the stat total × level, and the summed damage estimate of
-    each type-1 move against each opponent (`fn_8023C370`);
-  - flags the minimum and maximum holders on the trainer's per-entry fields
-    0x52..0x56.
+- **Preparation `fn_80234A0C`** (lowered: `c3_battle_ai_prepare`,
+  `src/battle_ai.c`). It evaluates the *opposing* battlers. The battler list
+  with flag 0 (`fightFloorGetFightTrainerFightOutPokemonPtrAry`) collects
+  battlers that are not allies of the trainer (`fightTrainerIsAllyFightTargetPtr`:
+  same `fightTargetGetPtr` kind-2 side).
+  - It clears the five flags of the trainer's valid enemy entries.
+  - For each opposing battler in battle with an entry ID it takes: HP
+    percentage; level; base defenses (data 5 + 7); the base stat total ×
+    level; and the summed damage estimate (`fn_8023C370`) of each of its
+    type-ID-1 moves against each of the trainer's battlers. The move type
+    check (AI byte 0x2A) gives type 9 to fixed-damage moves; Hidden Power
+    and Weather Ball are refused.
+  - The minimum and maximum holders (ties included) set the entry's flags
+    through `fightTrainerSetStatus` 0x52..0x56: lowest HP `+0xE`, lowest
+    level `+0xF`, lowest defenses `+0x10`, strongest damage `+0x11`,
+    highest stats `+0x12`.
+  - **Enemy registry:** trainer `+0x27F4`, 12 × 0x14, s16 entry ID first.
+    It is filled at battle start by
+    `fightFloorRegistFightTrainerEnemyPokemonFightSideAll` (`0x801F3074`,
+    now `c3_battle_state_register_enemies`), which runs between the met
+    lists and the enemy arrays.
+  - **Damage estimate `fn_8023C370`:** 0 unless AI byte 0x2D is set; else
+    the move's routine from `lbl_8035C430`. That table is now in the battle
+    DOL-table pack (version 7: `AMC`/`AMT`, 358 × 0x14), and routine
+    addresses map to ports: Damage000 / 031 / 076 / 197 are the normal
+    estimate (doubled for move 0x39 against condition 0x21 with AI byte
+    0x24) and 121 is Return. Others are refused by name with their address.
+  - **Normal estimate (`fightSeqGetNromalWazaDamage`,
+    `c3_battle_handlers_normal_damage`):**
+    1. save floor 0x36 / 0x42, the script PC, the hit marker, work bytes
+       0..7 and both battler records;
+    2. make the attacker and defender floor 0x36 / 0x42;
+    3. `fightWazaInit` / `fightWazaCreate` with the move (now state calls);
+    4. run the 0x05 damage calculation and the 0x06 type check (no critical
+       check, no damage loss);
+    5. take the damage on a hit, then restore everything.
+    Return's pre-hook sets the power to friendship × 10 / 25.
+
+  On the original data, at the start of a turn in Willie's battle:
+  - Umbreon's Bite on Zigzagoon A estimates 45, with the battle state
+    byte-identical afterwards.
+  - Bite, Secret Power, Confusion and Return are estimated against both
+    Zigzagoon. Umbreon gets the highest-stats flag; Espeon gets lowest
+    level, lowest defenses and strongest damage; both get lowest HP (100%).
+  - No number is drawn, and nothing but the ten flag bytes changes.
 - **AI data:** `fightTrainerGetStatus(NULL, id, 0x1F..0x38)` reads AI row
   bytes `+0x00..+0x19`. The selector map was recovered from
   `jumptable_803757D8`. Port: `c3_battle_trainer_ai_value`, with the AI table
@@ -846,8 +883,8 @@ only. Every other path is refused by name, as elsewhere.
 
 - **Planned rounds:**
   1. AI data accessor and this map (done).
-  2. Preparation `fn_80234A0C` with `fn_8023C370` and Tackle's damage
-     routine, plus the trainer's per-entry flags.
+  2. Preparation `fn_80234A0C` with `fn_8023C370`, the player's moves'
+     damage routines and the enemy registry (done).
   3. The entry: rolls, action-buffer resets, the speed sort. The item
      routine is refused at first.
   4. The move choice `fn_8023A308` with the hit and value routines of the

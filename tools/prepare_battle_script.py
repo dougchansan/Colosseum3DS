@@ -24,7 +24,7 @@ from pathlib import Path
 
 DOL_SHA1 = "870e8b9693ca780782d80f22a6a4572d8ba9458f"
 DOL_BYTES = 3779808
-VERSION = 6
+VERSION = 7
 HEADER_BYTES = 64
 EFFECT_COUNT = 214
 SECTIONS = (
@@ -45,6 +45,8 @@ SECTIONS = (
     (b"TGT ", 0x80375AC8, 30 * 8),                    # fight-target kind rows (8 each)
     (b"KAC ", 0x80478B20, 4),                         # .sdata turn-count row count
     (b"KAI ", 0x80315690, 10 * 8),                    # turn counts (s32 min, s32 max; kaisuu.c)
+    (b"AMC ", 0x80478B50, 4),                         # .sdata move AI row count
+    (b"AMT ", 0x8035C430, 358 * 0x14),                # move AI rows (value, hit, damage, WZX type, variation)
 )
 CONDITION_ROW = 0x14
 
@@ -82,6 +84,8 @@ def make_pack(dol):
         raise ValueError("Unexpected fight-target kind count")
     if u32(blobs[15], 0) != 10:
         raise ValueError("Unexpected turn-count table size")
+    if u32(blobs[17], 0) != 358:
+        raise ValueError("Unexpected move AI table size")
     directory = b"".join(struct.pack(">4sII", tag, base, length) for tag, base, length in SECTIONS)
     payload = directory + b"".join(blobs)
     header = bytearray(HEADER_BYTES)

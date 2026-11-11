@@ -807,3 +807,116 @@ int c3_battle_trainer_ai_value(const C3BattleState *s,uint32_t trainer,uint32_t 
     if(ai)*value=ai[selector-0x1F];
     return 1;
 }
+
+/* ---- FightWaza init / create (fight_out_pokemon_exact_802096E8.c) ------- */
+
+int c3_battle_waza_init(C3BattleState *s,uint32_t fw)
+{
+    int ok=1;
+    uint32_t slots=0;
+    if(!s)return 0;
+    if(!fw)return 1;
+    ok&=c3_battle_waza_status_set(&s->arena,fw,0x26,0,0xFFFFFFFFu);
+    ok&=c3_battle_waza_status_set(&s->arena,fw,0x27,0,0);
+    ok&=c3_battle_waza_status_set(&s->arena,fw,0x28,0,0);
+    ok&=c3_battle_waza_status_set(&s->arena,fw,0x29,0,0);
+    ok&=c3_battle_waza_status_get(&s->arena,&s->moves,fw,0,0x2A,0,&slots);
+    uint8_t *p=ok?c3_battle_arena_bytes(&s->arena,slots,9u*16u):NULL;
+    if(!p)return 0;
+    condition_init(p,9);                                          /* fn_8011B950(.., 9) */
+    const uint8_t *row3f=condition_row(s,0x3F);
+    if(row3f&&be16(row3f+8)==0x2A){                               /* fn_8011B2C0(fw, 0x3F, 0) */
+        int fault=0;
+        if(!c3_battle_condition_write(s,fw,0x3F,0,&fault)||fault)return 0;
+    }
+    ok&=c3_battle_waza_status_set(&s->arena,fw,0x2B,0,1);
+    ok&=c3_battle_waza_status_set(&s->arena,fw,0x2C,0,1);
+    for(uint32_t f=0x2D;f<=0x2F;++f)ok&=c3_battle_waza_status_set(&s->arena,fw,f,0,0);
+    ok&=c3_battle_waza_status_set(&s->arena,fw,0x30,0,9);
+    ok&=c3_battle_waza_status_set(&s->arena,fw,0x31,0,0);
+    ok&=c3_battle_waza_status_set(&s->arena,fw,0x32,0,0);
+    return ok;
+}
+int c3_battle_waza_create(C3BattleState *s,uint32_t fw,int8_t order,uint16_t move,uint16_t target,uint8_t flag)
+{
+    uint32_t power=0,type=0;
+    if(!s)return 0;
+    if(!fw)return 1;
+    if(!c3_battle_waza_init(s,fw))return 0;
+    if(!c3_battle_waza_status_get(&s->arena,&s->moves,0,move,7,0,&power)||
+       !c3_battle_waza_status_get(&s->arena,&s->moves,0,move,3,0,&type))return 0;
+    return c3_battle_waza_status_set(&s->arena,fw,0x26,0,(uint32_t)(int32_t)order)&&
+           c3_battle_waza_status_set(&s->arena,fw,0x29,0,target)&&
+           c3_battle_waza_status_set(&s->arena,fw,0x27,0,move)&&
+           c3_battle_waza_status_set(&s->arena,fw,0x28,0,move)&&
+           c3_battle_waza_status_set(&s->arena,fw,0x2F,0,(uint16_t)power)&&
+           c3_battle_waza_status_set(&s->arena,fw,0x30,0,(uint16_t)type)&&
+           c3_battle_waza_status_set(&s->arena,fw,0x32,0,flag);
+}
+
+/* ---- trainer enemy registry (fight_trainer.c) ---------------------------- */
+
+#define ENEMY_REGISTRY 0x27F4u   /* fightTrainer_GetFightTrainerEnemyPokemonAryPtr */
+static uint8_t *enemy_entry(const C3BattleState *s,uint32_t trainer,unsigned i)
+{return c3_battle_arena_bytes(&s->arena,trainer+ENEMY_REGISTRY+i*0x14u,0x14);}
+uint8_t *c3_battle_trainer_enemy(const C3BattleState *s,uint32_t trainer,int16_t entry)
+{
+    if(!s||!trainer||entry<0)return NULL;
+    for(unsigned i=0;i<12;++i){                                   /* fightTrainerEnemyPokemonSearchAry */
+        uint8_t *e=enemy_entry(s,trainer,i);
+        if(e&&(int16_t)be16(e)>=0&&(int16_t)be16(e)==entry)return e;
+    }
+    return NULL;
+}
+int c3_battle_trainer_enemy_register(C3BattleState *s,uint32_t trainer,int16_t entry)
+{
+    if(!s||!trainer)return 0;
+    if(entry<0||c3_battle_trainer_enemy(s,trainer,entry))return 1;
+    for(unsigned i=0;i<12;++i){
+        uint8_t *e=enemy_entry(s,trainer,i);
+        if(!e)return 0;
+        if((int16_t)be16(e)>=0)continue;
+        memset(e,0,0x13);                                         /* fightTrainerEnemyInit: +0..+0x12 */
+        e[0]=(uint8_t)((uint16_t)entry>>8);e[1]=(uint8_t)entry;
+        return 1;
+    }
+    return 1;                                                     /* no free entry: the original returns 0 */
+}
+int c3_battle_trainer_enemy_flag(C3BattleState *s,uint32_t trainer,int16_t entry,uint32_t selector,uint8_t value)
+{
+    static const uint8_t offset[5]={0x0E,0x0F,0x10,0x11,0x12};   /* 0x52..0x56 */
+    if(!s||selector<0x52||selector>0x56)return 0;
+    uint8_t *e=c3_battle_trainer_enemy(s,trainer,entry);
+    if(e)e[offset[selector-0x52]]=value;
+    return 1;
+}
+int c3_battle_state_register_enemies(C3BattleState *s)
+{
+    uint32_t type=0,trainers=0,active=0;
+    int fault=0;
+    if(!s||!c3_battle_floor_value(s,0x14,&type)||!c3_battle_floor_value(s,0x16,&trainers)||
+       !c3_battle_floor_value(s,0x18,&active))return 0;
+    for(unsigned i=0;i<2;++i){
+        uint32_t team=side_at(s,i);
+        if(!c3_battle_side_check_valid(s,team,&fault))continue;
+        for(uint32_t j=0;j<(uint16_t)trainers;++j){
+            if(j>=2)return 0;
+            uint32_t tr=side_trainer(team,j),other=0;
+            if(!c3_battle_trainer_check_valid(s,tr,&fault))continue;
+            if(!c3_battle_state_target(s,3,tr,(uint16_t)type,&other))return 0;
+            /* fightSideRegistFightSideEnemyPokemonFightAll(other, tr, .., trainers, active) */
+            for(uint32_t t=0;t<(uint16_t)trainers&&other;++t){
+                uint32_t otr=side_trainer(other,t);
+                if(!c3_battle_trainer_check_valid(s,otr,&fault))continue;
+                for(uint32_t p=0;p<(uint16_t)active;++p){
+                    uint32_t fo=trainer_fight_out(otr,p);
+                    if(!c3_battle_fight_out_check_fight_out(s,fo,&fault))continue;
+                    uint32_t fp=status(s,fo,0xD5,&fault);
+                    int16_t entry=s16_status(s,fp,0xCE,0,&fault);
+                    if(entry>=0&&!c3_battle_trainer_enemy_register(s,tr,entry))return 0;
+                }
+            }
+        }
+    }
+    return !fault;
+}

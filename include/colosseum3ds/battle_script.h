@@ -38,6 +38,7 @@
 #define C3_ACCURACY_STAGES 13u
 #define C3_TARGET_KINDS 30u
 #define C3_KAISUU_ROWS 10u   /* lbl_80478B20 turn-count rows */
+#define C3_AI_MOVE_ROWS 358u /* lbl_80478B50 move AI rows (0x14: value, hit, damage, WZX type, variation) */
 
 typedef struct {
     const uint8_t *script;                  /* borrowed: C3_SCRIPT_REGION_BYTES */
@@ -58,6 +59,8 @@ typedef struct {
     uint32_t target_kind_count;             /* lbl_80478D40 */
     const uint8_t *kaisuu;                  /* lbl_80315690: turn counts (s32 min, s32 max) */
     uint32_t kaisuu_count;                  /* lbl_80478B20 */
+    const uint8_t *ai_moves;                /* lbl_8035C430: per-move AI/WZX function addresses */
+    uint32_t ai_move_count;                 /* lbl_80478B50 */
 } C3BattleScriptPack;
 
 /* Validates header, digest, section order/bases/lengths and every effect

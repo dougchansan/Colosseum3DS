@@ -525,7 +525,7 @@ battle-canceler-check: build/test_battle_canceler
 test: battle-canceler-check
 
 # Battle-logic move-script opcodes running original scripts over the real entry.
-BATTLE_HANDLERS_SOURCES = $(sort src/battle_handlers.c src/battle_damage_state.c $(BATTLE_CANCELER_SOURCES) $(BATTLE_PREVIEW_SOURCES) $(BATTLE_RULES_SOURCES))
+BATTLE_HANDLERS_SOURCES = $(sort src/battle_handlers.c src/battle_ai.c src/battle_damage_state.c $(BATTLE_CANCELER_SOURCES) $(BATTLE_PREVIEW_SOURCES) $(BATTLE_RULES_SOURCES))
 build/test_battle_handlers: tests/test_battle_handlers.c $(BATTLE_HANDLERS_SOURCES) src/battle_script_names.inc $(HEADERS) $(BATTLE_STATUS_TABLES) $(BATTLE_ENTRY_SESSION_GENERATED) build/battle_damage_state.inc build/battle_damage_original.inc build/battle_rng_source.h build/battle_rules_original.inc | build
 	$(CC) $(CPPFLAGS) -Isrc -Ibuild $(CFLAGS) tests/test_battle_handlers.c $(BATTLE_HANDLERS_SOURCES) $(LDFLAGS) -lm -o $@
 

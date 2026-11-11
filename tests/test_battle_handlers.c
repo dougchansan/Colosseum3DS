@@ -1,5 +1,6 @@
 /* Original move scripts running battle-logic opcodes over the real trainer
  * entry. Needs C3_ENTRY_PACK, C3_ENTRY_NEWGAME and C3_SCRIPT_PACK. */
+#include "colosseum3ds/battle_ai.h"
 #include "colosseum3ds/battle_handlers.h"
 #include "colosseum3ds/battle_rules.h"
 #include "colosseum3ds/battle_preview.h"
@@ -67,6 +68,7 @@ static void battle_reset(World *w,unsigned att_side,unsigned att_slot,unsigned d
         CHECK(c3_battle_fight_out_pokemon_create(&s->arena,c3_battle_state_fight_out(s,side,k),
             c3_battle_state_fight_pokemon(s,side,k),0,&s->species));
     CHECK(c3_battle_state_set_meet_enemies(s));        /* battle-start steps, in their order */
+    CHECK(c3_battle_state_register_enemies(s));
     CHECK(c3_battle_state_create_enemy_arrays(s));    /* battle-start step the move scripts read */
     uint32_t att=c3_battle_state_fight_out(s,att_side,att_slot),def=c3_battle_state_fight_out(s,def_side,def_slot);
     put32(s->memory+0xA474,att);put32(s->memory+0xA478,def);
@@ -133,6 +135,7 @@ static C3BattleScriptStatus run_effect_mode(World *w,Run *r,uint16_t effect,int 
     r->handlers.damage=(C3BattleDamageTables){w->script_pack.stage_ratios,w->script_pack.stage_ratio_count,
         w->script_pack.item_types,w->pack->sections[C3_PACK_T44].bytes,w->pack->sections[C3_PACK_T44].count};
     r->handlers.critical=w->script_pack.critical;r->handlers.critical_count=w->script_pack.critical_count;
+    r->handlers.ai_moves=w->script_pack.ai_moves;r->handlers.ai_move_count=w->script_pack.ai_move_count;
     C3BattleScriptServices sv=c3_battle_handler_services(&r->handlers);
     CHECK(c3_battle_script_init(&r->script,&w->script_pack,&sv));
     CHECK(c3_battle_script_call(&r->script,w->script_pack.effects[effect],1,1));
@@ -728,6 +731,57 @@ int main(void)
         CHECK(!c3_battle_trainer_ai_value(w.state,tr,0x39,&v));
         CHECK(c3_battle_trainer_ai_value(w.state,w.state->trainer[0],0x2D,&v));
         printf("player AI row: damage flag %lu\n",(unsigned long)v);
+    }
+
+    /* Willie's AI preparation (fn_80234A0C) at the start of a turn: battle
+     * start registered Umbreon (entry 11) and Espeon (12) in his enemy
+     * registry. The AI estimates Bite, Secret Power, Confusion and Return
+     * (type ID 1) against both Zigzagoon with the move script's own damage
+     * calculation, restoring every record, and flags lowest HP (both at
+     * 100%), lowest level (Espeon), lowest defenses (Espeon), strongest
+     * damage and highest stats. No number is drawn. */
+    battle_reset(&w,1,0,0,0,33,0);
+    {
+        uint32_t willie=w.state->trainer[1],umbreon=c3_battle_state_fight_out(w.state,0,0),espeon=c3_battle_state_fight_out(w.state,0,1);
+        uint32_t zig_a=c3_battle_state_fight_out(w.state,1,0),zig_b=c3_battle_state_fight_out(w.state,1,1);
+        CHECK(c3_battle_trainer_enemy(w.state,willie,11)!=NULL&&c3_battle_trainer_enemy(w.state,willie,12)!=NULL);
+        CHECK(c3_battle_trainer_enemy(w.state,willie,9)==NULL);           /* his own Zigzagoon */
+        CHECK(c3_battle_trainer_enemy(w.state,w.state->trainer[0],9)!=NULL);
+        memset(&r,0,sizeof r);r.handlers.state=w.state;
+        r.handlers.present=present;r.handlers.present_user=&r.presentation;
+        r.handlers.damage=(C3BattleDamageTables){w.script_pack.stage_ratios,w.script_pack.stage_ratio_count,
+            w.script_pack.item_types,w.pack->sections[C3_PACK_T44].bytes,w.pack->sections[C3_PACK_T44].count};
+        r.handlers.critical=w.script_pack.critical;r.handlers.critical_count=w.script_pack.critical_count;
+        r.handlers.ai_moves=w.script_pack.ai_moves;r.handlers.ai_move_count=w.script_pack.ai_move_count;
+        C3BattleScriptServices sv=c3_battle_handler_services(&r.handlers);
+        CHECK(c3_battle_script_init(&r.script,&w.script_pack,&sv));
+        static uint8_t before[0x10000];
+        CHECK(sizeof before>=C3_BATTLE_STATE_BYTES||1);
+        size_t span=C3_BATTLE_STATE_BYTES<sizeof before?C3_BATTLE_STATE_BYTES:sizeof before;
+        memcpy(before,w.state->memory,span);
+        uint64_t draws=w.state->rng.draws;
+        uint32_t est=0;
+        CHECK(c3_battle_ai_damage_estimate(&r.handlers,&r.script,willie,umbreon,44,zig_a,&est));   /* Bite */
+        printf("AI estimate: Umbreon's Bite on Zigzagoon A %lu\n",(unsigned long)est);
+        CHECK(est>0&&memcmp(before,w.state->memory,span)==0);
+        int ok=c3_battle_ai_prepare(&r.handlers,&r.script,willie);
+        printf("AI preparation: %s%s\n",ok?"done":"refused: ",ok?"":r.script.failure);
+        CHECK(ok&&w.state->rng.draws==draws);
+        const uint8_t *eu=c3_battle_trainer_enemy(w.state,willie,11),*ee=c3_battle_trainer_enemy(w.state,willie,12);
+        printf("AI flags: Umbreon %u%u%u%u%u, Espeon %u%u%u%u%u\n",eu[14],eu[15],eu[16],eu[17],eu[18],ee[14],ee[15],ee[16],ee[17],ee[18]);
+        CHECK(eu[14]==1&&ee[14]==1);                                      /* both at full HP */
+        CHECK(eu[15]==0&&ee[15]==1);                                      /* Espeon Lv 25 */
+        CHECK(eu[16]==0&&ee[16]==1);                                      /* Espeon's defenses */
+        CHECK((eu[17]^ee[17])==1||(eu[17]&&ee[17]));                      /* strongest damage */
+        CHECK(eu[18]==1&&ee[18]==0);                                      /* stat total x level */
+        (void)espeon;(void)zig_b;
+        /* Apart from the five flags, the state is as it was. */
+        for(size_t i=0;i<span;++i){
+            uint32_t a=C3_ARENA_BASE+(uint32_t)i;
+            int flag=(a>=(uint32_t)(eu-w.state->memory)+C3_ARENA_BASE+14&&a<(uint32_t)(eu-w.state->memory)+C3_ARENA_BASE+19)||
+                     (a>=(uint32_t)(ee-w.state->memory)+C3_ARENA_BASE+14&&a<(uint32_t)(ee-w.state->memory)+C3_ARENA_BASE+19);
+            if(!flag&&before[i]!=w.state->memory[i]){printf("AI preparation changed +%zx\n",i);CHECK(0);}
+        }
     }
 
     /* The whole turn: Zigzagoon's Tackle on Umbreon runs past WAZAEND. The
