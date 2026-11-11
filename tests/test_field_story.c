@@ -102,6 +102,7 @@ static void door(Scene *s,uint32_t source,uint32_t floor,uint32_t spawn)
     for(frame=0;frame<3600&&!c3_field_story_view(&s->story)->next_floor;++frame)tick(s,frame);
     CHECK(frame<3600&&c3_field_story_view(&s->story)->next_floor==floor&&c3_field_story_view(&s->story)->next_spawn==spawn);
 }
+static uint16_t counting_random(void *context){unsigned *draws=context;return (uint16_t)(0x1234u+(*draws)++);}
 static int accept_world_map(uint32_t floor){return floor==1||floor==2||floor==0x38e;}
 static void unchanged_party(C3GameState *game,const C3GameSummary *original)
 {
@@ -380,6 +381,58 @@ static void synthetic_regressions(void)
     for(unsigned i=0;i<10;++i)CHECK(c3_field_story_tick(&s->story,.1f,0x300,error));
     v=c3_field_story_view(&s->story);CHECK(v->battle_id==10&&v->blocked[0]&&!v->control&&c3_field_story_actor(&s->story,3)->visible);
     CHECK(!memcmp(saved,c3_game_state_body(&game,NULL),C3_SAVE_BODY_SIZE));free(saved);close_scene(s);
+    /* Native A4 turns toward a point with the same turn machinery as 44;
+     * the y word is ignored. */
+    memset(code,0,sizeof code);args[0]=29;args[1]=3;args[2]=bits(1);args[3]=bits(50);args[4]=0;args[5]=bits(1);
+    native(code+3,0xa4,6,args,1);args[2]=1;native(code+3,0x3e,3,args,1);args[0]=3;args[1]=0;native(code+3,0x64,2,args,1);
+    synthetic_load(s,&game,file,code,0,0,0x1000003);CHECK(c3_field_story_enter(&s->story,error));
+    CHECK(c3_field_story_tick(&s->story,0,0,error));actor=c3_field_story_actor(&s->story,3);CHECK(actor->visible&&actor->pose.yaw==0);
+    CHECK(c3_field_story_tick(&s->story,1.f/60,0,error));CHECK(actor->visible&&fabsf(actor->pose.yaw-.15707964f)<1e-6f);
+    CHECK(c3_field_story_tick(&s->story,8.f/60,0,error));CHECK(actor->visible&&fabsf(actor->pose.yaw-1.4137167f)<1e-5f);
+    CHECK(c3_field_story_tick(&s->story,1.f/60,0,error));CHECK(!actor->visible&&fabsf(actor->pose.yaw-1.5707964f)<1e-6f);close_scene(s);
+    /* Native A5 turns toward another person: here the hero at -x. A missing
+     * target (0,101 without a partner model) leaves the person alone. */
+    memset(code,0,sizeof code);args[0]=29;args[1]=3;args[2]=0;args[3]=101;args[4]=bits(1);native(code+3,0xa5,5,args,1);
+    args[3]=100;native(code+3,0xa5,5,args,1);args[2]=1;native(code+3,0x3e,3,args,1);args[0]=3;args[1]=0;native(code+3,0x64,2,args,1);
+    synthetic_load(s,&game,file,code,0,0,0x1000003);s->hero.position[0]=-1;CHECK(c3_field_story_enter(&s->story,error));
+    CHECK(c3_field_story_tick(&s->story,0,0,error));actor=c3_field_story_actor(&s->story,3);CHECK(actor->visible&&actor->pose.yaw==0);
+    CHECK(c3_field_story_tick(&s->story,1.f/60,0,error));CHECK(actor->visible&&fabsf(actor->pose.yaw+.15707964f)<1e-6f);
+    CHECK(c3_field_story_tick(&s->story,8.f/60,0,error));CHECK(actor->visible&&fabsf(actor->pose.yaw-4.8694687f)<1e-5f);
+    /* The turn keeps the yaw in [0, 2pi): -90 degrees is stored as 270. */
+    CHECK(c3_field_story_tick(&s->story,2.f/60,0,error));CHECK(!actor->visible&&fabsf(actor->pose.yaw-4.7123890f)<1e-5f);close_scene(s);
+    /* Native 23 writes the partner-present byte; 4C/4D without arguments,
+     * 31, 7E, 83, 89, DA, A1 and B4 complete without waiting. */
+    memset(code,0,sizeof code);native(code+3,0x4c,0,NULL,1);native(code+3,0x4d,0,NULL,1);native(code+3,0x31,0,NULL,1);
+    args[0]=1;native(code+3,0x23,1,args,1);args[0]=1;args[1]=1;native(code+3,0x7e,2,args,1);
+    args[0]=29;args[1]=3;args[2]=1;native(code+3,0x83,3,args,1);args[0]=3;args[1]=1000;args[2]=0;native(code+3,0x89,3,args,1);
+    args[0]=0xb7;native(code+3,0xda,1,args,1);args[0]=2;args[1]=3;args[2]=1;native(code+3,0xa1,3,args,1);
+    native(code+3,0xb4,0,NULL,1);args[0]=3;args[1]=0;native(code+3,0x64,2,args,1);
+    synthetic_load(s,&game,file,code,0,0,0x1000003);CHECK(!c3_game_state_partner(&game));CHECK(c3_field_story_enter(&s->story,error));
+    CHECK(c3_field_story_tick(&s->story,0,0,error));CHECK(!c3_field_story_actor(&s->story,3)->visible&&c3_game_state_partner(&game));
+    CHECK(c3_game_state_set_partner(&game,0)&&!c3_game_state_partner(&game));close_scene(s);
+    /* Native 02 needs the bound game RNG and draws twice, low half first. */
+    memset(code,0,sizeof code);args[0]=7;native(code+3,0x02,1,args,1);args[0]=3;args[1]=0;native(code+3,0x64,2,args,1);
+    synthetic_load(s,&game,file,code,0,0,0x1000003);CHECK(c3_field_story_enter(&s->story,error));
+    CHECK(!c3_field_story_tick(&s->story,0,0,error)&&strstr(error,"needs the game RNG"));close_scene(s);
+    synthetic_load(s,&game,file,code,0,0,0x1000003);unsigned draws=0;c3_field_story_set_random(&s->story,counting_random,&draws);
+    CHECK(c3_field_story_enter(&s->story,error));CHECK(c3_field_story_tick(&s->story,0,0,error));
+    CHECK(draws==2&&!c3_field_story_actor(&s->story,3)->visible);close_scene(s);
+    memset(code,0,sizeof code);args[0]=0;native(code+3,0x02,1,args,1);
+    synthetic_load(s,&game,file,code,0,0,0x1000003);c3_field_story_set_random(&s->story,counting_random,&draws);
+    CHECK(c3_field_story_enter(&s->story,error));CHECK(!c3_field_story_tick(&s->story,0,0,error)&&strstr(error,"zero limit")&&draws==2);close_scene(s);
+    /* Native 66 starts an encounter directly and shares the 98 result path;
+     * native 82 waits its substitute two seconds. */
+    memset(code,0,sizeof code);args[0]=14;native(code+3,0x66,1,args,1);args[0]=0x3c9;args[1]=0;args[2]=0x7f;native(code+3,0x82,3,args,1);
+    args[0]=3;args[1]=0;native(code+3,0x64,2,args,1);
+    synthetic_load(s,&game,file,code,0,0,0x1000003);CHECK(c3_field_story_enter(&s->story,error));
+    for(unsigned i=0;i<10;++i)CHECK(c3_field_story_tick(&s->story,.1f,0x300,error));
+    {uint32_t encounter=0;v=c3_field_story_view(&s->story);
+     CHECK(v->battle_id==14&&v->blocked[0]&&c3_field_story_battle_pending(&s->story,&encounter)&&encounter==14);
+     CHECK(c3_field_story_battle_result(&s->story,2,error)&&!c3_field_story_battle_pending(&s->story,NULL));
+     for(unsigned i=0;i<19;++i)CHECK(c3_field_story_tick(&s->story,.1f,0,error)&&c3_field_story_actor(&s->story,3)->visible);
+     for(unsigned i=0;i<3;++i)CHECK(c3_field_story_tick(&s->story,.1f,0,error));
+     CHECK(!c3_field_story_actor(&s->story,3)->visible);}
+    close_scene(s);
     free(s);c3_game_state_free(&game);CHECK(!unlink(file));CHECK(!rmdir(directory));
     printf("field-story synthetic regressions: %u checks passed\n",checks);
 }
