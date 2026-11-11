@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
-"""Extract original Outskirt Stand GSVM and message banks for the native port.
+"""Extract original field GSVM and message banks for the native port.
 
 No rewritten event script, dialogue, or victory state is generated. These
 private packs retain the original instruction and message bytes. The portable
 executor yields game-native functions to the scene, which must implement each
 one before the original script can continue.
+
+Without --floor this prepares Outskirt Stand's two floors exactly as before.
+--floor NAME (repeatable) prepares the named floor_profiles.py rows instead.
 """
 import argparse
 import hashlib
@@ -12,26 +15,51 @@ import json
 from pathlib import Path
 import struct
 
+from floor_profiles import story_floors
 from prepare_boot_media import verify_disc
 from prepare_model import check_output
-from prepare_outskirt import extent, member, rel_data, u32
+from prepare_outskirt import PROFILES as ARCHIVE_PROFILES, extent, member, rel_data, u32
 
 SOURCE_COMMIT = "51bfe4314a218dfaf9592fc80723c50498d0ee55"
-PROFILES = {
-    "S1_out.fsys": (1468000, "37900ccab1353ab835c7e4acc40cd5e1349237589a53b441c78ce91a891f8034"),
-    "S1_shop_1F.fsys": (2947200, "7d74dcb75c7f8aebc7479fee695e87a02ab58112d110dada15e88353d7215329"),
-    "common_rel.rel": (1369520, "0c89e679305f5e84eff3c774b542120c727ff350a0841cfc516235b3556df69e"),
-}
-AREAS = {
-    1: ("S1_out.fsys", 0x01430E00, 0x01420A00, "outskirt.c3s"),
-    2: ("S1_shop_1F.fsys", 0x01460E00, 0x01450A00, "outskirt_shop.c3s"),
-}
-# Published data tables in the pinned GC6E01 revision. These are offsets into
-# admitted original files, not replacements for their event/name/lifecycle data.
-ACTOR_TABLES = {
-    1: ("S1_out.fsys", 0x02571C00, 131, 0x30, 7),
-    2: ("S1_shop_1F.fsys", 0x02581C00, 5, 0x180, 5),
-}
+COMMON_REL = "common_rel.rel"
+COMMON_REL_PROFILE = (1369520, "0c89e679305f5e84eff3c774b542120c727ff350a0841cfc516235b3556df69e")
+# The floors prepared when no --floor is given (the original first area).
+DEFAULT_FLOORS = ("outskirt", "shop")
+
+
+def source_profiles(names):
+    """Exact (bytes, SHA256) of every original file the named floors need."""
+    floors = story_floors()
+    profiles = {floors[name]["archive"]: (floors[name]["bytes"], floors[name]["sha256"])
+                for name in names}
+    profiles[COMMON_REL] = COMMON_REL_PROFILE
+    return profiles
+
+
+def area_table(names):
+    """floor -> (archive, script member, message member, C3S file name)."""
+    floors = story_floors()
+    return {floors[name]["floor"]: (floors[name]["archive"], floors[name]["script"],
+                                    floors[name]["messages"], floors[name]["story_pack"])
+            for name in names}
+
+
+def actor_table(names):
+    """floor -> (archive, REL member, module, people offset, people count).
+
+    Published data tables in the pinned GC6E01 revision. These are offsets into
+    admitted original files, not replacements for their event/name/lifecycle data.
+    """
+    floors = story_floors()
+    return {floors[name]["floor"]: (floors[name]["archive"], floors[name]["rel"],
+                                    floors[name]["module"], floors[name]["people_table"],
+                                    floors[name]["people_count"])
+            for name in names}
+
+
+PROFILES = source_profiles(DEFAULT_FLOORS)
+AREAS = area_table(DEFAULT_FLOORS)
+ACTOR_TABLES = actor_table(DEFAULT_FLOORS)
 OPCODE_SIZES = {0: 1, 1: 1, 2: 1, 3: 4, 4: 9, 5: 1, 6: 5, 7: 5, 8: 6,
                 0xD: 3, 0xE: 3, 0xF: 2, 0x10: 4, 0x11: 2, 0x12: 2,
                 0x13: 2, **{i: 3 for i in range(0x14, 0x20)},
@@ -44,13 +72,46 @@ def be16(data, at):
     return struct.unpack_from(">H", data, at)[0]
 
 
-def admit(path):
-    size, digest = PROFILES[path.name]
+def admit(path, profiles=None):
+    size, digest = (PROFILES if profiles is None else profiles)[path.name]
     if path.is_symlink() or path.stat().st_size != size:
         raise ValueError("Unexpected source size/path: " + path.name)
     data = path.read_bytes()
     if hashlib.sha256(data).hexdigest() != digest:
         raise ValueError("Source differs from admitted GC6E01 revision 0: " + path.name)
+    return data
+
+
+def admit_common_rel(files):
+    """The admitted common REL125, loose or as stored in common.fsys.
+
+    A plain disc extraction has no loose common_rel.rel: the module is the
+    type-1C member of common.fsys. Either source must give the one admitted
+    size and SHA256, so both yield the same bytes or fail.
+    """
+    files = Path(files)
+    loose = files / COMMON_REL
+    if loose.is_symlink() or loose.exists():
+        return admit(loose, {COMMON_REL: COMMON_REL_PROFILE})
+    path = files / "common.fsys"
+    size, digest = ARCHIVE_PROFILES["common.fsys"]
+    if path.is_symlink() or not path.is_file() or path.stat().st_size != size:
+        raise ValueError("Unexpected source size/path: common.fsys")
+    archive = path.read_bytes()
+    if hashlib.sha256(archive).hexdigest() != digest:
+        raise ValueError("Source differs from admitted GC6E01 revision 0: common.fsys")
+    table = u32(archive, u32(archive, 24))
+    identities = [u32(archive, u32(archive, table + index * 4))
+                  for index in range(u32(archive, 12))]
+    modules = [data for data in (member(archive, identity) for identity in identities
+                                 if (identity >> 8) & 255 == 0x1C)
+               if u32(data, 0) == 125]
+    if len(modules) != 1:
+        raise ValueError("Expected one original common REL125")
+    data = modules[0]
+    if (len(data) != COMMON_REL_PROFILE[0] or
+            hashlib.sha256(data).hexdigest() != COMMON_REL_PROFILE[1]):
+        raise ValueError("Source differs from admitted GC6E01 revision 0: " + COMMON_REL)
     return data
 
 
@@ -182,7 +243,7 @@ def encode_pack(floor, banks, messages):
     return bytes(header + directory + payload)
 
 
-def extract_area_metadata(originals):
+def extract_area_metadata(originals, areas=None, actor_tables=None):
     """Retain source event records, floor hooks, and actor name/talk policy.
 
     floor_character.c dispatches the common event table by kind/floor/source
@@ -190,6 +251,8 @@ def extract_area_metadata(originals):
     the actor row's name index through the common name/heard-flag table.
     All values and all four event arguments are read from the original data.
     """
+    areas = AREAS if areas is None else areas
+    actor_tables = ACTOR_TABLES if actor_tables is None else actor_tables
     rel = originals["common_rel.rel"]
     common = rel_data(rel, 125)
     base = u32(rel, u32(rel, 16) + 4*8) & ~3
@@ -202,7 +265,7 @@ def extract_area_metadata(originals):
     for index in range(event_count):
         kind, _pad, floor, source_id, script, *arguments = struct.unpack_from(
             ">BBH6I", event_rows, index * 28)
-        if floor in AREAS:
+        if floor in areas:
             events.append({"index": index, "kind": kind, "floor": floor,
                            "source_id": source_id, "script": hex(script),
                            "args": arguments,
@@ -210,17 +273,17 @@ def extract_area_metadata(originals):
     floor_rows = extent(common, 0x8BCF4, floor_count * 0x4C)
     for index in range(floor_count):
         words = list(struct.unpack_from(">19I", floor_rows, index * 0x4C))
-        if words[3] in AREAS:
+        if words[3] in areas:
             lifecycle.append({"floor": words[3], "resource_group": words[1],
                               "file_offset": hex(base + 0x8BCF4 + index * 0x4C),
                               "index": index, "raw_words": words,
                               **dict(zip(("init_script", "pre_script", "main_script",
                                           "post_script", "pre_native", "main_native",
                                           "post_native"), words[11:18]))})
-    if sorted(row["floor"] for row in lifecycle) != sorted(AREAS):
+    if sorted(row["floor"] for row in lifecycle) != sorted(areas):
         raise ValueError("Missing or duplicate original area lifecycle")
     name_rows = extent(common, 0x1A34, name_count * 8)
-    for floor, (archive, identity, module, start, count) in ACTOR_TABLES.items():
+    for floor, (archive, identity, module, start, count) in actor_tables.items():
         actors = extent(rel_data(member(originals[archive], identity), module),
                         start, count * 36)
         for index in range(count):
@@ -242,12 +305,17 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--disc", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--floor", action="append", choices=sorted(story_floors()),
+                        help="Floor profile to prepare (repeatable; default: outskirt and shop)")
     args = parser.parse_args()
     try:
+        names = tuple(dict.fromkeys(args.floor or DEFAULT_FLOORS))
+        profiles, areas, actor_tables = source_profiles(names), area_table(names), actor_table(names)
         disc, output = verify_disc(args.disc), check_output(args.output)
+        originals = {name: (admit_common_rel(disc / "files") if name == COMMON_REL
+                            else admit(disc / "files" / name, profiles)) for name in profiles}
         output.mkdir(parents=True, exist_ok=True)
-        originals = {name: admit(disc / "files" / name) for name in PROFILES}
-        area_metadata = extract_area_metadata(originals)
+        area_metadata = extract_area_metadata(originals, areas, actor_tables)
         rel = originals["common_rel.rel"]
         # REL125 data+0x89CFC is common GSVM bank0596. It ends at the next
         # published table data+0x8BCB4. The admitted binary keeps this precise.
@@ -265,7 +333,7 @@ def main():
                 or be16(common_names, 4) != 2018):
             raise ValueError("Unexpected original common script bank")
         report = {"source_commit": SOURCE_COMMIT, "format": "C3S1", "areas": [],
-                  "original_files": {name: {"bytes": p[0], "sha256": p[1]} for name, p in PROFILES.items()},
+                  "original_files": {name: {"bytes": p[0], "sha256": p[1]} for name, p in profiles.items()},
                   "common_bank": common_info, "metadata_files": [],
                   "common_messages": {"data_offset": "647b4", "bytes": len(common_messages),
                                       "count": be16(common_messages, 4),
@@ -274,7 +342,7 @@ def main():
                                    "count": be16(common_names, 4),
                                    "sha256": hashlib.sha256(common_names).hexdigest()},
                   "scope": "Original banks/data only. Native engine services are separately ported and checked."}
-        for floor, (filename, script_id, message_id, outname) in AREAS.items():
+        for floor, (filename, script_id, message_id, outname) in areas.items():
             bank = member(originals[filename], script_id)
             messages = member(originals[filename], message_id)
             info = inspect_bank(bank)
@@ -300,7 +368,7 @@ def main():
                 "names": {"offset": "1a34", "count_offset": "14a660", "stride": 8}},
             "actors": [{"floor": floor, "archive": a[0], "member": f"{a[1]:08x}",
                         "module": a[2], "data_offset": f"{a[3]:x}",
-                        "count": a[4], "stride": 36} for floor, a in ACTOR_TABLES.items()]}
+                        "count": a[4], "stride": 36} for floor, a in actor_tables.items()]}
         (output / "story-manifest.json").write_text(json.dumps(report, indent=2)+"\n")
         print(json.dumps({"output": str(output),
                           "packs": [{k: a[k] for k in ("file", "bytes", "sha256")}

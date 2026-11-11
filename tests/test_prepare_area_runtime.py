@@ -180,6 +180,49 @@ class AreaRuntimeTests(unittest.TestCase):
         self.assertEqual(set(files), {"outskirt.c3a"})
         self.assertEqual(report[0]["sha256"], hashlib.sha256(files["outskirt.c3a"]).hexdigest())
 
+    def test_profile_floor_publishes_its_own_pack_and_group(self):
+        self.assertEqual(area_runtime.GROUPS, {1: 0x1D, 2: 0x1E, 3: 0x1F})
+        self.assertEqual(area_runtime.PACKS, {1: "outskirt.c3a", 2: "shop.c3a", 3: "phenac.c3a"})
+        area, links, life, names = fixture()
+        area["floor"] = 3
+        for row in links + life + names:
+            row["floor"] = 3
+        with self.assertRaisesRegex(ValueError, "lifecycle"):
+            area_runtime.prepare([area], links, life, names)  # group 29 belongs to floor 1
+        life[0]["resource_group"] = 0x1F
+        files, report = area_runtime.prepare([area], links, life, names)
+        self.assertEqual(set(files), {"phenac.c3a"})
+        self.assertEqual(report, [{"floor": 3, "file": "phenac.c3a", "bytes": len(files["phenac.c3a"]),
+                                   "sha256": hashlib.sha256(files["phenac.c3a"]).hexdigest()}])
+        self.assertEqual(struct.unpack_from("<2I", files["phenac.c3a"], 12), (3, 0x1F))
+        # All profile floors may be published together; a floor without a profile may not.
+        first = fixture()
+        both, _ = area_runtime.prepare([first[0], area], first[1] + links, first[2] + life, first[3] + names)
+        self.assertEqual(set(both), {"outskirt.c3a", "phenac.c3a"})
+        self.assertEqual(both["phenac.c3a"], files["phenac.c3a"])
+        area["floor"] = 4
+        with self.assertRaisesRegex(ValueError, "Unsupported original floor"):
+            area_runtime.prepare([area], links, life, names)
+
+    def test_signed_facing_and_records_sharing_one_model_pack(self):
+        inputs = fixture()
+        inputs[0]["actors"][0]["yaw_degrees"] = -90
+        other = copy.deepcopy(inputs[0]["actors"][0])
+        other.update(index=2, yaw_degrees=-140, position=[5, 6, 7])
+        inputs[0]["actors"].append(other)
+        inputs[3].append({**inputs[3][0], "actor": 2})
+        encoded = area_runtime.encode(*inputs)
+        self.assertEqual(struct.unpack_from("<I", encoded, 20), (2,))
+        first, second = 128, 128 + 160
+        self.assertEqual(struct.unpack_from("<f", encoded, first + 44),
+                         struct.unpack("<f", struct.pack("<f", math.radians(-90))))
+        self.assertEqual(struct.unpack_from("<f", encoded, second + 44),
+                         struct.unpack("<f", struct.pack("<f", math.radians(-140))))
+        # Two person records may name one prepared pack (same model resource).
+        self.assertEqual(encoded[first + 72:first + 136], encoded[second + 72:second + 136])
+        self.assertEqual(encoded[first + 72:first + 84], b"actor_1.c3t\0")
+        self.assertEqual(struct.unpack_from("<2I", encoded, second), (2, 0x123400))
+
     def test_publish_success_and_existing_output_preserved(self):
         with tempfile.TemporaryDirectory() as temp:
             output = Path(temp)/"packs"

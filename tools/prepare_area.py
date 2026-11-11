@@ -4,6 +4,10 @@
 This admitted-area extension reuses the reviewed HSD/CCD pipeline. Outputs
 contain original game data and must remain in a private SD preparation folder.
 It does not manufacture dialogue, battle outcomes, or later-area assets.
+
+--floor NAME prepares a later floor from its floor_profiles.py row instead:
+every original person record, the CCD event surfaces and one NPC model pack
+per distinct model resource. The Outskirt modes are unchanged.
 """
 import argparse
 import copy
@@ -17,6 +21,7 @@ import tempfile
 import prepare_title as title
 import prepare_field_geometry as geometry
 import prepare_outskirt as field
+from floor_profiles import story_floors
 from prepare_boot_media import verify_disc
 from prepare_model import check_output
 
@@ -64,7 +69,7 @@ def actor_records(map_rel, module, common_rel, offset, count, prefix, included=N
         result.append({"index":index,"people_info":info_index,
                        "model_resource":field.u32(info,12),
                        "position":[v*field.SCALE for v in position],
-                       "yaw_degrees":words[1]>>16,
+                       "yaw_degrees":struct.unpack_from(">h",raw,4)[0],
                        "move_script":words[4],"talk_script":words[5],
                        "visible_initial":bool(raw[0]&0x80),"load_initial":bool(raw[0]&0x40),
                        "talk_start_type":(raw[1]>>6)&3,"talk_end_type":(raw[1]>>4)&3,
@@ -443,6 +448,142 @@ def prepare_exterior_actors(disc, output, parser, indices=None):
     return manifest
 
 
+def profile_floors():
+    """Story floors whose actors come from the profile alone (they name a map)."""
+    return {name:row for name,row in story_floors().items() if "map" in row}
+
+
+def admit_profile_archive(disc, profile):
+    path = Path(disc)/"files"/profile["archive"]
+    if path.is_symlink() or not path.is_file() or path.stat().st_size != profile["bytes"]:
+        raise ValueError("Unexpected original archive path or size: " + profile["archive"])
+    data = path.read_bytes()
+    if hashlib.sha256(data).hexdigest() != profile["sha256"]:
+        raise ValueError("Archive differs from admitted GC6E01 revision 0: " + profile["archive"])
+    return data
+
+
+def share_models(actors):
+    """Group person records by model resource, in original record order.
+
+    Returns [(owner, [sharers...])]. The owner is the first record using a
+    resource and names its pack; later records reuse that file, because the
+    converted pack depends only on the model, the floor camera and lights.
+    """
+    groups = {}
+    for actor in actors:
+        groups.setdefault(actor["model_resource"],[]).append(actor)
+    return [(rows[0],rows[1:]) for rows in groups.values()]
+
+
+def adopt_shared_pack(actor, owner):
+    """Point a later record at the pack already prepared for its resource."""
+    if actor["model_resource"] != owner["model_resource"] or actor is owner:
+        raise ValueError("Shared NPC pack requires the same original model resource")
+    actor["file"] = owner["file"]
+    actor["shares_model_with"] = owner["index"]
+    for key in ("source_clip_ends","particle_callbacks_unrendered","source_part_bones"):
+        actor[key] = copy.deepcopy(owner[key])
+    actor["default_idle_clip"] = actor["motion_indices"][0]
+
+
+def actor_bounds(actors, reports):
+    """Exact counts the native area/scene must hold; nothing is trimmed."""
+    packs = {report["file"]:report for report in reports}
+    used = list(dict.fromkeys(actor["file"] for actor in actors if actor["file"]))
+    if any(name not in packs for name in used):
+        raise ValueError("Actor names an NPC pack that was not prepared")
+    missing_idle = [actor["index"] for actor in actors if actor["file"] and
+                    actor["motion_indices"][0] >= len(actor["source_clip_ends"])]
+    return {"actors":len(actors),
+            "actors_with_model":sum(bool(actor["file"]) for actor in actors),
+            "actors_without_model":[actor["index"] for actor in actors if not actor["file"]],
+            "model_packs":len(used),
+            "model_pack_bytes":sum(packs[name]["bytes"] for name in used),
+            "model_pack_vertices":sum(packs[name]["vertices"] for name in used),
+            "model_pack_textures":sum(packs[name]["textures"] for name in used),
+            "largest_pack_bytes":max((packs[name]["bytes"] for name in used),default=0),
+            "max_sampled_bones":max((packs[name]["sampled_bones"] for name in used),default=0),
+            "max_clips":max((len(packs[name]["clips"]) for name in used),default=0),
+            "max_samples":max((sum(clip["samples"] for clip in packs[name]["clips"])
+                               for name in used),default=0),
+            "initially_loaded":[actor["index"] for actor in actors if actor["load_initial"]],
+            "initially_visible":[actor["index"] for actor in actors if actor["visible_initial"]],
+            "idle_motion_outside_pack":missing_idle}
+
+
+def prepare_floor_actors(disc, output, parser, floor):
+    """Profile-driven actors, CCD event surfaces and NPC packs of one floor."""
+    profile = profile_floors()[floor]
+    disc, output = verify_disc(disc), check_output(output)
+    if output.exists():
+        raise ValueError("Choose a new private output directory")
+    geometry.import_parser(title.verify_parser(parser))
+    archive = admit_profile_archive(disc,profile)
+    common_archive = admit_archive(disc/"files"/"common.fsys")
+    common_id,common = common_rel(common_archive)
+    floor_rel = field.member(archive,profile["rel"])
+    actors = actor_records(floor_rel,profile["module"],common,profile["people_table"],
+                           profile["people_count"],profile["prefix"])
+    data,raw,scene = geometry.load_scene(archive,profile["map"])
+    if len(scene.cameras)!=1:
+        raise ValueError("Original floor camera count changed")
+    camera = scene.cameras[0]
+    fixed = (*camera.position,*camera.target_position,camera.roll,camera.field_of_view,
+             camera.near,camera.far,camera.aspect,0.)
+    lights = geometry.fixed_lights(raw,data)
+    output.parent.mkdir(parents=True,exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix=".floor-actors-",dir=output.parent) as temporary:
+        stage = Path(temporary)/"stage"
+        stage.mkdir()
+        reports,shared = [],[]
+        for owner,sharers in share_models(actors):
+            try:
+                field.member(archive,owner["model_resource"])
+            except ValueError as error:
+                raise ValueError("Person %d model %08x is not in %s: %s" % (
+                    owner["index"],owner["model_resource"],profile["archive"],error)) from error
+            # Exterior actors use C3T3 like the first exterior's NPC packs.
+            reports += npc_pack(archive,owner,fixed,lights,profile["sha256"],stage,format_version=3)
+            for actor in sharers:
+                adopt_shared_pack(actor,owner)
+            if sharers:
+                shared.append({"resource_id":"%08x" % owner["model_resource"],"file":owner["file"],
+                               "actors":[owner["index"],*(actor["index"] for actor in sharers)]})
+        collision = field.member(archive,profile["collision"])
+        areas = [{"floor":profile["floor"],"actors":actors,
+                  "transition_surfaces":source_collision_tables(collision,44),
+                  "interaction_surfaces":source_collision_tables(collision,48)}]
+        (stage/"area-actors.json").write_bytes((json.dumps(areas,indent=2)+"\n").encode())
+        source_members = []
+        resources = dict.fromkeys(actor["model_resource"] for actor in actors)
+        for container,blob,identities in (
+                (profile["archive"],archive,(profile["rel"],profile["map"],profile["collision"],*resources)),
+                ("common.fsys",common_archive,(common_id,))):
+            for identity in identities:
+                source = field.member(blob,identity)
+                source_members.append({"archive":container,"resource_id":"%08x" % identity,
+                    "bytes":len(source),"sha256":hashlib.sha256(source).hexdigest()})
+        manifest = {"floor_profile":floor,"floor":profile["floor"],
+                    "lifecycle_row":profile["lifecycle_row"],"resource_group":profile["resource_group"],
+                    "source_commit":title.SOURCE_COMMIT,"parser_commit":title.PARSER_COMMIT,
+                    "archives":{profile["archive"]:{"bytes":profile["bytes"],"sha256":profile["sha256"]},
+                                "common.fsys":{"bytes":PROFILES["common.fsys"][0],
+                                               "sha256":PROFILES["common.fsys"][1]}},
+                    "source_members":source_members,"packs":reports,"actors":"area-actors.json",
+                    "shared_models":shared,"bounds":actor_bounds(actors,reports),
+                    "event_surfaces":{"transition":len(areas[0]["transition_surfaces"]),
+                                      "interaction":len(areas[0]["interaction_surfaces"])},
+                    "limitations":[
+                        "Actor geometry, authored motion clips and CCD event tables only; GSVM natives, dialogue and battles are separate runtime work.",
+                        "Records sharing one model resource name the same pack file; the pack is written once.",
+                        "Neck targeting, per-part animation blending, shadows and particle callbacks are not rendered by these packs.",
+                        "NPC packs carry the floor map's fixed camera and lights; BGM and event SFX are not embedded."]}
+        (stage/"area-manifest.json").write_bytes((json.dumps(manifest,indent=2)+"\n").encode())
+        stage.rename(output)
+    return manifest
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--disc",required=True,type=Path)
@@ -453,9 +594,14 @@ def main():
                       help="Prepare only exterior/interior Wes bundles, including source motion zero")
     mode.add_argument("--exterior-actors-only",nargs="*",type=int,choices=INITIAL_EXTERIOR_ACTORS,default=None,
                       help="Prepare selected initial exterior actors and area metadata (default all four)")
+    mode.add_argument("--floor",choices=sorted(profile_floors()),
+                      help="Prepare one profile floor's actors, event surfaces and NPC packs")
     args = parser.parse_args()
     try:
-        if args.exterior_actors_only is not None:
+        if args.floor:
+            result=prepare_floor_actors(args.disc,args.output,args.parser,args.floor)
+            result={key:value for key,value in result.items() if key!="packs"}
+        elif args.exterior_actors_only is not None:
             result=prepare_exterior_actors(args.disc,args.output,args.parser,args.exterior_actors_only or None)
         else:
             result=(prepare_wes_only if args.wes_only else prepare)(args.disc,args.output,args.parser)

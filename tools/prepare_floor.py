@@ -15,45 +15,14 @@ from pathlib import Path
 import tempfile
 
 import prepare_title as title
+from floor_profiles import geometry_floors
 from prepare_boot_media import verify_disc
 from prepare_model import check_output
 from prepare_outskirt import PROFILES as COMMON_PROFILES, admit_archive, field_metadata, member, u32
 
-# Exact admitted profiles. Floor/group identities come from the original
-# REL125 lifecycle table (see docs/phenac-floors.md); resource identities from
-# the archive directory and the pinned REL source registrations.
-FLOORS = {
-    "phenac": {
-        "floor": 0x03,
-        "lifecycle_row": 2,
-        "resource_group": 0x1F,
-        "archive": "M1_out.fsys",
-        "bytes": 2554304,
-        "sha256": "85b1bbd23d9dc32287f90ac19eb8b8bd1b42b83dcfa9c92025490aaf5b2b5987",
-        "map": 0x00620200,
-        "collision": 0x00640600,
-        "rel": 0x06611C00,
-        "module": 15,
-        # vendor/colosseum/src/rel/M1_out/M1_out.c: lbl_15_data_0, count 10.
-        "entrance_table": 0x0,
-        "entrance_count": 10,
-        "prefix": "phenac",
-        # Original scene layout: nine map models and one camera.
-        "models": 9,
-        # Pack groups by original clock. Each tuple is (models, schedule).
-        # Models 0-5 carry two 20-frame clips; clip0 is played. Model7 is
-        # static and shares that clock. Model6 is the town body (299 frames).
-        # Model8 is the slow sky (loop 24999 source frames).
-        # HSD instances of model6 joint135 redraw an animated skinned
-        # subtree with ~60 envelope tracks each; seven animated copies exceed
-        # the native per-pack bone bound. Those copies are drawn at the first
-        # sample; the structural subtree itself keeps its animation.
-        "frozen_instance_targets": {6: (135,)},
-        "groups": (((0, 1, 2, 3, 4, 5, 7), ("short", 20)),
-                   ((6,), ("short", 299)),
-                   ((8,), ("sky", 24999))),
-    },
-}
+# Exact admitted profiles live in floor_profiles.py, one row per floor. This
+# converter takes the rows that carry the map geometry keys.
+FLOORS = geometry_floors()
 MAX_MAP_PACKS = 15  # C3_STAGE_MAX_MODELS (16) minus Wes.
 
 

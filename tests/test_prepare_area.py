@@ -75,6 +75,103 @@ class AreaPreparationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,"Wes motion mapping"):
             geometry.wes_motion_schedules(Obj(ends=[30.,30.,30.,17.]))
 
+    def test_person_rows_keep_signed_facing_flags_and_people_info(self):
+        def rel(module,sections,section,offset,size):
+            data=bytearray(offset+size)
+            struct.pack_into(">I",data,0,module);struct.pack_into(">I",data,12,sections)
+            struct.pack_into(">I",data,16,0x40)
+            struct.pack_into(">II",data,0x40+section*8,offset,size)
+            return data
+        common=rel(125,11,4,0x100,0x14A800)
+        struct.pack_into(">I",common,0x100+0x14A6E8,150)
+        info=0x100+0x13E440+0x19*44
+        common[info]=0x04;common[info+1:info+10]=bytes((1,2,6,255,255,255,255,255,13))
+        struct.pack_into(">I",common,info+12,0x00F60400)
+        struct.pack_into(">3f",common,info+16,9,13,3)
+        local=rel(15,10,3,0x100,0xA0+2*36)
+        struct.pack_into(">6I3f",local,0x100+0xA0,0xF2900000,0xFFE20019,0,1,0,0x01000008,30,0,300)
+        struct.pack_into(">6I3f",local,0x100+0xA0+36,0x10000000,0x00B40019,0x025C0000,1,0x0100000A,0,-50,33,-10)
+        first,second=area.actor_records(bytes(local),15,bytes(common),0xA0,2,"town")
+        # floor_character.c reads the facing as s16 degrees: 0xFFE2 is -30.
+        self.assertEqual((first["yaw_degrees"],second["yaw_degrees"]),(-30,180))
+        self.assertEqual((first["people_info"],first["model_resource"]),(0x19,0x00F60400))
+        self.assertEqual((first["visible_initial"],first["load_initial"],first["move_type"]),(True,True,2))
+        self.assertEqual((second["visible_initial"],second["load_initial"]),(False,False))
+        self.assertEqual((first["talk_start_type"],first["talk_end_type"]),(2,1))
+        self.assertEqual((first["talk_script"],second["move_script"]),(0x01000008,0x0100000A))
+        self.assertEqual(first["motion_indices"],[1,2,6,255,255,255,255,255,13])
+        self.assertEqual([round(v,5) for v in first["position"]],[3.0,0.0,30.0])
+        self.assertEqual([round(v,5) for v in second["position"]],[-5.0,3.3,-1.0])
+        self.assertEqual([round(first[key],5) for key in ("walk_distance","run_distance","radius")],[.9,1.3,.3])
+        self.assertEqual((first["file"],second["file"]),("town_npc0.c3t","town_npc1.c3t"))
+        self.assertEqual(first["raw_words"][:2],[0xF2900000,0xFFE20019])
+        struct.pack_into(">I",local,0x100+0xA0+4,0x00000096)  # PeopleInfo index 150
+        with self.assertRaisesRegex(ValueError,"PeopleInfo"):
+            area.actor_records(bytes(local),15,bytes(common),0xA0,2,"town")
+        with self.assertRaises(ValueError):
+            area.actor_records(bytes(local),15,bytes(common),0xA0,3,"town")  # past the data section
+
+    def test_records_sharing_a_model_resource_reuse_the_first_pack(self):
+        def record(index,resource,motions=(1,2,3)):
+            return {"index":index,"model_resource":resource,"file":f"town_npc{index}.c3t",
+                    "motion_indices":[*motions,255,255,255,255,255,9],"default_idle_clip":motions[0],
+                    "load_initial":index!=0,"visible_initial":index<2}
+        actors=[record(0,0xA00400),record(1,0xB00400),record(2,0xA00400,(4,2,3)),record(3,0xA00400)]
+        groups=area.share_models(actors)
+        self.assertEqual([(owner["index"],[a["index"] for a in sharers]) for owner,sharers in groups],
+                         [(0,[2,3]),(1,[])])
+        for owner,sharers in groups:  # the fields npc_pack records on the owner
+            owner.update(source_clip_ends=[10.,20.,30.,40.,50.],particle_callbacks_unrendered=[[]],
+                         source_part_bones={"1":9} if owner["index"]==0 else {})
+            for actor in sharers:
+                area.adopt_shared_pack(actor,owner)
+        self.assertEqual([a["file"] for a in actors],
+                         ["town_npc0.c3t","town_npc1.c3t","town_npc0.c3t","town_npc0.c3t"])
+        self.assertEqual([a.get("shares_model_with") for a in actors],[None,None,0,0])
+        self.assertEqual(actors[2]["default_idle_clip"],4)  # its own PeopleInfo idle
+        self.assertEqual(actors[2]["source_part_bones"],{"1":9})
+        actors[2]["source_part_bones"]["1"]=3  # copies never alias the owner
+        self.assertEqual(actors[0]["source_part_bones"],{"1":9})
+        with self.assertRaisesRegex(ValueError,"same original model resource"):
+            area.adopt_shared_pack(actors[1],actors[0])
+        with self.assertRaisesRegex(ValueError,"same original model resource"):
+            area.adopt_shared_pack(actors[0],actors[0])
+        reports=[{"file":"town_npc0.c3t","bytes":1000,"vertices":300,"textures":2,"sampled_bones":17,
+                  "clips":[{"samples":21},{"samples":61}]},
+                 {"file":"town_npc1.c3t","bytes":4000,"vertices":600,"textures":3,"sampled_bones":63,
+                  "clips":[{"samples":5}]}]
+        actors[1]["source_clip_ends"]=[10.]  # idle clip 1 is not in a one-clip pack
+        bounds=area.actor_bounds(actors,reports)
+        self.assertEqual(bounds,{"actors":4,"actors_with_model":4,"actors_without_model":[],
+            "model_packs":2,"model_pack_bytes":5000,"model_pack_vertices":900,"model_pack_textures":5,
+            "largest_pack_bytes":4000,"max_sampled_bones":63,"max_clips":2,"max_samples":82,
+            "initially_loaded":[1,2,3],"initially_visible":[0,1],"idle_motion_outside_pack":[1]})
+        actors[3]["file"]="town_npc9.c3t"
+        with self.assertRaisesRegex(ValueError,"not prepared"):
+            area.actor_bounds(actors,reports)
+
+    def test_profile_mode_covers_later_floors_only(self):
+        self.assertEqual(sorted(area.profile_floors()),["phenac"])
+        self.assertEqual(area.PROFILES["S1_shop_1F.fsys"][0],2947200)
+        self.assertEqual(area.INITIAL_EXTERIOR_ACTORS,(0,1,2,3))
+
+    def test_profile_archive_admission_is_exact(self):
+        import hashlib
+        with tempfile.TemporaryDirectory() as temp:
+            files=Path(temp)/"files";files.mkdir()
+            data=b"FSYS"+bytes(60)
+            profile={"archive":"X1_out.fsys","bytes":len(data),"sha256":hashlib.sha256(data).hexdigest()}
+            with self.assertRaisesRegex(ValueError,"path or size"):
+                area.admit_profile_archive(temp,profile)
+            (files/"X1_out.fsys").write_bytes(data)
+            self.assertEqual(area.admit_profile_archive(temp,profile),data)
+            (files/"X1_out.fsys").write_bytes(data+b"\0")
+            with self.assertRaisesRegex(ValueError,"path or size"):
+                area.admit_profile_archive(temp,profile)
+            (files/"X1_out.fsys").write_bytes(b"GSYS"+bytes(60))
+            with self.assertRaisesRegex(ValueError,"differs"):
+                area.admit_profile_archive(temp,profile)
+
     def test_transition_and_a_button_tables_have_different_halfword_layouts(self):
         data=bytearray(200)
         struct.pack_into(">II",data,0,16,1)
@@ -92,7 +189,7 @@ class AreaPreparationTests(unittest.TestCase):
     def test_timg_variants_select_one_image_at_source_key_boundaries(self):
         keys=[Obj(frame=f,value=v,interpolation=Obj(value="CONSTANT")) for f,v in ((0,0),(3,1),(5,2))]
         texture=Obj(texture_id=0,rotation=(0,0,0),scale=(1,1,1),translation=(0,0,0),
-                    repeat_s=1,repeat_t=1,blending=1,tev=None)
+                    repeat_s=1,repeat_t=1,wrap_s=0,wrap_t=0,blending=1,tev=None)
         dobj=Obj(address=80,mobject=Obj(material=Obj(alpha=1)))
         model=Obj(materials=[{80:({}, {0:{1:keys}})}])
         for frame,selected in ((0,0),(2.999,0),(3,1),(4.999,1),(5,2),(10,2)):

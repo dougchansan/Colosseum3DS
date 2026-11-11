@@ -14,10 +14,20 @@ import re
 import struct
 import os
 import shutil
+import sys
 import tempfile
 
+try:
+    from floor_profiles import area_pack, story_floors
+except ImportError:  # Loaded by file path: the profile table sits beside this tool.
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from floor_profiles import area_pack, story_floors
+
 PIN = "51bfe4314a218dfaf9592fc80723c50498d0ee55"
-GROUPS = {1: 0x1D, 2: 0x1E}  # Original common REL125 floor rows.
+# Original common REL125 floor rows and the C3A1 file each floor publishes,
+# one entry per floor_profiles.py story row.
+GROUPS = {row["floor"]: row["resource_group"] for row in story_floors().values()}
+PACKS = {row["floor"]: area_pack(row) for row in story_floors().values()}
 
 
 def _record(value, label):
@@ -221,7 +231,7 @@ def prepare(areas, links, lifecycle, names):
         if floor in seen:
             raise ValueError("Duplicate original floor")
         seen.add(floor)
-        filename = "outskirt.c3a" if floor == 1 else "shop.c3a"
+        filename = PACKS[floor]
         files[filename] = data
         reports.append({"floor": floor, "file": filename, "bytes": len(data),
                         "sha256": hashlib.sha256(data).hexdigest()})
