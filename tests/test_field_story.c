@@ -400,6 +400,20 @@ static void synthetic_regressions(void)
     CHECK(c3_field_story_tick(&s->story,8.f/60,0,error));CHECK(actor->visible&&fabsf(actor->pose.yaw-4.8694687f)<1e-5f);
     /* The turn keeps the yaw in [0, 2pi): -90 degrees is stored as 270. */
     CHECK(c3_field_story_tick(&s->story,2.f/60,0,error));CHECK(!actor->visible&&fabsf(actor->pose.yaw-4.7123890f)<1e-5f);close_scene(s);
+    /* Native B1 walks the actor to one unit (0.1 x 10) from the hero along
+     * the line between them and stops there; already inside that distance
+     * it does not move. E8 without a follower returns at once. */
+    memset(code,0,sizeof code);args[0]=29;args[1]=3;native(code+3,0xe8,2,args,1);
+    args[2]=0;args[3]=100;args[4]=bits(.1f);args[5]=1;native(code+3,0xb1,6,args,1);
+    args[2]=1;native(code+3,0x3e,3,args,1);args[0]=3;args[1]=0;native(code+3,0x64,2,args,1);
+    synthetic_load(s,&game,file,code,0,0,0x1000003);s->hero.position[0]=5;CHECK(c3_field_story_enter(&s->story,error));
+    actor=c3_field_story_actor(&s->story,3);
+    {unsigned steps;for(steps=0;steps<2000&&actor->visible;++steps)CHECK(c3_field_story_tick(&s->story,1.f/60,0,error));
+     CHECK(steps>1&&steps<2000&&fabsf(actor->pose.position[0]-4)<1e-3f&&fabsf(actor->pose.position[2])<1e-3f);}
+    close_scene(s);
+    synthetic_load(s,&game,file,code,0,0,0x1000003);s->hero.position[0]=.5f;CHECK(c3_field_story_enter(&s->story,error));
+    actor=c3_field_story_actor(&s->story,3);CHECK(c3_field_story_tick(&s->story,1.f/60,0,error));
+    CHECK(!actor->visible&&actor->pose.position[0]==0);close_scene(s);
     /* Native 23 writes the partner-present byte; 4C/4D without arguments,
      * 31, 7E, 83, 89, DA, A1 and B4 complete without waiting. */
     memset(code,0,sizeof code);native(code+3,0x4c,0,NULL,1);native(code+3,0x4d,0,NULL,1);native(code+3,0x31,0,NULL,1);

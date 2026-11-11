@@ -105,7 +105,7 @@ static int validate_native(const Impl *s,const C3StoryCall *c,char *error)
         /* Phenac City exterior bank 013E0E00 (native table lbl_802E1CF0). */
         {0x02,1,0},{0x16,2,0},{0x23,1,0},{0x31,0,0},{0x66,1,0},{0x7e,2,0},
         {0x82,3,0},{0x83,3,0},{0x89,3,0},{0xa1,3,0},{0xa4,6,0x3c},{0xa5,5,0x10},
-        {0xa9,2,0},{0xb4,0,0},{0xda,1,0}
+        {0xa9,2,0},{0xb1,6,0x10},{0xb4,0,0},{0xda,1,0},{0xe8,2,0}
     };
     for(unsigned i=0;i<sizeof signature/sizeof signature[0];++i){
         if(signature[i].id!=c->native)continue;
@@ -128,6 +128,7 @@ static int validate_native(const Impl *s,const C3StoryCall *c,char *error)
             case 0x45:minimum=0;maximum=100;scale=1;break;
             case 0xa4:if(j==5){minimum=0;maximum=100;scale=1;}break;
             case 0xa5:minimum=0;maximum=100;scale=1;break;
+            case 0xb1:minimum=0;maximum=1000;scale=1;break;
             case 0x7f:if(j==2){minimum=-100;maximum=100;scale=1;}break;
             case 0x8c:if(j==4){minimum=0;maximum=60;scale=1;}break;
             default:break;
@@ -560,6 +561,34 @@ static int run_native(Impl *s,RunTask *t,char *error)
             }
         }
         }break;
+    case 0xb1:{
+        /* fn_8018A700: walk up to `distance` (tens of source units) from
+         * another person, along the line between them; already inside that
+         * distance the person stops. The walk is the 3D primitive. */
+        Person *target=person(s,a[2],a[3]);p=person(s,a[0],a[1]);
+        if(p&&target){
+            float delta[3],reach=10.0f*as_float(a[4])*s->map->scale,length=0;
+            for(unsigned i=0;i<3;++i){delta[i]=pose(s,p)->position[i]-pose(s,target)->position[i];length+=delta[i]*delta[i];}
+            length=sqrtf(length);
+            float ratio=length==0?1:reach/length;
+            if(ratio>=1){p->moving=0;p->turning=0;}
+            else{
+                if(p->parent)return fail(error,"Attached actor walking is not prepared");
+                for(unsigned i=0;i<3;++i)p->target[i]=pose(s,target)->position[i]+delta[i]*ratio;
+                p->moving=1;p->waypoint_active=0;p->speed=1;p->public.flags|=8u;
+                start_turn(s,p,atan2f(p->target[0]-pose(s,p)->position[0],p->target[2]-pose(s,p)->position[2]),1);
+                if(!a[5])p->turning=0;
+                if(!set_motion(s,p,p->source?p->source->motions[1]:2,0,1,error))return 0;
+            }
+        }
+        }break;
+    case 0xe8:
+        /* fn_801C7730 moves the follower out of the hero-to-NPC corridor
+         * and always returns 0. Without a follower on the field it returns
+         * at once, as the original does when member 1 has no resource. */
+        if(s->partner_actor.public.model&&s->partner_actor.public.visible)
+            note_presentation(s,c->native,"follower_step_aside_unported");
+        break;
     case 0xb4:
         /* floorGetNextFloorID: destination of the most recent link; on
          * arrival it still names the current floor. */
