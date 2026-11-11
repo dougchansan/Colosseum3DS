@@ -859,6 +859,41 @@ only. Every other path is refused by name, as elsewhere.
     Zigzagoon. Umbreon gets the highest-stats flag; Espeon gets lowest
     level, lowest defenses and strongest damage; both get lowest HP (100%).
   - No number is drawn, and nothing but the ten flag bytes changes.
+- **Entry `fn_802342CC`** (lowered: `c3_battle_ai_select`):
+  1. **Preparation**, as above.
+  2. **Action buffers:** each valid battler in battle that may select an
+     action has its buffer reset (`fightOutPokemonInitFightActionBuff`):
+     - the action (0xFE, 0x30 bytes: every field but the pad, queue index
+       `+0x1C` = -1);
+     - its FightWaza;
+     - its FightItem (0xE5: u16 0, u16 0, s32 -1, u32 0).
+     A battler locked by condition 0x12 or 0x22 would have its action set
+     here: refused.
+  3. **Three rolls,** one draw each (`draw % 100 < chance`): AI byte 0x26
+     (text 0xEC04), 0x27 only with floor 0x20 (0xEC46), and 0x25 (0xEC47).
+     Each writes the debug message variables 0x0D, 0x13 (the trainer's name)
+     and 0x2F (the chance); the message itself needs the debug menu. A
+     selection is refused by name: the switch, item and action choices.
+  4. **Choosing battlers:** after the final variables (0xEC2C, 100), the
+     battlers without an action that must choose a move
+     (`fightOutPokemonCheckFightActionWazaSelect`) are sorted by speed.
+     - A battler with no usable move (Struggle) or under Encore (0x2A) is
+       refused.
+     - Move usability (`fightOutPokemonCheckCanOutOkWazaBanme`) checks
+       Imprison (0x27 on an opposing battler that knows the move), an empty
+       slot and no PP. Disable, Torment, Taunt and held items are refused.
+  5. **Speed sort:** speed (0x8C) with Swift Swim / Chlorophyll in their
+     weather, the speed stage (`lbl_80375D10`), ×1.1 with the speed badge
+     (floor 0x1D and hero `+0xA92`), and paralysis. A tie draws once.
+  6. **Move choice `fn_8023A308`:** not lowered yet, so it is refused by
+     name for the first battler.
+
+  On the original data:
+  - Depending on the stream, Willie's item roll (25%) succeeds and the item
+    choice is refused.
+  - Otherwise both Zigzagoon need a move. Their speeds tie at 33, one draw
+    orders them, and the move choice is refused for the first.
+  - Both action records are reset either way.
 - **AI data:** `fightTrainerGetStatus(NULL, id, 0x1F..0x38)` reads AI row
   bytes `+0x00..+0x19`. The selector map was recovered from
   `jumptable_803757D8`. Port: `c3_battle_trainer_ai_value`, with the AI table
@@ -885,8 +920,8 @@ only. Every other path is refused by name, as elsewhere.
   1. AI data accessor and this map (done).
   2. Preparation `fn_80234A0C` with `fn_8023C370`, the player's moves'
      damage routines and the enemy registry (done).
-  3. The entry: rolls, action-buffer resets, the speed sort. The item
-     routine is refused at first.
+  3. The entry: rolls, action-buffer resets, the speed sort (done; the
+     item routine is refused).
   4. The move choice `fn_8023A308` with the hit and value routines of the
      three moves and the random selection.
   5. The item routine (`fightTrainerAiSelectFightActionItem`).

@@ -784,6 +784,61 @@ int main(void)
         }
     }
 
+    /* Willie's AI entry (fn_802342CC) at the start of a turn: the
+     * preparation, his two Zigzagoon's action buffers reset, three rolls
+     * (switch 0%, item 25% since floor 0x20 allows items, action 0%), each
+     * one draw; then both Zigzagoon need a move, sorted by speed (a tie draws
+     * once), and the move choice (fn_8023A308) is refused by name. When the
+     * item roll succeeds the item choice is refused instead. */
+    int seen_item=0,seen_move=0;
+    for(unsigned skip=0;skip<8&&!(seen_item&&seen_move);++skip){
+        battle_reset(&w,1,0,0,0,33,0);
+        for(unsigned k=0;k<skip;++k){uint16_t d=0;CHECK(c3_battle_rng_next16(&w.state->rng,&d));}
+        uint32_t willie=w.state->trainer[1],order[8];
+        uint32_t zig_a=c3_battle_state_fight_out(w.state,1,0),zig_b=c3_battle_state_fight_out(w.state,1,1);
+        memset(&r,0,sizeof r);r.handlers.state=w.state;
+        r.handlers.damage=(C3BattleDamageTables){w.script_pack.stage_ratios,w.script_pack.stage_ratio_count,
+            w.script_pack.item_types,w.pack->sections[C3_PACK_T44].bytes,w.pack->sections[C3_PACK_T44].count};
+        r.handlers.critical=w.script_pack.critical;r.handlers.critical_count=w.script_pack.critical_count;
+        r.handlers.ai_moves=w.script_pack.ai_moves;r.handlers.ai_move_count=w.script_pack.ai_move_count;
+        C3BattleScriptServices sv=c3_battle_handler_services(&r.handlers);
+        CHECK(c3_battle_script_init(&r.script,&w.script_pack,&sv));
+        C3BattleRng predicted=w.state->rng;uint16_t r1=0,r2=0,r3=0,tie=0;
+        CHECK(c3_battle_rng_next16(&predicted,&r1)&&c3_battle_rng_next16(&predicted,&r2)&&c3_battle_rng_next16(&predicted,&r3));
+        int item=25>(int)(r2%100u);
+        const uint8_t *pa=c3_battle_arena_bytes(&w.state->arena,c3_battle_state_fight_pokemon(w.state,1,0)+4,0x98);
+        const uint8_t *pb=c3_battle_arena_bytes(&w.state->arena,c3_battle_state_fight_pokemon(w.state,1,1)+4,0x98);
+        uint16_t sa=(uint16_t)(pa[0x96]<<8|pa[0x97]),sb=(uint16_t)(pb[0x96]<<8|pb[0x97]);
+        C3BattleRng after=predicted;
+        int a_first=sa>sb;
+        if(!item&&sa==sb){CHECK(c3_battle_rng_next16(&after,&tie));a_first=tie&1;}
+        CHECK(!c3_battle_ai_select(&r.handlers,&r.script,willie,order));
+        printf("AI entry: rolls %u %u %u, speeds %u/%u: %s\n",r1%100u,r2%100u,r3%100u,sa,sb,r.script.failure);
+        CHECK(w.state->msgctrl[0x13]==willie+4u);
+        if(item){
+            seen_item=1;
+            CHECK(strstr(r.script.failure,"AI item choice")!=NULL);
+            CHECK(w.state->rng.draws==predicted.draws-1u);               /* the third roll is not reached */
+            CHECK(w.state->msgctrl[0x0D]==C3_MSGREF_MESSAGE(0xEC46)&&w.state->msgctrl[0x2F]==0x19);
+        }else{
+            seen_move=1;
+            char want[64];
+            snprintf(want,sizeof want,"for %08lx",(unsigned long)(a_first?zig_a:zig_b));
+            CHECK(strstr(r.script.failure,"AI move choice (fn_8023A308)")!=NULL&&strstr(r.script.failure,want)!=NULL);
+            CHECK(w.state->rng.draws==after.draws&&w.state->rng.seed==after.seed);
+            CHECK(order[0]==(a_first?zig_a:zig_b)&&order[1]==(a_first?zig_b:zig_a));
+            CHECK(w.state->msgctrl[0x0D]==C3_MSGREF_MESSAGE(0xEC2C)&&w.state->msgctrl[0x2F]==100);
+        }
+        /* Both action records were reset (queue index -1). */
+        for(int k=0;k<2;++k){
+            uint32_t fo=k?zig_b:zig_a,action=0;
+            CHECK(c3_battle_fight_status_get(&w.state->arena,fo,0xFE,0,&action)&&action);
+            const uint8_t *a=c3_battle_arena_bytes(&w.state->arena,action,0x30);
+            CHECK(a[0]==0&&a[1]==0&&a[0x1C]==0xFF&&a[0x1F]==0xFF);
+        }
+    }
+    CHECK(seen_item&&seen_move);
+
     /* The whole turn: Zigzagoon's Tackle on Umbreon runs past WAZAEND. The
      * faint mark pass finds no fainted battler, the faint script's battle
      * end check (0x24) finds both sides with HP and every battler in battle,

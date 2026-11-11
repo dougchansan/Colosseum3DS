@@ -27,4 +27,13 @@ int c3_battle_ai_prepare(C3BattleHandlers *h, C3BattleScript *sc, uint32_t train
  * power from friendship). */
 int c3_battle_ai_damage_estimate(C3BattleHandlers *h, C3BattleScript *sc, uint32_t trainer, uint32_t attacker,
                                  uint16_t move, uint32_t target, uint32_t *damage);
+
+/* fn_802342CC(trainer, fight type): the computer trainer's turn. The
+ * preparation; its battlers' action buffers reset; three rolls, one draw
+ * each (AI byte 0x26 switch, 0x27 item only with floor 0x20, 0x25 action),
+ * whose selections are refused by name; then its battlers that must choose
+ * a move (no Struggle, no Encore), sorted by speed into order[] (ties draw
+ * once), for the move choice fn_8023A308, which is not lowered yet:
+ * refused. Returns 1 only when no battler needs an action. */
+int c3_battle_ai_select(C3BattleHandlers *h, C3BattleScript *sc, uint32_t trainer, uint32_t order[8]);
 #endif

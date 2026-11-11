@@ -176,3 +176,200 @@ int c3_battle_ai_prepare(C3BattleHandlers *h,C3BattleScript *sc,uint32_t trainer
     }
     return 1;
 }
+
+/* ---- entry fn_802342CC --------------------------------------------------- */
+
+static int has(const C3BattleState *s,uint32_t fo,uint16_t id,int *fault)
+{return c3_battle_condition_check(s,fo,id,fault)==1;}
+/* fightOutPokemonInitFightActionBuff: the battler's action (0xFE, 0x30
+ * bytes: everything but the pad, queue index -1), FightWaza (0xD9) and
+ * FightItem (0xE5: u16 0, u16 0, s32 -1, u32 0). */
+static int init_action_buff(C3BattleState *s,uint32_t fo)
+{
+    uint32_t action=get(s,fo,0xFE);
+    if(!action)return 1;
+    uint8_t *a=c3_battle_arena_bytes(&s->arena,action,0x30);
+    if(!a)return 0;
+    a[0]=a[1]=0;memset(a+4,0,0x18);memset(a+0x20,0,0x10);
+    a[0x1C]=a[0x1D]=a[0x1E]=a[0x1F]=0xFF;
+    if(!c3_battle_waza_init(s,get(s,fo,0xD9)))return 0;
+    uint32_t item=get(s,fo,0xE5);
+    uint8_t *it=item?c3_battle_arena_bytes(&s->arena,item,12):NULL;
+    if(item&&!it)return 0;
+    if(it){memset(it,0,12);it[4]=it[5]=it[6]=it[7]=0xFF;}
+    return 1;
+}
+/* fightTrainerGetNoActionFightOutPokemonPtr: a valid battler whose action
+ * is not set (fightActionCheckValid: kind and data pointer). */
+static uint32_t no_action_battler(const C3BattleState *s,uint32_t trainer,unsigned i,int *fault)
+{
+    uint32_t fo=trainer+C3_RUNTIME_FIGHT_OUT_OFFSET+i*C3_FIGHT_OUT_POKEMON_BYTES;
+    if(!c3_battle_fight_out_check_valid(s,fo,fault))return 0;
+    uint32_t action=get(s,fo,0xFE);
+    const uint8_t *a=action?c3_battle_arena_bytes(&s->arena,action,0x30):NULL;
+    if(!a)return 0;
+    return (be16(a)&&be32(a+8))?0:fo;
+}
+/* fightOutPokemonCheckCanOutOkWazaBanme(fo, slot, 0, NULL): 0 when the move
+ * in the slot can be chosen. Disable (0x29), Torment (0x1B), Taunt (0x30)
+ * and a Choice Band are refused (-1); Imprison (0x27 on an opposing battler
+ * in battle that knows the move), an empty slot (0 or 0x163) and no PP block
+ * it. */
+static int move_blocked(C3BattleState *s,uint32_t fo,unsigned slot,int *fault)
+{
+    uint32_t pokemon=pokemon_of(s,fo);
+    const uint8_t *p=pokemon?c3_battle_arena_bytes(&s->arena,pokemon,C3_BATTLE_POKEMON_BYTES):NULL;
+    if(!p)return -1;
+    uint16_t move=be16(p+0x78+4*slot),effect=0;
+    if(has(s,fo,0x29,fault)||has(s,fo,0x1B,fault)||has(s,fo,0x30,fault))return -1;
+    if(!c3_battle_state_held_item_effect(s,fo,&effect))return -1;
+    int result=0;
+    uint32_t list[8];unsigned n=0;
+    if(!c3_battle_state_valid_fight_outs(s,list,&n))return -1;
+    uint32_t own=c3_battle_state_battler_side(s,fo);
+    for(unsigned i=0;i<n&&!result;++i){                            /* fightFloorCheckHuuinWazaFightOutPokemon */
+        if(!c3_battle_fight_out_check_fight_out(s,list[i],fault))continue;
+        if(c3_battle_state_battler_side(s,list[i])==own||!has(s,list[i],0x27,fault))continue;
+        const uint8_t *q=c3_battle_arena_bytes(&s->arena,pokemon_of(s,list[i]),C3_BATTLE_POKEMON_BYTES);
+        for(unsigned k=0;q&&k<4;++k)if(be16(q+0x78+4*k)==move)result=4;
+    }
+    if(!move||move==0x163||!p[0x7A+4*slot])result=6;              /* pokemonWazaCheckValid, PP */
+    return result;
+}
+/* fightOutPokemonCheckFightActionWazaSelect(fo, 1): 0 when the battler
+ * chooses its move; a battler with no usable move (Struggle) or under
+ * Encore (0x2A) would have its action set here: refused. */
+static int must_choose_move(C3BattleState *s,C3BattleScript *sc,uint32_t fo,int *choose)
+{
+    int fault=0,usable=0;
+    *choose=1;
+    if(!c3_battle_fight_out_check_fight_out(s,fo,&fault))return !fault;
+    uint32_t pokemon=pokemon_of(s,fo);
+    const uint8_t *p=pokemon?c3_battle_arena_bytes(&s->arena,pokemon,C3_BATTLE_POKEMON_BYTES):NULL;
+    if(!p)return refuse(sc,"AI battler Pokemon");
+    for(unsigned k=0;k<4;++k){                                      /* fightOutPokemonGetOutOkWazaBanmeAry */
+        uint16_t move=be16(p+0x78+4*k);
+        if(!move||move==0x163||move==0x165)continue;
+        int b=move_blocked(s,fo,k,&fault);
+        if(b<0)return refuse(sc,"move usability (Disable, Torment, Taunt or a held item)");
+        if(!b)++usable;
+    }
+    if(!usable)return refuse(sc,"Struggle action (fightOutPokemonCheckFightActionWazaSelect)");
+    if(has(s,fo,0x2A,&fault))return refuse(sc,"Encore action (condition 0x2A)");
+    return !fault?1:refuse(sc,"AI battler conditions");
+}
+/* fightOutPokemonGetNowNimbleness: speed (0x8C), Swift Swim 0x21 in rain /
+ * Chlorophyll 0x22 in sun doubled, the speed stage (0xEA, lbl_80375D10),
+ * x1.1 with the speed badge (floor 0x1D and the hero's badge 3, +0xA92),
+ * paralysis (condition 5) quartered. Held items are refused (-1). */
+static int64_t now_speed(C3BattleHandlers *h,uint32_t fo,uint8_t badge,int weather,int *fault)
+{
+    C3BattleState *s=h->state;
+    uint32_t pokemon=pokemon_of(s,fo);
+    const uint8_t *p=pokemon?c3_battle_arena_bytes(&s->arena,pokemon,C3_BATTLE_POKEMON_BYTES):NULL;
+    uint16_t effect=0;
+    if(!p)return 0;
+    if(!c3_battle_state_held_item_effect(s,fo,&effect))return -1;
+    uint16_t ability=(uint16_t)get(s,fo,0x100);
+    uint8_t stage=(uint8_t)get(s,fo,0xEA);
+    uint32_t speed=be16(p+0x96);
+    if((ability==0x21&&weather==2)||(ability==0x22&&weather==1))speed<<=1;
+    const uint8_t *r=h->damage.stage_ratios&&stage<h->damage.stage_count?h->damage.stage_ratios+2u*stage:NULL;
+    speed=r&&r[1]?speed*r[0]/r[1]:0;                              /* fightAbicntDoKakeWaru */
+    uint32_t original=get(s,fo,0xD5),trainer=0;
+    for(unsigned side=0;side<2&&!trainer;++side)for(unsigned t=0;t<2;++t){
+        uint32_t tr=s->floor+C3_FIGHT_SIDE_OFFSET+side*C3_FIGHT_SIDE_BYTES+C3_FIGHT_SIDE_TRAINER_OFFSET+
+            t*C3_BATTLE_RUNTIME_TRAINER_BYTES;
+        for(unsigned k=0;k<6;++k)if(tr+0xB1Cu+k*0x154u==original)trainer=tr;
+    }
+    const uint8_t *hero=trainer?c3_battle_arena_bytes(&s->arena,trainer+4u+0xA92u,1):NULL;
+    if(badge==1&&hero&&hero[0]==1)speed=speed*110u/100u;
+    if(has(s,fo,5,fault))speed>>=2;
+    return speed;
+}
+/* fightFloorSortFightOutPokemonPtrArySub(0, list, 8, 0): by speed, ties by
+ * one draw (fightFloorCmpfightOutPokemonNimbleness, priority off). */
+static int sort_by_speed(C3BattleHandlers *h,C3BattleScript *sc,uint32_t list[8])
+{
+    C3BattleState *s=h->state;
+    uint32_t badge=0;int weather=0,fault=0;
+    if(!c3_battle_floor_value(s,0x1D,&badge))return refuse(sc,"floor field 0x1D");
+    if(!c3_battle_state_ability_on_any_battler(s,13)&&!c3_battle_state_ability_on_any_battler(s,0x4D)&&
+       !c3_battle_state_weather(s,0,&weather))return refuse(sc,"weather");
+    for(unsigned i=0;i<7;++i)for(unsigned j=i+1;j<8;++j){
+        if(!list[i]&&!list[j])continue;
+        if(!list[i]){list[i]=list[j];list[j]=0;continue;}
+        if(!list[j])continue;
+        int64_t a=now_speed(h,list[i],(uint8_t)badge,weather,&fault),b=now_speed(h,list[j],(uint8_t)badge,weather,&fault);
+        if(a<0||b<0)return refuse(sc,"held item speed effect");
+        int first=a>b;
+        if(a==b){
+            uint16_t tick=0;
+            if(!c3_battle_rng_next16(&s->rng,&tick))return refuse(sc,"random stream");
+            first=tick&1;
+        }
+        if(!first){uint32_t t=list[i];list[i]=list[j];list[j]=t;}
+    }
+    return !fault?1:refuse(sc,"speed records");
+}
+/* One percentage roll of fn_802342CC: the debug message variables (0x0D the
+ * roll's text, 0x13 the trainer's name, 0x2F the chance), then one draw. */
+static int roll(C3BattleState *s,C3BattleScript *sc,uint32_t trainer,uint32_t selector,uint16_t text,int *selected)
+{
+    uint32_t chance=0;uint16_t tick=0;
+    if(!c3_battle_trainer_ai_value(s,trainer,selector,&chance))return refuse(sc,"AI data");
+    if(!c3_battle_rng_next16(&s->rng,&tick))return refuse(sc,"random stream");
+    c3_battle_msgctrl_set(s,0x0D,C3_MSGREF_MESSAGE(text));
+    c3_battle_msgctrl_set(s,0x13,trainer+4u);                     /* fightTrainerGetNamePtr */
+    c3_battle_msgctrl_set(s,0x2F,(uint8_t)chance);
+    *selected=(int32_t)(uint8_t)chance>(int32_t)(tick%100u);
+    return 1;
+}
+int c3_battle_ai_select(C3BattleHandlers *h,C3BattleScript *sc,uint32_t trainer,uint32_t order[8])
+{
+    C3BattleState *s=h->state;
+    uint32_t count=0,items=0;
+    int fault=0,selected=0;
+    memset(order,0,8*sizeof *order);
+    if(!c3_battle_floor_value(s,0x18,&count)||!c3_battle_floor_value(s,0x20,&items))return refuse(sc,"floor fields");
+    if((uint16_t)count>2)return refuse(sc,"more than two active slots");
+    if(!c3_battle_ai_prepare(h,sc,trainer))return 0;
+    for(unsigned i=0;i<(uint16_t)count;++i){
+        uint32_t fo=trainer+C3_RUNTIME_FIGHT_OUT_OFFSET+i*C3_FIGHT_OUT_POKEMON_BYTES;
+        if(!c3_battle_fight_out_check_valid(s,fo,&fault))continue;
+        /* fightOutPokemonCheckFightActionSelect(fo, 1) */
+        if(!c3_battle_fight_out_check_fight_out(s,fo,&fault))continue;
+        if(has(s,fo,0x12,&fault)||has(s,fo,0x22,&fault))return refuse(sc,"locked action (conditions 0x12 / 0x22)");
+        if(!init_action_buff(s,fo))return refuse(sc,"action buffer");
+    }
+    if(!roll(s,sc,trainer,0x26,0xEC04,&selected))return 0;
+    for(unsigned i=0;selected&&i<(uint16_t)count;++i)
+        if(no_action_battler(s,trainer,i,&fault))return refuse(sc,"AI switch choice (fightTrainerAiSelectFightActionIrekae)");
+    if((uint8_t)items==1){
+        if(!roll(s,sc,trainer,0x27,0xEC46,&selected))return 0;
+        for(unsigned i=0;selected&&i<(uint16_t)count;++i)
+            if(no_action_battler(s,trainer,i,&fault))return refuse(sc,"AI item choice (fightTrainerAiSelectFightActionItem)");
+    }
+    if(!roll(s,sc,trainer,0x25,0xEC47,&selected))return 0;
+    for(unsigned i=0;selected&&i<(uint16_t)count;++i)
+        if(no_action_battler(s,trainer,i,&fault))return refuse(sc,"AI action (fn_8024E534)");
+    c3_battle_msgctrl_set(s,0x0D,C3_MSGREF_MESSAGE(0xEC2C));
+    c3_battle_msgctrl_set(s,0x13,trainer+4u);
+    c3_battle_msgctrl_set(s,0x2F,100);
+    unsigned n=0;
+    for(unsigned i=0;i<(uint16_t)count;++i){
+        uint32_t fo=no_action_battler(s,trainer,i,&fault);
+        int choose=0;
+        if(!fo)continue;
+        if(!must_choose_move(s,sc,fo,&choose))return 0;
+        if(choose)order[n++]=fo;
+    }
+    if(fault)return refuse(sc,"AI battler records");
+    if(n&&!sort_by_speed(h,sc,order))return 0;
+    if(n){
+        char what[96];
+        snprintf(what,sizeof what,"AI move choice (fn_8023A308) for %08lx",(unsigned long)order[0]);
+        return refuse(sc,what);
+    }
+    return 1;
+}
