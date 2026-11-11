@@ -431,6 +431,26 @@ static int choose_move(C3BattleState *s,C3BattleScript *sc,uint32_t trainer,uint
     if(!create_attack(s,fo,moves[k],id,(int8_t)slots[k]))return refuse(sc,"attack action");
     return 1;
 }
+/* ---- item choice fightTrainerAiSelectFightActionItem --------------------- */
+
+/* fightTrainerAiSelectFightActionItem(trainer, fo, fight type) returns 0
+ * without an action when the trainer's usable item list is empty
+ * (fightTrainerGetTemotiNormalItemDataIdAry(trainer, items, 20, 1): the
+ * normal-item pocket of its hero record, trainer field 0x44 = +4, 20 entries
+ * at +0x780, less the items its other battlers already chose this turn).
+ * A computer trainer's pocket holds the items of its trainer row (+0x14, 8
+ * IDs) added at creation. An empty pocket gives an empty list whatever was
+ * chosen, so this returns 1 with no action set; any entry in the pocket is
+ * refused, since the scoring of items is not lowered. */
+#define AI_HERO_NORMAL_ITEMS 0x780u
+static int item_choice(C3BattleState *s,C3BattleScript *sc,uint32_t trainer)
+{
+    const uint8_t *pocket=c3_battle_arena_bytes(&s->arena,trainer+4u+AI_HERO_NORMAL_ITEMS,20u*4u);
+    if(!pocket)return refuse(sc,"trainer item pocket");
+    for(unsigned i=0;i<20u*4u;++i)
+        if(pocket[i])return refuse(sc,"AI item choice with items in the bag (fightTrainerAiSelectFightActionItem)");
+    return 1;
+}
 /* One percentage roll of fn_802342CC: the debug message variables (0x0D the
  * roll's text, 0x13 the trainer's name, 0x2F the chance), then one draw. */
 static int roll(C3BattleState *s,C3BattleScript *sc,uint32_t trainer,uint32_t selector,uint16_t text,int *selected)
@@ -467,7 +487,7 @@ int c3_battle_ai_select(C3BattleHandlers *h,C3BattleScript *sc,uint32_t trainer,
     if((uint8_t)items==1){
         if(!roll(s,sc,trainer,0x27,0xEC46,&selected))return 0;
         for(unsigned i=0;selected&&i<(uint16_t)count;++i)
-            if(no_action_battler(s,trainer,i,&fault))return refuse(sc,"AI item choice (fightTrainerAiSelectFightActionItem)");
+            if(no_action_battler(s,trainer,i,&fault)&&!item_choice(s,sc,trainer))return 0;
     }
     if(!roll(s,sc,trainer,0x25,0xEC47,&selected))return 0;
     for(unsigned i=0;selected&&i<(uint16_t)count;++i)

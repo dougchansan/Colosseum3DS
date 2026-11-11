@@ -887,11 +887,24 @@ only. Every other path is refused by name, as elsewhere.
      (floor 0x1D and hero `+0xA92`), and paralysis. A tie draws once.
   6. **Move choice** for each battler in that order (below).
 
-  On the original data:
-  - Depending on the stream, Willie's item roll (25%) succeeds and the item
-    choice is refused; both action records stay reset.
-  - Otherwise both Zigzagoon need a move. Their speeds tie at 33, one draw
-    orders them, and each gets its move (below).
+  On the original data, both Zigzagoon end up needing a move whichever way
+  the item roll goes (below). Their speeds tie at 33, one draw orders them,
+  and each gets its move.
+- **Item choice `fightTrainerAiSelectFightActionItem`** (lowered for an
+  empty bag: `item_choice`). It first lists the trainer's usable items
+  (`fightTrainerGetTemotiNormalItemDataIdAry(trainer, items, 20, 1)`): the
+  normal-item pocket of its hero record (trainer field 0x44 = `+4`, 20
+  entries at `+0x780`), less items its other battlers already chose. With
+  none it returns 0 and sets no action, so the turn goes on to the third
+  roll and the move choice; the entry ignores the result.
+  - A computer trainer's pocket gets the eight item IDs of its trainer row
+    (`+0x14`) at creation (`fightTrainerCreateFightTrainerDataIdToHero`).
+    Willie's row 10 has all eight at 0, and his pocket is empty in the
+    battle state.
+  - Any entry in the pocket is refused by name: the item scoring is not
+    lowered.
+  So when Willie's item roll (25%) succeeds, nothing changes but the draw:
+  every turn draws the same numbers whichever way the roll goes.
 - **Move choice `fn_8023A308`** (lowered for the random branches:
   `choose_move` in `src/battle_ai.c`). Willie's AI bytes 0x30 and 0x31 are
   both 1, so the scored choices `fn_8023B498` (target) and `fn_8023A740`
@@ -933,8 +946,8 @@ only. Every other path is refused by name, as elsewhere.
   - damage estimates 0x2D = 1, type check 0x2A = 1, ability check 0x2B = 1;
   - random target 0x30 = 1, random move 0x31 = 1, average 0x35 = 80, PP
     0x37 = 10.
-  So the item roll succeeds on about a quarter of turns and its routine has
-  to be ported too (or refused at first).
+  So the item roll succeeds on about a quarter of turns; with his empty bag
+  it sets nothing (see the item choice above).
 - **Per-move AI routines:** move row `+0x1C` indexes `lbl_8035C430`
   (0x14-byte rows: value, hit and damage function, then the WZX type and
   variation functions). Static data:
@@ -954,7 +967,8 @@ only. Every other path is refused by name, as elsewhere.
   4. The move choice `fn_8023A308` (done for Willie's random choices; the
      scored choices with the per-move value and hit routines are refused,
      since Willie's AI does not reach them).
-  5. The item routine (`fightTrainerAiSelectFightActionItem`).
+  5. The item routine (`fightTrainerAiSelectFightActionItem`) (done for an
+     empty bag, Willie's case; items are refused).
 
 ## Increments
 

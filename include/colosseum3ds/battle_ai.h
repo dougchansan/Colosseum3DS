@@ -30,8 +30,10 @@ int c3_battle_ai_damage_estimate(C3BattleHandlers *h, C3BattleScript *sc, uint32
 
 /* fn_802342CC(trainer, fight type): the computer trainer's turn. The
  * preparation; its battlers' action buffers reset; three rolls, one draw
- * each (AI byte 0x26 switch, 0x27 item only with floor 0x20, 0x25 action),
- * whose selections are refused by name; then its battlers that must choose
+ * each (AI byte 0x26 switch, 0x27 item only with floor 0x20, 0x25 action);
+ * a selected item roll sets no action when the trainer's item pocket is
+ * empty (any item is refused), the switch and action selections are refused
+ * by name; then its battlers that must choose
  * a move (no Struggle, no Encore), sorted by speed into order[] (ties draw
  * once), each in turn through the move choice fn_8023A308: with AI bytes
  * 0x30 / 0x31 set, one draw picks an opposing battler and one a usable move

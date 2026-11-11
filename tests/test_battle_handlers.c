@@ -793,12 +793,22 @@ int main(void)
      * draw over Umbreon and Espeon, one over its two moves. Tackle (category
      * 0) keeps the drawn target; Growl and Tail Whip (both foes) take the
      * first opposing battler. Each gets an attack action and its FightWaza.
-     * When the item roll succeeds the item choice is refused instead. */
+     * When the item roll succeeds, Willie's empty bag gives no item action
+     * (fightTrainerAiSelectFightActionItem returns 0) and the turn goes on
+     * the same way; the draws are the same either way. */
     int seen_item=0,seen_move=0;
     for(unsigned skip=0;skip<8&&!(seen_item&&seen_move);++skip){
         battle_reset(&w,1,0,0,0,33,0);
         for(unsigned k=0;k<skip;++k){uint16_t d=0;CHECK(c3_battle_rng_next16(&w.state->rng,&d));}
         uint32_t willie=w.state->trainer[1],order[8];
+        {   /* Willie (trainer row 10) has no items: his row's eight item IDs
+             * are 0, so trainer creation leaves his normal-item pocket empty. */
+            const uint8_t *bag=c3_battle_arena_bytes(&w.state->arena,willie+4u+0x780u,80);
+            const uint8_t *row=w.state->trainers.rows+10u*w.state->trainers.stride;
+            CHECK(bag&&w.state->trainers.count>10&&(row[6]<<8|row[7])==81);
+            for(int q=0;q<80;++q)CHECK(bag[q]==0);
+            for(int q=0;q<16;++q)CHECK(row[0x14+q]==0);
+        }
         uint32_t zig_a=c3_battle_state_fight_out(w.state,1,0),zig_b=c3_battle_state_fight_out(w.state,1,1);
         memset(&r,0,sizeof r);r.handlers.state=w.state;
         r.handlers.damage=(C3BattleDamageTables){w.script_pack.stage_ratios,w.script_pack.stage_ratio_count,
@@ -815,19 +825,15 @@ int main(void)
         uint16_t sa=(uint16_t)(pa[0x96]<<8|pa[0x97]),sb=(uint16_t)(pb[0x96]<<8|pb[0x97]);
         C3BattleRng after=predicted;
         int a_first=sa>sb;
-        if(!item&&sa==sb){CHECK(c3_battle_rng_next16(&after,&tie));a_first=tie&1;}
+        if(sa==sb){CHECK(c3_battle_rng_next16(&after,&tie));a_first=tie&1;}
         int selected=c3_battle_ai_select(&r.handlers,&r.script,willie,order);
         printf("AI entry: rolls %u %u %u, speeds %u/%u: %s\n",r1%100u,r2%100u,r3%100u,sa,sb,
-               selected?"actions set":r.script.failure);
-        CHECK(selected==!item);
+               selected?(item?"item roll, empty bag, actions set":"actions set"):r.script.failure);
+        CHECK(selected);
         CHECK(w.state->msgctrl[0x13]==willie+4u);
-        if(item){
-            seen_item=1;
-            CHECK(strstr(r.script.failure,"AI item choice")!=NULL);
-            CHECK(w.state->rng.draws==predicted.draws-1u);               /* the third roll is not reached */
-            CHECK(w.state->msgctrl[0x0D]==C3_MSGREF_MESSAGE(0xEC46)&&w.state->msgctrl[0x2F]==0x19);
-        }else{
-            seen_move=1;
+        if(item)seen_item=1;
+        else seen_move=1;
+        {
             uint32_t foes[2]={c3_battle_state_fight_out(w.state,0,0),c3_battle_state_fight_out(w.state,0,1)},type=0;
             CHECK(c3_battle_floor_value(w.state,0x14,&type));
             for(int k=0;k<3;++k){                                              /* Tackle, Growl, Tail Whip */
@@ -864,14 +870,6 @@ int main(void)
             CHECK(w.state->msgctrl[0x0D]==C3_MSGREF_MESSAGE(0xEC2C)&&w.state->msgctrl[0x0E]==C3_MSGREF_MESSAGE(0xEC32)&&
                   w.state->msgctrl[0x2F]==0);
             CHECK(w.state->msgctrl[0x14]==c3_battle_state_fight_pokemon(w.state,1,order[1]==zig_a?0:1)+4u+0x2Eu);
-            continue;
-        }
-        /* Both action records were reset (queue index -1). */
-        for(int k=0;k<2;++k){
-            uint32_t fo=k?zig_b:zig_a,action=0;
-            CHECK(c3_battle_fight_status_get(&w.state->arena,fo,0xFE,0,&action)&&action);
-            const uint8_t *a=c3_battle_arena_bytes(&w.state->arena,action,0x30);
-            CHECK(a[0]==0&&a[1]==0&&a[0x1C]==0xFF&&a[0x1F]==0xFF);
         }
     }
     CHECK(seen_item&&seen_move);
