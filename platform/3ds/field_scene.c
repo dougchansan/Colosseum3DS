@@ -13,6 +13,7 @@
 #include "colosseum3ds/field.h"
 #include "colosseum3ds/field_story.h"
 #include "colosseum3ds/floor_profile.h"
+#include "colosseum3ds/inventory.h"
 #include "colosseum3ds/name_entry.h"
 #include "world_map_scene.h"
 #include "colosseum3ds/area_lights.h"
@@ -49,6 +50,23 @@ int c3_field_scene_supports(uint32_t floor)
     }
     snprintf(path,sizeof path,BOOT_ROOT "%s",profile->story);
     return exists(path);
+}
+/* Item service for script native 77. The PDA pack holds the item table and
+ * names; it is read for the gift and released again. */
+static int receive_item(void *context,uint32_t item,uint32_t count,char *name,size_t capacity)
+{
+    C3GameState *state=context;C3GameSummary summary;C3PdaAssets assets={0};C3InventoryItem info;
+    FILE *file=fopen(BOOT_ROOT "pda.c3pd","rb");long length=0;uint8_t *data=NULL;int result=-1;
+    if(file&&!fseek(file,0,SEEK_END)&&(length=ftell(file))>=64&&length<=8*1024*1024&&!fseek(file,0,SEEK_SET)&&
+       (data=malloc((size_t)length))&&fread(data,1,(size_t)length,file)==(size_t)length&&
+       c3_pda_assets_open(&assets,data,(size_t)length)&&c3_inventory_item(&assets,item,&info)&&
+       c3_game_state_summary(state,&summary)){
+        result=c3_inventory_receive(state,&assets,item,count);
+        if(!c3_pda_text(&assets,info.name,summary.name,summary.partner,name,capacity))
+            snprintf(name,capacity,"ITEM %lu",(unsigned long)item);
+    }
+    if(file)fclose(file);
+    free(data);return result;
 }
 /* Destinations the original doorway script may request from a field. */
 static int floor_reachable(uint32_t floor)
@@ -245,6 +263,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
        !c3_field_story_bind_battle(&story,BOOT_ROOT "willie.c3b",story_error))goto story_failed;
     c3_field_story_set_floor_support(&story,floor_reachable);
     c3_field_story_enable_name_entry(&story,1);
+    c3_field_story_set_item_service(&story,receive_item,state);
     if(!c3_field_story_prepare(&story,story_error))goto story_failed;
     view=c3_field_story_view(&story);
     if(trace){fprintf(trace,"field_begin floor=%lu previous=%lu spawn=%u new=%d maps=%lu npcs=%lu models=%lu arrival=%d duration=%.3f\n",

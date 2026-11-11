@@ -2,6 +2,7 @@
 #include "colosseum3ds/field_story.h"
 #include "colosseum3ds/floor_profile.h"
 
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -38,6 +39,11 @@ static int logged(const char *text)
     CHECK(!ferror(trace)&&fsetpos(trace,&position)==0);return found;
 }
 static int reachable(uint32_t floor){return floor>=1&&floor<=3;}
+static unsigned gifts;static uint32_t gift_item,gift_count;
+static int receive(void *context,uint32_t item,uint32_t count,char *name,size_t capacity)
+{
+    (void)context;++gifts;gift_item=item;gift_count=count;snprintf(name,capacity,"TEST ITEM");return 0;
+}
 static void tick(Scene *s,unsigned frame)
 {
     const C3FieldStoryView *v=c3_field_story_view(&s->story);
@@ -86,6 +92,7 @@ int main(int argc,char **argv)
     CHECK(c3_field_story_load(&s->story,file,&game,&s->map,&s->area,&s->hero,&s->wes,s->models,&s->camera,trace,error));
     c3_field_story_set_floor_support(&s->story,reachable);
     c3_field_story_enable_name_entry(&s->story,1);
+    c3_field_story_set_item_service(&s->story,receive,NULL);
     CHECK(c3_field_story_prepare(&s->story,error));
     unsigned frame;
     for(frame=0;frame<3600&&!c3_field_story_view(&s->story)->prepared;++frame)
@@ -141,6 +148,30 @@ int main(int argc,char **argv)
     for(frame=0;frame<6000&&!c3_field_story_view(&s->story)->control;++frame)tick(s,frame);
     CHECK(c3_field_story_view(&s->story)->control&&flag(&game,0xacf)==1&&flag(&game,0x3e4)==1);
     fprintf(trace,"phenac_partner_event_complete partner=1 flags03E5_0ACF=1 control=1\n");
+    /* The optional trainer, actor 15: main's function 40 tests native A9
+     * (hero within 30 units and 15 degrees of the actor's facing), shows the
+     * emote, walks the actor up with B1 and calls function 39: a YES/NO
+     * choice, battle native 66 with encounter 21, flag 03EF on a win and the
+     * gift of item 0x149 through native 77. */
+    {C3StoryActor *trainer=c3_field_story_actor(&s->story,15);CHECK(trainer&&trainer->visible&&flag(&game,0x3ef)==0);
+     s->hero.position[0]=trainer->pose.position[0]+2.0f*sinf(trainer->pose.yaw);
+     s->hero.position[2]=trainer->pose.position[2]+2.0f*cosf(trainer->pose.yaw);
+     s->hero.position[1]=trainer->pose.position[1];
+     encounter=0;gifts=0;
+     for(frame=0;frame<60000&&!c3_field_story_battle_pending(&s->story,&encounter);++frame)tick(s,frame);
+     CHECK(frame<60000&&encounter==21&&logged("id=b1 argc=6")&&logged("id=e8 argc=2"));
+     float dx=trainer->pose.position[0]-s->hero.position[0],dz=trainer->pose.position[2]-s->hero.position[2];
+     CHECK(fabsf(sqrtf(dx*dx+dz*dz)-1.0f)<.05f); /* B1 distance 1.0 = ten source units */
+     CHECK(c3_field_story_battle_result(&s->story,2,error));
+     int shown=0;
+     for(frame=0;frame<60000&&!(flag(&game,0x3ef)&&gifts&&c3_field_story_view(&s->story)->control);++frame){
+         const C3FieldStoryView *v=c3_field_story_view(&s->story);
+         if(v->message_id==0x3cb8&&strstr(v->message,"TEST ITEM")&&strstr(v->message,"WES"))shown=1;
+         tick(s,frame);
+     }
+     CHECK(frame<60000&&gifts==1&&gift_item==0x149&&gift_count==1&&shown&&flag(&game,0x3ef)==1);
+     CHECK(logged("story_item item=329 count=1 result=0"));
+     fprintf(trace,"phenac_trainer15_complete encounter=21 item=0149 flag03EF=1\n");}
 
     c3_field_story_close(&s->story);c3_field_close(&s->map);c3_area_close(&s->area);
     c3_area_camera_close(&s->camera);

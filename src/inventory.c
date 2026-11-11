@@ -157,3 +157,18 @@ C3InventoryCode c3_inventory_apply(C3GameState *state,const C3PdaAssets *a,const
  if(code==C3_INVENTORY_OK){if(item.field_function!=0x80022e54u&&!memcmp(before+0xa0,after+0xa0,6*312)){code=C3_INVENTORY_NO_EFFECT;goto done;}if(r->evolved_species&&(!memo_evolution(after,p)||(item.field_function==0x800232f0u&&!evolution_extra(after,before,a,q,p)))){code=C3_INVENTORY_FULL;goto done;}size_t item_n;const uint8_t *definition=c3_pda_entry(a,7,id,&item_n);int hm=item.kind==4&&definition&&item_n==40&&(uint8_t)c3_pda_be32(definition+24)>=50;int flute=item.field_function==0x80023b9cu&&id>=39&&id<=43;if(!hm&&!flute)remove_item(after,q->pocket,q->slot,1);}
  done:if(code==C3_INVENTORY_NEED_MOVE||code==C3_INVENTORY_NEED_REPLACEMENT||code==C3_INVENTORY_NEED_EVOLUTION)memcpy(r->pokemon,p,312);if(code==C3_INVENTORY_OK&&!c3_game_state_inventory_commit(state,before,after,n))code=C3_INVENTORY_CONFLICT;r->code=code;free(before);free(after);return code;
 }
+
+int c3_inventory_receive(C3GameState *state,const C3PdaAssets *assets,unsigned id,unsigned count)
+{
+    size_t bytes=0;const uint8_t *body=c3_game_state_body(state,&bytes);C3InventoryItem info;
+    if(!body||!assets||!count||count>999||!c3_inventory_item(assets,id,&info)||pocket(info.kind)<0)return -1;
+    uint8_t *before=malloc(bytes),*after=malloc(bytes);int result=-1;
+    if(before&&after){
+        unsigned added=0;
+        memcpy(before,body,bytes);memcpy(after,body,bytes);
+        while(added<count&&add_item(after,assets,id))++added;
+        if(added!=count)result=(int)count;
+        else result=c3_game_state_inventory_commit(state,before,after,bytes)?0:-1;
+    }
+    free(before);free(after);return result;
+}

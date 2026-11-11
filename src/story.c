@@ -455,7 +455,18 @@ uint32_t c3_story_floor(const C3Story *story){Impl*p=story?story->impl:NULL;retu
 static int append(char *out,size_t capacity,size_t *used,const char*text){
     size_t n=strlen(text);if(n>=capacity-*used)return 0;memcpy(out+*used,text,n);*used+=n;out[*used]=0;return 1;
 }
+typedef struct { const char *hero, *partner, *speaker; } Names;
+static const char *names_source(void *context,uint8_t control){
+    const Names *n=context;
+    return control==0x2b?(n->hero?n->hero:""):control==0x2c?(n->partner?n->partner:""):
+           control==0x59?(n->speaker?n->speaker:""):NULL;
+}
 int c3_story_message(const C3Story *story,uint32_t id,const char*hero,const char*partner,const char*speaker,
+                    char*out,size_t capacity,char*error){
+    Names names={hero,partner,speaker};
+    return c3_story_message_with(story,id,names_source,&names,out,capacity,error);
+}
+int c3_story_message_with(const C3Story *story,uint32_t id,C3StoryTextSource source,void *context,
                     char*out,size_t capacity,char*error){
     Impl*p=story?story->impl:NULL;const uint8_t*data=NULL;uint32_t length=0,i,j;size_t used=0;int ruby=0;
     if(!p||!id||!out||!capacity)return fail(error,"Invalid story message request");
@@ -482,11 +493,11 @@ int c3_story_message(const C3Story *story,uint32_t id,const char*hero,const char
             case 5:ruby=1;break;
             case 6:ruby=0;break;
             case 7:if(i>=length)return fail(error,"Truncated font control");++i;break;
-            case 0x2b:text=hero?hero:"";break;
-            case 0x2c:text=partner?partner:"";break;
             case 0x3d:break; /* message sound disabled; no text payload */
-            case 0x59:text=speaker?speaker:"";break;
-            default:return fail(error,"Message %08x uses unsupported control %02x",(unsigned)id,control);
+            default:
+                text=source?source(context,control):NULL;
+                if(!text)return fail(error,"Message %08x uses unsupported control %02x",(unsigned)id,control);
+                break;
             }
         }else if(!ruby){
             if(glyph==0x2031)text="???"; /* original unknown-name glyph */

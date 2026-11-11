@@ -93,5 +93,14 @@ int main(int argc,char **argv){char directory[]="/tmp/c3-inventory-XXXXXX",path[
   w16(mon+0xd8,0);w32(mon+0xdc,(unsigned)-100);memcpy(snapshot,raw,sizeof snapshot);CHECK(c3_inventory_apply(&native,&actual,&q,&r)==C3_INVENTORY_OK);CHECK(!memcmp(snapshot+PARTY,raw+PARTY,6*312)&&!r16(raw+0xae4));
   printf("Original metadata:547items; Potion and Rare Candy apply against original growth/nature/starter bytes.\n");c3_game_state_free(&native);free(private_pack);
  }
+ /* Script gifts: stacks grow to 99; a gift that does not fit adds nothing. */
+ {uint8_t *bag=(uint8_t*)c3_game_state_body(&state,NULL);memset(bag+0x7f0,0,80);
+  CHECK(c3_inventory_receive(&state,&a,1,3)==0&&r16(bag+0x7f0)==1&&r16(bag+0x7f2)==3);
+  CHECK(c3_inventory_receive(&state,&a,2,1)==0&&r16(bag+0x7f4)==2&&r16(bag+0x7f6)==1);
+  CHECK(c3_inventory_receive(&state,&a,1,96)==0&&r16(bag+0x7f2)==99);
+  CHECK(c3_inventory_receive(&state,&a,1,1)==1&&r16(bag+0x7f2)==99);
+  CHECK(c3_inventory_receive(&state,&a,2,99)==99&&r16(bag+0x7f6)==1);
+  CHECK(c3_inventory_receive(&state,&a,999,1)==-1&&c3_inventory_receive(&state,&a,1,0)==-1);
+  CHECK(c3_inventory_receive(NULL,&a,1,1)==-1&&c3_inventory_receive(&state,NULL,1,1)==-1);}
  free(after);free(before);c3_game_state_free(&state);free(pack);unlink(path);rmdir(directory);printf("Inventory transactions: %u checks passed.\n",checks);return 0;
 }

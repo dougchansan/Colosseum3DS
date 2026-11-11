@@ -13,7 +13,7 @@
 #define MAX_WAYPOINTS 64u /* Phenac actor 24 allocates 36 points (bank 013E0E00 fn 34). */
 
 typedef enum { W_NONE, W_SECONDS, W_TASK, W_MOTION, W_MOVE, W_CAMERA,
-               W_CAMERA_MOVE, W_FADE, W_MESSAGE, W_CHOICE, W_TV, W_BATTLE, W_NAME } Wait;
+               W_CAMERA_MOVE, W_FADE, W_MESSAGE, W_CHOICE, W_TV, W_BATTLE, W_NAME, W_ITEM } Wait;
 typedef struct {
     uint16_t key, child;
     C3StoryCall call;
@@ -64,11 +64,14 @@ typedef struct {
     uint32_t whiteout_floor,whiteout_previous,whiteout_spawn;int whiteout_valid;
     int name_entry_enabled;
     uint16_t (*random16)(void *context);void *random_context;
+    C3FieldStoryReceive receive;void *receive_context;
+    uint32_t message_values[256]; /* msgctrlSetValue: one word per control byte */
+    char item_name[64],number_text[16];const char *message_speaker;
     Person partner_actor; /* (0,101); invisible until native 23 */
     int (*floor_supported)(uint32_t floor);
     uint32_t dialog_owner;
     size_t page_start, page_end;
-    char full_message[C3_STORY_MESSAGE], hero_name[32], speaker[128];
+    char full_message[C3_STORY_MESSAGE], hero_name[32], partner_name[32], speaker[128];
     uint32_t cosmetic_logged[8];
 } Impl;
 
@@ -106,7 +109,7 @@ static int validate_native(const Impl *s,const C3StoryCall *c,char *error)
         /* Phenac City exterior bank 013E0E00 (native table lbl_802E1CF0). */
         {0x02,1,0},{0x16,2,0},{0x23,1,0},{0x31,0,0},{0x66,1,0},{0x7e,2,0},
         {0x82,3,0},{0x83,3,0},{0x89,3,0},{0xa1,3,0},{0xa4,6,0x3c},{0xa5,5,0x10},
-        {0xa9,2,0},{0xb1,6,0x10},{0xb4,0,0},{0xda,1,0},{0xe8,2,0}
+        {0x77,2,0},{0x84,2,0},{0xa9,2,0},{0xb1,6,0x10},{0xb4,0,0},{0xda,1,0},{0xe8,2,0}
     };
     for(unsigned i=0;i<sizeof signature/sizeof signature[0];++i){
         if(signature[i].id!=c->native)continue;
@@ -206,6 +209,21 @@ static void page(Impl *s)
     size_t n=s->page_end-s->page_start;
     memcpy(s->view.message,begin,n);s->view.message[n]=0;
 }
+/* Value controls of the message decoder (the control byte is the msgctrl
+ * variable): hero, partner and speaker names, the item named by variable
+ * 2D (its name is supplied by the item service) and the number in 2F. */
+static const char *message_source(void *context,uint8_t control)
+{
+    Impl *s=context;
+    switch(control){
+    case 0x2b:return s->hero_name;
+    case 0x2c:return s->partner_name;
+    case 0x59:return s->message_speaker?s->message_speaker:"";
+    case 0x2d:return s->item_name[0]?s->item_name:NULL;
+    case 0x2f:snprintf(s->number_text,sizeof s->number_text,"%lu",(unsigned long)s->message_values[0x2f]);return s->number_text;
+    default:return NULL;
+    }
+}
 static int message(Impl *s,RunTask *t,uint32_t id,const char *speaker,char *error)
 {
     if(s->dialog_owner&&s->dialog_owner!=t->key)return fail(error,"Concurrent original field messages are unsupported");
@@ -213,7 +231,8 @@ static int message(Impl *s,RunTask *t,uint32_t id,const char *speaker,char *erro
      * name entry may have just changed. */
     C3GameSummary names;
     if(!c3_game_state_summary(s->game,&names))return fail(error,"Game state names are unavailable");
-    if(!c3_story_message(&s->vm,id,s->hero_name,names.partner,speaker,s->full_message,sizeof s->full_message,error))return 0;
+    snprintf(s->partner_name,sizeof s->partner_name,"%s",names.partner);s->message_speaker=speaker;
+    if(!c3_story_message_with(&s->vm,id,message_source,s,s->full_message,sizeof s->full_message,error))return 0;
     s->dialog_owner=t->key;s->page_start=0;s->view.message_id=id;s->view.dialogue=1;s->view.choice=0;
     page(s);t->wait=W_MESSAGE;t->remaining=.12f;
     log_line(s,"story_message script=%08lx pc=%08lx id=%05lx",(unsigned long)t->call.script_id,
@@ -526,6 +545,17 @@ static int run_native(Impl *s,RunTask *t,char *error)
         for(unsigned i=0;i<3;++i){s->camera_from[i]=s->view.camera.eye[i];s->camera_to[i]=as_float(a[i+1])*s->map->scale;
             s->camera_direction[i]=s->view.camera.target[i]-s->view.camera.eye[i];}
         break;
+    case 0x77:
+        /* scriptGetItem -> floorEventGetTresure(4,item,count): the item
+         * jingle 0x3CA plays to its end first (a fixed wait here), then the
+         * bag receives the item and the result message is shown. */
+        if(!s->receive)return fail(error,"Native 77 needs the item service, which this scene did not bind");
+        note_presentation(s,c->native,"item_jingle_backend_pending_wait_1s");
+        t->wait=W_ITEM;t->remaining=1.0f;return 1;
+    case 0x84:
+        /* msgctrlSetValue(variable,value). */
+        if(a[0]>255)return fail(error,"Message variable %lu is out of range",(unsigned long)a[0]);
+        s->message_values[a[0]]=a[1];break;
     case 0x7e:
         /* heroMoveSetNeckMode: procedural head tracking of a party member. */
         note_presentation(s,c->native,"head_tracking_unrendered");
@@ -684,6 +714,19 @@ static int wait_task(Impl *s,RunTask *t,float seconds,uint16_t *pressed,char *er
          log_line(s,"story_choice answer=%lu",(unsigned long)answer);
          close_message(s);return resume(s,t,answer,error);}
     case W_BATTLE:case W_NAME:return 1;
+    case W_ITEM:{
+        t->remaining-=seconds;if(t->remaining>0)return 1;
+        uint32_t item=t->call.args[0];int32_t count=(int32_t)t->call.args[1];
+        if(count<=0)return resume(s,t,0,error); /* the original returns without a message */
+        s->message_values[0x2d]=item;s->message_values[0x2f]=(uint32_t)count;s->item_name[0]=0;
+        int result=s->receive(s->receive_context,item,(uint32_t)count,s->item_name,sizeof s->item_name);
+        log_line(s,"story_item item=%lu count=%ld result=%d",(unsigned long)item,(long)count,result);
+        if(result<0)return resume(s,t,(uint32_t)result,error);
+        /* A positive result is the amount that did not fit the bag; the
+         * original then stores it in the PC and shows 3CBA/3CBB. */
+        if(result>0)return fail(error,"Item %lu did not fit the bag; the PC storage path is not ported",(unsigned long)item);
+        if(!message(s,t,count==1?0x3cb8u:0x3cbdu,"",error))return 0;
+        return 1;}
     }
     return fail(error,"Invalid native story wait state");
 }
@@ -713,6 +756,10 @@ int c3_field_story_name_result(C3FieldStory *story,const char *name,char *error)
         return resume(s,t,1,error);
     }
     return fail(error,"No name entry is waiting");
+}
+void c3_field_story_set_item_service(C3FieldStory *story,C3FieldStoryReceive receive,void *context)
+{
+    Impl *s=story?story->impl:NULL;if(s){s->receive=receive;s->receive_context=context;}
 }
 void c3_field_story_set_floor_support(C3FieldStory *story,int (*supported)(uint32_t floor))
 {

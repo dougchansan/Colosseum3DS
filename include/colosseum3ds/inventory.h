@@ -10,5 +10,10 @@ unsigned c3_inventory_capacity(unsigned pocket);
 int c3_inventory_item(const C3PdaAssets *assets,unsigned id,C3InventoryItem *item);
 /* Choices never change the save. Set move/replacement/evolution to -1 before
  * initial use. An OK result changes owned memory only; explicit Save persists. */
+/* A gift from a field script (scriptGetItem): adds `count` of the item to
+ * its pocket through the same slot rules as the menu. Returns 0 when all
+ * were added, `count` when they do not fit (nothing is added) and -1 for an
+ * unknown item or an invalid request. Owned memory only; Save persists. */
+int c3_inventory_receive(C3GameState *state,const C3PdaAssets *assets,unsigned id,unsigned count);
 C3InventoryCode c3_inventory_apply(C3GameState *state,const C3PdaAssets *assets,const C3InventoryRequest *request,C3InventoryResult *result);
 #endif
