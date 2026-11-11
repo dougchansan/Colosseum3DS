@@ -77,6 +77,9 @@ int c3_story_add_bank(C3Story *story, const void *data, size_t size, char *error
         return fail(error, "GSVM bank header is invalid");
     for (i = 0; i < next.function_count; ++i) {
         uint32_t at = be32(bytes + 24 + 4*i);
+        /* Retail banks keep null slots (offset zero) for removed functions;
+         * they are never valid entry points. */
+        if (!at) continue;
         if (at < next.global_offset || at >= size) return fail(error, "GSVM function offset is invalid");
         if (at < first) first = at;
     }
@@ -194,6 +197,7 @@ int c3_story_start(C3Story *story, uint32_t script_id, const uint32_t *args,
     p->last_key = candidate; memset(t, 0, sizeof(*t)); t->key = candidate;
     t->bank = (uint8_t)bank; t->script_id = script_id; t->status = C3_STORY_RUNNING;
     t->pc = be32(p->banks[bank].data + 24 + (script_id & 0xffff)*4);
+    if (!t->pc) { memset(t, 0, sizeof(*t)); return fail(error, "GSVM script %08x is an original null slot", (unsigned)script_id); }
     t->count = argc + 4;
     for (i = 0; i < argc; ++i) t->stack[i+1] = args[i];
     t->stack[argc+3] = argc;

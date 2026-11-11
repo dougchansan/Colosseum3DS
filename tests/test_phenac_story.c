@@ -52,6 +52,67 @@ static void tick(Scene *s,unsigned frame)
     CHECK(c3_field_story_sample(&s->story,error));
 }
 
+static int present(const char *root,const char *name)
+{
+    char file[1024];FILE *f;path(file,root,name);f=fopen(file,"rb");if(f)fclose(f);return f!=NULL;
+}
+/* Diagnostic pass over another prepared floor: load its packs, run the
+ * original load/init/pre scripts, enter and tick ten seconds. A failure is
+ * recorded with its reason (typically an unported native) and does not stop
+ * the run; it shows what the floor still needs. Returns 1 when the floor
+ * reached control or kept running without an error. */
+static int smoke(C3GameState *game,const char *root,uint32_t floor,uint32_t previous)
+{
+    const C3FloorProfile *profile=c3_floor_profile(floor);Scene *s=calloc(1,sizeof *s);char file[1024],name[96];
+    int ok=0;unsigned frame=0;
+    CHECK(profile&&s);
+    snprintf(name,sizeof name,"%s.c3f",profile->prefix);
+    if(!present(root,name)){free(s);return -1;}
+    error[0]=0;
+    CHECK(c3_game_state_set_floor(game,floor,previous,0));
+    path(file,root,name);
+    if(!c3_field_load(&s->map,file,error,sizeof error))goto done;
+    snprintf(name,sizeof name,"%s.c3a",profile->prefix);path(file,root,name);
+    if(!c3_area_load(&s->area,file,error,sizeof error))goto done;
+    snprintf(name,sizeof name,"%s_wes.c3t",profile->prefix);path(file,root,name);
+    if(!c3_title_load(&s->wes,file,error,sizeof error))goto done;
+    for(uint32_t i=0;i<s->area.actor_count;++i){
+        if(!s->area.actors[i].file[0])continue;
+        path(file,root,s->area.actors[i].file);
+        if(!c3_title_load(s->actors+i,file,error,sizeof error))goto done;
+        s->models[i]=s->actors+i;
+    }
+    snprintf(name,sizeof name,"%s_camera.c3c",profile->prefix);
+    if(present(root,name)){path(file,root,name);if(!c3_area_camera_load(&s->camera,file,error,sizeof error))goto done;}
+    if(!c3_field_spawn(&s->map,0,&s->hero)){snprintf(error,sizeof error,"entrance 0 is unavailable");goto done;}
+    path(file,root,profile->story);
+    if(!c3_field_story_load(&s->story,file,game,&s->map,&s->area,&s->hero,&s->wes,s->models,&s->camera,trace,error))goto done;
+    c3_field_story_set_floor_support(&s->story,reachable);
+    c3_field_story_enable_name_entry(&s->story,1);
+    c3_field_story_set_item_service(&s->story,receive,NULL);
+    if(!c3_field_story_prepare(&s->story,error))goto done;
+    for(frame=0;frame<3600&&!c3_field_story_view(&s->story)->prepared;++frame)
+        if(!c3_field_story_tick(&s->story,1.0f/60.0f,0,error))goto done;
+    if(!c3_field_story_view(&s->story)->prepared){snprintf(error,sizeof error,"preparation did not finish");goto done;}
+    if(!c3_field_story_enter(&s->story,error))goto done;
+    for(frame=0;frame<600;++frame){
+        const C3FieldStoryView *v=c3_field_story_view(&s->story);
+        uint16_t pressed=v->dialogue&&frame%15==0?0x100:0;
+        if(c3_field_story_battle_pending(&s->story,NULL)&&!c3_field_story_battle_result(&s->story,2,error))goto done;
+        if(!c3_field_story_tick(&s->story,1.0f/60.0f,pressed,error)||!c3_field_story_sample(&s->story,error))goto done;
+    }
+    ok=1;
+done:
+    fprintf(trace,"floor_smoke floor=%02lx prefix=%s status=%s actors=%lu transitions=%lu interactions=%lu control=%d frames=%u reason=%s\n",
+            (unsigned long)floor,profile->prefix,ok?"ok":"failed",(unsigned long)s->area.actor_count,
+            (unsigned long)s->area.transition_count,(unsigned long)s->area.interaction_count,
+            ok?c3_field_story_view(&s->story)->control:0,frame,ok?"":error);
+    printf("floor %02lx %-18s %s %s\n",(unsigned long)floor,profile->prefix,ok?"ok    ":"FAILED",ok?"":error);
+    c3_field_story_close(&s->story);c3_field_close(&s->map);c3_area_close(&s->area);c3_area_camera_close(&s->camera);
+    c3_title_close(&s->wes);for(unsigned i=0;i<C3_AREA_MAX_ACTORS;++i)c3_title_close(s->actors+i);
+    free(s);error[0]=0;return ok;
+}
+
 int main(int argc,char **argv)
 {
     const C3FloorProfile *profile=c3_floor_profile(3);
@@ -184,7 +245,17 @@ int main(int argc,char **argv)
     c3_field_story_close(&s->story);c3_field_close(&s->map);c3_area_close(&s->area);
     c3_area_camera_close(&s->camera);
     c3_title_close(&s->wes);for(unsigned i=0;i<C3_AREA_MAX_ACTORS;++i)c3_title_close(s->actors+i);
-    free(s);c3_game_state_free(&game);
+    free(s);
+    /* Report, floor by floor, how far each prepared interior gets from the
+     * state reached above. Missing packs are skipped. */
+    {static const uint16_t interiors[]={4,5,6,7,8,9,10,11,12,13,0x77};unsigned passed=0,failed=0,absent=0;
+     for(unsigned i=0;i<sizeof interiors/sizeof interiors[0];++i){
+         int result=smoke(&game,argv[2],interiors[i],3);
+         if(result>0)++passed;else if(result<0)++absent;else ++failed;
+     }
+     fprintf(trace,"floor_smoke_summary passed=%u failed=%u absent=%u\n",passed,failed,absent);
+     printf("interior floors: %u ok, %u failed, %u without packs\n",passed,failed,absent);}
+    c3_game_state_free(&game);
     fprintf(trace,"phenac_complete checks=%u\n",checks);
     if(argc<=3){char buffer[4096];size_t size;rewind(trace);
         while((size=fread(buffer,1,sizeof buffer,trace)))CHECK(fwrite(buffer,1,size,stdout)==size);}

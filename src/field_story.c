@@ -281,7 +281,9 @@ static int tv_setup(Impl *s,char *error)
     uint32_t value;
     for(unsigned i=0;i<sizeof later/sizeof later[0];++i){
         if(!flag(s,later[i],&value,error))return 0;
-        if(value)return fail(error,"Later TV report requires its original assets and native branch");
+        /* A later report needs its own model, camera and message, which are
+         * not prepared: the screen stays off instead of showing the first. */
+        if(value){note_presentation(s,0xd3,"later_tv_report_unrendered");s->view.tv_enabled=0;return 1;}
     }
     if(!set_flag(s,0x0A05,1,error))return 0;
     s->view.tv_enabled=1;return 1;
