@@ -253,6 +253,17 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         previous=now;elapsed+=delta;phase_seconds+=delta;
         c3_game_state_add_play_time(state,delta);
         int story_consumed_input=view->dialogue||!view->control;
+        /* Stylus on the bottom screen: a tap advances the open message like
+         * A. On a YES/NO choice a tap on either answer selects and confirms
+         * it (the choice box is drawn at x 180..310, YES above y 189). */
+        if(input.touch_pressed&&page==PAUSE_CLOSED&&(view->dialogue||view->blocked[0])){
+            if(!view->choice)input.pressed|=C3_PAD_A;
+            else if(input.touch_x>=180&&input.touch_x<310&&input.touch_y>=165&&input.touch_y<215){
+                int want_no=input.touch_y>=189;
+                if(want_no!=view->choice_no)input.pressed|=C3_PAD_UP;
+                input.pressed|=C3_PAD_A;
+            }
+        }
         /* Page locally before the VM sees A/B; do not acknowledge text that
          * has not been displayed. Reset on message and pause-page identity. */
         c3_ui_pager_sync(&ui_pager,c3_field_ui_identity(page,view));
