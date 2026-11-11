@@ -150,8 +150,25 @@ class AreaPreparationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,"not prepared"):
             area.actor_bounds(actors,reports)
 
+    def test_partner_pack_keeps_wes_locomotion_slots_then_listed_motions(self):
+        ends=[10.,30.,30.,17.,30.,5.,26.,30.]+[8.]*40
+        ends[14]=15.;ends[44]=10.
+        schedules=area.partner_schedules(ends)
+        self.assertEqual([clip for clip,_,_ in schedules],[1,2,3,0,4,7,14,21,22,23,27,28,29,42,43,44])
+        self.assertEqual([loop for _,_,loop in schedules],[True]*3+[False]*13)
+        self.assertEqual([len(frames) for _,frames,_ in schedules][:7],[61,61,35,21,61,61,31])
+        self.assertEqual(schedules[6][1][-1],15.)
+        self.assertLessEqual(sum(len(frames) for _,frames,_ in schedules),4096)
+        with self.assertRaisesRegex(ValueError,"lacks a listed source motion"):
+            area.partner_schedules(ends[:44])
+        still=area.partner_schedules([0.]*45,{"clips":(1,2,3,0),"locomotion":(1,2,3)})
+        self.assertEqual([frames for _,frames,_ in still],[[0.]]*4)
+
     def test_profile_mode_covers_later_floors_only(self):
-        self.assertEqual(sorted(area.profile_floors()),["phenac"])
+        floors=sorted(area.profile_floors())
+        self.assertEqual(len(floors),12)
+        self.assertTrue(all(name.startswith("phenac") for name in floors))
+        self.assertNotIn("outskirt",floors);self.assertNotIn("shop",floors)
         self.assertEqual(area.PROFILES["S1_shop_1F.fsys"][0],2947200)
         self.assertEqual(area.INITIAL_EXTERIOR_ACTORS,(0,1,2,3))
 

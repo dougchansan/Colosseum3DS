@@ -6,8 +6,9 @@ contain original game data and must remain in a private SD preparation folder.
 It does not manufacture dialogue, battle outcomes, or later-area assets.
 
 --floor NAME prepares a later floor from its floor_profiles.py row instead:
-every original person record, the CCD event surfaces and one NPC model pack
-per distinct model resource. The Outskirt modes are unchanged.
+every original person record, the CCD event surfaces, one NPC model pack per
+distinct model resource and the party partner's pack (<prefix>_partner.c3t,
+lit like that floor's Wes pack). The Outskirt modes are unchanged.
 """
 import argparse
 import copy
@@ -21,7 +22,7 @@ import tempfile
 import prepare_title as title
 import prepare_field_geometry as geometry
 import prepare_outskirt as field
-from floor_profiles import story_floors
+from floor_profiles import PARTNER, story_floors
 from prepare_boot_media import verify_disc
 from prepare_model import check_output
 
@@ -516,6 +517,56 @@ def actor_bounds(actors, reports):
             "idle_motion_outside_pack":missing_idle}
 
 
+def partner_schedules(ends, partner=None):
+    """(source clip, authored frames, loop) in pack order for the partner.
+
+    The pack keeps floor_profiles.PARTNER's clip list: PeopleInfo idle, walk
+    and run first (pack clips 0, 1, 2, looping, as in the Wes pack), then the
+    other listed source motions, one-shot until the runtime's motion native
+    selects looping.
+    """
+    partner = PARTNER if partner is None else partner
+    clips, looping = partner["clips"], set(partner["locomotion"])
+    if any(clip >= len(ends) for clip in clips):
+        raise ValueError("Partner model lacks a listed source motion")
+    return [(clip,geometry.sample_sequence(ends[clip]) if ends[clip] else [0.],clip in looping)
+            for clip in clips]
+
+
+def prepare_partner(field_common, common, output, prefix, camera, lights, format_version=2):
+    """The second party member's field model, lit and framed like Wes's pack."""
+    partner = PARTNER
+    info = field.extent(field.rel_data(common,125),0x13E440+partner["people_info"]*44,44)
+    if (field.u32(info,12)!=partner["resource"] or
+            tuple(info[1:4])!=tuple(partner["locomotion"]) or info[4]!=partner["clips"][4]):
+        raise ValueError("Partner PeopleInfo row differs from the reviewed source")
+    walk,run,radius = struct.unpack_from(">3f",info,16)
+    if not all(math.isfinite(v) and v>0 for v in (walk,run,radius)):
+        raise ValueError("Partner movement distances changed")
+    _data,raw,scene = geometry.load_scene(field_common,partner["resource"])
+    if len(scene.models)!=1:
+        raise ValueError("Partner must have exactly one original model")
+    model = geometry.Model(scene.models[0],raw.models[0])
+    meshes = [geometry.build_mesh(model,i) for i in range(len(model.meshes))]
+    schedules = partner_schedules(model.ends)
+    samples = sum(len(sequence) for _,sequence,_ in schedules)
+    reports = geometry.prepare_pack_set(meshes,schedules,60,[camera]*samples,lights,
+                PROFILES["field_common.fsys"][1],output,prefix,expected_count=1,
+                format_version=format_version)
+    member = field.member(field_common,partner["resource"])
+    summary = {"file":reports[0]["file"],"archive":partner["archive"],
+               "resource_id":"%08x" % partner["resource"],"member_id":partner["member_id"],
+               "people_info":partner["people_info"],"people_info_motions":list(info[1:10]),
+               "source_bytes":len(member),"source_sha256":hashlib.sha256(member).hexdigest(),
+               "source_clip_count":len(model.ends),"source_clip_ends":model.ends,
+               "source_to_pack_clip":{str(clip):index for index,clip in enumerate(partner["clips"])},
+               "looping_source_clips":list(partner["locomotion"]),
+               "walk_distance":walk*field.SCALE,"run_distance":run*field.SCALE,"radius":radius*field.SCALE,
+               "particle_callbacks_unrendered":model.particle_events,
+               "pack":reports[0]}
+    return summary
+
+
 def prepare_floor_actors(disc, output, parser, floor):
     """Profile-driven actors, CCD event surfaces and NPC packs of one floor."""
     profile = profile_floors()[floor]
@@ -525,6 +576,7 @@ def prepare_floor_actors(disc, output, parser, floor):
     geometry.import_parser(title.verify_parser(parser))
     archive = admit_profile_archive(disc,profile)
     common_archive = admit_archive(disc/"files"/"common.fsys")
+    field_common = admit_archive(disc/"files"/"field_common.fsys")
     common_id,common = common_rel(common_archive)
     floor_rel = field.member(archive,profile["rel"])
     actors = actor_records(floor_rel,profile["module"],common,profile["people_table"],
@@ -554,6 +606,8 @@ def prepare_floor_actors(disc, output, parser, floor):
             if sharers:
                 shared.append({"resource_id":"%08x" % owner["model_resource"],"file":owner["file"],
                                "actors":[owner["index"],*(actor["index"] for actor in sharers)]})
+        partner = prepare_partner(field_common,common,stage,profile["prefix"]+"_partner",fixed,lights,
+                                  profile.get("pack_format",2))
         camera_reports = []
         for index,identity in enumerate(profile.get("event_cameras",())):
             # Type-0x18 camera members played by the field bank (native 2A).
@@ -574,7 +628,8 @@ def prepare_floor_actors(disc, output, parser, floor):
         resources = dict.fromkeys(actor["model_resource"] for actor in actors)
         for container,blob,identities in (
                 (profile["archive"],archive,(profile["rel"],profile["map"],profile["collision"],*resources)),
-                ("common.fsys",common_archive,(common_id,))):
+                ("common.fsys",common_archive,(common_id,)),
+                ("field_common.fsys",field_common,(PARTNER["resource"],))):
             for identity in identities:
                 source = field.member(blob,identity)
                 source_members.append({"archive":container,"resource_id":"%08x" % identity,
@@ -584,8 +639,11 @@ def prepare_floor_actors(disc, output, parser, floor):
                     "source_commit":title.SOURCE_COMMIT,"parser_commit":title.PARSER_COMMIT,
                     "archives":{profile["archive"]:{"bytes":profile["bytes"],"sha256":profile["sha256"]},
                                 "common.fsys":{"bytes":PROFILES["common.fsys"][0],
-                                               "sha256":PROFILES["common.fsys"][1]}},
-                    "source_members":source_members,"packs":reports,"actors":"area-actors.json",
+                                               "sha256":PROFILES["common.fsys"][1]},
+                                "field_common.fsys":{"bytes":PROFILES["field_common.fsys"][0],
+                                                     "sha256":PROFILES["field_common.fsys"][1]}},
+                    "source_members":source_members,"packs":reports,"partner":partner,
+                    "actors":"area-actors.json",
                     "shared_models":shared,"event_cameras":camera_reports,"bounds":actor_bounds(actors,reports),
                     "event_surfaces":{"transition":len(areas[0]["transition_surfaces"]),
                                       "interaction":len(areas[0]["interaction_surfaces"])},

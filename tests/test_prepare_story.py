@@ -182,6 +182,66 @@ class StoryMetadataTests(unittest.TestCase):
             story.encode_pack(3, [blob(0x100, 1048576)], [])
 
 
+def script_bank(code, entries):
+    start = 24 + len(entries) * 4
+    data = bytearray(start)
+    struct.pack_into(">HHH", data, 0, 0x100, 0x101, len(entries))
+    word(data, 16, start)
+    for index, at in enumerate(entries):
+        word(data, 24 + 4 * index, at)
+    return bytes(data) + code
+
+
+class BankAndDoorTests(unittest.TestCase):
+    def test_null_function_entries_are_reported_only_when_admitted(self):
+        # Two present functions (a lone return each) around one empty slot.
+        bank = script_bank(b"\x05\x05", [36, 0, 37])
+        with self.assertRaisesRegex(ValueError, "globals"):
+            story.inspect_bank(bank)
+        info = story.inspect_bank(bank, allow_null_entries=True)
+        self.assertEqual(info["functions"], [{"index": 0, "offset": 36}, {"index": 1, "offset": 0},
+                                             {"index": 2, "offset": 37}])
+        self.assertEqual(info["null_function_entries"], [1])
+        self.assertEqual((info["globals"], info["reachable_instructions"]), (0, 2))
+        # A bank without empty slots reports exactly what it did before.
+        full = script_bank(b"\x05\x05", [32, 33])
+        self.assertEqual(story.inspect_bank(full), story.inspect_bank(full, allow_null_entries=True))
+        self.assertNotIn("null_function_entries", story.inspect_bank(full, allow_null_entries=True))
+        # A call into an empty slot is refused; an all-empty table is not a bank.
+        call = b"\x04" + struct.pack(">IHH", 1, 0, 0) + b"\x05"
+        with self.assertRaisesRegex(ValueError, "function call"):
+            story.inspect_bank(script_bank(call, [32, 0]), allow_null_entries=True)
+        with self.assertRaisesRegex(ValueError, "globals"):
+            story.inspect_bank(script_bank(b"\x05", [0]), allow_null_entries=True)
+
+    def test_door_records_are_filtered_by_floor_and_keep_their_table_index(self):
+        rel = common_rel()
+        word(rel, DATA + 0x14A690, 4)
+        rows = ((0, 1, -1, -1, 255, -1, -1, 1, 0, 0, 5, 3, 7, 0, 0, 0x00621005),
+                (0, 1, -1, -1, 255, -1, -1, 1, 0, 0, 0, 13, 8, 2487, 0, 0x01CE1000),
+                (0, 1, -1, -1, 255, 3, 2, 2, 0, 0, -1, 11, 0, 0, 0, 0x01C91000),
+                (0, 1, -1, -1, 255, -1, -1, 1, 0, 0, 7, 13, 9, 2487, 0, 0x01CE1001))
+        for index, row in enumerate(rows):
+            struct.pack_into(">4bB2b2BBh3HHI", rel, DATA + 0x8FE24 + index * 24, *row)
+        doors = story.extract_doors(bytes(rel), {13})
+        self.assertEqual([door["index"] for door in doors], [1, 3])
+        self.assertEqual(doors[1], {"index": 3, "open_anim": 0, "close_anim": 1, "open_end_anim": -1,
+                                    "close_end_anim": -1, "pad04": 255, "alternate_anim_a": -1,
+                                    "alternate_anim_b": -1, "door_type": 1, "part_index": 0, "pad09": 0,
+                                    "collision_id": 7, "floor": 13, "open_flag": 9, "close_flag": 2487,
+                                    "pad12": 0, "resource_id": "01ce1001",
+                                    "file_offset": hex(DATA + 0x8FE24 + 3 * 24)})
+        elevator = story.extract_doors(bytes(rel), {11})[0]
+        self.assertEqual((elevator["door_type"], elevator["collision_id"], elevator["alternate_anim_a"],
+                          elevator["alternate_anim_b"]), (2, -1, 3, 2))
+        self.assertEqual(story.extract_doors(bytes(rel), {99}), [])
+        self.assertEqual(len(story.DOOR_FIELDS), 16)
+        for count in (0, 1025):
+            word(rel, DATA + 0x14A690, count)
+            with self.assertRaisesRegex(ValueError, "door table"):
+                story.extract_doors(bytes(rel), {13})
+
+
 class CommonRelAdmissionTests(unittest.TestCase):
     def setUp(self):
         self.rel = bytes(common_rel()[:0x200])

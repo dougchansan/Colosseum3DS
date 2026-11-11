@@ -181,8 +181,13 @@ class AreaRuntimeTests(unittest.TestCase):
         self.assertEqual(report[0]["sha256"], hashlib.sha256(files["outskirt.c3a"]).hexdigest())
 
     def test_profile_floor_publishes_its_own_pack_and_group(self):
-        self.assertEqual(area_runtime.GROUPS, {1: 0x1D, 2: 0x1E, 3: 0x1F})
-        self.assertEqual(area_runtime.PACKS, {1: "outskirt.c3a", 2: "shop.c3a", 3: "phenac.c3a"})
+        self.assertEqual({floor: area_runtime.GROUPS[floor] for floor in (1, 2, 3, 5, 0x0D, 0x77)},
+                         {1: 0x1D, 2: 0x1E, 3: 0x1F, 5: 0x22, 0x0D: 0x2B, 0x77: 0x21})
+        self.assertEqual({floor: area_runtime.PACKS[floor] for floor in (1, 2, 3, 5, 0x0D, 0x77)},
+                         {1: "outskirt.c3a", 2: "shop.c3a", 3: "phenac.c3a", 5: "phenac_mayor1f.c3a",
+                          0x0D: "phenac_stadium1f.c3a", 0x77: "phenac_pcb1.c3a"})
+        self.assertEqual(sorted(area_runtime.GROUPS), sorted(area_runtime.PACKS))
+        self.assertEqual(len(set(area_runtime.PACKS.values())), len(area_runtime.PACKS))
         area, links, life, names = fixture()
         area["floor"] = 3
         for row in links + life + names:
@@ -200,7 +205,7 @@ class AreaRuntimeTests(unittest.TestCase):
         both, _ = area_runtime.prepare([first[0], area], first[1] + links, first[2] + life, first[3] + names)
         self.assertEqual(set(both), {"outskirt.c3a", "phenac.c3a"})
         self.assertEqual(both["phenac.c3a"], files["phenac.c3a"])
-        area["floor"] = 4
+        area["floor"] = 0x0E
         with self.assertRaisesRegex(ValueError, "Unsupported original floor"):
             area_runtime.prepare([area], links, life, names)
 

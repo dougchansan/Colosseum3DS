@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
-"""Prepare a DEVELOPER-ONLY field floor: original map, collision and Wes.
+"""Prepare one profile floor's original map, collision and Wes packs.
 
 This generalises prepare_outskirt.py to further floors selected by an exact
 profile. Its outputs contain original game data and belong in a private
-directory (ignored ``private/`` or outside the repository). The packs are for
-the labelled developer floor loader only: they carry no NPCs, scripts,
-dialogue, doorways, story flags or save data, and they do not make the floor
-reachable through the real story route.
+directory (ignored ``private/`` or outside the repository). These packs carry
+no NPCs, scripts, dialogue, doorways, story flags or save data; the actor,
+event and script packs come from prepare_area.py, prepare_story.py and
+prepare_area_runtime.py. The exterior profile's packs are also what the
+labelled developer floor loader reads.
+
+Interior rows ("scene": "interior") additionally write one object pack per
+multi-clip map model (<prefix>_obj<model>.c3t, every source clip, one-shot).
 """
 import argparse
 import hashlib
@@ -36,7 +40,34 @@ def admit_floor(disc, profile):
     return data
 
 
+# Texture selectors src/title.c admits (raw HSD colour and alpha map modes).
+RUNTIME_COLOR_MODES, RUNTIME_ALPHA_MODES = (0, 3, 4), (0, 2, 3)
+
+
+def runtime_meshes(meshes, model_index, omit, omitted):
+    """Keep the meshes whose texture modes the pack runtime can load.
+
+    The native reader rejects a whole pack for one other selector. Without
+    the profile's explicit omit_unsupported_texture_modes such a mesh is an
+    error; with it the mesh is left out and listed in the manifest.
+    """
+    kept = []
+    for mesh in meshes:
+        color, alpha = mesh["batch"][4], mesh["batch"][5]
+        if color in RUNTIME_COLOR_MODES and alpha in RUNTIME_ALPHA_MODES:
+            kept.append(mesh)
+        elif not omit:
+            raise ValueError("Map mesh uses a texture mode the pack runtime rejects")
+        else:
+            omitted.append({"model": model_index, "mesh_index": mesh["index"], "owner_joint": mesh["bone"],
+                            "vertices": len(mesh["vertices"]), "color_mode": color, "alpha_mode": alpha})
+    return kept
+
+
 def schedule_frames(kind, end):
+    if kind == "static":
+        # No authored clock: every mesh is baked at its rest sample.
+        return [0.], 60
     if kind == "short":
         from prepare_field_geometry import sample_sequence
         return sample_sequence(end), 60
@@ -48,19 +79,30 @@ def schedule_frames(kind, end):
 def prepare_floor_geometry(archive, field_common, profile, output):
     from prepare_field_geometry import (load_scene, Model, build_mesh, instance_meshes,
                                         prepare_pack_set, prepare_wes, fixed_lights, split_static,
-                                        bake_mesh)
+                                        bake_mesh, sample_sequence)
     data, raw, scene = load_scene(archive, profile["map"])
     if len(scene.models) != profile["models"] or len(scene.cameras) != 1 or scene.fogs:
         raise ValueError("Original floor scene topology changed")
-    models = [Model(model, raw_model, allow_instances=True)
+    colors = profile.get("material_colors")
+    options = {"allow_instances": True}
+    if profile.get("path_joints"):
+        options["allow_paths"] = True
+    if colors:
+        options["constant_material_colors" if colors == "constant" else "frozen_material_colors"] = True
+    models = [Model(model, raw_model, **options)
               for model, raw_model in zip(scene.models, raw.models)]
+    version = profile.get("pack_format", 2)
+    objects = tuple(profile.get("objects", ()))
+    interior, omit, omitted = profile.get("scene") == "interior", bool(profile.get("omit_unsupported_texture_modes")), []
     camera = scene.cameras[0]
     fixed = (*camera.position, *camera.target_position, camera.roll, camera.field_of_view,
              camera.near, camera.far, camera.aspect, 0.)
     lights = fixed_lights(raw, data)
     grouped = [index for indices, _ in profile["groups"] for index in indices]
-    if sorted(grouped) != list(range(len(models))):
+    if sorted([*grouped, *objects]) != list(range(len(models))):
         raise ValueError("Floor pack groups must cover each original model once")
+    if any(len(models[index].ends) > 1 for index in grouped) and profile.get("scene") == "interior":
+        raise ValueError("A multi-clip interior map model must be an object pack")
     reports, packs = [], 0
     for number, (indices, (kind, end)) in enumerate(profile["groups"]):
         frames, fps = schedule_frames(kind, end)
@@ -70,6 +112,8 @@ def prepare_floor_geometry(archive, field_common, profile, output):
             if model.tracks and any(e > end for e in model.ends[:1]):
                 raise ValueError("Original map clip exceeds its reviewed clock")
             own = [build_mesh(model, i) for i in range(len(model.meshes))]
+            if interior:
+                own = runtime_meshes(own, index, omit, omitted)
             frozen = profile.get("frozen_instance_targets", {}).get(index, ())
             for item in instance_meshes(model, own):
                 target = item["descriptors"][0][2]
@@ -90,7 +134,8 @@ def prepare_floor_geometry(archive, field_common, profile, output):
                 continue
             group = prepare_pack_set(items, [(0, sampled, True)], rate, [fixed] * len(sampled), lights,
                                      profile["sha256"], output,
-                                     "%s_group%d%s_" % (profile["prefix"], number, label[0]))
+                                     "%s_group%d%s_" % (profile["prefix"], number, label[0]),
+                                     format_version=version)
             for report in group:
                 name = "%s_map%d.c3t" % (profile["prefix"], packs)
                 (output / report["file"]).rename(output / name)
@@ -100,10 +145,34 @@ def prepare_floor_geometry(archive, field_common, profile, output):
             reports += group
     if not 1 <= packs <= MAX_MAP_PACKS:
         raise ValueError("Floor map pack count exceeds the developer loader bound")
-    wes_reports, actor_vertices = prepare_wes(field_common, output, profile["prefix"] + "_wes", fixed, lights)
+    object_reports = []
+    for index in objects:
+        # A door or machine: the scripts choose its clip, so every source clip
+        # is kept at its own index and none loops (as for NPC packs).
+        model = models[index]
+        if not model.ends:
+            raise ValueError("Floor object model has no authored clip")
+        own = runtime_meshes([build_mesh(model, i) for i in range(len(model.meshes))], index, omit, omitted)
+        own += instance_meshes(model, own)
+        schedules = [(clip, sample_sequence(end) if end else [0.], False)
+                     for clip, end in enumerate(model.ends)]
+        samples = sum(len(sequence) for _, sequence, _ in schedules)
+        group = prepare_pack_set(own, schedules, 60, [fixed] * samples, lights, profile["sha256"], output,
+                                 "%s_obj%d" % (profile["prefix"], index), expected_count=1,
+                                 format_version=version)
+        group[0].update(source_models=[index], sampling="object", source_clip_ends=list(model.ends))
+        object_reports += group
+    wes_reports, actor_vertices = prepare_wes(field_common, output, profile["prefix"] + "_wes", fixed, lights,
+                                              **({"format_version": version} if version != 2 else {}))
     instances = {str(i): [list(pair) for pair in model.instances]
                  for i, model in enumerate(models) if model.instances}
-    return reports + wes_reports, fixed[:11], actor_vertices, packs, instances
+    frozen = {str(i): model.frozen_material_tracks for i, model in enumerate(models)
+              if model.frozen_material_tracks}
+    paths = {str(i): sorted({joint for clip in model.paths for joint in clip})
+             for i, model in enumerate(models) if any(model.paths)}
+    extras = {"objects": object_reports, "frozen_material_tracks": frozen, "path_joints": paths,
+              "omitted_meshes": omitted}
+    return reports + object_reports + wes_reports, fixed[:11], actor_vertices, packs, instances, extras
 
 
 def common_rel(archive):
@@ -116,6 +185,30 @@ def common_rel(archive):
     if found is None:
         raise ValueError("Required common REL is missing")
     return found
+
+
+def interior_manifest(manifest, profile, extras):
+    """Story-floor manifest: what the interior packs hold and what they omit."""
+    limitations = [
+        "Map, collision, camera defaults, Wes and object packs only; actors, scripts and events come from the area and story converters.",
+        "Object packs keep every source clip at its own index without looping; the door and event natives that play them are runtime work.",
+        "HSD instance joints are expanded into additional sampled draws of their shared subtrees.",
+        "Geometry is sampled at 60 Hz. GX filtering, lighting and blending use the native PICA material subset.",
+        "Television screen quads keep their original texture; the field-camera television pass is not prepared here."]
+    if extras["frozen_material_tracks"]:
+        limitations.append("Animated material RGB tracks cannot be sampled by the pack format: those colours keep their first-clip frame-zero value (frozen_material_tracks).")
+    if extras["path_joints"]:
+        limitations.append("HSD path tracks are evaluated with the original cardinal-spline arc-length routine in double precision.")
+    if extras["omitted_meshes"]:
+        limitations.append("Meshes whose HSD texture colour/alpha mode the pack runtime rejects are not in the packs (omitted_meshes).")
+    manifest = dict(manifest)
+    manifest.update(developer_only=False, scene="interior", pack_format=profile.get("pack_format", 2),
+                    objects=[{"model": report["source_models"][0], "file": report["file"],
+                              "source_clip_ends": report["source_clip_ends"]} for report in extras["objects"]],
+                    frozen_material_tracks=extras["frozen_material_tracks"],
+                    path_joints=extras["path_joints"], omitted_meshes=extras["omitted_meshes"],
+                    ccd_objects=extras["ccd_objects"], limitations=limitations)
+    return manifest
 
 
 def prepare(disc, output, parser, floor="phenac"):
@@ -134,7 +227,7 @@ def prepare(disc, output, parser, floor="phenac"):
     with tempfile.TemporaryDirectory(prefix=".floor-", dir=output.parent) as temporary:
         stage = Path(temporary) / "stage"
         stage.mkdir()
-        packs, camera, actor_vertices, map_packs, instances = prepare_floor_geometry(
+        packs, camera, actor_vertices, map_packs, instances, extras = prepare_floor_geometry(
             archive, commons["field_common.fsys"], profile, stage)
         rel_id = common_rel(commons["common.fsys"])
         field, metadata = field_metadata(
@@ -176,6 +269,11 @@ def prepare(disc, output, parser, floor="phenac"):
                 "Targetless HSD IK chains keep FK joint matrices and place only the effector, as resolveIKJoint1/2 do without an effector JObj reference.",
                 "Geometry is sampled at 60 Hz; the slow sky uses 1001 samples across its original loop.",
                 "GX filtering, lighting and blending use the native PICA material subset."]}
+        if profile.get("scene") == "interior":
+            # The C3F only implies an object count from its walk/wall rows;
+            # doorway surfaces may sit on later CCD objects.
+            extras["ccd_objects"] = u32(member(archive, profile["collision"]), 4)
+            manifest = interior_manifest(manifest, profile, extras)
         (stage / (profile["prefix"] + "-manifest.json")).write_bytes(
             (json.dumps(manifest, indent=2) + "\n").encode())
         stage.rename(output)

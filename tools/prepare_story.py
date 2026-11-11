@@ -8,6 +8,8 @@ one before the original script can continue.
 
 Without --floor this prepares Outskirt Stand's two floors exactly as before.
 --floor NAME (repeatable) prepares the named floor_profiles.py rows instead.
+--doors-only writes just area-doors.json: the common door/elevator records of
+the named floors (floor_event.c FloorDoorEntry), for porting the door natives.
 """
 import argparse
 import hashlib
@@ -115,20 +117,23 @@ def admit_common_rel(files):
     return data
 
 
-def inspect_bank(data):
+def inspect_bank(data, allow_null_entries=False):
     """Walk the original reachable instruction graph without executing natives.
 
     This is a structural inventory, never a claim that every native function is
     implemented. All function entry points are roots, even later-story ones.
+    allow_null_entries admits a function table with zero offsets (a script
+    slot the original bank leaves empty); such slots are reported, never run.
     """
     if len(data) < 28 or len(data) > 262144 or data[10]:
         raise ValueError("Invalid original GSVM bank")
     bank, count = be16(data, 0), be16(data, 4)
     if not 0 < count <= 2048 or 24 + 4*count > len(data):
         raise ValueError("Invalid original GSVM function count")
-    functions = [u32(data, 24+i*4) for i in range(count)]
+    entries = [u32(data, 24+i*4) for i in range(count)]
+    functions = [at for at in entries if at or not allow_null_entries]
     globals_at = u32(data, 16)
-    if min(functions) < globals_at or (min(functions)-globals_at) % 4:
+    if not functions or min(functions) < globals_at or (min(functions)-globals_at) % 4:
         raise ValueError("Invalid original GSVM globals")
     pending, visited, opcodes = list(functions), {}, set()
     while pending:
@@ -147,9 +152,9 @@ def inspect_bank(data):
             pending.append(u32(data, pc+1))
         if op == 4:
             target = u32(data, pc+1)
-            if target >= count:
+            if target >= count or not entries[target]:
                 raise ValueError("Invalid original GSVM function call")
-            pending.append(functions[target])
+            pending.append(entries[target])
         if op not in (1, 5, 6):
             pending.append(pc+size)
     occupied = set()
@@ -218,7 +223,9 @@ def inspect_bank(data):
     return {"id": f"{bank:04x}", "bytes": len(data),
             "sha256": hashlib.sha256(data).hexdigest(),
             "globals": (min(functions)-globals_at)//4,
-            "functions": [{"index": i, "offset": at} for i, at in enumerate(functions)],
+            "functions": [{"index": i, "offset": at} for i, at in enumerate(entries)],
+            **({"null_function_entries": [i for i, at in enumerate(entries) if not at]}
+               if len(functions) != len(entries) else {}),
             "reachable_instructions": len(visited),
             "opcodes": [f"{op:02x}" for op in sorted(opcodes)],
             "native_calls": calls,
@@ -301,17 +308,56 @@ def extract_area_metadata(originals, areas=None, actor_tables=None):
             "actor-names.json": names}
 
 
+DOOR_FIELDS = ("open_anim", "close_anim", "open_end_anim", "close_end_anim", "pad04",
+               "alternate_anim_a", "alternate_anim_b", "door_type", "part_index", "pad09",
+               "collision_id", "floor", "open_flag", "close_flag", "pad12", "resource_id")
+
+
+def extract_doors(rel, floors):
+    """Original door/elevator records (24 bytes) of the given floor numbers.
+
+    common_rel._prolog publishes the table at data+0x8FE24 with its count at
+    data+0x14A690. floor_event.c:FloorDoorEntry names the fields; floor.c
+    reads the owning floor at +0x0C. The table index is the door number the
+    common door scripts and the door/elevator natives receive.
+    """
+    common = rel_data(rel, 125)
+    base = u32(rel, u32(rel, 16) + 4*8) & ~3
+    count = u32(common, 0x14A690)
+    if not 1 <= count <= 1024:
+        raise ValueError("Unexpected original door table count")
+    rows = extent(common, 0x8FE24, count * 24)
+    doors = []
+    for index in range(count):
+        values = struct.unpack_from(">4bB2b2BBh3HHI", rows, index * 24)
+        row = dict(zip(DOOR_FIELDS, values))
+        if row["floor"] in floors:
+            doors.append({"index": index, **row, "resource_id": "%08x" % row["resource_id"],
+                          "file_offset": hex(base + 0x8FE24 + index * 24)})
+    return doors
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--disc", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--floor", action="append", choices=sorted(story_floors()),
                         help="Floor profile to prepare (repeatable; default: outskirt and shop)")
+    parser.add_argument("--doors-only", action="store_true",
+                        help="Write only area-doors.json for the selected floors")
     args = parser.parse_args()
     try:
         names = tuple(dict.fromkeys(args.floor or DEFAULT_FLOORS))
         profiles, areas, actor_tables = source_profiles(names), area_table(names), actor_table(names)
         disc, output = verify_disc(args.disc), check_output(args.output)
+        if args.doors_only:
+            doors = extract_doors(admit_common_rel(disc / "files"), set(areas))
+            encoded = (json.dumps(doors, indent=2)+"\n").encode("utf-8")
+            output.mkdir(parents=True, exist_ok=True)
+            (output / "area-doors.json").write_bytes(encoded)
+            print(json.dumps({"output": str(output), "file": "area-doors.json", "records": len(doors),
+                              "bytes": len(encoded), "sha256": hashlib.sha256(encoded).hexdigest()}, indent=2))
+            return
         originals = {name: (admit_common_rel(disc / "files") if name == COMMON_REL
                             else admit(disc / "files" / name, profiles)) for name in profiles}
         output.mkdir(parents=True, exist_ok=True)
@@ -345,7 +391,7 @@ def main():
         for floor, (filename, script_id, message_id, outname) in areas.items():
             bank = member(originals[filename], script_id)
             messages = member(originals[filename], message_id)
-            info = inspect_bank(bank)
+            info = inspect_bank(bank, allow_null_entries=True)
             if be16(bank, 0) != 0x100:
                 raise ValueError("Unexpected original field script bank")
             packed = encode_pack(floor, [bank, common], [messages, common_messages, common_names])

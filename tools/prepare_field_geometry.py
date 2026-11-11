@@ -142,6 +142,96 @@ def solve_ik_lower(upper, target, upper_length, scale):
     return result
 
 
+def admitted_spline(node):
+    """Reviewed HSD path spline: the cardinal type with its arc-length tables.
+
+    spline.c names the fields type/numcv/tension/cv/totalLength/segLength/
+    segPoly. A cardinal spline of n points stores n+2 control points, n
+    cumulative normalised lengths and n-1 quartic arc-length polynomials.
+    """
+    if type(node).__name__ != "Spline":
+        raise ValueError("HSD path track has no spline object")
+    kind, count = node.flags >> 8, node.n
+    cv, lengths, poly = node.s1, node.s2, node.s3
+    if kind != 3:
+        raise ValueError("Unreviewed HSD path spline type")
+    if (not 2 <= count <= 64 or not isinstance(cv, list) or len(cv) != count + 2 or
+            not isinstance(lengths, list) or len(lengths) != count or
+            not isinstance(poly, list) or len(poly) != count - 1):
+        raise ValueError("Malformed HSD cardinal path spline")
+    values = [node.f0, node.f1, *lengths, *(v for row in cv for v in row), *(v for row in poly for v in row)]
+    if any(not math.isfinite(v) for v in values) or any(len(row) != 3 for row in cv) or any(len(row) != 5 for row in poly):
+        raise ValueError("Nonfinite HSD path spline")
+    if lengths[0] != 0 or any(b < a for a, b in zip(lengths, lengths[1:])) or node.f1 <= 0:
+        raise ValueError("HSD path spline lengths are not cumulative")
+    return {"count": count, "tension": node.f0, "total": node.f1, "cv": [tuple(row) for row in cv],
+            "lengths": list(lengths), "poly": [tuple(row) for row in poly]}
+
+
+def _spline_speed(coefficients, t):
+    """spline.c:splArcLengthPolynomial."""
+    result = (((coefficients[0]*t + coefficients[1])*t + coefficients[2])*t + coefficients[3])*t + coefficients[4]
+    if -0.001 < result < 0:
+        result = 0.0
+    if result < 0:
+        raise ValueError("Negative HSD path arc-length integrand")
+    return math.sqrt(result)
+
+
+def _spline_simpson(coefficients, start, end):
+    """spline.c:fn_801B1AD0, the eight-interval Simpson step."""
+    dx = (end - start) / 8.0
+    t, middle = start + dx, 0.0
+    for i in range(2, 9):
+        middle += (4.0 if not i & 1 else 2.0) * _spline_speed(coefficients, t)
+        t += dx
+    return dx * (middle + _spline_speed(coefficients, start) + _spline_speed(coefficients, end)) / 3.0
+
+
+def spline_parameter(spline, distance):
+    """spline.c:fn_801B18D8 (splArcLengthGetParameter) for a cardinal spline."""
+    if distance <= 0:
+        return 0.0
+    if distance >= 1:
+        return 1.0
+    lengths, index = spline["lengths"], 0
+    while lengths[index + 1] < distance:
+        index += 1
+    remaining = spline["total"] * (distance - lengths[index])
+    start, end, result = 0.0, 1.0, 0.0
+    while abs(start - end) >= 0.00001:
+        result = (start + end) / 2.0
+        step = _spline_simpson(spline["poly"][index], start, result)
+        if remaining < 0.00001 + step:
+            end = result
+        else:
+            start = result
+            remaining -= step
+    return (result + index) / (spline["count"] - 1.0)
+
+
+def spline_point(spline, u):
+    """spline.c:fn_801B2038 (splGetSplinePoint), cardinal case."""
+    cv, count = spline["cv"], spline["count"]
+    if not 0 <= u <= 1:
+        raise ValueError("HSD path parameter outside the spline")
+    if u >= 1:
+        return cv[count]
+    u *= count - 1
+    index = int(u)
+    u -= index
+    t, u2 = spline["tension"], u * u
+    u3 = u2 * u
+    weights = (t * (-u3 + 2.0*u2 - u), (2.0 - t)*u3 + (t - 3.0)*u2 + 1.0,
+               (t - 2.0)*u3 + (3.0 - 2.0*t)*u2 + t*u, t * (u3 - u2))
+    return tuple(sum(cv[index + k][axis] * weights[k] for k in range(4)) for axis in range(3))
+
+
+def path_point(spline, value):
+    """JObjUpdateFunc HSD_A_J_PATH: clamp to 0..1, then splArcLengthPoint."""
+    return spline_point(spline, spline_parameter(spline, min(1.0, max(0.0, value))))
+
+
 def constant_material_byte(keys):
     if not keys or any(not math.isfinite(k.value) or k.value != keys[0].value or
                        (getattr(k, "slope_in", 0) or 0) != 0 or
@@ -152,7 +242,7 @@ def constant_material_byte(keys):
 
 class Model:
     def __init__(self, model, raw, allow_image_swaps=False, constant_material_colors=False,
-                 allow_instances=False):
+                 allow_instances=False, allow_paths=False, frozen_material_colors=False):
         self.model, self.raw = model, raw
         self.joints = joint_nodes(raw.root_joint)
         self.meshes = raw_meshes(raw)
@@ -190,11 +280,25 @@ class Model:
         self.tracks, self.materials, self.ends, self.particle_events = [], [], [], []
         self.image_swaps = []
         self.constant_material_colors = {}
+        # Opt-in interior subset. paths: per clip, joint -> admitted spline.
+        # frozen_material_tracks: animated material RGB that the pack format
+        # cannot sample; such a colour keeps its first-clip frame-zero value.
+        self.paths, self.frozen_material_tracks = [], []
+        joint_channels = {1,2,3,5,6,7,8,9,10,11,12,40} | ({4} if allow_paths else set())
         for root in raw.animated_joints or []:
             nodes = title.tree_nodes(root)
             if len(nodes) != len(model.bones):
                 raise ValueError("Incomplete HSD joint animation tree")
-            tracks = [title.channels(n.animation, {1,2,3,5,6,7,8,9,10,11,12,40}) for n in nodes]
+            tracks = [title.channels(n.animation, joint_channels) for n in nodes]
+            paths = {}
+            for index, (node, track) in enumerate(zip(nodes, tracks)):
+                if 4 in track:
+                    # JObjUpdateFunc: the path track replaces the translation
+                    # with a point of the spline held by the AObj's object.
+                    if any(channel in track for channel in (5, 6, 7)):
+                        raise ValueError("HSD path joint also animates its translation")
+                    paths[index] = admitted_spline(getattr(getattr(node.animation, "joint", None), "property", None))
+            self.paths.append(paths)
             self.tracks.append(tracks)
             self.ends.append(max((n.animation.end_frame for n in nodes if n.animation), default=0))
             # Type40 is an integer-bit particle callback, not a transform. Its
@@ -238,18 +342,28 @@ class Model:
                                 raise ValueError("Nonzero unused TEV register animation")
                         tex_tracks[ta.id] = channels
                         ta = ta.next
-                    material_tracks = title.channels(anim.animation, set(range(1, 11)) if constant_material_colors else {10})
+                    material_tracks = title.channels(anim.animation, set(range(1, 11))
+                        if constant_material_colors or frozen_material_colors else {10})
                     for channel, keys in material_tracks.items():
                         if channel == 10:
                             continue
                         # HSD MObjUpdateFunc clamps, multiplies by 255, then
                         # truncates to u8. Only constant, equal-across-clips RGB
                         # tracks may be folded into immutable batch colors.
-                        value = constant_material_byte(keys)
                         identity = (dobj.address, channel)
-                        previous = self.constant_material_colors.get(identity, value)
-                        if previous != value:
-                            raise ValueError("Material RGB differs between effect clips")
+                        try:
+                            value = constant_material_byte(keys)
+                            previous = self.constant_material_colors.get(identity, value)
+                            if previous != value:
+                                raise ValueError("Material RGB differs between effect clips")
+                        except ValueError:
+                            if not frozen_material_colors:
+                                raise
+                            # Declared limitation: the colour does not animate.
+                            value = self.constant_material_colors.get(
+                                identity, int(255 * min(1.0, max(0.0, title.curve_value(keys, 0.0)))))
+                            self.frozen_material_tracks.append(
+                                {"clip": len(self.materials), "dobj": "%08x" % dobj.address, "channel": channel})
                         self.constant_material_colors[identity] = value
                     mapping[dobj.address] = ({k:v for k,v in material_tracks.items() if k == 10}, tex_tracks)
                     dobj, anim = dobj.next, anim.next
@@ -306,9 +420,13 @@ class Model:
             return self._cache[key]
         bones = self.model.bones
         tracks = self.tracks[clip] if self.tracks else [{} for _ in bones]
+        paths = self.paths[clip] if getattr(self, "paths", None) else {}
         local, accumulated, scales = [], [], []
-        for bone, track in zip(bones, tracks):
-            position = [title.curve_value(track.get(5+i), frame, bone.position[i]/UNITS)*UNITS for i in range(3)]
+        for index, (bone, track) in enumerate(zip(bones, tracks)):
+            if index in paths:
+                position = [v*UNITS for v in path_point(paths[index], title.curve_value(track[4], frame))]
+            else:
+                position = [title.curve_value(track.get(5+i), frame, bone.position[i]/UNITS)*UNITS for i in range(3)]
             rotation = [title.curve_value(track.get(1+i), frame, bone.rotation[i]) for i in range(3)]
             scale = np.asarray([title.curve_value(track.get(8+i), frame, bone.scale[i]) for i in range(3)])
             parent_scale = accumulated[bone.parent_index] if bone.parent_index is not None else None
@@ -465,7 +583,10 @@ def pixel_engine_flags(pe, flags):
              (25,3,4,5,3):SUBTRACT | title.TRANSLUCENT,
              (25,1,4,5,3):title.TRANSLUCENT,
              (49,1,4,5,3):title.TRANSLUCENT,
-             (57,0,4,5,3):0}
+             (57,0,4,5,3):0,
+             # ONE/ONE addition with flags 0x39: bit 0x20 keeps depth writes,
+             # as the reviewed 0x31 translucent interior state does.
+             (57,1,1,1,3):ADDITIVE_ONE | title.TRANSLUCENT}
     if state not in modes:
         raise ValueError("Unreviewed field pixel-engine state: " + str(state))
     flags &= ~(title.ADDITIVE | ADDITIVE_ONE | SUBTRACT | title.TRANSLUCENT | title.NO_DEPTH_WRITE)
@@ -815,6 +936,17 @@ def split_static(meshes, clip, frames, tolerance=1e-6):
     return static, animated
 
 
+def surface_collapsed(linear):
+    """True where a 3x3 map has rank <= 1: every triangle gets zero area.
+
+    An authored scale of zero on all axes, or on two of them, leaves a point
+    or a line, so the part draws nothing at that sample. A rank-2 map (one
+    zero axis) can still show a flat surface and is not collapsed.
+    """
+    values = np.linalg.svd(np.asarray(linear, dtype=float), compute_uv=False)
+    return values[..., 1] <= values[..., 0] * 1e-9
+
+
 def _sample_descriptor(model, descriptor, states, attachment=None):
     rest_inverse = np.linalg.inv(model.deform(base_descriptor(descriptor),model.rest))
     result = np.asarray([model.deform(descriptor,world) @ rest_inverse for world,_ in states])
@@ -827,6 +959,9 @@ def _sample_descriptor(model, descriptor, states, attachment=None):
     # unused normal matrix instead of serializing a singular GPU transform.
     collapsed = np.all(result[:, :3, :3] == 0, axis=(1, 2))
     if base_descriptor(descriptor)[0] == "rigid":
+        # A point or a line (rank <= 1) has no surface either; such samples
+        # are hidden like the exactly-zero ones.
+        collapsed = collapsed | surface_collapsed(result[:, :3, :3])
         result[collapsed, :3, :3] = np.eye(3)
     else:
         approvals = getattr(model, "_collapsed_world_descriptors", {})
@@ -875,7 +1010,8 @@ def prepare_pack_set(meshes, schedules, fps, camera_frames, lights, archive_hash
         for i,(clip,frame) in enumerate(frames):
             world, visible = states[model][i]
             if (all(descriptor[0] == "rigid" for descriptor in mesh["descriptors"]) and
-                np.all(np.asarray(world[mesh["bone"]])[:3, :3] == 0)):
+                (np.all(np.asarray(world[mesh["bone"]])[:3, :3] == 0) or
+                 surface_collapsed(np.asarray(world[mesh["bone"]])[:3, :3]))):
                 visible = list(visible)
                 visible[mesh["bone"]] = False
             material = material_state(mesh,clip,frame,visible)

@@ -116,8 +116,12 @@ def member(archive, identity):
 
 
 def rel_data(data, module):
-    # REL15 is M1_out (Phenac City); it uses REL131's section layout.
-    section, count = {5: (3,10), 15: (3,10), 125: (4,11), 131: (3,10)}[module]
+    # The common REL125 keeps its tables in section 4 of 11. Every floor REL
+    # (REL131 Outskirt, REL5 shop, REL15-26 Phenac City) has ten sections and
+    # publishes its tables from section 3; the header check below enforces it.
+    if isinstance(module, bool) or not isinstance(module, int) or not 1 <= module <= 0xFFFF:
+        raise ValueError("Invalid original REL module number")
+    section, count = (4, 11) if module == 125 else (3, 10)
     if u32(data, 0) != module or u32(data, 12) != count:
         raise ValueError("Unexpected original REL identity or section count")
     table = u32(data, 16)
