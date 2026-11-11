@@ -54,6 +54,7 @@ typedef struct {
     int camera_mode, camera_playing;
     float fade_elapsed, fade_duration, fade_from, fade_to, camera_rate;
     float camera_from[3],camera_to[3],camera_direction[3],camera_move_time,camera_move_duration;
+    float camera_rotation[2],rotation_from[2],rotation_to[2],rotation_time,rotation_duration;
     float target_from[3],target_to[3],target_time,target_duration;
     C3TitleCamera return_from,return_to;
     float return_time,return_duration;
@@ -111,19 +112,24 @@ static int validate_native(const Impl *s,const C3StoryCall *c,char *error)
         /* Phenac City exterior bank 013E0E00 (native table lbl_802E1CF0). */
         {0x02,1,0},{0x16,2,0},{0x23,1,0},{0x31,0,0},{0x66,1,0},{0x7e,2,0},
         {0x82,3,0},{0x83,3,0},{0x89,3,0},{0xa1,3,0},{0xa4,6,0x3c},{0xa5,5,0x10},
-        {0x77,2,0},{0x84,2,0},{0x60,3,0},{0xa9,2,0},{0xb1,6,0x10},{0xb4,0,0},{0xd8,1,0},{0xda,1,0},{0xe8,2,0}
+        {0x77,2,0},{0x84,2,0},{0x60,3,0},{0x73,4,0},{0x75,2,0},{0x8d,5,0x1e},{0x9a,5,0},{0xa0,1,0},{0xb5,4,0},{0xa9,2,0},{0xb1,6,0x10},{0xb4,0,0},{0xd8,1,0},{0xda,1,0},{0xe8,2,0}
     };
     for(unsigned i=0;i<sizeof signature/sizeof signature[0];++i){
         if(signature[i].id!=c->native)continue;
         /* D1 is the original synchronous script executor: the four child
          * arguments may be omitted (retail floor init uses only scriptID),
          * and the VM supplies zero for those missing trailing words. */
-        /* Phenac main calls 4C/4D with no arguments: the dispatcher's zeroed
-         * register image addresses person (0,0), which does not exist. */
-        if((c->native==0x4c||c->native==0x4d)&&!c->argc)return 1;
-        if((c->native==0xd1?c->argc<1||c->argc>5:c->argc!=signature[i].argc))return fail(error,"Native %02lx expects %u arguments, received %lu",
+        /* Phenac's banks call 4C/4D with fewer arguments than the table row.
+         * The dispatcher (fn_800F10E8) zero-fills its register image, so the
+         * missing words are zero: person (group,0) or (0,0). */
+        if((c->native==0x4c||c->native==0x4d)&&c->argc<2)return 1;
+        /* Extra script words are legal: the dispatcher reads only the table
+         * row's typed arguments and the call pops the rest (the mayor's-house
+         * bank passes five words to the three-argument native 36). Missing
+         * words stay an error here except for the reviewed cases above. */
+        if((c->native==0xd1?c->argc<1||c->argc>5:c->argc<signature[i].argc))return fail(error,"Native %02lx expects %u arguments, received %lu",
             (unsigned long)c->native,signature[i].argc,(unsigned long)c->argc);
-        for(unsigned j=0;j<c->argc;++j){
+        for(unsigned j=0;j<c->argc&&j<signature[i].argc;++j){
             if(!(signature[i].floats&(1u<<j)))continue;
             float value=as_float(c->args[j]),minimum=-100000,maximum=100000,scale=s->map->scale;
             switch(c->native){
@@ -137,6 +143,7 @@ static int validate_native(const Impl *s,const C3StoryCall *c,char *error)
             case 0xb1:minimum=0;maximum=1000;scale=1;break;
             case 0x7f:if(j==2){minimum=-100;maximum=100;scale=1;}break;
             case 0x8c:if(j==4){minimum=0;maximum=60;scale=1;}break;
+            case 0x8d:scale=1;if(j==4){minimum=0;maximum=60;}else{minimum=-100;maximum=100;}break;
             default:break;
             }
             float converted=value*scale;
@@ -273,6 +280,14 @@ static void start_turn(Impl *s,Person *p,float yaw,float speed)
     yaw+=6.2831855f*(int32_t)(pose(s,p)->yaw/6.2831855f);
     p->turn_target=yaw;p->turn_speed=speed;p->turn_fraction=0;p->turning=1;
 }
+/* The free camera looks along its X/Y Euler rotation (native 29). */
+static void aim_camera(Impl *s,float x,float y)
+{
+    s->view.camera.target[0]=s->view.camera.eye[0]-sinf(y)*cosf(x);
+    s->view.camera.target[1]=s->view.camera.eye[1]+sinf(x);
+    s->view.camera.target[2]=s->view.camera.eye[2]-cosf(y)*cosf(x);
+    for(unsigned i=0;i<3;++i)s->camera_direction[i]=s->view.camera.target[i]-s->view.camera.eye[i];
+}
 static int tv_setup(Impl *s,char *error)
 {
     /* Native D3 selects later reports from source story flags. This adapter
@@ -341,9 +356,8 @@ static int run_native(Impl *s,RunTask *t,char *error)
     case 0x29: {
         float x=as_float(a[0]),y=as_float(a[1]);
         if(as_float(a[2])!=0)return fail(error,"Original camera roll is not prepared");
-        s->view.camera.target[0]=s->view.camera.eye[0]-sinf(y)*cosf(x);
-        s->view.camera.target[1]=s->view.camera.eye[1]+sinf(x);
-        s->view.camera.target[2]=s->view.camera.eye[2]-cosf(y)*cosf(x);break;
+        s->camera_rotation[0]=x;s->camera_rotation[1]=y;s->rotation_time=s->rotation_duration=0;
+        aim_camera(s,x,y);break;
     }
     case 0x2a:
         if(a[0]!=s->area->group||!s->camera_track||!s->camera_track->frames||
@@ -586,6 +600,45 @@ static int run_native(Impl *s,RunTask *t,char *error)
         /* msgctrlSetValue(variable,value). */
         if(a[0]>255)return fail(error,"Message variable %lu is out of range",(unsigned long)a[0]);
         s->message_values[a[0]]=a[1];break;
+    case 0x73:case 0x9a:{
+        /* fn_801CB834 / fn_8018B368: start a raw model animation on a person
+         * (73 addresses it by index in the current group). 73 on a model
+         * resource that is not a person animates a map object. */
+        uint32_t shift=c->native==0x9a;
+        p=c->native==0x9a?person(s,a[0],a[1]):person(s,s->area->group,a[0]);
+        if((int32_t)a[shift+1]<0)break;
+        if(p){if(!p->public.model)break;if(!set_motion(s,p,a[shift+1],a[shift+2],a[shift+3],error))return 0;}
+        else if(c->native==0x73)note_presentation(s,c->native,"map_object_animation_unrendered");
+        }break;
+    case 0x75:
+        /* scriptWaitSyncMotion(resource,wait): a person waits like native 35;
+         * a model resource that is not a person reports finished. */
+        p=person(s,s->area->group,a[0]);
+        if(p&&p->public.playing&&pose(s,p)->animation_seconds<clip_seconds(&p->public)){
+            if(!a[1])value=1;
+            else if(!p->public.loop){t->call.args[1]=a[0];t->call.args[0]=s->area->group;t->wait=W_MOTION;return 1;}
+        }break;
+    case 0x8d:
+        /* cameraMoveRotationXYZ: linear interpolation of the camera rotation. */
+        if(as_float(a[3])!=0)return fail(error,"Original camera roll is not prepared");
+        s->rotation_from[0]=s->camera_rotation[0];s->rotation_from[1]=s->camera_rotation[1];
+        s->rotation_to[0]=as_float(a[1]);s->rotation_to[1]=as_float(a[2]);
+        s->rotation_time=0;s->rotation_duration=as_float(a[4]);
+        if(s->rotation_duration<=0){s->camera_rotation[0]=s->rotation_to[0];s->camera_rotation[1]=s->rotation_to[1];
+            aim_camera(s,s->camera_rotation[0],s->camera_rotation[1]);}
+        break;
+    case 0xa0:
+        /* cameraMoveEndCheck(wait): scripted camera moves still running? */
+        if(s->camera_returning||s->target_moving||s->camera_move_time<s->camera_move_duration||s->rotation_time<s->rotation_duration){
+            if(a[0]){t->wait=W_CAMERA_MOVE;return 1;}
+            value=1;
+        }break;
+    case 0xb5:{
+        /* fn_80188FA0: look at another person (41 is this with the hero). */
+        Person *target=person(s,a[2],a[3]);p=person(s,a[0],a[1]);
+        if(p&&target){p->looking=1;memcpy(p->look,pose(s,target)->position,sizeof p->look);
+            note_presentation(s,c->native,"procedural_head_aim");}
+        }break;
     case 0x7e:
         /* heroMoveSetNeckMode: procedural head tracking of a party member. */
         note_presentation(s,c->native,"head_tracking_unrendered");
@@ -724,7 +777,8 @@ static int wait_task(Impl *s,RunTask *t,float seconds,uint16_t *pressed,char *er
            s->view.camera_seconds<(float)(s->camera_track->frame_count-1u)/s->camera_track->fps)return 1;
         return resume(s,t,0,error);
     case W_CAMERA_MOVE:
-        if(s->camera_returning||s->target_moving||s->camera_move_time<s->camera_move_duration)return 1;
+        if(s->camera_returning||s->target_moving||s->camera_move_time<s->camera_move_duration||
+           s->rotation_time<s->rotation_duration)return 1;
         return resume(s,t,0,error);
     case W_FADE:
         if(s->fade_elapsed<s->fade_duration)return 1;
@@ -1045,6 +1099,13 @@ int c3_field_story_tick(C3FieldStory *story,float seconds,uint16_t pressed,char 
         if(door->seconds>=end){door->seconds=end;door->playing=0;}
     }
     if(s->camera_playing&&s->view.camera_active)s->view.camera_seconds+=seconds*s->camera_rate;
+    int rotating=s->rotation_time<s->rotation_duration;
+    if(rotating){
+        s->rotation_time=fminf(s->rotation_duration,s->rotation_time+seconds);
+        float f=s->rotation_time/s->rotation_duration;
+        for(unsigned i=0;i<2;++i)s->camera_rotation[i]=s->rotation_from[i]+(s->rotation_to[i]-s->rotation_from[i])*f;
+        aim_camera(s,s->camera_rotation[0],s->camera_rotation[1]);
+    }
     if(s->camera_move_time<s->camera_move_duration){
         s->camera_move_time=fminf(s->camera_move_duration,s->camera_move_time+seconds);
         float f=s->camera_move_time/s->camera_move_duration;
