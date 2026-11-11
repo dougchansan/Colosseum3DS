@@ -7,6 +7,7 @@
 #include "n3ds_platform.h"
 #include "render_recovery.h"
 #include "title_renderer.h"
+#include "colosseum3ds/floor_profile.h"
 #include "colosseum3ds/game_state.h"
 #include "colosseum3ds/movie.h"
 #include "colosseum3ds/title.h"
@@ -81,7 +82,7 @@ static void load_card(C3GameState *state, C3GameMenuSave *view,
     view->valid = 1;
     view->can_continue = c3_field_scene_supports(summary.floor) && prepared != NULL;
     snprintf(view->name, sizeof(view->name), "%s", summary.name);
-    snprintf(view->location, sizeof(view->location), "%s", summary.floor == 1 ? "OUTSKIRT STAND" : summary.floor == 2 ? "OUTSKIRT STAND - INSIDE" : "Unported area");
+    snprintf(view->location, sizeof(view->location), "%s", summary.floor == 2 ? "OUTSKIRT STAND - INSIDE" : c3_floor_profile(summary.floor) ? c3_floor_profile(summary.floor)->label : "Unported area");
     view->money = summary.money;
     view->play_seconds = summary.play_seconds;
     if (!prepared)

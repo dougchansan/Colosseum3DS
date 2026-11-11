@@ -92,6 +92,9 @@ int c3_n3ds_init(char *error, size_t capacity)
     return 0;
 }
 
+static uint16_t previous_touch_x, previous_touch_y;
+static bool previous_touch;
+
 bool c3_n3ds_poll(C3N3dsInput *input)
 {
     uint32_t keys;
@@ -112,6 +115,16 @@ bool c3_n3ds_poll(C3N3dsInput *input)
     input->cstick_y = normalize_axis(cstick.dy);
     input->trigger_l = (keys & KEY_L) ? 255 : 0;
     input->trigger_r = (keys & KEY_R) ? 255 : 0;
+    if (keys & KEY_TOUCH) {
+        touchPosition touch;
+        hidTouchRead(&touch);
+        previous_touch_x = touch.px; previous_touch_y = touch.py;
+        input->touch_held = true;
+    }
+    input->touch_x = previous_touch_x; input->touch_y = previous_touch_y;
+    input->touch_pressed = input->touch_held && !previous_touch;
+    input->touch_released = !input->touch_held && previous_touch;
+    previous_touch = input->touch_held;
     input->exit_requested = (keys & (KEY_START | KEY_SELECT)) == (KEY_START | KEY_SELECT);
     return !input->exit_requested;
 }

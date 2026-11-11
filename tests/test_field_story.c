@@ -102,6 +102,7 @@ static void door(Scene *s,uint32_t source,uint32_t floor,uint32_t spawn)
     for(frame=0;frame<3600&&!c3_field_story_view(&s->story)->next_floor;++frame)tick(s,frame);
     CHECK(frame<3600&&c3_field_story_view(&s->story)->next_floor==floor&&c3_field_story_view(&s->story)->next_spawn==spawn);
 }
+static int accept_world_map(uint32_t floor){return floor==1||floor==2||floor==0x38e;}
 static void unchanged_party(C3GameState *game,const C3GameSummary *original)
 {
     C3GameSummary now;CHECK(c3_game_state_summary(game,&now));
@@ -486,6 +487,12 @@ int main(int argc,char **argv)
      CHECK(c3_field_story_view(&scene->story)->control&&!c3_field_story_view(&scene->story)->battle_id);
      CHECK(!c3_field_story_battle_pending(&scene->story,NULL));
      fprintf(trace,"integration_post_battle result=2 flags03DE_0A5A_03DF=1 control=1 challenge_repeated=0\n");}
+    /* Leaving by the original exit surface 0 runs common script 05960004
+     * with floor 0x38E (the world map). It is refused without a floor
+     * predicate and requested with entrance 0 once the scene accepts it. */
+    c3_field_story_set_floor_support(&scene->story,accept_world_map);
+    door(scene,0,0x38e,0);
+    fprintf(trace,"integration_world_map_request floor=038e spawn=0\n");
     close_scene(scene);free(scene);c3_game_state_free(&game);
     fprintf(trace,"integration_complete checks=%u\n",checks);
     if(argc<=2){char buffer[4096];size_t size;rewind(trace);

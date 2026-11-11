@@ -1,4 +1,5 @@
 #include "game_ui_views.h"
+#include "colosseum3ds/floor_profile.h"
 #include <stdio.h>
 
 static const char *pokemon_name(uint16_t species)
@@ -35,10 +36,10 @@ void c3_field_ui_draw_to(C3BottomUi *ui,const C3GameSummary *summary,FieldPhase 
     c3_ui_pager_sync(pager,c3_field_ui_identity(page,story));
     snprintf(text,sizeof text,"%s   $%lu   %lu:%02lu",summary->name,(unsigned long)summary->money,
         (unsigned long)(summary->play_seconds/3600u),(unsigned long)(summary->play_seconds/60u%60u));
-    c3_ui_header(ui,summary->floor==2?"OUTSKIRT STAND - INSIDE":"OUTSKIRT STAND",text);
+    c3_ui_header(ui,summary->floor==2?"OUTSKIRT STAND - INSIDE":c3_floor_profile(summary->floor)?c3_floor_profile(summary->floor)->label:"UNKNOWN AREA",text);
     if(phase==FIELD_SETUP||phase==FIELD_ARRIVAL||phase==FIELD_ARRIVAL_OUT){
         c3_ui_panel(ui,7,64,306,90);
-        c3_ui_text(ui,20,80,280,3,phase==FIELD_SETUP?"Loading the original area...":"Arriving at Outskirt Stand...",C3_UI_WHITE);
+        c3_ui_text(ui,20,80,280,3,phase==FIELD_SETUP?"Loading the original area...":"Arriving...",C3_UI_WHITE);
     }else if(page==PAUSE_CLOSED&&story&&story->blocked[0]){
         c3_ui_dialogue(ui,pager,story->blocked,0,0);
         if(!pager->more)c3_ui_footer(ui,story->battle_id==10?"A: combat preview   X / START: menu":"X / START: main menu");

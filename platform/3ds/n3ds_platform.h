@@ -21,6 +21,10 @@ typedef struct {
     int8_t stick_x, stick_y;
     int8_t cstick_x, cstick_y;
     uint8_t trigger_l, trigger_r;
+    /* Bottom-screen stylus in 320x240 pixels; pressed/released are edges.
+     * The position of a release is the last held position. */
+    uint16_t touch_x, touch_y;
+    bool touch_held, touch_pressed, touch_released;
     bool exit_requested;
 } C3N3dsInput;
 

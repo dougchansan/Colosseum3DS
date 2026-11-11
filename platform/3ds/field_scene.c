@@ -12,6 +12,8 @@
 #include "stage_renderer.h"
 #include "colosseum3ds/field.h"
 #include "colosseum3ds/field_story.h"
+#include "colosseum3ds/floor_profile.h"
+#include "world_map_scene.h"
 #include "colosseum3ds/area_lights.h"
 #include "colosseum3ds/title.h"
 
@@ -32,7 +34,26 @@ static int exists(const char *path)
     return stat(path,&entry)==0 && S_ISREG(entry.st_mode);
 }
 
-int c3_field_scene_supports(uint32_t floor) { return floor==1u || floor==2u; }
+/* A walkable floor is supported when it has a profile and its core packs are
+ * on the SD card. The world map is a separate menu-class scene. */
+int c3_field_scene_supports(uint32_t floor)
+{
+    const C3FloorProfile *profile=c3_floor_profile(floor);
+    static const char *const core[]={"%s.c3f","%s.c3a","%s_wes.c3t","%s_map0.c3t"};
+    char name[96],path[200];
+    if(!profile||(profile->features&C3_FLOOR_WORLD_MAP))return 0;
+    for(unsigned i=0;i<sizeof core/sizeof core[0];++i){
+        snprintf(name,sizeof name,core[i],profile->prefix);
+        snprintf(path,sizeof path,BOOT_ROOT "%s",name);if(!exists(path))return 0;
+    }
+    snprintf(path,sizeof path,BOOT_ROOT "%s",profile->story);
+    return exists(path);
+}
+/* Destinations the original doorway script may request from a field. */
+static int floor_reachable(uint32_t floor)
+{
+    return floor==C3_FLOOR_WORLD_MAP_ID?c3_world_map_scene_available():c3_field_scene_supports(floor);
+}
 
 int c3_field_scene_available(void)
 {
@@ -119,7 +140,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     C3TitleCamera camera;C3TitleRenderStats stats={0};C3N3dsInput input={0};
     uint32_t opened=0,count=0,arrival_done=0,opening_done=0,arrival_count=0;
     unsigned wes_index=0,arrival_index=0,tv_index=UINT32_MAX,selection=0,frames=0;
-    int result=-1,yes=0,dirty=1,arrival_end_sampled=0,entered=0;
+    int result=-1,yes=0,dirty=1,arrival_end_sampled=0,entered=0,lights_loaded=0;
     FieldPhase phase=FIELD_SETUP;PausePage page=PAUSE_CLOSED;
     float elapsed=0,phase_seconds=0,arrival_seconds=0;
     uint64_t previous=0,next_console=0,next_trace=0;
@@ -134,7 +155,8 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     if(!state||!save_path||!c3_game_state_summary(state,&summary)||!c3_field_scene_supports(summary.floor)){
         snprintf(error,capacity,"The saved location is not available in this build.");free(ingame);return -1;
     }
-    const char *prefix=summary.floor==1?"outskirt":"shop";
+    const C3FloorProfile *profile=c3_floor_profile(summary.floor);
+    const char *prefix=profile->prefix;
     snprintf(path,sizeof path,BOOT_ROOT "%s.c3f",prefix);
     if(!c3_field_load(&map,path,error,capacity))goto done;
     snprintf(path,sizeof path,BOOT_ROOT "%s.c3a",prefix);
@@ -146,20 +168,20 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         snprintf(error,capacity,"The original field progress flags are unavailable.");goto done;
     }
     if(!c3_field_spawn(&map,summary.spawn,&player)){
-        snprintf(error,capacity,"The saved Outskirt Stand entrance is unavailable.");goto done;
+        snprintf(error,capacity,"The saved area entrance is unavailable.");goto done;
     }
-    arrival_count=map.floor==1&&opening_done&&!arrival_done?map.arrival_pack_count:0;
+    arrival_count=(profile->features&C3_FLOOR_ARRIVAL)&&opening_done&&!arrival_done?map.arrival_pack_count:0;
     count=map.map_pack_count+1u+arrival_count;wes_index=map.map_pack_count;arrival_index=wes_index+1u;
     for(uint32_t i=0;i<area.actor_count;++i)if(area.actors[i].file[0])++count;
-    if(map.floor==2)tv_index=count++;
+    if(profile->features&C3_FLOOR_TV)tv_index=count++;
     if(count>C3_STAGE_MAX_MODELS){snprintf(error,capacity,"The area exceeds the model bound.");goto done;}
     storage=calloc(count,sizeof(*storage));
     if(!storage){snprintf(error,capacity,"Field model allocation failed.");goto done;}
-    c3_bottom_screen_notice("OUTSKIRT STAND","Loading the area...","Please wait...");
+    c3_bottom_screen_notice(profile->label,"Loading the area...","Please wait...");
     for(uint32_t i=0;i<map.map_pack_count+1u+arrival_count;++i){
         if(i<map.map_pack_count)snprintf(path,sizeof path,BOOT_ROOT "%s_map%lu.c3t",prefix,(unsigned long)i);
         else if(i==wes_index)snprintf(path,sizeof path,BOOT_ROOT "%s_wes.c3t",prefix);
-        else snprintf(path,sizeof path,BOOT_ROOT "outskirt_arrival%lu.c3t",(unsigned long)(i-arrival_index));
+        else snprintf(path,sizeof path,BOOT_ROOT "%s_arrival%lu.c3t",prefix,(unsigned long)(i-arrival_index));
         if(!c3_title_load(storage+i,path,error,capacity))goto done;
         snprintf(model_paths[i],sizeof model_paths[i],"%s",path);
         ++opened;models[i]=storage+i;
@@ -174,7 +196,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         if(!c3_title_animate(model,area.actors[i].motions[0],0)){snprintf(error,capacity,"Original NPC idle motion is missing.");goto done;}
     }
     C3Title *wes=storage+wes_index,*arrival=arrival_count?storage+arrival_index:NULL;
-    if(wes->vertex_count!=map.actor_vertex_count||wes->clip_count!=4u){
+    if(wes->vertex_count!=map.actor_vertex_count||wes->clip_count<4u){
         snprintf(error,capacity,"The prepared Wes motions have an unsupported layout.");goto done;
     }
     if(arrival){
@@ -188,13 +210,21 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
             }
         }
     }
-    if(map.floor==2){
-        if(!c3_title_load(storage+tv_index,BOOT_ROOT "shop_tv.c3t",error,capacity))goto done;
-        snprintf(model_paths[tv_index],sizeof model_paths[tv_index],BOOT_ROOT "shop_tv.c3t");
+    if(profile->features&C3_FLOOR_TV){
+        snprintf(path,sizeof path,BOOT_ROOT "%s_tv.c3t",prefix);
+        if(!c3_title_load(storage+tv_index,path,error,capacity))goto done;
+        snprintf(model_paths[tv_index],sizeof model_paths[tv_index],"%s",path);
         models[opened++]=storage+tv_index;
-        if(!c3_title_animate(storage+tv_index,0,0)||
-           !c3_area_camera_load(&room_camera,BOOT_ROOT "shop_camera.c3c",error,capacity)||
-           !c3_area_lights_load(&lights,BOOT_ROOT "shop.c3l",error,capacity))goto done;
+        if(!c3_title_animate(storage+tv_index,0,0))goto done;
+    }
+    if(profile->features&C3_FLOOR_ROOM_CAMERA){
+        snprintf(path,sizeof path,BOOT_ROOT "%s_camera.c3c",prefix);
+        if(!c3_area_camera_load(&room_camera,path,error,capacity))goto done;
+    }
+    if(profile->features&C3_FLOOR_LIGHTS){
+        snprintf(path,sizeof path,BOOT_ROOT "%s.c3l",prefix);
+        if(!c3_area_lights_load(&lights,path,error,capacity))goto done;
+        lights_loaded=1;
     }
     if(opened!=count){snprintf(error,capacity,"Area model identity mismatch.");goto done;}
     if(trace){
@@ -206,11 +236,13 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     }
     if(c3_stage_renderer_init(models,count,error,capacity))goto done;
     if(tv_index!=UINT32_MAX&&!c3_stage_renderer_set_tv(tv_index,1,1,true,error,capacity))goto done;
-    c3_n3ds_log_memory(trace, map.floor==1?"outskirt_ready":"shop_ready");
-    const char *story_path=map.floor==1?BOOT_ROOT "outskirt.c3s":BOOT_ROOT "outskirt_shop.c3s";
-    if(!c3_field_story_load(&story,story_path,state,&map,&area,&player,wes,actor_models,&room_camera,trace,story_error)||
-       !c3_field_story_bind_battle(&story,BOOT_ROOT "willie.c3b",story_error)||
-       !c3_field_story_prepare(&story,story_error))goto story_failed;
+    snprintf(path,sizeof path,"%s_ready",prefix);
+    c3_n3ds_log_memory(trace,path);
+    snprintf(path,sizeof path,BOOT_ROOT "%s",profile->story);
+    if(!c3_field_story_load(&story,path,state,&map,&area,&player,wes,actor_models,&room_camera,trace,story_error)||
+       !c3_field_story_bind_battle(&story,BOOT_ROOT "willie.c3b",story_error))goto story_failed;
+    c3_field_story_set_floor_support(&story,floor_reachable);
+    if(!c3_field_story_prepare(&story,story_error))goto story_failed;
     view=c3_field_story_view(&story);
     if(trace){fprintf(trace,"field_begin floor=%lu previous=%lu spawn=%u new=%d maps=%lu npcs=%lu models=%lu arrival=%d duration=%.3f\n",
         (unsigned long)map.floor,(unsigned long)summary.previous_floor,summary.spawn,new_game,(unsigned long)map.map_pack_count,
@@ -395,8 +427,8 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         if(tv_index!=UINT32_MAX){
             sampled&=c3_title_animate(storage+tv_index,0,elapsed);
             if(!pda_preview&&!c3_stage_renderer_set_tv(tv_index,1,1,view->tv_enabled,error,capacity)){result=-1;break;}
-            for(uint32_t i=0;i<count;++i)if(i!=tv_index)sampled&=c3_area_lights_apply(&lights,elapsed,storage+i);
         }
+        if(lights_loaded)for(uint32_t i=0;i<count;++i)if(i!=tv_index)sampled&=c3_area_lights_apply(&lights,elapsed,storage+i);
         if(!sampled){snprintf(error,capacity,"An original area animation or light sample failed.");result=-1;break;}
         if(phase==FIELD_SETUP){fade=0;c3_field_camera(&map,&player,&camera);}
         else if(phase==FIELD_ARRIVAL||phase==FIELD_ARRIVAL_OUT){
@@ -467,6 +499,13 @@ int c3_field_scene_run(C3GameState *state,int new_game,const char *save_path,
         snprintf(error,capacity,"The original first-area checkpoint could not be prepared.");return -1;
     }
     int result;
-    do{result=run_area(state,new_game,save_path,trace,error,capacity);new_game=0;}while(result==2);
+    do{
+        C3GameSummary summary;
+        /* Floor 0x38E is the menu-class world map, not a walkable field. */
+        if(c3_game_state_summary(state,&summary)&&summary.floor==C3_FLOOR_WORLD_MAP_ID)
+            result=c3_world_map_scene_run(state,trace,error,capacity);
+        else result=run_area(state,new_game,save_path,trace,error,capacity);
+        new_game=0;
+    }while(result==2);
     return result;
 }

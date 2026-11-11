@@ -8,7 +8,7 @@ UPSTREAM = vendor/colosseum/src/hsd/random.c vendor/colosseum/src/game/GScolsys2
 
 .PHONY: all test clean 3ds verify-source
 all: build/test_bottom_ui
-all: build/test_core build/test_data build/test_pokemon build/test_model build/test_movie build/test_save build/test_title build/test_field build/test_dev_floor build/test_game_menu build/test_game_state build/test_render_recovery build/test_area build/test_area_camera build/test_area_lights build/test_story build/test_field_story build/test_battle build/test_battle_action build/test_battle_rng
+all: build/test_core build/test_data build/test_pokemon build/test_model build/test_movie build/test_save build/test_title build/test_field build/test_dev_floor build/test_world_map build/test_game_menu build/test_game_state build/test_render_recovery build/test_area build/test_area_camera build/test_area_lights build/test_story build/test_field_story build/test_battle build/test_battle_action build/test_battle_rng
 
 build:
 	mkdir -p $@
@@ -33,6 +33,9 @@ build/test_title: tests/test_title.c src/title.c include/colosseum3ds/title.h | 
 
 build/test_field: tests/test_field.c src/field.c include/colosseum3ds/field.h include/colosseum3ds/title.h | build
 	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_field.c src/field.c $(LDFLAGS) -lm -o $@
+
+build/test_world_map: tests/test_world_map.c src/world_map.c include/colosseum3ds/world_map.h vendor/colosseum/src/rel/worldmap_menu_rel/worldmap_menu_rel.c | build
+	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_world_map.c src/world_map.c $(LDFLAGS) -o $@
 
 build/test_dev_floor: tests/test_dev_floor.c src/dev_floor.c src/field.c include/colosseum3ds/dev_floor.h include/colosseum3ds/field.h include/colosseum3ds/title.h | build
 	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_dev_floor.c src/dev_floor.c src/field.c $(LDFLAGS) -lm -o $@
@@ -72,7 +75,7 @@ build/test_battle_rng: tests/test_battle_rng.c src/battle_rng.c src/decomp_rng.c
 build/test_game_menu: tests/test_game_menu.c platform/3ds/game_menu.c src/bottom_ui.c platform/3ds/game_menu.h platform/3ds/n3ds_platform.h include/colosseum3ds/bottom_ui.h | build
 	$(CC) $(CPPFLAGS) -Iplatform/3ds -DC3_MENU_HOST_TEST $(CFLAGS) tests/test_game_menu.c platform/3ds/game_menu.c src/bottom_ui.c $(LDFLAGS) -lm -o $@
 
-UI_VIEW_SOURCES = src/inventory.c src/decomp_pokemon.c platform/3ds/game_menu.c platform/3ds/game_ui_views.c platform/3ds/ingame_menu.c src/bottom_ui.c src/battle_preview.c src/game_state.c src/pda.c build/save_codec.c
+UI_VIEW_SOURCES = src/floor_profile.c src/inventory.c src/decomp_pokemon.c platform/3ds/game_menu.c platform/3ds/game_ui_views.c platform/3ds/ingame_menu.c src/bottom_ui.c src/battle_preview.c src/game_state.c src/pda.c build/save_codec.c
 UI_VIEW_HEADERS = platform/3ds/game_menu.h platform/3ds/game_ui_views.h platform/3ds/ingame_menu.h include/colosseum3ds/bottom_ui.h include/colosseum3ds/game_state.h include/colosseum3ds/pda.h
 build/render_bottom_ui_preview: tools/render_bottom_ui_preview.c $(UI_VIEW_SOURCES) $(UI_VIEW_HEADERS) | build
 	$(CC) $(CPPFLAGS) -Iplatform/3ds -Isrc -DC3_MENU_HOST_TEST $(CFLAGS) -ffunction-sections tools/render_bottom_ui_preview.c $(UI_VIEW_SOURCES) $(LDFLAGS) -Wl,--gc-sections -lm -o $@
@@ -119,6 +122,7 @@ test: all
 	./build/test_title
 	./build/test_field
 	./build/test_dev_floor
+	./build/test_world_map
 	./build/test_game_menu
 	./build/test_game_state
 	./build/test_render_recovery

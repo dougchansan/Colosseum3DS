@@ -90,8 +90,9 @@ Phenac's floors all use resource groups `0x1F`–`0x2C` (REL row flag high word
 | Other cameras | `00601800`, `00611800`, `005F1800`, `0C101800` (event cameras, not used) |
 
 Entrance 0 is at source `(0, 0, 336)` facing 180°, inside the source
-camera's framing of the town square. Which entrance the world-map arrival
-uses has not been traced.
+camera's framing of the town square. The world-map menu ends with
+`floorLink(floor, 0)`, so the arrival uses entrance 0 (see
+[world-map.md](world-map.md)).
 
 The other Phenac floors, from the lifecycle table:
 

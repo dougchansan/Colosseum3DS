@@ -36,6 +36,10 @@
     {
       "path": "NOTICE",
       "sha256": "30908e1c7de4a26cb3dcd0fd8fd5c84ecd246e5b8b3aa2c884319e0470a20c5e"
+    },
+    {
+      "path": "src/rel/worldmap_menu_rel/worldmap_menu_rel.c",
+      "sha256": "ab8d780050ca251e947aa38cb0b21d91543c06f8125fb45f650d4e5215ccc787"
     }
   ]
 }
