@@ -13,7 +13,7 @@
 #define MAX_WAYPOINTS 64u /* Phenac actor 24 allocates 36 points (bank 013E0E00 fn 34). */
 
 typedef enum { W_NONE, W_SECONDS, W_TASK, W_MOTION, W_MOVE, W_CAMERA,
-               W_CAMERA_MOVE, W_FADE, W_MESSAGE, W_CHOICE, W_TV, W_BATTLE } Wait;
+               W_CAMERA_MOVE, W_FADE, W_MESSAGE, W_CHOICE, W_TV, W_BATTLE, W_NAME } Wait;
 typedef struct {
     uint16_t key, child;
     C3StoryCall call;
@@ -62,6 +62,7 @@ typedef struct {
     uint32_t sound_id, previous_floor, pending_floor, pending_spawn;
     uint32_t fight_result; /* fn_801EF634: last original fight result ID */
     uint32_t whiteout_floor,whiteout_previous,whiteout_spawn;int whiteout_valid;
+    int name_entry_enabled;
     uint16_t (*random16)(void *context);void *random_context;
     Person partner_actor; /* (0,101); invisible until native 23 */
     int (*floor_supported)(uint32_t floor);
@@ -458,6 +459,13 @@ static int run_native(Impl *s,RunTask *t,char *error)
     case 0x16:
         /* menuNameEntryOpen pushes the name-entry floor 0x390 and returns its
          * result. That menu is not ported: the saved default name is kept. */
+        if(a[0]==1&&s->name_entry_enabled){
+            /* Mode 1 at its only reached site (Phenac function 6) names the
+             * partner. The scene collects the name and reports it. */
+            s->view.name_entry=a[0]+1u;
+            log_line(s,"story_name_entry mode=%lu index=%lu status=waiting_scene",(unsigned long)a[0],(unsigned long)a[1]);
+            t->wait=W_NAME;return 1;
+        }
         log_line(s,"story_name_entry mode=%lu index=%lu status=default_name_kept menu_ported=0",
                  (unsigned long)a[0],(unsigned long)a[1]);
         value=1;break;
@@ -671,7 +679,7 @@ static int wait_task(Impl *s,RunTask *t,float seconds,uint16_t *pressed,char *er
         {uint32_t answer=(uint32_t)s->view.choice_no;
          log_line(s,"story_choice answer=%lu",(unsigned long)answer);
          close_message(s);return resume(s,t,answer,error);}
-    case W_BATTLE:return 1;
+    case W_BATTLE:case W_NAME:return 1;
     }
     return fail(error,"Invalid native story wait state");
 }
@@ -684,6 +692,23 @@ void c3_field_story_close(C3FieldStory *story)
 void c3_field_story_set_random(C3FieldStory *story,uint16_t (*next16)(void *context),void *context)
 {
     Impl *s=story?story->impl:NULL;if(s){s->random16=next16;s->random_context=context;}
+}
+void c3_field_story_enable_name_entry(C3FieldStory *story,int enabled)
+{
+    Impl *s=story?story->impl:NULL;if(s)s->name_entry_enabled=enabled!=0;
+}
+int c3_field_story_name_result(C3FieldStory *story,const char *name,char *error)
+{
+    Impl *s=story?story->impl:NULL;
+    if(!s)return fail(error,"Invalid name-entry result");
+    for(unsigned i=0;i<C3_STORY_TASKS;++i){RunTask *t=s->tasks+i;
+        if(!t->key||t->wait!=W_NAME)continue;
+        if(!c3_game_state_set_partner_name(s->game,name))return fail(error,"The partner name is not valid");
+        s->view.name_entry=0;
+        log_line(s,"story_name_entry status=named length=%lu",(unsigned long)strlen(name));
+        return resume(s,t,1,error);
+    }
+    return fail(error,"No name entry is waiting");
 }
 void c3_field_story_set_floor_support(C3FieldStory *story,int (*supported)(uint32_t floor))
 {

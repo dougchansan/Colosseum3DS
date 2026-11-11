@@ -8,7 +8,7 @@ UPSTREAM = vendor/colosseum/src/hsd/random.c vendor/colosseum/src/game/GScolsys2
 
 .PHONY: all test clean 3ds verify-source
 all: build/test_bottom_ui
-all: build/test_core build/test_data build/test_pokemon build/test_model build/test_movie build/test_save build/test_title build/test_field build/test_dev_floor build/test_world_map build/test_game_menu build/test_game_state build/test_render_recovery build/test_area build/test_area_camera build/test_area_lights build/test_story build/test_field_story build/test_phenac_story build/test_battle build/test_battle_action build/test_battle_rng
+all: build/test_core build/test_data build/test_pokemon build/test_model build/test_movie build/test_save build/test_title build/test_field build/test_dev_floor build/test_world_map build/test_name_entry build/test_game_menu build/test_game_state build/test_render_recovery build/test_area build/test_area_camera build/test_area_lights build/test_story build/test_field_story build/test_phenac_story build/test_battle build/test_battle_action build/test_battle_rng
 
 build:
 	mkdir -p $@
@@ -36,6 +36,9 @@ build/test_field: tests/test_field.c src/field.c include/colosseum3ds/field.h in
 
 build/test_world_map: tests/test_world_map.c src/world_map.c include/colosseum3ds/world_map.h vendor/colosseum/src/rel/worldmap_menu_rel/worldmap_menu_rel.c | build
 	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_world_map.c src/world_map.c $(LDFLAGS) -o $@
+
+build/test_name_entry: tests/test_name_entry.c src/name_entry.c src/bottom_ui.c include/colosseum3ds/name_entry.h include/colosseum3ds/bottom_ui.h | build
+	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_name_entry.c src/name_entry.c src/bottom_ui.c $(LDFLAGS) -lm -o $@
 
 build/test_dev_floor: tests/test_dev_floor.c src/dev_floor.c src/field.c include/colosseum3ds/dev_floor.h include/colosseum3ds/field.h include/colosseum3ds/title.h | build
 	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_dev_floor.c src/dev_floor.c src/field.c $(LDFLAGS) -lm -o $@
@@ -126,6 +129,7 @@ test: all
 	./build/test_field
 	./build/test_dev_floor
 	./build/test_world_map
+	./build/test_name_entry
 	./build/test_game_menu
 	./build/test_game_state
 	./build/test_render_recovery

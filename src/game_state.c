@@ -441,6 +441,19 @@ int c3_game_state_set_partner(C3GameState *state, int present)
     return 1;
 }
 
+/* heroSetStatus selector 0x17 -> heroBiosSetHizukiNamePtr:
+ * GScharLenCpy(hero + 0xAC2, name, 0xB), eleven 16-bit units. */
+int c3_game_state_set_partner_name(C3GameState *state, const char *name)
+{
+    GameStateImpl *s=state?state->impl:NULL;
+    size_t length=name?strlen(name):0, i;
+    if (!s || !length || length>10) return 0;
+    for (i=0; i<length; ++i) if ((unsigned char)name[i]<32 || (unsigned char)name[i]>126) return 0;
+    memset(s->body+HERO+0xac2,0,22);
+    for (i=0; i<length; ++i) put16(s->body+HERO+0xac2+i*2,(uint8_t)name[i]);
+    return 1;
+}
+
 int c3_game_state_partner(const C3GameState *state)
 {
     const GameStateImpl *s=state?state->impl:NULL;

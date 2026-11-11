@@ -23,6 +23,7 @@ typedef struct C3FieldStoryView {
     uint32_t message_id, next_floor, next_spawn, battle_id;
     int prepared, control, dialogue, choice, choice_no, tv_enabled;
     int camera_active;
+    uint32_t name_entry; /* native 16 mode + 1 while the scene must collect a name */
     float fade, camera_seconds;
     C3TitleCamera camera;
 } C3FieldStoryView;
@@ -41,6 +42,11 @@ int c3_field_story_bind_battle(C3FieldStory *story,const char *path,char *error)
  * once and makes the same ID readable through native 67. */
 int c3_field_story_battle_pending(const C3FieldStory *story,uint32_t *encounter);
 int c3_field_story_battle_result(C3FieldStory *story,uint32_t result,char *error);
+/* Native 16 mode 1 names the partner. When the scene enables it the script
+ * waits with view.name_entry set until the scene reports 1..10 printable
+ * ASCII characters; otherwise the saved default name is kept. */
+void c3_field_story_enable_name_entry(C3FieldStory *story,int enabled);
+int c3_field_story_name_result(C3FieldStory *story,const char *name,char *error);
 /* Floors the scene can load. Without a predicate only floors 1 and 2 pass;
  * any other destination blocks with an explicit notice. */
 void c3_field_story_set_floor_support(C3FieldStory *story,int (*supported)(uint32_t floor));

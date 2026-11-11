@@ -98,6 +98,9 @@ int c3_game_state_set_floor(C3GameState *state, uint32_t floor,
  * hero +0xA98), written by script native 23 when the partner joins. */
 int c3_game_state_set_partner(C3GameState *state, int present);
 int c3_game_state_partner(const C3GameState *state);
+/* The partner's name (hero +0xAC2, ten characters and a terminator).
+ * Accepts 1..10 printable ASCII characters. */
+int c3_game_state_set_partner_name(C3GameState *state, const char *name);
 int c3_game_state_set_options(C3GameState *state, uint8_t sound_mono,
                               uint8_t rumble_disabled);
 int c3_game_state_add_play_time(C3GameState *state, double seconds);

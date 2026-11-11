@@ -13,6 +13,7 @@
 #include "colosseum3ds/field.h"
 #include "colosseum3ds/field_story.h"
 #include "colosseum3ds/floor_profile.h"
+#include "colosseum3ds/name_entry.h"
 #include "world_map_scene.h"
 #include "colosseum3ds/area_lights.h"
 #include "colosseum3ds/title.h"
@@ -145,6 +146,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     float elapsed=0,phase_seconds=0,arrival_seconds=0;
     uint64_t previous=0,next_console=0,next_trace=0;
     C3UiPager ui_pager={0};
+    C3NameEntry name_entry;int naming=0;
     C3IngameMenu *ingame=calloc(1,sizeof *ingame);
     C3PdaPreview *pda_preview=NULL;
     float pda_seconds=0;
@@ -242,6 +244,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     if(!c3_field_story_load(&story,path,state,&map,&area,&player,wes,actor_models,&room_camera,trace,story_error)||
        !c3_field_story_bind_battle(&story,BOOT_ROOT "willie.c3b",story_error))goto story_failed;
     c3_field_story_set_floor_support(&story,floor_reachable);
+    c3_field_story_enable_name_entry(&story,1);
     if(!c3_field_story_prepare(&story,story_error))goto story_failed;
     view=c3_field_story_view(&story);
     if(trace){fprintf(trace,"field_begin floor=%lu previous=%lu spawn=%u new=%d maps=%lu npcs=%lu models=%lu arrival=%d duration=%.3f\n",
@@ -253,6 +256,23 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         previous=now;elapsed+=delta;phase_seconds+=delta;
         c3_game_state_add_play_time(state,delta);
         int story_consumed_input=view->dialogue||!view->control;
+        /* Script native 16: the partner is named on the bottom-screen
+         * keyboard while the event waits. The keyboard owns all input. */
+        if(view->name_entry&&!naming&&page==PAUSE_CLOSED&&c3_game_state_summary(state,&summary)){
+            c3_name_entry_init(&name_entry,summary.partner);naming=1;dirty=1;
+            if(trace){fprintf(trace,"name_entry_open mode=%lu\n",(unsigned long)(view->name_entry-1u));fflush(trace);}
+        }
+        if(naming){
+            C3NameEvent typed=c3_name_entry_update(&name_entry,input.pressed,input.touch_held,input.touch_pressed,
+                                                   input.touch_released,input.touch_x,input.touch_y);
+            if(typed!=C3_NAME_NONE)dirty=1;
+            if(typed==C3_NAME_DONE){
+                if(!c3_field_story_name_result(&story,name_entry.text,story_error))goto story_failed;
+                if(trace){fprintf(trace,"name_entry_done length=%u\n",name_entry.length);fflush(trace);}
+                naming=0;
+            }
+            input.pressed=0;input.touch_pressed=false;
+        }
         /* Stylus on the bottom screen: a tap advances the open message like
          * A. On a YES/NO choice a tap on either answer selects and confirms
          * it (the choice box is drawn at x 180..310, YES above y 189). */
@@ -476,7 +496,8 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         if(!c3_game_state_summary(state,&summary)){snprintf(error,capacity,"Game state became unavailable.");result=-1;break;}
         if(dirty||input.pressed||now>=next_console){
             C3BottomUi *bottom=c3_bottom_screen_begin();
-            if(page==PAUSE_MAIN&&ingame->active)c3_ingame_draw_to(ingame,state,bottom);
+            if(naming)c3_name_entry_draw(&name_entry,bottom,"PARTNER'S NAME");
+            else if(page==PAUSE_MAIN&&ingame->active)c3_ingame_draw_to(ingame,state,bottom);
             else c3_field_ui_draw_to(bottom,&summary,phase,page,selection,yes,message,view,&ui_pager);
             c3_bottom_screen_present();dirty=0;next_console=now+UINT64_C(100000);
         }
