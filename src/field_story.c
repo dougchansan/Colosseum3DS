@@ -61,6 +61,9 @@ typedef struct {
     int target_moving,camera_returning;
     uint32_t sound_id, previous_floor, pending_floor, pending_spawn;
     uint32_t fight_result; /* fn_801EF634: last original fight result ID */
+    uint32_t whiteout_floor,whiteout_previous,whiteout_spawn;int whiteout_valid;
+    uint16_t (*random16)(void *context);void *random_context;
+    Person partner_actor; /* (0,101); invisible until native 23 */
     int (*floor_supported)(uint32_t floor);
     uint32_t dialog_owner;
     size_t page_start, page_end;
@@ -98,13 +101,20 @@ static int validate_native(const Impl *s,const C3StoryCall *c,char *error)
         {0x5c,0,0},{0x5d,0,0},{0x5e,0,0},{0x5f,2,0},{0x64,2,0},{0x65,4,14},
         {0x67,0,0},{0x68,3,0},{0x69,3,0},{0x6a,2,0},{0x6d,2,0},{0x72,2,0},{0x76,2,0},
         {0x7d,3,0},{0x7f,3,7},{0x88,0,0},{0x8a,4,0},{0x8c,5,30},{0x98,3,0},
-        {0x99,1,0},{0x9d,1,1},{0xb3,2,1},{0xb6,1,0},{0xd1,5,0},{0xd3,0,0},{0xe4,0,0}
+        {0x99,1,0},{0x9d,1,1},{0xb3,2,1},{0xb6,1,0},{0xd1,5,0},{0xd3,0,0},{0xe4,0,0},
+        /* Phenac City exterior bank 013E0E00 (native table lbl_802E1CF0). */
+        {0x02,1,0},{0x16,2,0},{0x23,1,0},{0x31,0,0},{0x66,1,0},{0x7e,2,0},
+        {0x82,3,0},{0x83,3,0},{0x89,3,0},{0xa1,3,0},{0xa4,6,0x3c},{0xa5,5,0x10},
+        {0xa9,2,0},{0xb4,0,0},{0xda,1,0}
     };
     for(unsigned i=0;i<sizeof signature/sizeof signature[0];++i){
         if(signature[i].id!=c->native)continue;
         /* D1 is the original synchronous script executor: the four child
          * arguments may be omitted (retail floor init uses only scriptID),
          * and the VM supplies zero for those missing trailing words. */
+        /* Phenac main calls 4C/4D with no arguments: the dispatcher's zeroed
+         * register image addresses person (0,0), which does not exist. */
+        if((c->native==0x4c||c->native==0x4d)&&!c->argc)return 1;
         if((c->native==0xd1?c->argc<1||c->argc>5:c->argc!=signature[i].argc))return fail(error,"Native %02lx expects %u arguments, received %lu",
             (unsigned long)c->native,signature[i].argc,(unsigned long)c->argc);
         for(unsigned j=0;j<c->argc;++j){
@@ -116,6 +126,8 @@ static int validate_native(const Impl *s,const C3StoryCall *c,char *error)
             case 0x29: minimum=-100;maximum=100;scale=1;break;
             case 0x3c:case 0x44:minimum=-100;maximum=100;scale=PI/180.0f;break;
             case 0x45:minimum=0;maximum=100;scale=1;break;
+            case 0xa4:if(j==5){minimum=0;maximum=100;scale=1;}break;
+            case 0xa5:minimum=0;maximum=100;scale=1;break;
             case 0x7f:if(j==2){minimum=-100;maximum=100;scale=1;}break;
             case 0x8c:if(j==4){minimum=0;maximum=60;scale=1;}break;
             default:break;
@@ -139,6 +151,7 @@ static int set_flag(Impl *s,uint32_t id,uint32_t value,char *error)
 static Person *person(Impl *s,uint32_t group,uint32_t id)
 {
     if(!group&&id==100)return &s->hero_actor;
+    if(!group&&id==101)return s->partner_actor.public.model?&s->partner_actor:NULL;
     if(group!=s->area->group)return NULL;
     for(uint32_t i=0;i<s->area->actor_count;++i)if(s->actors[i].public.index==id)return s->actors+i;
     return NULL;
@@ -423,6 +436,42 @@ static int run_native(Impl *s,RunTask *t,char *error)
     case 0x65:
         p=person(s,s->area->group,a[0]);if(p){for(unsigned i=0;i<3;++i)
             (p->parent?p->local_position:pose(s,p)->position)[i]=as_float(a[i+1])*s->map->scale;}break;
+    case 0x02:
+        /* fadeEffectGetRandom: ((second draw << 16) | first draw) % limit
+         * from the shared 16-bit game RNG. */
+        if(!s->random16)return fail(error,"Native 02 needs the game RNG, which this scene did not bind");
+        if(!a[0])return fail(error,"Native 02 was called with a zero limit");
+        {uint32_t low=s->random16(s->random_context)&0xffffu,high=s->random16(s->random_context)&0xffffu;
+         value=((high<<16)|low)%a[0];}
+        break;
+    case 0x16:
+        /* menuNameEntryOpen pushes the name-entry floor 0x390 and returns its
+         * result. That menu is not ported: the saved default name is kept. */
+        log_line(s,"story_name_entry mode=%lu index=%lu status=default_name_kept menu_ported=0",
+                 (unsigned long)a[0],(unsigned long)a[1]);
+        value=1;break;
+    case 0x23:
+        /* fn_801C9F00: heroSetStatus(0,0x18,active) and the follower state. */
+        if(!c3_game_state_set_partner(s->game,a[0]!=0))return fail(error,"The partner state cannot be written");
+        s->partner_actor.public.visible=a[0]!=0;
+        log_line(s,"story_partner present=%d",a[0]!=0);
+        break;
+    case 0x31:
+        /* cameraUpdate: recompute the field camera now. The scene derives
+         * its camera from the current state on every frame. */
+        break;
+    case 0x66:case 0x98:
+        if(c->native==0x66){a[1]=0;a[2]=0;}
+        s->view.battle_id=a[0];
+        if(s->battle_loaded&&a[0]==10){
+            size_t bytes=0;const uint8_t *body=c3_game_state_body(s->game,&bytes);
+            if(!c3_battle_request(&s->battle_request,&s->battle_data,a,body,bytes,error))return 0;
+            log_line(s,"story_battle_snapshot encounter=%lu player_party=%u status=waiting_backend save_unchanged=1",
+                     (unsigned long)a[0],s->battle_request.player_party_count);
+        }
+        snprintf(s->view.blocked,sizeof s->view.blocked,"Original battle %lu requested.\nCombat backend is not ported yet.\nNo result or victory flag was written.",(unsigned long)a[0]);
+        log_line(s,"story_battle encounter=%lu status=waiting_backend result_written=0",(unsigned long)a[0]);
+        t->wait=W_BATTLE;return 1;
     case 0x67:
         /* fn_801EF634 (native table row 0x67): the result ID the last fight
          * left in the fight-floor global. Zero until a battle has finished. */
@@ -453,17 +502,57 @@ static int run_native(Impl *s,RunTask *t,char *error)
         for(unsigned i=0;i<3;++i){s->camera_from[i]=s->view.camera.eye[i];s->camera_to[i]=as_float(a[i+1])*s->map->scale;
             s->camera_direction[i]=s->view.camera.target[i]-s->view.camera.eye[i];}
         break;
-    case 0x98:
-        s->view.battle_id=a[0];
-        if(s->battle_loaded){
-            size_t bytes=0;const uint8_t *body=c3_game_state_body(s->game,&bytes);
-            if(!c3_battle_request(&s->battle_request,&s->battle_data,a,body,bytes,error))return 0;
-            log_line(s,"story_battle_snapshot encounter=%lu player_party=%u status=waiting_backend save_unchanged=1",
-                     (unsigned long)a[0],s->battle_request.player_party_count);
+    case 0x7e:
+        /* heroMoveSetNeckMode: procedural head tracking of a party member. */
+        note_presentation(s,c->native,"head_tracking_unrendered");
+        value=a[1]<=1&&(a[0]==0||(a[0]==1&&s->partner_actor.public.visible));break;
+    case 0x82:
+        /* fn_80165668 pauses the BGM, plays a jingle and blocks until it ends.
+         * The length lives in the sound data; without the audio backend the
+         * script waits a fixed substitute time. */
+        note_presentation(s,c->native,"jingle_backend_pending_wait_2s");
+        t->wait=W_SECONDS;t->remaining=2.0f;return 1;
+    case 0x83:
+        /* fn_80181EB0: "!" emote attached to the person's head part. */
+        note_presentation(s,c->native,"emote_bubble_unrendered");break;
+    case 0x89:case 0xda:
+        note_presentation(s,c->native,"field_audio_backend_pending");break;
+    case 0xa1:
+        /* fn_8011416C: temporary whiteout return point (floor, previous
+         * floor, entrance) consumed by fn_80113FE8 after a lost battle. */
+        s->whiteout_floor=a[0];s->whiteout_previous=a[1];s->whiteout_spawn=a[2]&0xffu;s->whiteout_valid=1;break;
+    case 0xa4:
+        /* fn_80187D48: turn toward a point; y is ignored. */
+        p=person(s,a[0],a[1]);
+        if(p)start_turn(s,p,atan2f(as_float(a[2])*s->map->scale-pose(s,p)->position[0],
+                                   as_float(a[4])*s->map->scale-pose(s,p)->position[2]),as_float(a[5]));
+        break;
+    case 0xa5:{
+        /* fn_80187A60: turn toward another person's model. */
+        Person *target=person(s,a[2],a[3]);p=person(s,a[0],a[1]);
+        if(p&&target)start_turn(s,p,atan2f(pose(s,target)->position[0]-pose(s,p)->position[0],
+                                           pose(s,target)->position[2]-pose(s,p)->position[2]),as_float(a[4]));
+        }break;
+    case 0xa9:{
+        /* peopleGazeHeroCheck = fn_80186284(group,index,3.0,0,100,30.0):
+         * hero within 30 source units and within 15 degrees of the person's
+         * facing. The original also requires a clear NPC-wall segment
+         * (fn_8010F188); that query is not ported, so walls do not block. */
+        p=person(s,a[0],a[1]);
+        if(p&&p->public.visible){
+            float dx=s->hero->position[0]-pose(s,p)->position[0],dy=s->hero->position[1]-pose(s,p)->position[1],
+                  dz=s->hero->position[2]-pose(s,p)->position[2];
+            float distance=sqrtf(dx*dx+dy*dy+dz*dz);
+            if(distance<=30.0f*s->map->scale){
+                float away=fabsf(angle_delta(atan2f(dx,dz)-pose(s,p)->yaw));
+                value=away<=15.0f*PI/180.0f;
+            }
         }
-        snprintf(s->view.blocked,sizeof s->view.blocked,"Original battle %lu requested.\nCombat backend is not ported yet.\nNo result or victory flag was written.",(unsigned long)a[0]);
-        log_line(s,"story_battle encounter=%lu status=waiting_backend result_written=0",(unsigned long)a[0]);
-        t->wait=W_BATTLE;return 1;
+        }break;
+    case 0xb4:
+        /* floorGetNextFloorID: destination of the most recent link; on
+         * arrival it still names the current floor. */
+        value=s->pending_floor?s->pending_floor:s->area->floor;break;
     case 0x9d:
         t->remaining=as_float(a[0]);if(!isfinite(t->remaining)||t->remaining<0||t->remaining>3600)return fail(error,"Invalid story wait duration");
         t->wait=W_SECONDS;return 1;
@@ -552,6 +641,10 @@ void c3_field_story_close(C3FieldStory *story)
     if(!story||!story->impl)return;
     Impl *s=story->impl;c3_story_free(&s->vm);free(s);story->impl=NULL;
 }
+void c3_field_story_set_random(C3FieldStory *story,uint16_t (*next16)(void *context),void *context)
+{
+    Impl *s=story?story->impl:NULL;if(s){s->random16=next16;s->random_context=context;}
+}
 void c3_field_story_set_floor_support(C3FieldStory *story,int (*supported)(uint32_t floor))
 {
     Impl *s=story?story->impl:NULL;if(s)s->floor_supported=supported;
@@ -561,7 +654,7 @@ int c3_field_story_battle_pending(const C3FieldStory *story,uint32_t *encounter)
     const Impl *s=story?story->impl:NULL;
     if(!s)return 0;
     for(unsigned i=0;i<C3_STORY_TASKS;++i){const RunTask *t=s->tasks+i;
-        if(t->key&&t->wait==W_BATTLE&&t->call.native==0x98){if(encounter)*encounter=t->call.args[0];return 1;}
+        if(t->key&&t->wait==W_BATTLE&&(t->call.native==0x98||t->call.native==0x66)){if(encounter)*encounter=t->call.args[0];return 1;}
     }
     return 0;
 }
@@ -574,7 +667,7 @@ int c3_field_story_battle_result(C3FieldStory *story,uint32_t result,char *error
     Impl *s=story?story->impl:NULL;
     if(!s||!result||result>0xffffu)return fail(error,"Invalid fight result");
     for(unsigned i=0;i<C3_STORY_TASKS;++i){RunTask *t=s->tasks+i;
-        if(!t->key||t->wait!=W_BATTLE||t->call.native!=0x98)continue;
+        if(!t->key||t->wait!=W_BATTLE||(t->call.native!=0x98&&t->call.native!=0x66))continue;
         s->fight_result=result;s->view.blocked[0]=0;s->view.battle_id=0;
         s->fade_from=0;s->fade_to=1;s->fade_elapsed=0;s->fade_duration=.5f;s->view.fade=0;
         log_line(s,"story_battle_result encounter=%lu result=%lu native98_resumed=1",

@@ -44,6 +44,9 @@ int c3_field_story_battle_result(C3FieldStory *story,uint32_t result,char *error
 /* Floors the scene can load. Without a predicate only floors 1 and 2 pass;
  * any other destination blocks with an explicit notice. */
 void c3_field_story_set_floor_support(C3FieldStory *story,int (*supported)(uint32_t floor));
+/* The shared 16-bit game RNG (fn_801ADCD8) for native 02. Unbound, that
+ * native fails instead of inventing a value. */
+void c3_field_story_set_random(C3FieldStory *story,uint16_t (*next16)(void *context),void *context);
 /* Prepare runs the original audio/init/pre functions sequentially. Once the
  * arrival movie is done, enter starts the original main/movement tasks. */
 int c3_field_story_prepare(C3FieldStory *story, char *error);

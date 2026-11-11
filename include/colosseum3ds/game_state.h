@@ -94,6 +94,10 @@ const uint8_t *c3_game_state_body(const C3GameState *state, size_t *length);
  * arbitrary player position. Changing these fields does not run scripts. */
 int c3_game_state_set_floor(C3GameState *state, uint32_t floor,
                             uint32_t previous_floor, uint8_t spawn);
+/* The partner-present byte of the hero record (heroSetStatus selector 0x18,
+ * hero +0xA98), written by script native 23 when the partner joins. */
+int c3_game_state_set_partner(C3GameState *state, int present);
+int c3_game_state_partner(const C3GameState *state);
 int c3_game_state_set_options(C3GameState *state, uint8_t sound_mono,
                               uint8_t rumble_disabled);
 int c3_game_state_add_play_time(C3GameState *state, double seconds);

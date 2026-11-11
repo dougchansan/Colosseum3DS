@@ -432,6 +432,21 @@ int c3_game_state_set_floor(C3GameState *state, uint32_t floor,
     return 1;
 }
 
+/* heroSetStatus selector 0x18 -> heroBiosSetHizukiFlag: hero record +0xA98. */
+int c3_game_state_set_partner(C3GameState *state, int present)
+{
+    GameStateImpl *s=state?state->impl:NULL;
+    if (!s) return 0;
+    s->body[HERO+0xa98]=present?1:0;
+    return 1;
+}
+
+int c3_game_state_partner(const C3GameState *state)
+{
+    const GameStateImpl *s=state?state->impl:NULL;
+    return s && s->body[HERO+0xa98]!=0;
+}
+
 int c3_game_state_set_options(C3GameState *state, uint8_t sound_mono,
                               uint8_t rumble_disabled)
 {

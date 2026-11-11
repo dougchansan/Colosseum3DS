@@ -64,33 +64,55 @@ def disassemble(data, wanted=None):
                 else:
                     shown += f" ({value})"
                 text += f" t{kind:02x} {shown}"
-                stack.append(value)
+                stack.append(f"{value:#x}")
             elif op == 4:
                 text += f" fn{u32(data, pc + 1)} args={be16(data, pc + 5)} locals={be16(data, pc + 7)}"
+                stack = []
             elif op in (6, 7):
                 text += f" {u32(data, pc + 1):04x}"
+                stack = []
             elif op == 3:
-                text += f" {be16(data, pc + 2)}"
+                count = be16(data, pc + 2)
+                text += f" {count}"
+                del stack[max(0, len(stack) - count):]
             elif op in (0xF, 0x11, 0x12, 0x13):
                 text += f" {operand(data[pc + 1])}"
+                if stack:
+                    stack[-1] = f"{NAMES[op]}({stack[-1]})"
             elif op == 0x10:
-                text += f" {operand(data[pc + 1])} n={be16(data, pc + 2)}"
+                count = be16(data, pc + 2)
+                text += f" {operand(data[pc + 1])} n={count}"
+                base = stack.pop() if stack else "?"
+                scope = operand(data[pc + 1]).split(":")[1]
+                for index in range(count):
+                    stack.append(f"{scope}[{base}{'+%d' % index if index else ''}]")
             elif op == 0x1F:
                 text += f" {operand(data[pc + 1])} -> {operand(data[pc + 2])}"
+                stack = []
             elif op == 0x20:
                 text += f" {operand(data[pc + 1])} -> {operand(data[pc + 2])} n={be16(data, pc + 3)}"
+                stack = []
             elif op in (0x23, 0x24, 0x25):
                 words = be16(data, pc + 3)
                 text += f" words={words}"
                 if op == 0x25 and len(stack) >= words:
                     native, *arguments = stack[-words:]
-                    text += f"  ; native {native:02x}(" + ", ".join(f"{a:#x}" for a in arguments) + ")"
+                    del stack[len(stack) - words:]
+                    shown = native[2:].zfill(2) if native.startswith("0x") else native
+                    text += f"  ; native {shown}(" + ", ".join(arguments) + ")"
+                    if stack:
+                        stack[-1] = "result"
                 elif op == 0x25:
-                    text += "  ; native id/args produced dynamically"
+                    text += "  ; native id/args not recovered"
+                    stack = []
+                else:
+                    stack = []
             elif size == 3:
                 text += f" {operand(data[pc + 1])}, {operand(data[pc + 2])}"
-            if op != 8:
-                # Only straight runs of immediates feed the native annotation.
+                right = stack.pop() if stack else "?"
+                left = stack.pop() if stack else "?"
+                stack.append(f"({left} {NAMES.get(op, op)} {right})")
+            else:
                 stack = []
             lines.append(f"{pc:04x}: {text}")
             pc += size
