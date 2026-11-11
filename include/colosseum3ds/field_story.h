@@ -35,6 +35,15 @@ int c3_field_story_load(C3FieldStory *story, const char *path,
 void c3_field_story_close(C3FieldStory *story);
 /* Admits encounter data, not a battle executor. The native remains pending. */
 int c3_field_story_bind_battle(C3FieldStory *story,const char *path,char *error);
+/* Native 98 stays suspended until the battle scene reports the original
+ * fight result ID (fn_801EF634; 2 is the hero's win in the field scripts).
+ * pending reports the waiting encounter; result resumes the script exactly
+ * once and makes the same ID readable through native 67. */
+int c3_field_story_battle_pending(const C3FieldStory *story,uint32_t *encounter);
+int c3_field_story_battle_result(C3FieldStory *story,uint32_t result,char *error);
+/* Floors the scene can load. Without a predicate only floors 1 and 2 pass;
+ * any other destination blocks with an explicit notice. */
+void c3_field_story_set_floor_support(C3FieldStory *story,int (*supported)(uint32_t floor));
 /* Prepare runs the original audio/init/pre functions sequentially. Once the
  * arrival movie is done, enter starts the original main/movement tasks. */
 int c3_field_story_prepare(C3FieldStory *story, char *error);

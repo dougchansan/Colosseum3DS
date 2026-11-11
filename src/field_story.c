@@ -60,6 +60,8 @@ typedef struct {
     Person *camera_person;
     int target_moving,camera_returning;
     uint32_t sound_id, previous_floor, pending_floor, pending_spawn;
+    uint32_t fight_result; /* fn_801EF634: last original fight result ID */
+    int (*floor_supported)(uint32_t floor);
     uint32_t dialog_owner;
     size_t page_start, page_end;
     char full_message[C3_STORY_MESSAGE], hero_name[32], speaker[128];
@@ -94,7 +96,7 @@ static int validate_native(const Impl *s,const C3StoryCall *c,char *error)
         {0x46,5,0},{0x47,2,0},{0x48,3,0},{0x49,5,28},{0x4a,3,0},
         {0x4c,2,0},{0x4d,2,0},{0x4e,1,0},{0x4f,1,0},{0x50,2,0},{0x51,1,0},
         {0x5c,0,0},{0x5d,0,0},{0x5e,0,0},{0x5f,2,0},{0x64,2,0},{0x65,4,14},
-        {0x68,3,0},{0x69,3,0},{0x6a,2,0},{0x6d,2,0},{0x72,2,0},{0x76,2,0},
+        {0x67,0,0},{0x68,3,0},{0x69,3,0},{0x6a,2,0},{0x6d,2,0},{0x72,2,0},{0x76,2,0},
         {0x7d,3,0},{0x7f,3,7},{0x88,0,0},{0x8a,4,0},{0x8c,5,30},{0x98,3,0},
         {0x99,1,0},{0x9d,1,1},{0xb3,2,1},{0xb6,1,0},{0xd1,5,0},{0xd3,0,0},{0xe4,0,0}
     };
@@ -413,7 +415,7 @@ static int run_native(Impl *s,RunTask *t,char *error)
     case 0x5d:value=s->area->group;break;
     case 0x5e:value=s->previous_floor;break;
     case 0x5f:case 0x7d:
-        if(a[0]!=1&&a[0]!=2){snprintf(s->view.blocked,sizeof s->view.blocked,"Area %lu is not prepared in this build.",(unsigned long)a[0]);t->wait=W_BATTLE;return 1;}
+        if(s->floor_supported?!s->floor_supported(a[0]):(a[0]!=1&&a[0]!=2)){snprintf(s->view.blocked,sizeof s->view.blocked,"Area %lu is not prepared in this build.",(unsigned long)a[0]);t->wait=W_BATTLE;return 1;}
         s->pending_floor=a[0];s->pending_spawn=a[1];break;
     case 0x64:
         p=person(s,s->area->group,a[0]);if(p){p->public.visible=!!a[1];
@@ -421,6 +423,10 @@ static int run_native(Impl *s,RunTask *t,char *error)
     case 0x65:
         p=person(s,s->area->group,a[0]);if(p){for(unsigned i=0;i<3;++i)
             (p->parent?p->local_position:pose(s,p)->position)[i]=as_float(a[i+1])*s->map->scale;}break;
+    case 0x67:
+        /* fn_801EF634 (native table row 0x67): the result ID the last fight
+         * left in the fight-floor global. Zero until a battle has finished. */
+        value=s->fight_result;break;
     case 0x68:case 0x69:
         s->sound_id=a[0];note_presentation(s,c->native,"field_audio_backend_pending");break;
     case 0x6a:case 0x6d:case 0x8a:case 0x99:
@@ -545,6 +551,37 @@ void c3_field_story_close(C3FieldStory *story)
 {
     if(!story||!story->impl)return;
     Impl *s=story->impl;c3_story_free(&s->vm);free(s);story->impl=NULL;
+}
+void c3_field_story_set_floor_support(C3FieldStory *story,int (*supported)(uint32_t floor))
+{
+    Impl *s=story?story->impl:NULL;if(s)s->floor_supported=supported;
+}
+int c3_field_story_battle_pending(const C3FieldStory *story,uint32_t *encounter)
+{
+    const Impl *s=story?story->impl:NULL;
+    if(!s)return 0;
+    for(unsigned i=0;i<C3_STORY_TASKS;++i){const RunTask *t=s->tasks+i;
+        if(t->key&&t->wait==W_BATTLE&&t->call.native==0x98){if(encounter)*encounter=t->call.args[0];return 1;}
+    }
+    return 0;
+}
+/* fn_801CA5C4 returns (u16)fn_8020DAD0(encounter), which is the fight result
+ * global fn_801EF634. After a hero win fn_8020DAD0 fades the field back in
+ * over half a second (fadeSet(0.5f,2)); the script then waits for that fade
+ * with native 1D and reads the result again through native 67. */
+int c3_field_story_battle_result(C3FieldStory *story,uint32_t result,char *error)
+{
+    Impl *s=story?story->impl:NULL;
+    if(!s||!result||result>0xffffu)return fail(error,"Invalid fight result");
+    for(unsigned i=0;i<C3_STORY_TASKS;++i){RunTask *t=s->tasks+i;
+        if(!t->key||t->wait!=W_BATTLE||t->call.native!=0x98)continue;
+        s->fight_result=result;s->view.blocked[0]=0;s->view.battle_id=0;
+        s->fade_from=0;s->fade_to=1;s->fade_elapsed=0;s->fade_duration=.5f;s->view.fade=0;
+        log_line(s,"story_battle_result encounter=%lu result=%lu native98_resumed=1",
+                 (unsigned long)t->call.args[0],(unsigned long)result);
+        return resume(s,t,result,error);
+    }
+    return fail(error,"No original battle request is waiting for a result");
 }
 int c3_field_story_bind_battle(C3FieldStory *story,const char *path,char *error)
 {

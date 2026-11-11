@@ -7,13 +7,17 @@
  * CPU-console preview restores its framebuffer/console ownership on return.
  * -1 reports a failed preview without changing state;
  * 0 returns to the still-pending field request; 1 requests application exit.
- * No save, native98 continuation or authoritative battle result is exposed. */
+ * The scene itself writes no save and resumes no script; it only reports the
+ * outcome it reached. */
 /* entry_body (read only) runs the original trainer entry first; NULL keeps
  * the roster-initializer preview (diagnostic probe). */
-int c3_battle_preview_scene_run(const C3BattleRequest *request,const uint8_t *entry_body,size_t entry_bytes,FILE *trace);
+int c3_battle_preview_scene_run(const C3BattleRequest *request,const uint8_t *entry_body,size_t entry_bytes,FILE *trace,int *outcome);
 /* Construct an isolated encounter-10 preview from current party bytes;
  * this does not access or resume the field VM's pending request. */
-int c3_battle_preview_from_game_state(const C3GameState *state,FILE *trace);
+/* outcome (optional) receives the C3BattlePreviewOutcome reached when the
+ * scene was left, or 0 when no battle ran. The caller decides whether that
+ * outcome is reported to the waiting field script. */
+int c3_battle_preview_from_game_state(const C3GameState *state,FILE *trace,int *outcome);
 /* Explicit compile-time diagnostic entry; never selected by a save flag. */
 int c3_battle_preview_probe_run(void);
 #endif

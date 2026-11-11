@@ -6,6 +6,7 @@
 #include "pda_audio.h"
 #include "movie_player.h"
 #include "battle_preview_scene.h"
+#include "colosseum3ds/battle_preview.h"
 #include "n3ds_platform.h"
 #include "render_recovery.h"
 #include "stage_renderer.h"
@@ -261,7 +262,8 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                     if(c3_render_recover(trace,"field-to-battle",frames,C3_RECOVER_DRAIN)==C3_RECOVERY_EXIT){result=1;break;}
                     release_field_models(storage,count);
                     c3_n3ds_log_memory(trace,"field_battle_payloads_released");
-                    int preview_result=c3_battle_preview_from_game_state(state,trace);
+                    int battle_outcome=0;
+                    int preview_result=c3_battle_preview_from_game_state(state,trace,&battle_outcome);
                     /* Defensively drain even a failed/partial battle initialization.
                      * Never reload CPU packs while battle GPU storage is live. */
                     if(c3_render_recover(trace,"battle-to-field",0,
@@ -273,8 +275,16 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                     if(tv_index!=UINT32_MAX&&!c3_stage_renderer_set_tv(tv_index,1,1,
                         view->tv_enabled,error,capacity)){result=-1;break;}
                     c3_n3ds_log_memory(trace,"field_battle_restored");
-                    if(trace){fprintf(trace,"field_battle_return preview=%d pending=%lu vm_preserved=1 models=%lu\n",
-                        preview_result,(unsigned long)view->battle_id,(unsigned long)count);fflush(trace);}
+                    /* A hero win is reported as the original result ID 2, the
+                     * value the field script compares native 67 against. Any
+                     * other outcome leaves native 98 waiting (retry). */
+                    int reported=0;
+                    if(preview_result==0&&battle_outcome==C3_PREVIEW_PLAYER_WON){
+                        if(!c3_field_story_battle_result(&story,2,story_error))goto story_failed;
+                        reported=1;
+                    }
+                    if(trace){fprintf(trace,"field_battle_return preview=%d outcome=%d result_reported=%d pending=%lu vm_preserved=1 models=%lu\n",
+                        preview_result,battle_outcome,reported,(unsigned long)view->battle_id,(unsigned long)count);fflush(trace);}
                     /* Modal preview time must not advance paused field scripts. */
                     previous=c3_n3ds_active_time_us();dirty=1;next_console=0;
                     continue;

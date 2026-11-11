@@ -466,11 +466,31 @@ int main(int argc,char **argv)
     CHECK(c3_field_story_view(&scene->story)->battle_id==10&&!c3_field_story_view(&scene->story)->control);
     CHECK(flag(&game,0x3de)==0);unchanged_party(&game,&original);
     fprintf(trace,"integration_boundary encounter=10 native98_pending=1 battle_result_supplied=0 victory_flag03DE=0\n");
+    /* The battle scene reports the original fight result. Only then does the
+     * original script continue: it reads native 67, shows Willie's message
+     * and writes its own flags, including Phenac's world-map unlock 03DF. */
+    {uint32_t encounter=0;
+     CHECK(c3_field_story_battle_pending(&scene->story,&encounter)&&encounter==10);
+     CHECK(!c3_field_story_battle_result(&scene->story,0,error));
+     CHECK(c3_field_story_battle_pending(&scene->story,NULL)&&flag(&game,0x3de)==0);
+     CHECK(c3_field_story_battle_result(&scene->story,2,error));
+     CHECK(!c3_field_story_battle_pending(&scene->story,NULL));
+     CHECK(!c3_field_story_battle_result(&scene->story,2,error));
+     CHECK(!c3_field_story_view(&scene->story)->blocked[0]&&!c3_field_story_view(&scene->story)->battle_id);
+     until_control(scene,0x5145);
+     CHECK(logged("story_battle_result encounter=10 result=2 native98_resumed=1"));
+     CHECK(logged("id=67 argc=0"));
+     CHECK(flag(&game,0x3dd)==1&&flag(&game,0x3de)==1&&flag(&game,0xa5a)==1&&flag(&game,0x3df)==1);
+     unchanged_party(&game,&original);
+     for(frame=0;frame<600;++frame)tick(scene,frame);
+     CHECK(c3_field_story_view(&scene->story)->control&&!c3_field_story_view(&scene->story)->battle_id);
+     CHECK(!c3_field_story_battle_pending(&scene->story,NULL));
+     fprintf(trace,"integration_post_battle result=2 flags03DE_0A5A_03DF=1 control=1 challenge_repeated=0\n");}
     close_scene(scene);free(scene);c3_game_state_free(&game);
     fprintf(trace,"integration_complete checks=%u\n",checks);
     if(argc<=2){char buffer[4096];size_t size;rewind(trace);
         while((size=fread(buffer,1,sizeof buffer,trace)))CHECK(fwrite(buffer,1,size,stdout)==size);
         CHECK(!ferror(trace));}
     CHECK(fclose(trace)==0);
-    printf("field-story private integration: %u checks passed; stops before unported combat\n",checks);return 0;
+    printf("field-story private integration: %u checks passed; ends after the reported first-battle result\n",checks);return 0;
 }
