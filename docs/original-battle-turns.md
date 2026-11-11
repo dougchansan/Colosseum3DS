@@ -19,7 +19,7 @@ resumable action frame. Each stage stops when the result global
 |---|---|---|
 | Pre-load, pre-entry | `KaisiPreSubLoad` 0x8020C840, kind 2 `KaisiPre` 0x8020C15C | missing |
 | Trainer entry | kind 3 `KaisiNyuujouTrainer` 0x8020D1FC | **ported, on hardware** |
-| Send-out (active entry) | kind 4 `KaisiNyuujouPokemon` 0x8020CA98 → `fightOutPokemonCreate` 0x802068C8 | missing |
+| Send-out (active entry) | kind 4 `KaisiNyuujouPokemon` 0x8020CA98 → `fightOutPokemonCreate` 0x802068C8 | **lowered** (`src/battle_start.c`), host tests only |
 | Start-of-battle setup | kind 5 `KaisiPost` 0x8020BFA0 (+ kind 6 weather init, `fightSeqInit`) | **lowered** (`src/battle_start.c`), host tests only |
 | Command input | kind 7 → `fightTrainerSelectFightAction` 0x801F923C → AI `fn_802342CC` or GC menu | missing (AI argmax only: `battle_rules.c`) |
 | Execution | kind 0xB 0x8020BBFC: sort `fightFloorSortFightOutPokemonPtrAry` 0x801F3B24 / nimbleness compare 0x801F3CE8, two passes, Focus Punch check `fn_80211A00` | missing |
@@ -980,15 +980,58 @@ kind 6 (`TenkouInit`).
   floor's introduction animations (encounter and appear WZX, skippable), the
   trainer's intro message (trainer data 8) and throw animation, the battle
   music, or the hero/enemy intro for the other branch. Not lowered.
-- **Kind 4 `fightActionFlowKaisiNyuujouPokemon`** (0x548): for each trainer
-  on the side, its first battle-ready party members up to the active count
-  become battlers (`fightOutPokemonCreate` with the Pokémon's model
-  sequence, `fightOutPokemonRegWzxLoad`, the Pokédex and Shadow flags for an
-  opponent when floor 0x1E is 1, grid entries), then the ball-throw and
-  appearance effects, the appear messages (message variables 0x22, 0x23,
-  0x25) and floor 0x36 per battler during its effects. Not lowered yet: the
-  tests create the four battlers with `c3_battle_fight_out_pokemon_create`
-  (sequence 0) in its place.
+- **Kind 4 `fightActionFlowKaisiNyuujouPokemon`** (lowered:
+  `c3_battle_start_send_out`). The battle thread runs it with buff 5 (side 1,
+  the opponent) then 4 (side 0); the buff is the absolute side's target kind.
+  1. **Battlers:** each valid trainer with a model sequence (trainer field
+     0x4C, `+0x27C0`; without one it is skipped) takes its first
+     battle-ready party members (`fightPokemonCheckFightOut`) up to the
+     active count. For each:
+     - the face (`fn_8010AE2C`, `loadPokemonFace`) and the model sequence
+       (`pokemonCreateSequence`) are presentation; the presenter's sequence
+       handle goes into the battler;
+     - `fightOutPokemonCreate` on the battler in the *same slot* as the
+       party member (fightTrainerGetStatus 0x46 with the party index; a
+       party slot past 1 has no battler and is refused);
+     - its ball effect loaded (`fightOutPokemonRegWzxLoad`);
+     - with floor 0x1E = 1 (Willie's battle), an opponent's Pokédex flags on
+       its party Pokémon (battler 0xD5, then 0xCB):
+       `pokemonSetOnZukanFlag` sets the species' seen game flag (status
+       0x62, `_flagSet` of the species' `mitaFlag`; the decompiled call
+       lost the species argument read through 0x6E) and appends a Strategy
+       Memo entry (`memoDataSet`: species | 0x8000, personality, catching
+       trainer's ID, unless the species is already there). Both are save
+       data, so the port records each call in `state->seen` and applies
+       neither; the result transaction (increment 4) is where they belong.
+       `pokemonSetOnDarkPokemonFlag` acts only on a Shadow Pokémon:
+       refused;
+     - its grid entry.
+  2. **Effects loaded:** the trainer's throw (mode 0) and each battler's
+     appearance (mode 0).
+  3. **Per trainer:** the appear message variables (0x14 / 0x16 for slot 0,
+     0x15 / 0x17 for slot 1, swapped for the player's battlers outside
+     player layouts); the grid update; the throw; message variables 0x22
+     (the trainer class prefix: trainer kind row `+4`, 0 for the player's
+     kind, as `GSmsgGetGSchar(0)` is NULL), 0x23 and 0x25 (the name); the
+     appear message (a lone trainer with two battlers: 0x7671, or 0x7679
+     for the player, 0x7674 in player layouts; otherwise per battler 0x7670
+     / 0x7678 / 0x7673); then per battler, with the floor's attacker (0x36)
+     set to it and restored, its appearance (modes 1 to 4: start, wait,
+     appear, wait with the cry and shiny sparkle) and its status menu opened
+     (`fn_80265598`, flag 1 for the player's) and closed (`fn_8026532C`).
+  4. The message closed, then the throws and appearances freed.
+  The throw and appearance calls return at once without the trainer's or
+  battler's model (0x4C, 0xEE), so they are only presented with one.
+
+  The trainer-kind rows come from `common_rel.rel` (data offset 0x8F724, 41
+  rows of 12 bytes); the battle DOL-table pack carries them since version 8
+  (section `TKD `, base = the REL offset;
+  `tools/prepare_battle_script.py <main.dol> <common_rel.rel> <out>`).
+
+  On the original data: Willie (trainer kind 26, prefix message 0x1285)
+  sends out both Zigzagoon and gets message 0x7671; two seen records (species
+  288) are recorded. The player's side gets 0x7679 and records nothing. Each
+  battler is byte-identical to `fightOutPokemonCreate` on its party slot.
 - **Kind 5 `fightActionFlowKaisiPost`** (lowered: `c3_battle_start_post`,
   `src/battle_start.c`), in source order:
   1. **Battler list** (`fightFloorCreateFightOutPokemonPtrAry`): FightFloor
@@ -1044,8 +1087,8 @@ kind 6 (`TenkouInit`).
   condition is written and the weather stays clear.
 - **Planned rounds:**
   1. Kind 5 with kind 6 (done).
-  2. Kind 4: the battlers' creation from the party with their model
-     sequences, the Pokédex/Shadow flags and the appearance presentation.
+  2. Kind 4 (done; the Pokédex and Strategy Memo writes are recorded, not
+     applied).
   3. Kind 2's presentation as presenter requests, then the stage sequence
      2, 3, 4, 5 in one call.
 

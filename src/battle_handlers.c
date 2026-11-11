@@ -1323,6 +1323,8 @@ static int op_move_end(C3BattleHandlers *h,C3BattleScript *sc)
 /* fightFloorSetStatus(0x36, fo): message variables 0x0F, 0x1A (its ability's
  * name), 0x1F, 0x21, 0x20, cleared for 0 or an invalid battler, then the
  * attacker field (FightFloor +0xA474). */
+static int floor_set_attacker(C3BattleState *s,uint32_t fo);
+int c3_battle_handlers_set_attacker(C3BattleState *s,uint32_t fo){return s&&floor_set_attacker(s,fo);}
 static int floor_set_attacker(C3BattleState *s,uint32_t fo)
 {
     int fault=0;

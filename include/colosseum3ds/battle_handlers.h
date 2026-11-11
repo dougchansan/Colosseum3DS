@@ -35,7 +35,18 @@ typedef enum {
                                      EXP bar is still filling */
     C3_PRESENT_STATUS_RENEW,      /* fightMenuFightOutPokemonRenewStatusMenu(a, fight type b, 1) */
     C3_PRESENT_GRID_UPDATE,       /* battleGridUpdate(): a battler left the field */
-    C3_PRESENT_EFFECT_POOL_FREE   /* fn_801DA7AC(): stop and free every move effect */
+    C3_PRESENT_EFFECT_POOL_FREE,  /* fn_801DA7AC(): stop and free every move effect */
+    C3_PRESENT_FACE_LOAD,         /* fn_8010AE2C(FightPokemon a, 0, 0): loadPokemonFace */
+    C3_PRESENT_SEQUENCE_CREATE,   /* pokemonCreateSequence(Pokemon a): returns the model
+                                     sequence handle stored in the battler (0 without one) */
+    C3_PRESENT_WZX_LOAD,          /* fightOutPokemonRegWzxLoad(battler a): the ball's effect */
+    C3_PRESENT_GRID_ADD,          /* battleGridAddPokemon(trainer sequence a, sequence b) */
+    C3_PRESENT_BALL_THROW,        /* fightTrainerBallThrowEffect(trainer, battler a, mode b):
+                                     0 load, 1 start, 2 wait until done, 3 free */
+    C3_PRESENT_SEND_OUT_EFFECT,   /* fightOutPokemonDasuEffect(battler a, mode b): 0 load,
+                                     1 start, 2 wait, 3 appear, 4 wait with the cry and the
+                                     shiny sparkle, 5 free */
+    C3_PRESENT_STATUS_MENU_OPEN   /* fn_80265598(battler a, fight type b, 0) */
 } C3BattlePresent;
 
 /* fightWazaDoEffectFunc(move, attacker, target, count): the move's effect
@@ -82,6 +93,10 @@ C3BattleScriptServices c3_battle_handler_services(C3BattleHandlers *handlers);
  * check, no damage loss), 0 on a miss, with every record it touches
  * restored. pre_return selects the Return pre-hook (power from friendship).
  * Returns 0 when a step is refused (sc failed by name). */
+/* fightFloorSetStatus(0x36, fo): the appointed attacker (FightFloor +0xA474)
+ * and its message variables 0x0F, 0x1A, 0x1F, 0x21, 0x20 (0 for an invalid
+ * battler). Returns 0 when a record is unreadable. */
+int c3_battle_handlers_set_attacker(C3BattleState *state, uint32_t fight_out);
 int c3_battle_handlers_normal_damage(C3BattleHandlers *handlers, C3BattleScript *sc, uint16_t move,
                                      uint32_t attacker, uint32_t defender, int pre_return, uint32_t *damage);
 

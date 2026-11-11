@@ -21,6 +21,7 @@
  * identities; each is relocated to that party slot in the trainer's embedded
  * Hero (trainer +0x34 + slot * 0x138), and any other value is refused. */
 #define C3_BATTLE_STATE_BYTES C3_FIGHT_FLOOR_BYTES
+#define C3_BATTLE_SEEN_MAX 12u
 #define C3_FIGHT_SIDE_OFFSET 0x14u
 #define C3_FIGHT_SIDE_BYTES 0x5230u
 #define C3_FIGHT_SIDE_TRAINER_OFFSET 0x64u
@@ -56,6 +57,15 @@ typedef struct {
     C3BattleDataRows growth;     /* growth rows (0x194: u32 EXP per level), from the entry pack */
     C3BattleDataRows kaisuu;     /* lbl_80315690 turn counts (8: s32 min, s32 max), set by the
                                     caller from the battle DOL-table pack */
+    C3BattleDataRows trainer_kinds; /* fightTrainerKindData rows (12: prefix name +4), set by
+                                    the caller from the battle DOL-table pack */
+    /* Save effects of the send-out that the battle records instead of
+     * applying (fightOutPokemonSetOnZukanFlag on an opponent's Pokemon):
+     * the species' seen flag (pokemonSetStatus 0x62) and its Strategy Memo
+     * entry (memoDataSet: species, personality, catching trainer's ID), in
+     * call order. Nothing here touches a save. */
+    struct { uint16_t species; uint32_t personality, catch_trainer; } seen[C3_BATTLE_SEEN_MAX];
+    unsigned seen_count;
 } C3BattleState;
 
 /* Computed fightFloorGetStatus fields read from the encounter tables:

@@ -7,7 +7,9 @@ initialized-data windows that script operands address, and the condition
 table (lbl_8035BBA8) with its count (lbl_80478B48), and the accuracy-stage
 table (lbl_80375DD0) with its count (lbl_80478D70), the stat-stage ratios
 (lbl_80375D10), the critical-rate denominators (lbl_80478D58) and the
-damage formula's item/type table (lbl_80279ED0). It holds no battle state
+damage formula's item/type table (lbl_80279ED0), and from common_rel.rel the
+trainer-kind rows (fightTrainerKindData, 12 bytes: prefix name at +4). It
+holds no battle state
 or results. Keep it private: it is original game data and must never be added
 to the source checkout.
 
@@ -15,7 +17,8 @@ Layout (big-endian): 64-byte header
   +0  "C3W1"   +4 version   +8 total bytes   +12 section count
   +16 main.dol SHA-1 (20)   +36 SHA-1 of everything after the header (20)
 then a directory of (tag[4], GameCube base u32, length u32) entries and the
-section bytes in directory order.
+section bytes in directory order. A base below 0x80000000 is a common_rel.rel
+data-section offset (the REL is loaded at run time).
 """
 import argparse
 import hashlib
@@ -24,7 +27,11 @@ from pathlib import Path
 
 DOL_SHA1 = "870e8b9693ca780782d80f22a6a4572d8ba9458f"
 DOL_BYTES = 3779808
-VERSION = 7
+VERSION = 8
+REL_SHA1 = "e816761813900aa0fd4f87d012b3b2a19d2f003e"
+REL_BYTES = 1369520
+REL_BASE = 0x184C  # common_rel data section file offset
+TRAINER_KINDS = 41
 HEADER_BYTES = 64
 EFFECT_COUNT = 214
 SECTIONS = (
@@ -48,6 +55,9 @@ SECTIONS = (
     (b"AMC ", 0x80478B50, 4),                         # .sdata move AI row count
     (b"AMT ", 0x8035C430, 358 * 0x14),                # move AI rows (value, hit, damage, WZX type, variation)
 )
+REL_SECTIONS = (
+    (b"TKD ", 0x0008F724, TRAINER_KINDS * 12),        # trainer kinds (count at REL 0x14A684)
+)
 CONDITION_ROW = 0x14
 
 
@@ -64,10 +74,15 @@ def dol_read(dol, address, size, label):
     raise ValueError("Original DOL address is not mapped: " + label)
 
 
-def make_pack(dol):
+def make_pack(dol, rel):
     if len(dol) != DOL_BYTES or hashlib.sha1(dol).hexdigest() != DOL_SHA1:
         raise ValueError("main.dol differs from canonical GC6E01")
+    if len(rel) != REL_BYTES or hashlib.sha1(rel).hexdigest() != REL_SHA1:
+        raise ValueError("common_rel.rel differs from canonical GC6E01")
+    if u32(rel, REL_BASE + 0x14A684) != TRAINER_KINDS:
+        raise ValueError("Unexpected trainer-kind count")
     blobs = [dol_read(dol, base, length, tag.decode()) for tag, base, length in SECTIONS]
+    blobs += [rel[REL_BASE + base:REL_BASE + base + length] for tag, base, length in REL_SECTIONS]
     scr_base, scr_len = SECTIONS[0][1], SECTIONS[0][2]
     for i in range(EFFECT_COUNT):
         target = u32(blobs[1], 4 * i)
@@ -86,11 +101,11 @@ def make_pack(dol):
         raise ValueError("Unexpected turn-count table size")
     if u32(blobs[17], 0) != 358:
         raise ValueError("Unexpected move AI table size")
-    directory = b"".join(struct.pack(">4sII", tag, base, length) for tag, base, length in SECTIONS)
+    directory = b"".join(struct.pack(">4sII", tag, base, length) for tag, base, length in SECTIONS + REL_SECTIONS)
     payload = directory + b"".join(blobs)
     header = bytearray(HEADER_BYTES)
     header[0:4] = b"C3W1"
-    struct.pack_into(">III", header, 4, VERSION, HEADER_BYTES + len(payload), len(SECTIONS))
+    struct.pack_into(">III", header, 4, VERSION, HEADER_BYTES + len(payload), len(SECTIONS) + len(REL_SECTIONS))
     header[16:36] = bytes.fromhex(DOL_SHA1)
     header[36:56] = hashlib.sha1(payload).digest()
     return bytes(header) + payload
@@ -99,13 +114,14 @@ def make_pack(dol):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("dol", type=Path)
+    ap.add_argument("rel", type=Path, help="files/common_rel.rel")
     ap.add_argument("output", type=Path)
     a = ap.parse_args()
     root = Path(__file__).resolve().parents[1]
     out = a.output.resolve()
     if root in out.parents or out == root:
         raise SystemExit("Refusing to write original data inside the source checkout")
-    data = make_pack(a.dol.read_bytes())
+    data = make_pack(a.dol.read_bytes(), a.rel.read_bytes())
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_bytes(data)
     print(f"{out} {len(data)} bytes sha256={hashlib.sha256(data).hexdigest()}")

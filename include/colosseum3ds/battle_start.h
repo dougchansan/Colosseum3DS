@@ -36,4 +36,25 @@
  * failures name the refused path). Returns 0 with sc failed when a path is
  * refused or a record is unreadable. */
 int c3_battle_start_post(C3BattleHandlers *handlers, C3BattleScript *sc);
+
+/* fightActionFlowKaisiNyuujouPokemon (kind 4) for one side, buff 5 (side 1)
+ * then 4 (side 0) in the battle thread:
+ *   1. each valid trainer with a model sequence (trainer field 0x4C) sends
+ *      out its first battle-ready party members (fightPokemonCheckFightOut),
+ *      up to the active count: face and model sequence (presentation), the
+ *      battler created from the party member in the same slot
+ *      (fightOutPokemonCreate), its ball effect loaded, and, when floor 0x1E
+ *      is 1, an opponent's Pokedex and Shadow flags: the seen flag and
+ *      Strategy Memo entry are recorded in state->seen (not applied), a
+ *      Shadow Pokemon is refused; then its grid entry;
+ *   2. the ball throws and appearance effects loaded;
+ *   3. per trainer: the appear message variables (0x14..0x17 by slot), the
+ *      throw, the trainer variables 0x22 (class prefix), 0x23 and 0x25
+ *      (name), the appear message (0x7670.. by count and side), and per
+ *      battler its appearance with the floor's attacker set to it (0x36,
+ *      restored), its status menu opened and closed;
+ *   4. the message closed and the effects freed.
+ * A send-out from party slot 2 or later is refused. Returns 0 with sc failed
+ * when a path is refused or a record is unreadable. */
+int c3_battle_start_send_out(C3BattleHandlers *handlers, C3BattleScript *sc, uint16_t side_kind);
 #endif

@@ -25,7 +25,7 @@ static int pack_fail(char *e,const char *m){if(e)snprintf(e,C3_SCRIPT_ERROR_SIZE
 
 int c3_battle_script_pack_decode(C3BattleScriptPack *out,const uint8_t *b,size_t n,char *e)
 {
-    enum{SECTIONS=19};
+    enum{SECTIONS=20};
     static const struct{char tag[5];uint32_t base,len;}want[SECTIONS]={
         {"SCR ",C3_SCRIPT_REGION_BASE,C3_SCRIPT_REGION_BYTES},{"EFF ",0x80379BFFu,C3_SCRIPT_EFFECTS*4u},
         {"WSD ",C3_SCRIPT_WSD_BASE,C3_SCRIPT_WSD_BYTES},{"WDT ",C3_SCRIPT_WDT_BASE,C3_SCRIPT_WDT_BYTES},
@@ -34,13 +34,14 @@ int c3_battle_script_pack_decode(C3BattleScriptPack *out,const uint8_t *b,size_t
         {"ABC ",0x80478D68u,4},{"ABR ",0x80375D10u,26},{"CRC ",0x80478D60u,4},{"CRT ",0x80478D58u,8},
         {"ED0 ",0x80279ED0u,0x24},{"TGC ",0x80478D40u,4},{"TGT ",0x80375AC8u,C3_TARGET_KINDS*8u},
         {"KAC ",0x80478B20u,4},{"KAI ",0x80315690u,C3_KAISUU_ROWS*8u},
-        {"AMC ",0x80478B50u,4},{"AMT ",0x8035C430u,C3_AI_MOVE_ROWS*0x14u}};
+        {"AMC ",0x80478B50u,4},{"AMT ",0x8035C430u,C3_AI_MOVE_ROWS*0x14u},
+        {"TKD ",0x0008F724u,C3_TRAINER_KINDS*12u}};                 /* common_rel.rel data offset */
     static const uint8_t dol_sha1[20]={0x87,0x0e,0x8b,0x96,0x93,0xca,0x78,0x07,0x82,0xd8,
         0x0f,0x22,0xa6,0xa4,0x57,0x2d,0x8b,0xa9,0x45,0x8f};
     uint8_t digest[20];size_t expect=64+SECTIONS*12;const uint8_t *data[SECTIONS];
     if(!out||!b)return pack_fail(e,"Missing move-script pack.");
     for(unsigned i=0;i<SECTIONS;++i)expect+=want[i].len;
-    if(n!=expect||memcmp(b,"C3W1",4)||be32(b+4)!=7||be32(b+8)!=n||be32(b+12)!=SECTIONS||memcmp(b+16,dol_sha1,20))
+    if(n!=expect||memcmp(b,"C3W1",4)||be32(b+4)!=8||be32(b+8)!=n||be32(b+12)!=SECTIONS||memcmp(b+16,dol_sha1,20))
         return pack_fail(e,"Unsupported or damaged move-script pack.");
     for(unsigned i=56;i<64;++i)if(b[i])return pack_fail(e,"Unsupported or damaged move-script pack.");
     c3_save_codec_sha1(digest,b+64,(uint32_t)(n-64));
@@ -72,6 +73,7 @@ int c3_battle_script_pack_decode(C3BattleScriptPack *out,const uint8_t *b,size_t
     if(next.kaisuu_count!=C3_KAISUU_ROWS)return pack_fail(e,"Unexpected turn-count table size.");
     next.ai_move_count=be32(data[17]);next.ai_moves=data[18];
     if(next.ai_move_count!=C3_AI_MOVE_ROWS)return pack_fail(e,"Unexpected move AI table size.");
+    next.trainer_kinds=data[19];next.trainer_kind_count=C3_TRAINER_KINDS;
     *out=next;if(e)e[0]=0;return 1;
 }
 

@@ -78,13 +78,14 @@ static void battle_reset(World *w,unsigned att_side,unsigned att_slot,unsigned d
     CHECK(c3_battle_waza_status_set(&s->arena,fw,0x27,0,move)&&c3_battle_waza_set_use(s,fw,move));
     CHECK(c3_battle_waza_status_set(&s->arena,fw,0x26,0,(uint8_t)move_slot));
 }
-typedef struct { char log[1024];size_t used;unsigned menu_shown,hp_busy; } Presentation;
+typedef struct { char log[1024];size_t used;unsigned menu_shown,hp_busy,sequence; } Presentation;
 static int present(void *u,C3BattlePresent req,uint32_t a,uint32_t b)
 {
     Presentation *p=u;char t[48];
     snprintf(t,sizeof t,"%d:%lx:%lx;",(int)req,(unsigned long)(a&0xFFFF),(unsigned long)b);
     size_t n=strlen(t);CHECK(p->used+n<sizeof p->log);memcpy(p->log+p->used,t,n+1);p->used+=n;
     if(req==C3_PRESENT_STATUS_MENU_SHOWN)return (int)p->menu_shown;
+    if(req==C3_PRESENT_SEQUENCE_CREATE)return (int)p->sequence;
     if(req==C3_PRESENT_HP_BAR_BUSY){if(p->hp_busy){--p->hp_busy;return 1;}return 0;}
     return req==C3_PRESENT_ATTACK_STRING||req==C3_PRESENT_MESSAGE_OPEN||req==C3_PRESENT_EFFECT_MESSAGE;
 }
@@ -810,22 +811,62 @@ int main(void)
         s->accuracy=(C3BattleDataRows){w.script_pack.accuracy,w.script_pack.accuracy_count,2};
         s->target_kinds=(C3BattleDataRows){w.script_pack.target_kinds,w.script_pack.target_kind_count,8};
         s->kaisuu=(C3BattleDataRows){w.script_pack.kaisuu,w.script_pack.kaisuu_count,8};
+        s->trainer_kinds=(C3BattleDataRows){w.script_pack.trainer_kinds,w.script_pack.trainer_kind_count,12};
+        memset(&r,0,sizeof r);r.handlers.state=s;
+        r.handlers.damage=(C3BattleDamageTables){w.script_pack.stage_ratios,w.script_pack.stage_ratio_count,
+            w.script_pack.item_types,w.pack->sections[C3_PACK_T44].bytes,w.pack->sections[C3_PACK_T44].count};
+        r.handlers.present=present;r.handlers.present_user=&r.presentation;
+        r.presentation.sequence=0x77;                       /* the presenter's model handle */
+        C3BattleScriptServices sv=c3_battle_handler_services(&r.handlers);
+        CHECK(c3_battle_script_init(&r.script,&w.script_pack,&sv));
         uint32_t fos[4];
-        for(unsigned side=0;side<2;++side)for(unsigned k=0;k<2;++k){
-            fos[side*2+k]=c3_battle_state_fight_out(s,side,k);
-            CHECK(c3_battle_fight_out_pokemon_create(&s->arena,fos[side*2+k],c3_battle_state_fight_pokemon(s,side,k),0,&s->species));
+        for(unsigned i=0;i<4;++i)fos[i]=c3_battle_state_fight_out(s,i/2,i%2);
+        /* Send-out (kind 4), side 1 then side 0 as the battle thread runs it. */
+        uint32_t willie=w.state->trainer[1];
+        uint32_t uv=0,uw=0;
+        CHECK(c3_battle_fight_status_get(&s->arena,fos[0],0xD6,0,&uv)&&c3_battle_fight_status_get(&s->arena,fos[2],0xD6,0,&uw));
+        CHECK(!uv&&!uw);                                   /* no battlers before the send-out */
+        int sent=c3_battle_start_send_out(&r.handlers,&r.script,5);
+        printf("send-out side 1: %s\n",sent?"done":r.script.failure);
+        CHECK(sent);
+        char want[64];
+        snprintf(want,sizeof want,"%d:7671:0;",(int)C3_PRESENT_MESSAGE_OPEN);  /* "<trainer> sent out <both>!" */
+        CHECK(strstr(r.presentation.log,want)!=NULL);
+        snprintf(want,sizeof want,"%d:%lx:4;",(int)C3_PRESENT_SEND_OUT_EFFECT,(unsigned long)(fos[2]&0xFFFF));
+        CHECK(strstr(r.presentation.log,want)!=NULL);
+        CHECK(s->msgctrl[0x22]==C3_MSGREF_MESSAGE(0x1285)&&s->msgctrl[0x23]==willie+4u&&s->msgctrl[0x25]==willie+4u);
+        CHECK(s->seen_count==2);
+        for(unsigned k=0;k<2;++k){
+            uint32_t fp=c3_battle_state_fight_pokemon(s,1,k),pk=0;
+            CHECK(c3_battle_fight_status_get(&s->arena,fp,0xCB,0,&pk)&&pk);
+            const uint8_t *pp=c3_battle_arena_bytes(&s->arena,pk,0x18);
+            CHECK(s->seen[k].species==(uint16_t)(pp[0]<<8|pp[1])&&s->seen[k].personality==be32_at(pp+4)&&
+                  s->seen[k].catch_trainer==be32_at(pp+0x14));
+            printf("seen: species %u personality %08lx\n",s->seen[k].species,(unsigned long)s->seen[k].personality);
+        }
+        r.presentation.used=0;r.presentation.log[0]=0;
+        sent=c3_battle_start_send_out(&r.handlers,&r.script,4);
+        printf("send-out side 0: %s\n",sent?"done":r.script.failure);
+        CHECK(sent&&s->seen_count==2);                     /* the player's own Pokemon add nothing */
+        snprintf(want,sizeof want,"%d:7679:0;",(int)C3_PRESENT_MESSAGE_OPEN);  /* "Go! <both>!" */
+        CHECK(strstr(r.presentation.log,want)!=NULL);
+        CHECK(s->msgctrl[0x22]==0);                         /* the player's kind has no prefix */
+        const uint8_t *att=c3_battle_arena_bytes(&s->arena,s->floor+0xA474u,4);
+        CHECK(be32_at(att)==0);                             /* floor 0x36 restored */
+        /* Each battler is what fightOutPokemonCreate makes from its party slot. */
+        for(unsigned i=0;i<4;++i){
+            uint8_t made[C3_FIGHT_OUT_POKEMON_BYTES];
+            memcpy(made,c3_battle_arena_bytes(&s->arena,fos[i],C3_FIGHT_OUT_POKEMON_BYTES),sizeof made);
+            CHECK(c3_battle_fight_out_check_valid(s,fos[i],NULL)==1);
+            CHECK(c3_battle_fight_out_pokemon_create(&s->arena,fos[i],c3_battle_state_fight_pokemon(s,i/2,i%2),0x77,&s->species));
+            CHECK(memcmp(made,c3_battle_arena_bytes(&s->arena,fos[i],C3_FIGHT_OUT_POKEMON_BYTES),sizeof made)==0);
         }
         /* Fields the start resets, set beforehand. */
         for(unsigned i=0;i<4;++i){
             CHECK(c3_battle_fight_status_set(&s->arena,fos[i],0x102,0,1)&&c3_battle_fight_status_set(&s->arena,fos[i],0x112,0,1));
             CHECK(c3_battle_fight_status_set(&s->arena,fos[i],0x113,0,1));
         }
-        memset(&r,0,sizeof r);r.handlers.state=s;
-        r.handlers.damage=(C3BattleDamageTables){w.script_pack.stage_ratios,w.script_pack.stage_ratio_count,
-            w.script_pack.item_types,w.pack->sections[C3_PACK_T44].bytes,w.pack->sections[C3_PACK_T44].count};
-        r.handlers.present=present;r.handlers.present_user=&r.presentation;
-        C3BattleScriptServices sv=c3_battle_handler_services(&r.handlers);
-        CHECK(c3_battle_script_init(&r.script,&w.script_pack,&sv));
+        r.presentation.used=0;r.presentation.log[0]=0;
         CHECK(c3_battle_script_write(&r.script,C3_SCRIPT_WSD_BASE+3,1,0x55));
         int weather=-1;
         CHECK(c3_battle_state_weather(s,0,&weather)&&weather==0);
@@ -870,7 +911,7 @@ int main(void)
         /* The met lists, registry and enemy arrays: Willie meets Umbreon and
          * Espeon (entry IDs 11, 12) and registers them. */
         CHECK(c3_battle_trainer_enemy(s,s->trainer[1],11)&&c3_battle_trainer_enemy(s,s->trainer[1],12));
-        char want[16];snprintf(want,sizeof want,"%d:0:0;",(int)C3_PRESENT_EFFECT_POOL_FREE);
+        snprintf(want,sizeof want,"%d:0:0;",(int)C3_PRESENT_EFFECT_POOL_FREE);
         CHECK(strlen(r.presentation.log)>=strlen(want)&&
               strcmp(r.presentation.log+strlen(r.presentation.log)-strlen(want),want)==0);
     }
