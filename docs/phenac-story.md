@@ -12,7 +12,7 @@ evidence only: Phenac has not been drawn by the 3DS field scene yet (see
 the original Outskirt scripts have written by then (each is observed being
 written by those scripts in `tests/test_field_story.c`), links to floor 3
 entrance 0 as the world map does, and ticks the production adapter with the
-private packs. 7,223 checks pass.
+private packs. 7,230 checks pass.
 
 | Step | Original behaviour | Evidence in the run |
 | --- | --- | --- |
@@ -20,7 +20,7 @@ private packs. 7,223 checks pass.
 | Arrival camera | main calls function 28: native `2A` plays camera member `0C101800` | pack `phenac_camera.c3c`, 661 samples |
 | Arrival event | function 5: actors 2 and 3 (the Outskirt pair) with the sack, dialogue, then native `98(14,1,0)` | battle request 14 with flag `0x3E2` set |
 | After the battle | the same function continues with the result: dialogue with actors 5 and 7, ends with flag `0x3E1` | flags `0x3E3`, `0x3E1`, control returns |
-| Partner event | talking to the sack (actor 0, talk script `01000021`) inside x -8..10, z 314..340 sets bank global 7; main calls function 6 | `story_talk actor=0`, partner byte set, flags `0x3E4`, `0x3E5`, `0xACF` |
+| Partner event | talking to the sack (actor 0, talk script `01000021`) inside x -8..10, z 314..340 sets bank global 7; main calls function 6 | `story_talk actor=0`, the reported name read back from the state, partner byte set, flags `0x3E4`, `0x3E5`, `0xACF` |
 
 ## Engine facts found while porting
 
@@ -43,7 +43,7 @@ private packs. 7,223 checks pass.
 | Area | Shortcut | Where recorded |
 | --- | --- | --- |
 | Battle 14 | No battle scene exists for it. The field scene offers "skip as a win": result ID 2 is reported and the script continues. Nothing is written to the party | trace `field_battle_skipped ... temporary=1` |
-| Partner name | Native `16` (name-entry floor `0x390`) is not ported; the saved default name is kept | trace `story_name_entry ... menu_ported=0` |
+| Partner name | Native `16` mode 1 waits while the field scene shows the port's own bottom-screen keyboard; the name goes to hero `+0xAC2`. The original name-entry floor `0x390` is not ported, and other modes keep the saved name | trace `name_entry_open`, `story_name_entry status=named` |
 | Partner on the field | Person `(0,101)` has no model yet; natives addressed to it are the original no-op for a missing person. The save's partner byte (hero `+0xA98`) is written | `c3_game_state_partner` |
 | Jingle wait | Native `82` blocks for the jingle length, which lives in the sound data; the port waits two seconds | trace `jingle_backend_pending_wait_2s` |
 | Presentation natives | `7E` head tracking, `83` "!" emote, `89`/`DA` audio are recorded as unrendered | trace `story_presentation` |
