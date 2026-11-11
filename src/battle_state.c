@@ -141,6 +141,8 @@ int c3_battle_state_from_entry(C3BattleState *s,const C3BattleEntrySession *e,co
     s->kinds=(C3BattleDataRows){knd->bytes,knd->count+1u,32};
     const C3BattleEntryPackView *trn=&p->sections[C3_PACK_TRN];
     s->trainers=(C3BattleDataRows){trn->bytes,trn->count,52};
+    const C3BattleEntryPackView *ai=&p->sections[C3_PACK_AI];
+    s->ai=(C3BattleDataRows){ai->bytes,ai->count,40};
     const C3BattleEntryPackView *grw=&p->sections[C3_PACK_GRW];
     s->growth=(C3BattleDataRows){grw->bytes,grw->count,0x194};
     s->rng=e->rng;                                              /* shared stream continues */
@@ -788,4 +790,20 @@ int c3_battle_fight_out_met(const C3BattleState *s,uint32_t fo,uint32_t fp)
         if(id>=0&&id==entry)return 1;
     }
     return fault?-1:0;
+}
+
+/* ---- trainer AI data (fight_trainer_db_range_801FBD10.c) ----------------- */
+
+int c3_battle_trainer_ai_value(const C3BattleState *s,uint32_t trainer,uint32_t selector,uint32_t *value)
+{
+    int fault=0;
+    if(!s||!value||selector<0x1F||selector>0x38)return 0;
+    const uint8_t *id=bytes(s,trainer,2,&fault);                 /* trainer field 0x43 */
+    if(!id)return 0;
+    const uint8_t *row=row_at(&s->trainers,be16(id));
+    *value=0;
+    if(!row)return 1;                                             /* fightTrainerDataBiosGetPtr NULL */
+    const uint8_t *ai=row_at(&s->ai,be16(row+6));                 /* fn_801FCC94 */
+    if(ai)*value=ai[selector-0x1F];
+    return 1;
 }

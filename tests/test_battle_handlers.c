@@ -715,6 +715,21 @@ int main(void)
         CHECK(c3_battle_script_read(&r.script,0x8047B618u,4,&f)&&!(f&0x400000u));
     }
 
+    /* Willie's AI data (trainer 10, AI row 81) through the AI selectors:
+     * switch 0x26 0%, item 0x27 25%, action 0x25 0%, damage estimates 0x2D
+     * on, type check 0x2A on, random move 0x31 and target 0x30 on. */
+    battle_reset(&w,1,0,0,0,33,0);
+    {
+        uint32_t v=0,tr=w.state->trainer[1];
+        static const struct{uint8_t sel,want;}ai[]={{0x25,0},{0x26,0},{0x27,0x19},{0x2A,1},{0x2D,1},{0x30,1},{0x31,1},
+            {0x35,0x50},{0x37,0x0A},{0x38,0}};
+        for(unsigned i=0;i<sizeof ai/sizeof *ai;++i)
+            CHECK(c3_battle_trainer_ai_value(w.state,tr,ai[i].sel,&v)&&v==ai[i].want);
+        CHECK(!c3_battle_trainer_ai_value(w.state,tr,0x39,&v));
+        CHECK(c3_battle_trainer_ai_value(w.state,w.state->trainer[0],0x2D,&v));
+        printf("player AI row: damage flag %lu\n",(unsigned long)v);
+    }
+
     /* The whole turn: Zigzagoon's Tackle on Umbreon runs past WAZAEND. The
      * faint mark pass finds no fainted battler, the faint script's battle
      * end check (0x24) finds both sides with HP and every battler in battle,

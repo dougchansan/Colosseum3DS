@@ -789,6 +789,71 @@ interpreter yet.
     passes and the cleanup finish the call.
   - A single knockout (Zigzagoon B still in battle) leaves the result at 0.
 
+## AI move choice for Willie (map and plan)
+
+Scope agreed for this port: the computer trainer's path for Willie's moves
+only. Every other path is refused by name, as elsewhere.
+
+- **Willie's battlers:** Zigzagoon A knows Tackle and Growl; Zigzagoon B
+  knows Tackle and Tail Whip.
+- **Entry:** `fightTrainerSelectFightAction` calls `fn_802342CC(trainer,
+  fight type)` for a trainer whose data row has an AI ID. It runs:
+  1. `fn_80234A0C`, the preparation (below);
+  2. resets the action buffers of the trainer's battlers that may select an
+     action;
+  3. three percentage rolls, each always drawing once (`fn_800E0C54() %
+     100`):
+     - AI byte 0x26 (switch) leads to `fightTrainerAiSelectFightActionIrekae`;
+     - AI byte 0x27 (item), only when floor 0x20 is 1, leads to
+       `fightTrainerAiSelectFightActionItem` (0x694);
+     - AI byte 0x25 (a third action) leads to `fn_8024E534`;
+  4. for the battlers still without an action, sorted by speed
+     (`fightFloorSortFightOutPokemonPtrArySub`), the move choice
+     `fn_8023A308` (0x438). That reaches `fn_8023A740` (0xD58),
+     `fn_8023B498` (0xED0) and `fn_8023C530` (0x56C), about 19 KB in the AI
+     range.
+  The debug messages around the rolls only appear with the debug menu flag
+  `fn_80008164`.
+- **Preparation `fn_80234A0C`:**
+  - initializes the trainer's enemy records
+    (`fightTrainerInitEnemyPokemonFightOutStatus`);
+  - for each of its battlers in battle: HP percentage, level, base stats
+    (data 5 + 7), the stat total × level, and the summed damage estimate of
+    each type-1 move against each opponent (`fn_8023C370`);
+  - flags the minimum and maximum holders on the trainer's per-entry fields
+    0x52..0x56.
+- **AI data:** `fightTrainerGetStatus(NULL, id, 0x1F..0x38)` reads AI row
+  bytes `+0x00..+0x19`. The selector map was recovered from
+  `jumptable_803757D8`. Port: `c3_battle_trainer_ai_value`, with the AI table
+  from the entry pack (`C3_PACK_AI`, 261 × 40) and the AI ID from trainer
+  row `+6`.
+- **Willie (trainer 10, AI row 81):**
+  - switch 0x26 = 0, item 0x27 = 25 (and floor 0x20 = 1), action 0x25 = 0;
+  - damage estimates 0x2D = 1, type check 0x2A = 1, ability check 0x2B = 1;
+  - random target 0x30 = 1, random move 0x31 = 1, average 0x35 = 80, PP
+    0x37 = 10.
+  So the item roll succeeds on about a quarter of turns and its routine has
+  to be ported too (or refused at first).
+- **Per-move AI routines:** move row `+0x1C` indexes `lbl_8035C430`
+  (0x14-byte rows: value, hit and damage function, then the WZX type and
+  variation functions). Static data:
+
+  | Move | Value | Hit | Damage |
+  |---|---|---|---|
+  | Tackle (0x21) | `fightTrainerAiWazaValueTuujouIryoku` (0xA8) | `fightTrainerAiWazaHit000` (0xB0) | `fightTrainerAiWazaDamage000` (0x88) |
+  | Growl (0x2D) | `fightTrainerAiWazaValueKougekiDaun` (0x10C) | `fightTrainerAiWazaHit018` (0xE8) | `fightTrainerAiWazaDamage018` (8) |
+  | Tail Whip (0x27) | `fightTrainerAiWazaValueBougyoDaun` (0x10C) | `fightTrainerAiWazaHit019` (0xE8) | `fightTrainerAiWazaDamage019` (8) |
+
+- **Planned rounds:**
+  1. AI data accessor and this map (done).
+  2. Preparation `fn_80234A0C` with `fn_8023C370` and Tackle's damage
+     routine, plus the trainer's per-entry flags.
+  3. The entry: rolls, action-buffer resets, the speed sort. The item
+     routine is refused at first.
+  4. The move choice `fn_8023A308` with the hit and value routines of the
+     three moves and the random selection.
+  5. The item routine (`fightTrainerAiSelectFightActionItem`).
+
 ## Increments
 
 1. **Execution and end of turn through original code.** A minimal

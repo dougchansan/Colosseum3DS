@@ -52,6 +52,7 @@ typedef struct {
     C3BattleDataRows target_kinds; /* lbl_80375AC8 rows (8), set by the caller from
                                     the battle DOL-table pack */
     C3BattleDataRows trainers;   /* trainer data rows (52), from the entry pack */
+    C3BattleDataRows ai;         /* trainer AI data rows (40, lbl_80478F34), from the entry pack */
     C3BattleDataRows growth;     /* growth rows (0x194: u32 EXP per level), from the entry pack */
     C3BattleDataRows kaisuu;     /* lbl_80315690 turn counts (8: s32 min, s32 max), set by the
                                     caller from the battle DOL-table pack */
@@ -165,6 +166,13 @@ int c3_battle_fight_out_met(const C3BattleState *state, uint32_t fight_out, uint
  * Both return -1 when a record is unreadable. */
 int c3_battle_fight_out_is_fainted(const C3BattleState *state, uint32_t fight_out);
 int c3_battle_fight_out_is_gc_hero(const C3BattleState *state, uint32_t fight_out);
+/* fightTrainerGetStatus(NULL, ai id, selector) for the AI data selectors
+ * 0x1F..0x38 (jumptable_803757D8: fightTrainerAiDataBiosGet*, one byte each
+ * at row +0x00..+0x19), with the AI id from the trainer's data row (field 2,
+ * fn_801FCC94: row +6) of trainer field 0x43. Selectors 0x39..0x3C (type
+ * revise tables) are not modelled: 0. Returns 0 when the trainer or rows are
+ * unreadable; *value is 0 for an AI id past the table, as the getter's NULL. */
+int c3_battle_trainer_ai_value(const C3BattleState *state, uint32_t trainer, uint32_t selector, uint32_t *value);
 int c3_battle_state_valid_fight_out_count(const C3BattleState *state, uint32_t mode, uint32_t target,
                                           int check_fight_out, uint16_t *count);
 /* The battlers fightFloorLoopValidFightOutPokemon (loop flag 0) visits, in
