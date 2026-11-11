@@ -12,6 +12,7 @@
 
 #define CHECK(x) do{if(!(x)){fprintf(stderr,"%s:%d: CHECK(%s)\n",__FILE__,__LINE__,#x);exit(1);}}while(0)
 
+static uint32_t be32_at(const uint8_t *p){return (uint32_t)p[0]<<24|(uint32_t)p[1]<<16|(uint32_t)p[2]<<8|p[3];}
 static int32_t sstate(void *u,uint32_t g){(void)u;(void)g;return 0;}
 static int srequest(void *u,uint32_t g){(void)u;(void)g;return 1;}
 static uint32_t sfind(void *u,uint32_t g,uint32_t m){(void)u;return g&&m?(g<<8)^m:0;}
@@ -788,8 +789,11 @@ int main(void)
      * preparation, his two Zigzagoon's action buffers reset, three rolls
      * (switch 0%, item 25% since floor 0x20 allows items, action 0%), each
      * one draw; then both Zigzagoon need a move, sorted by speed (a tie draws
-     * once), and the move choice (fn_8023A308) is refused by name. When the
-     * item roll succeeds the item choice is refused instead. */
+     * once). Each in that order chooses at random (AI bytes 0x30 / 0x31): one
+     * draw over Umbreon and Espeon, one over its two moves. Tackle (category
+     * 0) keeps the drawn target; Growl and Tail Whip (both foes) take the
+     * first opposing battler. Each gets an attack action and its FightWaza.
+     * When the item roll succeeds the item choice is refused instead. */
     int seen_item=0,seen_move=0;
     for(unsigned skip=0;skip<8&&!(seen_item&&seen_move);++skip){
         battle_reset(&w,1,0,0,0,33,0);
@@ -812,8 +816,10 @@ int main(void)
         C3BattleRng after=predicted;
         int a_first=sa>sb;
         if(!item&&sa==sb){CHECK(c3_battle_rng_next16(&after,&tie));a_first=tie&1;}
-        CHECK(!c3_battle_ai_select(&r.handlers,&r.script,willie,order));
-        printf("AI entry: rolls %u %u %u, speeds %u/%u: %s\n",r1%100u,r2%100u,r3%100u,sa,sb,r.script.failure);
+        int selected=c3_battle_ai_select(&r.handlers,&r.script,willie,order);
+        printf("AI entry: rolls %u %u %u, speeds %u/%u: %s\n",r1%100u,r2%100u,r3%100u,sa,sb,
+               selected?"actions set":r.script.failure);
+        CHECK(selected==!item);
         CHECK(w.state->msgctrl[0x13]==willie+4u);
         if(item){
             seen_item=1;
@@ -822,12 +828,43 @@ int main(void)
             CHECK(w.state->msgctrl[0x0D]==C3_MSGREF_MESSAGE(0xEC46)&&w.state->msgctrl[0x2F]==0x19);
         }else{
             seen_move=1;
-            char want[64];
-            snprintf(want,sizeof want,"for %08lx",(unsigned long)(a_first?zig_a:zig_b));
-            CHECK(strstr(r.script.failure,"AI move choice (fn_8023A308)")!=NULL&&strstr(r.script.failure,want)!=NULL);
+            uint32_t foes[2]={c3_battle_state_fight_out(w.state,0,0),c3_battle_state_fight_out(w.state,0,1)},type=0;
+            CHECK(c3_battle_floor_value(w.state,0x14,&type));
+            for(int k=0;k<3;++k){                                              /* Tackle, Growl, Tail Whip */
+                uint32_t c=9;
+                CHECK(c3_battle_waza_status_get(&w.state->arena,&w.state->moves,0,(uint16_t)(k==0?33:k==1?45:39),5,0,&c)&&c==(k?4u:0u));
+            }
+            CHECK(order[0]==(a_first?zig_a:zig_b)&&order[1]==(a_first?zig_b:zig_a)&&!order[2]);
+            for(int k=0;k<2;++k){
+                uint32_t fo=order[k],category=0,action=0,fw=0,v=0;
+                const uint8_t *pp=fo==zig_a?pa:pb;
+                uint16_t t=0,m=0,id=0;
+                CHECK(c3_battle_rng_next16(&after,&t)&&c3_battle_rng_next16(&after,&m));
+                unsigned slot=m%2u;                                          /* two moves each, slots 0 and 1 */
+                uint16_t move=(uint16_t)(pp[0x78+4*slot]<<8|pp[0x79+4*slot]);
+                CHECK(move==33||move==45||move==39);
+                CHECK(c3_battle_waza_status_get(&w.state->arena,&w.state->moves,0,move,5,0,&category));
+                CHECK(move==33?category==0:category==4);
+                uint32_t target=move==33?foes[t%2u]:foes[0];
+                CHECK(c3_battle_state_relative_target_id(w.state,target,(uint16_t)type,&id)&&id);
+                printf("AI move choice: %s draws %u/%u: move %u (category %u) on %s, target ID %u\n",
+                       fo==zig_a?"Zigzagoon A":"Zigzagoon B",t%2u,m%2u,move,category,
+                       target==foes[0]?"Umbreon":"Espeon",id);
+                CHECK(c3_battle_fight_status_get(&w.state->arena,fo,0xFE,0,&action)&&action);
+                const uint8_t *a=c3_battle_arena_bytes(&w.state->arena,action,0x30);
+                CHECK(a&&a[0]==0&&a[1]==0x13&&be32_at(a+4)==0&&be32_at(a+8)==0x80375CA8u&&be32_at(a+0xC)==0&&
+                      be32_at(a+0x10)==move&&be32_at(a+0x14)==fo&&be32_at(a+0x18)==0&&be32_at(a+0x1C)==0xFFFFFFFFu);
+                CHECK(c3_battle_fight_status_get(&w.state->arena,fo,0xD9,0,&fw)&&fw);
+                CHECK(c3_battle_waza_status_get(&w.state->arena,&w.state->moves,fw,0,0x27,0,&v)&&v==move);
+                CHECK(c3_battle_waza_status_get(&w.state->arena,&w.state->moves,fw,0,0x28,0,&v)&&v==move);
+                CHECK(c3_battle_waza_status_get(&w.state->arena,&w.state->moves,fw,0,0x26,0,&v)&&(uint8_t)v==slot);
+                CHECK(c3_battle_waza_status_get(&w.state->arena,&w.state->moves,fw,0,0x29,0,&v)&&v==id);
+            }
             CHECK(w.state->rng.draws==after.draws&&w.state->rng.seed==after.seed);
-            CHECK(order[0]==(a_first?zig_a:zig_b)&&order[1]==(a_first?zig_b:zig_a));
-            CHECK(w.state->msgctrl[0x0D]==C3_MSGREF_MESSAGE(0xEC2C)&&w.state->msgctrl[0x2F]==100);
+            CHECK(w.state->msgctrl[0x0D]==C3_MSGREF_MESSAGE(0xEC2C)&&w.state->msgctrl[0x0E]==C3_MSGREF_MESSAGE(0xEC32)&&
+                  w.state->msgctrl[0x2F]==0);
+            CHECK(w.state->msgctrl[0x14]==c3_battle_state_fight_pokemon(w.state,1,order[1]==zig_a?0:1)+4u+0x2Eu);
+            continue;
         }
         /* Both action records were reset (queue index -1). */
         for(int k=0;k<2;++k){

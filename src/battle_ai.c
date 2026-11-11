@@ -312,6 +312,125 @@ static int sort_by_speed(C3BattleHandlers *h,C3BattleScript *sc,uint32_t list[8]
     }
     return !fault?1:refuse(sc,"speed records");
 }
+/* ---- move choice fn_8023A308 ---------------------------------------------- */
+
+/* fn_8023A118 with a trainer and a Pokemon: the debug message variables of
+ * the AI's random choices (0x0D / 0x0E the texts, 0x13 the trainer's name,
+ * 0x14 the Pokemon's nickname (0x77), 0x2F the value); the message itself
+ * needs the debug menu (fn_80008164). */
+static void debug_vars(C3BattleState *s,uint16_t text1,uint16_t text2,uint32_t trainer,uint32_t pokemon,uint32_t value)
+{
+    c3_battle_msgctrl_set(s,0x0D,C3_MSGREF_MESSAGE(text1));
+    c3_battle_msgctrl_set(s,0x0E,C3_MSGREF_MESSAGE(text2));
+    if(trainer)c3_battle_msgctrl_set(s,0x13,trainer+4u);          /* fightTrainerGetNamePtr */
+    if(pokemon)c3_battle_msgctrl_set(s,0x14,pokemon+0x2Eu);
+    c3_battle_msgctrl_set(s,0x2F,value);
+}
+/* fn_802367CC(trainer, fo, moves, slots, 1): the battler's moves in slot
+ * order that can be chosen (fightOutPokemonCheckCanOutOkWazaBanme == 0), with
+ * their slots; up to 10 entries, the rest 0 / -1. */
+static int usable_moves(C3BattleState *s,C3BattleScript *sc,uint32_t fo,uint16_t moves[10],int16_t slots[10],unsigned *count)
+{
+    int fault=0;
+    *count=0;
+    for(unsigned i=0;i<10;++i){moves[i]=0;slots[i]=-1;}
+    uint32_t pokemon=pokemon_of(s,fo);
+    const uint8_t *p=pokemon?c3_battle_arena_bytes(&s->arena,pokemon,C3_BATTLE_POKEMON_BYTES):NULL;
+    if(!p)return refuse(sc,"AI battler Pokemon");
+    for(unsigned k=0;k<4;++k){
+        uint16_t move=be16(p+0x78+4*k);
+        if(!move)continue;
+        int b=move_blocked(s,fo,k,&fault);
+        if(b<0)return refuse(sc,"move usability (Disable, Torment, Taunt or a held item)");
+        if(b)continue;
+        moves[*count]=move;slots[*count]=(int16_t)k;++*count;
+    }
+    return !fault?1:refuse(sc,"AI battler conditions");
+}
+/* fn_8022B2CC(fo, move, fight type, fn_8023C368, 1, 0, -1): the target the
+ * move's category (data 5) imposes, or 0 to keep the AI's. Category 0 with
+ * at least two other battlers in battle asks fn_8023C368 (always 0); 1, 4, 6
+ * and 7 take the first opposing battler in battle (target kind 0xF, else its
+ * partner, kind 0xE); 2 and 5 the user. The random targets (category 3, or
+ * category 0 against a lone battler) and Curse's category are refused. */
+static int target_override(C3BattleState *s,C3BattleScript *sc,uint32_t fo,uint16_t move,uint32_t *out)
+{
+    uint32_t category=0;uint16_t others=0;int fault=0;
+    *out=0;
+    if(move==0xAE)return refuse(sc,"Curse target category (fightOutPokemonIsZokuseiDataId)");
+    if(!c3_battle_waza_status_get(&s->arena,&s->moves,0,move,5,0,&category))return refuse(sc,"move target category");
+    if(!c3_battle_state_valid_fight_out_count(s,0,fo,1,&others))return refuse(sc,"battler count");
+    switch((uint8_t)category){
+    case 0:
+        if(others<2)return refuse(sc,"random target (fightFloorGetFightOutPokemonPtrRandom)");
+        return 1;                                                   /* fn_8023C368 */
+    case 1:case 4:case 6:case 7:
+        if(!c3_battle_state_target_now(s,0xF,fo,out))return refuse(sc,"target kind 0xF");
+        if(!c3_battle_fight_out_check_fight_out(s,*out,&fault)&&!c3_battle_state_target_now(s,0xE,*out,out))
+            return refuse(sc,"target kind 0xE");
+        return !fault?1:refuse(sc,"target records");
+    case 3:
+        return refuse(sc,"random target (fightFloorGetFightOutPokemonPtrRandom)");
+    case 2:case 5:
+        *out=fo;
+        return 1;
+    default:
+        return 1;
+    }
+}
+/* fightOutPokemonCreateFightActionAttackWaza(fo, 0, 0x13, 0, lbl_80375CA8,
+ * move, target id, slot, 0): the FightWaza (fightWazaCreate), then the
+ * action (fightActionCreate: cleared, kind 0x13, buff 0, actor fo, data
+ * lbl_80375CA8, whose first entry is kind 0x13 buff 0, so fightActionSetData
+ * keeps it; buff data ID the move). */
+#define AI_ATTACK_ACTION_DATA 0x80375CA8u
+static int create_attack(C3BattleState *s,uint32_t fo,uint16_t move,uint16_t target,int8_t slot)
+{
+    uint32_t fw=get(s,fo,0xD9),action=get(s,fo,0xFE);
+    if(!fw||!action||!c3_battle_waza_create(s,fw,slot,move,target,0))return 0;
+    uint8_t *a=c3_battle_arena_bytes(&s->arena,action,0x30);
+    if(!a)return 0;
+    a[0]=0;a[1]=0x13;memset(a+4,0,0x18);memset(a+0x20,0,0x10);
+    a[0x1C]=a[0x1D]=a[0x1E]=a[0x1F]=0xFF;
+    const uint32_t words[3][2]={{8,AI_ATTACK_ACTION_DATA},{0x10,move},{0x14,fo}};
+    for(unsigned i=0;i<3;++i){
+        uint8_t *w=a+words[i][0];uint32_t v=words[i][1];
+        w[0]=(uint8_t)(v>>24);w[1]=(uint8_t)(v>>16);w[2]=(uint8_t)(v>>8);w[3]=(uint8_t)v;
+    }
+    return 1;
+}
+/* fn_8023A308(trainer, fo, fight type): with AI bytes 0x30 and 0x31 both 1
+ * (random target, random move), one draw picks an opposing battler in
+ * battle and one draw a usable move, each after its debug variables; the
+ * move's category may override the target; the move is set as the
+ * battler's attack action. The scored choices (fn_8023B498, fn_8023A740)
+ * are refused, as are the paths where the original sets no action. */
+static int choose_move(C3BattleState *s,C3BattleScript *sc,uint32_t trainer,uint32_t fo)
+{
+    uint16_t moves[10];int16_t slots[10];unsigned move_count=0,foe_count=0;
+    uint32_t foes[8],random_target=0,random_move=0,fight_type=0,target=0,forced=0;
+    uint16_t tick=0,id=0;
+    if(!usable_moves(s,sc,fo,moves,slots,&move_count))return 0;
+    if(!move_count)return refuse(sc,"AI move choice without a usable move");
+    if(!battlers_of(s,trainer,0,foes,&foe_count))return refuse(sc,"AI battler lists");
+    if(!foe_count)return refuse(sc,"AI move choice without an opposing battler");
+    if(!c3_battle_trainer_ai_value(s,trainer,0x30,&random_target)||!c3_battle_trainer_ai_value(s,trainer,0x31,&random_move)||
+       !c3_battle_floor_value(s,0x14,&fight_type))return refuse(sc,"AI data (0x30 / 0x31)");
+    if((uint8_t)random_target!=1)return refuse(sc,"AI target choice (fn_8023B498)");
+    uint32_t pokemon=pokemon_of(s,fo);
+    debug_vars(s,0xEC2C,0xEC2D,trainer,pokemon,0);
+    if(!c3_battle_rng_next16(&s->rng,&tick))return refuse(sc,"random stream");
+    target=foes[tick%foe_count];
+    if((uint8_t)random_move!=1)return refuse(sc,"AI move choice by value (fn_8023A740)");
+    debug_vars(s,0xEC2C,0xEC32,trainer,pokemon,0);
+    if(!c3_battle_rng_next16(&s->rng,&tick))return refuse(sc,"random stream");
+    unsigned k=tick%move_count;
+    if(!target_override(s,sc,fo,moves[k],&forced))return 0;
+    if(forced)target=forced;
+    if(!c3_battle_state_relative_target_id(s,target,(uint16_t)fight_type,&id))return refuse(sc,"relative target ID");
+    if(!create_attack(s,fo,moves[k],id,(int8_t)slots[k]))return refuse(sc,"attack action");
+    return 1;
+}
 /* One percentage roll of fn_802342CC: the debug message variables (0x0D the
  * roll's text, 0x13 the trainer's name, 0x2F the chance), then one draw. */
 static int roll(C3BattleState *s,C3BattleScript *sc,uint32_t trainer,uint32_t selector,uint16_t text,int *selected)
@@ -366,10 +485,6 @@ int c3_battle_ai_select(C3BattleHandlers *h,C3BattleScript *sc,uint32_t trainer,
     }
     if(fault)return refuse(sc,"AI battler records");
     if(n&&!sort_by_speed(h,sc,order))return 0;
-    if(n){
-        char what[96];
-        snprintf(what,sizeof what,"AI move choice (fn_8023A308) for %08lx",(unsigned long)order[0]);
-        return refuse(sc,what);
-    }
+    for(unsigned i=0;i<n;++i)if(order[i]&&!choose_move(s,sc,trainer,order[i]))return 0;
     return 1;
 }

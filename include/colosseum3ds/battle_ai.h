@@ -33,7 +33,10 @@ int c3_battle_ai_damage_estimate(C3BattleHandlers *h, C3BattleScript *sc, uint32
  * each (AI byte 0x26 switch, 0x27 item only with floor 0x20, 0x25 action),
  * whose selections are refused by name; then its battlers that must choose
  * a move (no Struggle, no Encore), sorted by speed into order[] (ties draw
- * once), for the move choice fn_8023A308, which is not lowered yet:
- * refused. Returns 1 only when no battler needs an action. */
+ * once), each in turn through the move choice fn_8023A308: with AI bytes
+ * 0x30 / 0x31 set, one draw picks an opposing battler and one a usable move
+ * (the move's target category may override the target), set as the
+ * battler's attack action (kind 0x13) and FightWaza. The scored choices are
+ * refused. Returns 1 when every battler that needed a move has one. */
 int c3_battle_ai_select(C3BattleHandlers *h, C3BattleScript *sc, uint32_t trainer, uint32_t order[8]);
 #endif

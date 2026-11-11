@@ -885,15 +885,44 @@ only. Every other path is refused by name, as elsewhere.
   5. **Speed sort:** speed (0x8C) with Swift Swim / Chlorophyll in their
      weather, the speed stage (`lbl_80375D10`), ×1.1 with the speed badge
      (floor 0x1D and hero `+0xA92`), and paralysis. A tie draws once.
-  6. **Move choice `fn_8023A308`:** not lowered yet, so it is refused by
-     name for the first battler.
+  6. **Move choice** for each battler in that order (below).
 
   On the original data:
   - Depending on the stream, Willie's item roll (25%) succeeds and the item
-    choice is refused.
+    choice is refused; both action records stay reset.
   - Otherwise both Zigzagoon need a move. Their speeds tie at 33, one draw
-    orders them, and the move choice is refused for the first.
-  - Both action records are reset either way.
+    orders them, and each gets its move (below).
+- **Move choice `fn_8023A308`** (lowered for the random branches:
+  `choose_move` in `src/battle_ai.c`). Willie's AI bytes 0x30 and 0x31 are
+  both 1, so the scored choices `fn_8023B498` (target) and `fn_8023A740`
+  (move) are not reached; they, and with them the per-move value and hit
+  routines, are refused by name.
+  1. **Usable moves** (`fn_802367CC(.., 1)`): the battler's moves in slot
+     order that pass `fightOutPokemonCheckCanOutOkWazaBanme`, with their
+     slots.
+  2. **Target:** the debug variables (`fn_8023A118`: texts 0xEC2C / 0xEC2D,
+     the trainer's name, the Pokémon's nickname, 0), then one draw over the
+     opposing battlers in battle (`fightFloorGetFightTrainerFightOutPokemonPtrAry`
+     flag 0).
+  3. **Move:** the debug variables (0xEC2C / 0xEC32), then one draw over the
+     usable moves.
+  4. **Target override** (`fn_8022B2CC(.., fn_8023C368, 1, 0, -1)`) from the
+     move's category (data 5): 0 with at least two other battlers keeps the
+     drawn target (`fn_8023C368` returns 0); 1, 4, 6 and 7 take the first
+     opposing battler in battle (target kind 0xF, else its partner); 2 and 5
+     the user. The random targets (category 3, or 0 against a lone battler)
+     and Curse are refused.
+  5. **Action** (`fightOutPokemonCreateFightActionAttackWaza`): the FightWaza
+     (`fightWazaCreate`: slot, move, relative target ID, flag 0) and the
+     action record: kind 0x13, buff 0, data `lbl_80375CA8` (its first entry
+     is kind 0x13 buff 0, so `fightActionSetData` keeps it), actor the
+     battler, buff data ID the move, queue index -1.
+  The paths where the original sets no action (no usable move, no
+  opponent) are refused. The entry ignores the result, as the original does.
+
+  On the original data: Tackle is category 0, Growl and Tail Whip category 4
+  (both foes). In the test stream Zigzagoon A draws Tackle on Umbreon and
+  Zigzagoon B draws Tail Whip, recorded against Umbreon (target ID 12).
 - **AI data:** `fightTrainerGetStatus(NULL, id, 0x1F..0x38)` reads AI row
   bytes `+0x00..+0x19`. The selector map was recovered from
   `jumptable_803757D8`. Port: `c3_battle_trainer_ai_value`, with the AI table
@@ -922,8 +951,9 @@ only. Every other path is refused by name, as elsewhere.
      damage routines and the enemy registry (done).
   3. The entry: rolls, action-buffer resets, the speed sort (done; the
      item routine is refused).
-  4. The move choice `fn_8023A308` with the hit and value routines of the
-     three moves and the random selection.
+  4. The move choice `fn_8023A308` (done for Willie's random choices; the
+     scored choices with the per-move value and hit routines are refused,
+     since Willie's AI does not reach them).
   5. The item routine (`fightTrainerAiSelectFightActionItem`).
 
 ## Increments
