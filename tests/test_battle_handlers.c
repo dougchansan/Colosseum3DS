@@ -64,6 +64,7 @@ static void battle_reset(World *w,unsigned att_side,unsigned att_slot,unsigned d
     for(unsigned side=0;side<2;++side)for(unsigned k=0;k<2;++k)
         CHECK(c3_battle_fight_out_pokemon_create(&s->arena,c3_battle_state_fight_out(s,side,k),
             c3_battle_state_fight_pokemon(s,side,k),0,&s->species));
+    CHECK(c3_battle_state_set_meet_enemies(s));        /* battle-start steps, in their order */
     CHECK(c3_battle_state_create_enemy_arrays(s));    /* battle-start step the move scripts read */
     uint32_t att=c3_battle_state_fight_out(s,att_side,att_slot),def=c3_battle_state_fight_out(s,def_side,def_slot);
     put32(s->memory+0xA474,att);put32(s->memory+0xA478,def);
@@ -71,7 +72,7 @@ static void battle_reset(World *w,unsigned att_side,unsigned att_slot,unsigned d
     CHECK(c3_battle_waza_status_set(&s->arena,fw,0x27,0,move)&&c3_battle_waza_set_use(s,fw,move));
     CHECK(c3_battle_waza_status_set(&s->arena,fw,0x26,0,(uint8_t)move_slot));
 }
-typedef struct { char log[256];size_t used;unsigned menu_shown,hp_busy; } Presentation;
+typedef struct { char log[1024];size_t used;unsigned menu_shown,hp_busy; } Presentation;
 static int present(void *u,C3BattlePresent req,uint32_t a,uint32_t b)
 {
     Presentation *p=u;char t[48];
@@ -623,9 +624,14 @@ int main(void)
      * 0x80378703: 0x1A opens its status panel, 0x56 its cry, 0x10 "fainted"
      * (0x7545), 0x12 closes the message after 0x40 frames, 0x1B closes the
      * panel, clears its status slot and makes both opponents forget it (0xF7
-     * and their enemy entry for it); then 0x4B is restored, move end runs
-     * and WAZAEND's faint mark pass stops at the faint mark sequence
-     * (lbl_80378721, opcode 0x23), not lowered yet. */
+     * and their enemy entry for it); then 0x4B is restored and move end
+     * runs. WAZAEND's faint mark pass runs Zigzagoon's sequence
+     * lbl_80378721: the EXP award (0x23). Both of the player's battlers met
+     * it, so each gets base EXP x 24 / 7, halved, x1.5 (floor 0x2D): the EXP
+     * camera, the panel, message 0x7532, its effort values (Zigzagoon gives
+     * 1 Speed), the EXP and the bar, and the panel renewed and closed. The
+     * faint script's battle end check then stops at the replacement check:
+     * Zigzagoon A is out of battle. */
     battle_reset(&w,0,0,1,0,33,0);
     {
         uint32_t def=c3_battle_state_fight_out(w.state,1,0),f=0,type=0;
@@ -645,11 +651,37 @@ int main(void)
                 if(((uint32_t)e[12*k]<<24|(uint32_t)e[12*k+1]<<16|(uint32_t)e[12*k+2]<<8|e[12*k+3])==def)entry_before=1;
         }
         CHECK(entry_before);
+        uint32_t umb_poke=c3_battle_state_fight_pokemon(w.state,0,0)+4,esp_poke=c3_battle_state_fight_pokemon(w.state,0,1)+4;
+        uint8_t *umb=c3_battle_arena_bytes(&w.state->arena,umb_poke,C3_BATTLE_POKEMON_BYTES);
+        uint8_t *esp=c3_battle_arena_bytes(&w.state->arena,esp_poke,C3_BATTLE_POKEMON_BYTES);
+        uint32_t umb_exp=(uint32_t)umb[0x5c]<<24|(uint32_t)umb[0x5d]<<16|(uint32_t)umb[0x5e]<<8|umb[0x5f];
+        uint32_t esp_exp=(uint32_t)esp[0x5c]<<24|(uint32_t)esp[0x5d]<<16|(uint32_t)esp[0x5e]<<8|esp[0x5f];
+        uint16_t umb_spe=(uint16_t)(umb[0xA2]<<8|umb[0xA3]),esp_spe=(uint16_t)(esp[0xA2]<<8|esp[0xA3]);
+        const uint8_t *zrow=w.state->species.rows+0x120u*C3_SPECIES_ROW_BYTES;
+        uint16_t base=(uint16_t)(zrow[6]<<8|zrow[7]);
+        uint32_t gain=(uint16_t)((uint32_t)base*24u/7u)/2u;gain=gain*150u/100u;
+        printf("zigzagoon EXP: base %u -> %lu each; speed effort yield %u\n",(unsigned)base,(unsigned long)gain,
+            (unsigned)(zrow[0x9A]<<8|zrow[0x9B]));
         CHECK(stopped(run_effect_mode(&w,&r,0,1)));
         printf("zigzagoon knocked out: stops at %08lx: %s (depth %u)\n",(unsigned long)r.script.failure_pc,
             why(&r),(unsigned)r.script.depth);
         printf("zigzagoon faint presentation: %s\n",r.presentation.log);
-        CHECK(strstr(why(&r),"faint mark sequence (lbl_80378721)")!=NULL&&r.script.depth==1);
+        CHECK(strstr(why(&r),"replacement Pokemon")!=NULL&&r.script.depth==1);
+        CHECK(((uint32_t)umb[0x5c]<<24|(uint32_t)umb[0x5d]<<16|(uint32_t)umb[0x5e]<<8|umb[0x5f])==umb_exp+gain);
+        CHECK(((uint32_t)esp[0x5c]<<24|(uint32_t)esp[0x5d]<<16|(uint32_t)esp[0x5e]<<8|esp[0x5f])==esp_exp+gain);
+        CHECK((uint16_t)(umb[0xA2]<<8|umb[0xA3])==umb_spe+(zrow[0x9A]<<8|zrow[0x9B]));
+        CHECK((uint16_t)(esp[0xA2]<<8|esp[0xA3])==esp_spe+(zrow[0x9A]<<8|zrow[0x9B]));
+        CHECK(w.state->msgctrl[0x2F]==gain&&w.state->msgctrl[0x0E]==C3_MSGREF_MESSAGE(0x7533));
+        {
+            char exp_want[200];uint32_t lv=0;
+            const uint8_t *g=w.state->growth.rows+(uint32_t)w.state->species.rows[197u*C3_SPECIES_ROW_BYTES]*0x194u;
+            lv=(uint32_t)g[26*4]<<24|(uint32_t)g[26*4+1]<<16|(uint32_t)g[26*4+2]<<8|g[26*4+3];
+            snprintf(exp_want,sizeof exp_want,"13:0:0;1:%lx:%lx;8:7532:0;3:0:0;14:%lx:%lx;15:%lx:0;16:%lx:%lx;3:0:0;4:%lx:%lx;",
+                (unsigned long)(umbreon&0xFFFF),(unsigned long)type,(unsigned long)(umbreon&0xFFFF),
+                (unsigned long)(umb_exp+gain-lv),(unsigned long)(umbreon&0xFFFF),(unsigned long)(umbreon&0xFFFF),
+                (unsigned long)type,(unsigned long)(umbreon&0xFFFF),(unsigned long)type);
+            CHECK(strstr(r.presentation.log,exp_want)!=NULL);
+        }
         CHECK(hp[0]==0&&hp[1]==0&&c3_battle_fight_out_is_fainted(w.state,def)==1);
         CHECK(c3_battle_fight_status_get(&w.state->arena,def,0x120,0,&f)&&f==1);
         CHECK(status[0]==0&&status[1]==0);                               /* pokemonInitJoutai */
@@ -720,6 +752,23 @@ int main(void)
         CHECK(run_effect_mode(&w,&r,0,1)==C3_SCRIPT_FAILED);
         printf("forecast partner: %s\n",why(&r));
         CHECK(strstr(why(&r),"Forecast")!=NULL);
+    }
+
+    /* Umbreon one EXP short of level 27 when Zigzagoon A faints: its award
+     * would level it up (lbl_80378724, stat growth): refused by name, its
+     * EXP unchanged. */
+    battle_reset(&w,0,0,1,0,33,0);
+    {
+        uint8_t *hp=c3_battle_arena_bytes(&w.state->arena,c3_battle_state_fight_pokemon(w.state,1,0)+4+0x8A,2);
+        uint8_t *umb=c3_battle_arena_bytes(&w.state->arena,c3_battle_state_fight_pokemon(w.state,0,0)+4,C3_BATTLE_POKEMON_BYTES);
+        const uint8_t *g=w.state->growth.rows+(uint32_t)w.state->species.rows[197u*C3_SPECIES_ROW_BYTES]*0x194u;
+        uint32_t next=((uint32_t)g[27*4]<<24|(uint32_t)g[27*4+1]<<16|(uint32_t)g[27*4+2]<<8|g[27*4+3])-1u;
+        hp[0]=0;hp[1]=1;
+        umb[0x5c]=(uint8_t)(next>>24);umb[0x5d]=(uint8_t)(next>>16);umb[0x5e]=(uint8_t)(next>>8);umb[0x5f]=(uint8_t)next;
+        CHECK(run_effect_mode(&w,&r,0,1)==C3_SCRIPT_FAILED);
+        printf("level up: %s\n",why(&r));
+        CHECK(strstr(why(&r),"level up")!=NULL);
+        CHECK(((uint32_t)umb[0x5c]<<24|(uint32_t)umb[0x5d]<<16|(uint32_t)umb[0x5e]<<8|umb[0x5f])==next);
     }
 
     /* A held item on Espeon (Umbreon's partner, outside this exchange): move

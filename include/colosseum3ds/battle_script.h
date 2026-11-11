@@ -84,7 +84,10 @@ typedef struct {
                       uint32_t field, uint32_t a4, uint32_t value);
     /* fightTargetGetPtrAsNowFightType(kind, arg) -> FightOutPokemon handle */
     int (*target)(void *user, uint8_t kind, uint32_t arg, uint32_t *handle);
-    /* Returns 0 to stop; it may first fail the script with its own reason. */
+    /* Returns 0 to stop (it may first fail the script with its own reason)
+     * and 1 when the pass is done. The faint mark pass may instead push a
+     * nested call (fn_80211B94 inside its loop) and return 2: the call runs,
+     * then the pass is called again with arg 1 to continue its loop. */
     int (*end_of_move)(void *user, struct C3BattleScript *script, C3BattleScriptPass pass, uint8_t arg);
     /* Optional battle-logic opcodes lowered outside the interpreter. Called
      * for an opcode the interpreter does not handle itself; returns one of
@@ -109,7 +112,8 @@ typedef enum {
 typedef enum {
     C3_SCRIPT_PHASE_RUN = 0, C3_SCRIPT_PHASE_FAINT_SCRIPT,
     C3_SCRIPT_PHASE_POST_A, C3_SCRIPT_PHASE_POST_B, C3_SCRIPT_PHASE_POST_C,
-    C3_SCRIPT_PHASE_POST_D, C3_SCRIPT_PHASE_CLEANUP, C3_SCRIPT_PHASE_EXIT
+    C3_SCRIPT_PHASE_POST_D, C3_SCRIPT_PHASE_CLEANUP, C3_SCRIPT_PHASE_EXIT,
+    C3_SCRIPT_PHASE_FAINT_MARK       /* the faint mark pass, resumed after each nested call */
 } C3BattleScriptPhase;
 
 typedef struct {
@@ -119,6 +123,7 @@ typedef struct {
     uint32_t faint_pc, faint_action; /* faint sub-script locals uVar7/uVar6 */
     uint8_t faint_state;             /* uVar2 */
     uint8_t saved_handler_phase;     /* caller's handler phase to resume with */
+    uint8_t pass_resume;             /* faint mark pass: 1 when resumed after a call */
 } C3BattleScriptFrame;
 
 typedef struct C3BattleScript {

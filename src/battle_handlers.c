@@ -26,6 +26,7 @@
  *   0x56 fn_8021EE48  cry
  *   0x10 fn_802262D0  open a message
  *   0x1B fn_80223F1C  faint end: status slot, opponents' records
+ *   0x23 fn_802232F4  EXP award (faint mark sequence lbl_80378721)
  *   0x24 fn_80222C44  battle end check (faint script lbl_80378798)
  *   0x49 fn_8021FAD4  move end: after-move reactions and bookkeeping
  *   0x12 fn_8022622C  with a message open (work byte 7): wait the operand's
@@ -1320,6 +1321,28 @@ static int floor_set_attacker(C3BattleState *s,uint32_t fo)
     return !fault;
 }
 static int fail_pass(C3BattleScript *sc,const char *what){(void)stop(sc,what);return 0;}
+/* A floor target field without message variables (e.g. 0x46, +0xA484). */
+static int floor_set_target(C3BattleState *s,uint32_t offset,uint32_t fo)
+{
+    uint8_t *p=c3_battle_arena_bytes(&s->arena,s->floor+offset,4);
+    if(!p)return 0;
+    p[0]=(uint8_t)(fo>>24);p[1]=(uint8_t)(fo>>16);p[2]=(uint8_t)(fo>>8);p[3]=(uint8_t)fo;
+    return 1;
+}
+/* fightFloorSetStatus(0x42, fo): message variables 0x10, 0x1B (its ability's
+ * name), 0x42, 0x44, 0x43, cleared for 0 or an invalid battler, then the
+ * defender field (+0xA478). */
+static int floor_set_defender(C3BattleState *s,uint32_t fo)
+{
+    int fault=0;
+    int valid=fo&&c3_battle_fight_out_check_valid(s,fo,&fault)==1;
+    c3_battle_msgctrl_set(s,0x10,valid?fo:0);
+    c3_battle_msgctrl_set(s,0x1B,valid?C3_MSGREF_ABILITY_NAME((uint16_t)get(s,fo,0x100)):0);
+    c3_battle_msgctrl_set(s,0x42,valid?fo:0);
+    c3_battle_msgctrl_set(s,0x44,valid?fo:0);
+    c3_battle_msgctrl_set(s,0x43,valid?fo:0);
+    return !fault&&floor_set_target(s,0xA478u,fo);
+}
 static int appointed_attacker(const C3BattleState *s,uint32_t *fo)              /* floor 0x36 */
 {
     const uint8_t *p=c3_battle_arena_bytes(&s->arena,s->floor+0xA474u,4);
@@ -1341,10 +1364,17 @@ static int end_of_move(void *u,struct C3BattleScript *sc,C3BattleScriptPass pass
     if(!c3_battle_state_valid_fight_outs(s,list,&n))return fail_pass(sc,"valid battlers");
     switch(pass){
     case C3_SCRIPT_PASS_FAINT_MARK:                                   /* fn_8023011C */
-        for(unsigned i=0;i<n;++i){
+        /* A fainted battler (0x120 == 1) becomes the fainted (floor 0x46)
+         * and defending (0x42) Pokemon and its sequence lbl_80378721 (0x23
+         * EXP award, return) runs; the loop then continues after it. */
+        if(!arg)h->pass_cursor=0;
+        for(unsigned i=h->pass_cursor;i<n;++i){
             uint32_t fainted=0;
             if(!checked_get(s,list[i],0x120,&fainted,&fault))return fail_pass(sc,"fainted flag");
-            if((uint8_t)fainted==1)return fail_pass(sc,"faint mark sequence (lbl_80378721)");
+            if((uint8_t)fainted!=1)continue;
+            if(!floor_set_target(s,0xA484u,list[i])||!floor_set_defender(s,list[i]))return fail_pass(sc,"floor fainted Pokemon");
+            h->pass_cursor=i+1u;
+            return c3_battle_script_call(sc,0x80378721u,sc->action,0)?2:fail_pass(sc,"faint mark sequence");
         }
         return 1;
     case C3_SCRIPT_PASS_POST_FAINT_A:                                 /* fn_8022E34C: Intimidate */
@@ -1556,6 +1586,233 @@ static int op_faint_end(C3BattleHandlers *h,C3BattleScript *sc)
     return C3_SCRIPT_HANDLER_DONE;
 }
 
+/* ---- 0x23 EXP award (fn_802232F4) ---------------------------------------- */
+
+static uint32_t rd32(const uint8_t *p){return (uint32_t)p[0]<<24|(uint32_t)p[1]<<16|(uint32_t)p[2]<<8|p[3];}
+static uint16_t rd16(const uint8_t *p){return (uint16_t)((uint16_t)p[0]<<8|p[1]);}
+static const uint8_t *species_row(const C3BattleState *s,uint16_t species)
+{return s->species.rows&&species<s->species.count?s->species.rows+(uint32_t)species*C3_SPECIES_ROW_BYTES:NULL;}
+/* pokemonGetLevelToExp: the growth row of the species (data 0x11), u32 per
+ * level; 0 without a row. */
+static int level_to_exp(const C3BattleState *s,uint32_t pokemon,uint32_t level,uint32_t *exp)
+{
+    const uint8_t *p=c3_battle_arena_bytes(&s->arena,pokemon,2),*sp=p?species_row(s,rd16(p)):NULL;
+    *exp=0;
+    if(!p)return 0;
+    if(!sp)return 1;
+    const C3BattleDataRows *g=&s->growth;
+    if(!g->rows||sp[0]>=g->count||level>100)return 0;
+    *exp=rd32(g->rows+(uint32_t)sp[0]*g->stride+4u*level);
+    return 1;
+}
+/* fightTrainerCheckCanGetExp: trainer data field 4 (the trainer's type) is 1. */
+static int can_get_exp(const C3BattleState *s,uint32_t trainer)
+{
+    const uint8_t *id=c3_battle_arena_bytes(&s->arena,trainer,2);
+    const C3BattleDataRows *t=&s->trainers;
+    if(!id||!t->rows||rd16(id)>=t->count)return 0;
+    return rd16(t->rows+(uint32_t)rd16(id)*t->stride+2)==1;
+}
+/* fightTrainerCheckTemotiPokemonFightEntry(trainer, party slot): the valid
+ * FightPokemon whose original Pokemon (0xCB) is that party slot. */
+static uint32_t party_fight_pokemon(const C3BattleState *s,uint32_t trainer,unsigned slot,int *fault)
+{
+    uint32_t party=trainer+C3_BATTLE_HERO_PARTY_OFFSET+slot*C3_BATTLE_POKEMON_BYTES;   /* heroGetStatus(.., 3, i) */
+    for(unsigned j=0;j<6;++j){
+        uint32_t fp=trainer+0xB1Cu+j*0x154u;
+        if(c3_battle_fight_pokemon_check_valid(s,fp,fault)&&get(s,fp,0xCB)==party)return fp;
+    }
+    return 0;
+}
+/* fightTrainerCheckFightPokemonFightOut: the trainer's battler in battle
+ * whose FightPokemon (0xD5) is fp, else 0. */
+static uint32_t trainer_battler(const C3BattleState *s,uint32_t trainer,uint32_t fp,int *fault)
+{
+    for(unsigned i=0;i<2;++i){
+        uint32_t fo=trainer+C3_RUNTIME_FIGHT_OUT_OFFSET+i*C3_FIGHT_OUT_POKEMON_BYTES;
+        if(c3_battle_fight_out_check_valid(s,fo,fault)&&get(s,fo,0xD5)==fp)
+            return c3_battle_fight_out_check_fight_out(s,fo,fault)?fo:0;
+    }
+    return 0;
+}
+/* fightTrainerIsMineFightPokemon: the Pokemon's trainer ID (0x75, +0x14)
+ * and name (0x76, +0x18) match the hero's (heroBiosGetRnd +0x2C, name +0). */
+static int is_mine(const C3BattleState *s,uint32_t trainer,uint32_t pokemon)
+{
+    const uint8_t *hero=c3_battle_arena_bytes(&s->arena,trainer+4,0x30),*p=c3_battle_arena_bytes(&s->arena,pokemon,0x2E);
+    if(!hero||!p)return 0;
+    if(rd32(hero+0x2C)!=rd32(p+0x14))return 0;
+    for(unsigned i=0;i<11;++i){                                       /* GScharCmp */
+        uint16_t a=rd16(hero+2*i),b=rd16(p+0x18+2*i);
+        if(a!=b)return 0;
+        if(!a)return 1;
+    }
+    return 1;
+}
+/* pokemonGetEffortFromPokemon(pokemon, item 0, single, defeated species). */
+static int effort_gain(C3BattleState *s,uint32_t pokemon,uint16_t defeated)
+{
+    uint8_t *p=c3_battle_arena_bytes(&s->arena,pokemon,C3_BATTLE_POKEMON_BYTES);
+    const uint8_t *dr=species_row(s,defeated);
+    if(!p)return 0;
+    uint16_t species=rd16(p);
+    const uint8_t *sr=species_row(s,species);
+    if(!species||!sr||!rd32(sr+0x18))return 1;                        /* data 1, species count */
+    if(!p[8]||!p[9]||!p[10]||!p[11])return 1;                         /* gamedataAttestCheckValid */
+    if(p[0xCD]==1||species==0x19C||p[0xCB]==1||!rd16(p+0x8A))return 1; /* 0xB8, 0xB6, fainted (0x7B) */
+    uint16_t total=0;
+    for(unsigned i=0;i<6;++i)total=(uint16_t)(total+rd16(p+0x98+2*i));
+    for(unsigned j=0;j<6;++j){
+        if(total>=510)return 1;
+        uint16_t gain=dr?rd16(dr+0x90+2*j):0,now=rd16(p+0x98+2*j);
+        if(total+gain>510)gain=(uint16_t)(gain-(total+gain-510));
+        if(gain+now>255)gain=(uint16_t)(gain-(gain+now-255));
+        now=(uint16_t)(now+gain);total=(uint16_t)(total+gain);
+        if(now>255)now=255;                                           /* pokemonSetStatus 0x8D..0x92 */
+        p[0x98+2*j]=(uint8_t)(now>>8);p[0x99+2*j]=(uint8_t)now;
+    }
+    return 1;
+}
+
+/* Operand: target kind (the defeated battler). When it is not the player's
+ * and floor 0x24 grants EXP, its base EXP (species data 0x10) x level / 7 is
+ * shared between the party Pokemon of the other side's trainers who can
+ * gain EXP (trainer type 1) and met it (fightOutPokemonCheckMeetEnemyFightPokemon),
+ * with Exp. Share holders taking half. x1.5 for floor 0x2D and for another
+ * trainer's Pokemon (message 0x7534 instead of 0x7533). Each recipient in
+ * turn: the camera and grid once (C3_PRESENT_EXP_CAMERA), its status panel
+ * when in battle, message 0x7532 (variables 0x0D nickname, 0x0E the
+ * 0x7533/0x7534 text, 0x2F the amount) opened and closed, its effort values,
+ * the EXP added, and in battle the EXP bar (C3_PRESENT_EXP_BAR), a 0x40-frame
+ * wait, one-frame polls until the bar stops (C3_PRESENT_EXP_BAR_BUSY) and the
+ * panel renewed (C3_PRESENT_STATUS_RENEW); then the panel closes. The level
+ * up menu buffer (lbl_80478278, lbl_8047B64C) is only read by the level-up
+ * sequence. Refused by name: a level up (lbl_80378724, stat growth), a
+ * Shadow Pokemon (its EXP is stored instead), a held item (Exp. Share /
+ * Lucky Egg / Macho Brace need the item table). */
+static int op_exp_award(C3BattleHandlers *h,C3BattleScript *sc,unsigned phase)
+{
+    C3BattleState *s=h->state;
+    C3BattleExpAward *a=NULL;
+    uint32_t type=0;
+    int fault=0;
+    if(!c3_battle_floor_value(s,0x14,&type))return stop(sc,"fight type");
+    if(phase==0){
+        uint32_t kind=0,target=0,exp_on=0,bonus=0,trainers=0;
+        h->exp_count=h->exp_index=h->exp_step=h->exp_camera=0;
+        if(!c3_battle_script_fetch(sc,1,1,&kind))return C3_SCRIPT_HANDLER_FAIL;
+        if(!c3_battle_state_target_now(s,(uint16_t)kind,0,&target))return stop(sc,"defeated battler");
+        uint32_t defeated_pokemon=battler_pokemon(s,target);
+        const uint8_t *dp=defeated_pokemon?c3_battle_arena_bytes(&s->arena,defeated_pokemon,0x61):NULL;
+        uint16_t species=dp?rd16(dp):0;
+        const uint8_t *dr=species_row(s,species);
+        uint16_t base=dr?rd16(dr+6):0;
+        uint8_t level=dp?dp[0x60]:0;
+        h->exp_species=species;
+        int hero=c3_battle_fight_out_is_gc_hero(s,target);
+        if(hero<0)return stop(sc,"player battler check");
+        if(!c3_battle_floor_value(s,0x24,&exp_on)||!c3_battle_floor_value(s,0x2D,&bonus)||
+           !c3_battle_floor_value(s,0x16,&trainers))return stop(sc,"floor EXP fields");
+        if(hero!=1&&(uint8_t)exp_on){
+            uint32_t side=0;
+            if(!c3_battle_state_target_now(s,3,target,&side))return stop(sc,"winning side");
+            if(side&&c3_battle_side_check_valid(s,side,&fault)){
+                int met=0,share=0;             /* share: Exp. Share holders (held items refused) */
+                for(uint32_t t=0;t<(uint16_t)trainers;++t){
+                    if(t>=2)return stop(sc,"more than two trainers");
+                    uint32_t tr=side+C3_FIGHT_SIDE_TRAINER_OFFSET+t*C3_BATTLE_RUNTIME_TRAINER_BYTES;
+                    if(!c3_battle_trainer_check_valid(s,tr,&fault)||!can_get_exp(s,tr))continue;
+                    for(unsigned k=0;k<6;++k){
+                        uint32_t fp=party_fight_pokemon(s,tr,k,&fault);
+                        if(!fp||!c3_battle_fight_pokemon_check_fight_out(s,fp,&fault))continue;
+                        int m=c3_battle_fight_out_met(s,target,fp);
+                        if(m<0)return stop(sc,"met check");
+                        met+=m==1;
+                        uint16_t item=0;
+                        const uint8_t *ip=c3_battle_arena_bytes(&s->arena,get(s,fp,0xCC)+0x88,2);
+                        if(ip)item=rd16(ip);
+                        if(item)return stop(sc,"held item (Exp. Share check, item table)");
+                    }
+                }
+                if(met||share){
+                    uint16_t each_met=(uint16_t)((uint32_t)base*level/7u),each_share;
+                    each_share=(uint16_t)(each_met/(unsigned)met);                /* no holder: met != 0 */
+                    if(!each_share)each_share=1;
+                    each_met=0;
+                    uint32_t share_exp=each_share,met_exp=each_met;
+                    for(uint32_t t=0;t<(uint16_t)trainers;++t){
+                        uint32_t tr=side+C3_FIGHT_SIDE_TRAINER_OFFSET+t*C3_BATTLE_RUNTIME_TRAINER_BYTES;
+                        if(!can_get_exp(s,tr))continue;
+                        for(unsigned k=0;k<6;++k){
+                            uint32_t fp=party_fight_pokemon(s,tr,k,&fault),gain=0;
+                            if(!fp||!c3_battle_fight_pokemon_check_fight_out(s,fp,&fault))continue;
+                            uint32_t pokemon=get(s,fp,0xCC);
+                            const uint8_t *pp=pokemon?c3_battle_arena_bytes(&s->arena,pokemon,C3_BATTLE_POKEMON_BYTES):NULL;
+                            if(!pp)return stop(sc,"recipient Pokemon");
+                            if(pp[0x60]>=100)continue;
+                            if(c3_battle_fight_out_met(s,target,fp)==1)gain=share_exp;
+                            (void)met_exp;                                           /* no Exp. Share holder */
+                            if(!gain)continue;
+                            if((uint8_t)bonus==1)gain=gain*150u/100u;
+                            uint16_t msg=0x7533;
+                            if(!is_mine(s,tr,pokemon)){gain=gain*150u/100u;msg=0x7534;}
+                            if(rd16(pp+0xD8)&&(int32_t)rd32(pp+0xDC)>=0)return stop(sc,"Shadow Pokemon EXP storage (0xC6)");
+                            if(h->exp_count>=12)return stop(sc,"EXP recipients");
+                            h->exp[h->exp_count++]=(C3BattleExpAward){tr,fp,gain,msg};
+                        }
+                    }
+                }
+            }
+        }
+        if(fault)return stop(sc,"EXP records");
+    }
+    while(h->exp_index<h->exp_count){
+        a=&h->exp[h->exp_index];
+        uint32_t pokemon=get(s,a->fight_pokemon,0xCC);
+        uint8_t *pp=pokemon?c3_battle_arena_bytes(&s->arena,pokemon,C3_BATTLE_POKEMON_BYTES):NULL;
+        if(!pp)return stop(sc,"recipient Pokemon");
+        if(h->exp_step==0){
+            uint32_t now=0,next=0,base_exp=0,gain=a->gain;
+            if(!h->exp_camera){present(h,C3_PRESENT_EXP_CAMERA,0,0);h->exp_camera=1;}
+            uint32_t fo=trainer_battler(s,a->trainer,a->fight_pokemon,&fault);
+            if(fo)present(h,C3_PRESENT_ACTOR_BEGIN,fo,type);
+            c3_battle_msgctrl_set(s,0x0D,pokemon+0x2Eu);                     /* nickname (0x77) */
+            c3_battle_msgctrl_set(s,0x0E,C3_MSGREF_MESSAGE(a->message));
+            c3_battle_msgctrl_set(s,0x2F,a->gain);
+            h->exp_opened=present(h,C3_PRESENT_MESSAGE_OPEN,0x7532,0)==1;
+            present(h,C3_PRESENT_MESSAGE_CLOSE,0,0);
+            if(!effort_gain(s,pokemon,h->exp_species))return stop(sc,"effort values");
+            h->exp_step=2;                                                   /* to the close */
+            if(gain&&c3_battle_fight_pokemon_check_fight_out(s,a->fight_pokemon,&fault)&&pp[0x60]<100){
+                uint8_t level=pp[0x60];
+                now=rd32(pp+0x5C);
+                if(!level_to_exp(s,pokemon,level+1u,&next)||!level_to_exp(s,pokemon,level,&base_exp))return stop(sc,"growth table");
+                if(now+gain>=next)return stop(sc,"level up (lbl_80378724, fightPokemonGrowBasisStatus)");
+                pp[0x5C]=(uint8_t)((now+gain)>>24);pp[0x5D]=(uint8_t)((now+gain)>>16);
+                pp[0x5E]=(uint8_t)((now+gain)>>8);pp[0x5F]=(uint8_t)(now+gain);   /* figthPokemonSetExp */
+                fo=trainer_battler(s,a->trainer,a->fight_pokemon,&fault);
+                if(fo){
+                    present(h,C3_PRESENT_EXP_BAR,fo,now+gain-base_exp);
+                    h->exp_battler=fo;h->exp_step=1;
+                    sc->wait_frames=0x40;return C3_SCRIPT_HANDLER_WAIT;          /* fightMainWaitFrame(0x40) */
+                }
+            }
+        }
+        if(h->exp_step==1){
+            if(present(h,C3_PRESENT_EXP_BAR_BUSY,h->exp_battler,0)==1){sc->wait_frames=1;return C3_SCRIPT_HANDLER_WAIT;}
+            present(h,C3_PRESENT_STATUS_RENEW,h->exp_battler,type);
+            h->exp_step=2;
+        }
+        if(h->exp_opened)present(h,C3_PRESENT_MESSAGE_CLOSE,0,0);
+        uint32_t fo=trainer_battler(s,a->trainer,a->fight_pokemon,&fault);
+        if(fo)present(h,C3_PRESENT_ACTOR_END,fo,type);
+        if(fault)return stop(sc,"EXP records");
+        ++h->exp_index;h->exp_step=0;
+    }
+    sc->pc+=2;
+    return C3_SCRIPT_HANDLER_DONE;
+}
+
 int c3_battle_handler_dispatch(void *user,C3BattleScript *sc,uint8_t op,unsigned phase)
 {
     C3BattleHandlers *h=user;(void)phase;
@@ -1583,6 +1840,7 @@ int c3_battle_handler_dispatch(void *user,C3BattleScript *sc,uint8_t op,unsigned
     case 0x19:return op_faint_check(h,sc,phase);
     case 0x1A:return op_faint_begin(h,sc);
     case 0x1B:return op_faint_end(h,sc);
+    case 0x23:return op_exp_award(h,sc,phase);
     case 0x24:return op_battle_end_check(h,sc);
     case 0x49:return op_move_end(h,sc);
     case 0x56:return op_cry(h,sc);

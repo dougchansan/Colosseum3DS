@@ -630,6 +630,60 @@ interpreter yet.
   - Endure + super effective now shows "endured the hit" (0x75C9), then
     "super effective" (0x7637), and reaches the end of the move script.
 
+- Faint mark and EXP award (`fn_8023011C`, `lbl_80378721`: `0x23`
+  `fn_802232F4`, return).
+  - The faint mark pass now runs each fainted battler's sequence. The
+    battler becomes the fainted (floor 0x46, `+0xA484`) and defending (0x42:
+    message variables 0x10, 0x1B, 0x42, 0x44, 0x43, then `+0xA478`)
+    Pokemon, and `lbl_80378721` runs as a nested call. The interpreter has a
+    new `C3_SCRIPT_PHASE_FAINT_MARK` for this: the pass may push the call and
+    return 2, and after the call returns it is resumed with arg 1 to
+    continue its loop (the original calls `fn_80211B94` inside the loop).
+  - Battle start's `fightFloorSetMeetEnemyFightPokemonEnemySideAll`
+    (`0x801F3178`) is ported as `c3_battle_state_set_meet_enemies`. It runs
+    just before the enemy arrays: each battler in battle records the
+    opposing battlers' entry IDs (FightPokemon 0xCE) in its met list (0xFD,
+    12 slots). Without it nobody would have met the defeated battler. The
+    state's growth table (`C3_PACK_GRW`, 0x194-byte rows) is now loaded.
+  - `0x23` EXP award. It applies when the defeated battler is not the
+    player's and floor 0x24 grants EXP.
+    - The share is base EXP (species data 0x10, `+6`) × level / 7, among
+      the party Pokemon of the other side's trainers of type 1
+      (`fightTrainerCheckCanGetExp`) that met it
+      (`fightOutPokemonCheckMeetEnemyFightPokemon`).
+    - ×1.5 for floor 0x2D, and ×1.5 for another trainer's Pokemon
+      (`heroIsMinePokemon`: trainer ID `+0x14` and name `+0x18` against the
+      hero's `+0x2C` and name). The message is 0x7534 for another
+      trainer's Pokemon, else 0x7533.
+    - Each recipient in turn:
+      1. the EXP camera once (new `C3_PRESENT_EXP_CAMERA`);
+      2. its status panel when in battle;
+      3. message 0x7532, opened and closed (variables 0x0D nickname, 0x0E
+         the 0x7533/0x7534 text as `C3_MSGREF_MESSAGE`, 0x2F the amount);
+      4. its effort values (`pokemonGetEffortFromPokemon`: the defeated
+         species' yields, totals capped at 510 and 255);
+      5. the EXP added;
+      6. in battle, the EXP bar (`C3_PRESENT_EXP_BAR`), a 0x40-frame wait,
+         one-frame polls until it stops (`C3_PRESENT_EXP_BAR_BUSY`), and the
+         panel renewed (`C3_PRESENT_STATUS_RENEW`);
+      7. the panel closed.
+    - The recipients are handed out across the waits from the handler
+      state. The level-up menu buffer (`lbl_80478278`, `lbl_8047B64C`) is
+      only read by the level-up sequence.
+    - Refused by name: a level up (`lbl_80378724`, stat growth); a Shadow
+      Pokemon (its EXP is stored in 0xC6 instead); held items (Exp. Share,
+      Lucky Egg and Macho Brace need the item table).
+
+  On the original data:
+  - Umbreon's Tackle knocking out Zigzagoon A awards Zigzagoon's base EXP 60
+    × 24 / 7 = 205, halved between the two that met it, ×1.5 = 153 each.
+  - Umbreon goes 19055 -> 19208 (bar 1632 into level 26) and Espeon 16372 ->
+    16525 (bar 900 into level 25). Each gains 1 Speed effort.
+  - The faint script's battle end check then stops at the replacement check
+    (`fightFloorIsIrekaeFightOutPokemon`): Zigzagoon A is out of battle and
+    Willie has Pokemon left.
+  - Umbreon one EXP short of level 27 is refused at the level up.
+
 ## Increments
 
 1. **Execution and end of turn through original code.** A minimal

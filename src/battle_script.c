@@ -344,14 +344,24 @@ C3BattleScriptStatus c3_battle_script_step(C3BattleScript *s)
         if((r=execute(s))!=H_DONE)break;
         if(!f->top_level){
             if(s->state==1||s->state==2)f->phase=C3_SCRIPT_PHASE_EXIT;
-        }else if(s->state==1){
-            /* Faint processing: mark, then run lbl_80378798 inline with the
-             * outer action, state 0, saving PC/state (uVar7/uVar2). */
-            if(!pass(s,C3_SCRIPT_PASS_FAINT_MARK,0))break;
-            f->faint_action=s->action;f->faint_state=s->state;f->faint_pc=s->pc;
-            s->state=0;s->pc=C3_SCRIPT_FAINT;f->phase=C3_SCRIPT_PHASE_FAINT_SCRIPT;
-        }else if(s->state==2)f->phase=C3_SCRIPT_PHASE_CLEANUP;
+        }else if(s->state==1){f->phase=C3_SCRIPT_PHASE_FAINT_MARK;f->pass_resume=0;}
+        else if(s->state==2)f->phase=C3_SCRIPT_PHASE_CLEANUP;
         break;
+    case C3_SCRIPT_PHASE_FAINT_MARK:{
+        /* Faint processing: mark (each fainted battler's sequence runs as a
+         * nested call), then run lbl_80378798 inline with the outer action,
+         * state 0, saving PC/state (uVar7/uVar2). */
+        unsigned depth_before=s->depth;
+        int m=s->services.end_of_move(s->services.user,s,C3_SCRIPT_PASS_FAINT_MARK,f->pass_resume);
+        if(m==2){
+            if(s->depth!=depth_before+1u){fail(s,"Faint mark call was not pushed");break;}
+            f->pass_resume=1;break;
+        }
+        if(m!=1){if(s->status!=C3_SCRIPT_FAILED)fail(s,"End-of-move pass %d failed",(int)C3_SCRIPT_PASS_FAINT_MARK);break;}
+        f->faint_action=s->action;f->faint_state=s->state;f->faint_pc=s->pc;
+        s->state=0;s->pc=C3_SCRIPT_FAINT;f->phase=C3_SCRIPT_PHASE_FAINT_SCRIPT;
+        break;
+    }
     case C3_SCRIPT_PHASE_FAINT_SCRIPT:
         if((r=execute(s))!=H_DONE)break;
         if(s->state==1||s->state==2){

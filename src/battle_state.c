@@ -141,6 +141,8 @@ int c3_battle_state_from_entry(C3BattleState *s,const C3BattleEntrySession *e,co
     s->kinds=(C3BattleDataRows){knd->bytes,knd->count+1u,32};
     const C3BattleEntryPackView *trn=&p->sections[C3_PACK_TRN];
     s->trainers=(C3BattleDataRows){trn->bytes,trn->count,52};
+    const C3BattleEntryPackView *grw=&p->sections[C3_PACK_GRW];
+    s->growth=(C3BattleDataRows){grw->bytes,grw->count,0x194};
     s->rng=e->rng;                                              /* shared stream continues */
     if(err)err[0]=0;
     return 1;
@@ -696,4 +698,81 @@ int c3_battle_fight_out_is_gc_hero(const C3BattleState *s,uint32_t fo)
     const uint8_t *row=row_at(&s->trainers,be16(id));
     if(!row)return -1;
     return be16(row+2)==1;                                         /* trainer data field 4 */
+}
+
+/* ---- met enemies (fight_out_pokemon.c, fight_floor.c) ------------------- */
+
+static int16_t s16_status(const C3BattleState *s,uint32_t obj,uint32_t sel,uint32_t index,int *fault)
+{
+    uint32_t v=0;
+    if(!c3_battle_fight_status_get(&s->arena,obj,sel,index,&v)){*fault=1;return -1;}
+    return (int16_t)(uint16_t)v;
+}
+/* fightOutPokemonCheckMeetEnemyInline: fp's entry ID (0xCE) is in fo's met
+ * list (0xFD, 12 s16 slots, negative = empty). */
+static int met_inline(const C3BattleState *s,uint32_t fo,uint32_t fp,int *fault)
+{
+    if(!fo||!c3_battle_fight_pokemon_check_valid(s,fp,fault))return 0;
+    int16_t entry=s16_status(s,fp,0xCE,0,fault);
+    for(uint32_t i=0;i<12;++i){
+        int16_t id=s16_status(s,fo,0xFD,i,fault);
+        if(id>=0&&id==entry)return 1;
+    }
+    return 0;
+}
+int c3_battle_state_set_meet_enemies(C3BattleState *s)
+{
+    uint32_t type=0,trainers=0,active=0;
+    int fault=0;
+    if(!s||!c3_battle_floor_value(s,0x14,&type)||!c3_battle_floor_value(s,0x16,&trainers)||
+       !c3_battle_floor_value(s,0x18,&active))return 0;
+    for(unsigned i=0;i<2;++i){
+        uint32_t team=side_at(s,i);
+        if(!c3_battle_side_check_valid(s,team,&fault))continue;
+        for(uint32_t j=0;j<(uint16_t)trainers;++j){
+            if(j>=2)return 0;
+            uint32_t tr=side_trainer(team,j);
+            if(!c3_battle_trainer_check_valid(s,tr,&fault))continue;
+            for(uint32_t k=0;k<(uint16_t)active;++k){
+                if(k>=2)return 0;
+                uint32_t cell=trainer_fight_out(tr,k),other=0;
+                if(!c3_battle_fight_out_check_valid(s,cell,&fault)||!c3_battle_fight_out_check_fight_out(s,cell,&fault))continue;
+                if(!c3_battle_state_target(s,3,cell,(uint16_t)type,&other))return 0;
+                /* fightOutPokemonSetMeetEnemyFightPokemonEnemySideAll(cell, other) */
+                for(uint32_t t=0;t<(uint16_t)trainers&&other;++t){
+                    uint32_t otr=side_trainer(other,t);
+                    if(!c3_battle_trainer_check_valid(s,otr,&fault))continue;
+                    for(uint32_t p=0;p<(uint16_t)active;++p){
+                        uint32_t enemy=trainer_fight_out(otr,p);
+                        if(!c3_battle_fight_out_check_fight_out(s,enemy,&fault))continue;
+                        uint32_t fp=status(s,enemy,0xD5,&fault);
+                        if(!c3_battle_fight_pokemon_check_valid(s,fp,&fault)||met_inline(s,cell,fp,&fault))continue;
+                        int16_t entry=s16_status(s,fp,0xCE,0,&fault);
+                        for(uint32_t slot=0;slot<12;++slot)
+                            if(s16_status(s,cell,0xFD,slot,&fault)<0){
+                                if(!c3_battle_fight_status_set(&s->arena,cell,0xFD,slot,(uint16_t)entry))return 0;
+                                break;
+                            }
+                    }
+                }
+            }
+        }
+    }
+    return !fault;
+}
+int c3_battle_fight_out_met(const C3BattleState *s,uint32_t fo,uint32_t fp)
+{
+    int fault=0;
+    if(!s||!fo||!fp||s->result==1)return 0;
+    uint32_t moto=status(s,fp,0xCB,&fault);
+    if(!moto||!c3_battle_pokemon_check_valid(s,moto,&fault))return 0;
+    uint32_t poke=status(s,fp,0xCC,&fault);
+    if(!poke||!c3_battle_pokemon_check_valid(s,poke,&fault))return 0;
+    int16_t entry=s16_status(s,fp,0xCE,0,&fault);
+    if(fault||entry<0)return fault?-1:0;
+    for(uint32_t i=0;i<12;++i){
+        int16_t id=s16_status(s,fo,0xFD,i,&fault);
+        if(id>=0&&id==entry)return 1;
+    }
+    return fault?-1:0;
 }

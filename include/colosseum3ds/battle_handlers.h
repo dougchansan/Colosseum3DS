@@ -26,8 +26,14 @@ typedef enum {
     C3_PRESENT_HP_BAR_BUSY,       /* menuFightStatusWaitAnimeHP poll: 1 while the HP bar
                                      of target a is still animating */
     C3_PRESENT_TRAINER_MENUS_CLOSE, /* fightMenuAllFightTrainerCloseStatusMenu(0) */
-    C3_PRESENT_CRY                /* the cry of battler a, species b (fn_80166A50 with
+    C3_PRESENT_CRY,               /* the cry of battler a, species b (fn_80166A50 with
                                      its species' voice, data field 0x61) */
+    C3_PRESENT_EXP_CAMERA,        /* battleGridUpdate(); fn_801EF8F4(1): the EXP camera */
+    C3_PRESENT_EXP_BAR,           /* menuFightStatusStartAnimEXP(status menu of a, EXP b
+                                     into the level) */
+    C3_PRESENT_EXP_BAR_BUSY,      /* menuFightStatusWaitAnimeEXP poll: 1 while battler a's
+                                     EXP bar is still filling */
+    C3_PRESENT_STATUS_RENEW       /* fightMenuFightOutPokemonRenewStatusMenu(a, fight type b, 1) */
 } C3BattlePresent;
 
 /* fightWazaDoEffectFunc(move, attacker, target, count): the move's effect
@@ -38,6 +44,9 @@ typedef int (*C3BattlePresentMove)(void *user, uint16_t move, uint32_t attacker,
 /* fn_801DA5C4(signal): has the running move effect reached `signal`?
  * 1 yes, 0 not yet (the step waits one frame and asks again), -1 error. */
 typedef int (*C3BattleEffectSignal)(void *user, uint8_t signal);
+
+/* One recipient of fn_802232F4's EXP award. */
+typedef struct { uint32_t trainer, fight_pokemon, gain; uint16_t message; } C3BattleExpAward;
 
 typedef struct {
     C3BattleState *state;
@@ -50,6 +59,11 @@ typedef struct {
     uint8_t message_open;     /* attack string window to close after the wait */
     C3BattleDamageTables damage;     /* original tables for fn_80232110 */
     uint32_t saved_appoint;          /* floor 0x4B held across the faint sequence */
+    C3BattleExpAward exp[12];        /* 0x23: recipients, handed out across waits */
+    uint8_t exp_count, exp_index, exp_step, exp_camera, exp_opened;
+    uint16_t exp_species;            /* defeated species (effort values) */
+    uint32_t exp_battler;            /* recipient in battle whose EXP bar is filling */
+    unsigned pass_cursor;            /* faint mark pass: next battler after a nested call */
     const uint8_t *critical;         /* lbl_80478D58 critical denominators */
     uint32_t critical_count;         /* lbl_80478D60 */
 } C3BattleHandlers;
@@ -65,7 +79,7 @@ C3BattleScriptServices c3_battle_handler_services(C3BattleHandlers *handlers);
  * move effect, 0x0A effect wait, 0x0B HP update, 0x0D critical-hit message,
  * 0x0C HP bar wait, 0x0E (FightWaza read, no effect), 0x0F effectiveness
  * message, 0x12 timed message close, 0x15 secondary-effect chance, 0x19
- * faint check, 0x1A / 0x56 / 0x10 / 0x1B faint sequence, 0x24 battle end check, 0x49 move end, 0x5C target damage blink (no-op without a
+ * faint check, 0x1A / 0x56 / 0x10 / 0x1B faint sequence, 0x23 EXP award, 0x24 battle end check, 0x49 move end, 0x5C target damage blink (no-op without a
  * battler model). */
 int c3_battle_handler_dispatch(void *user, C3BattleScript *script, uint8_t opcode, unsigned phase);
 #endif

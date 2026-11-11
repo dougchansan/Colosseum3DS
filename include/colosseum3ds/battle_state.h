@@ -30,6 +30,7 @@
  * references (resolved by the text renderer), never host pointers. */
 #define C3_MSGREF_ITEM_NAME(id) (0xA1000000u | (uint32_t)(uint16_t)(id))
 #define C3_MSGREF_ABILITY_NAME(id) (0xA2000000u | (uint32_t)(uint16_t)(id))
+#define C3_MSGREF_MESSAGE(id) (0xA3000000u | (uint32_t)(uint16_t)(id)) /* GSmsgGetGSchar(id) */
 
 typedef struct {
     uint8_t memory[C3_BATTLE_STATE_BYTES];
@@ -51,6 +52,7 @@ typedef struct {
     C3BattleDataRows target_kinds; /* lbl_80375AC8 rows (8), set by the caller from
                                     the battle DOL-table pack */
     C3BattleDataRows trainers;   /* trainer data rows (52), from the entry pack */
+    C3BattleDataRows growth;     /* growth rows (0x194: u32 EXP per level), from the entry pack */
 } C3BattleState;
 
 /* Computed fightFloorGetStatus fields read from the encounter tables:
@@ -144,6 +146,16 @@ int c3_battle_state_relative_target_id(const C3BattleState *state, uint32_t targ
  * array (selector 0x122, 4 entries of 12 bytes: target +0, mimic move +4,
  * initial HP +6, damage +8). Returns 0 when a branch is not modelled. */
 int c3_battle_state_create_enemy_arrays(C3BattleState *state);
+/* fightFloorSetMeetEnemyFightPokemonEnemySideAll (0x801F3178), the step of
+ * fightActionFlowKaisiPost just before the enemy arrays: every battler in
+ * battle on a valid side records each opposing battler in battle's entry ID
+ * (FightPokemon 0xCE) in its met list (0xFD, 12 s16 slots, negative =
+ * empty). Returns 0 when a branch is not modelled.
+ * fightOutPokemonCheckMeetEnemyFightPokemon(fo, fp): 1 when fp (valid, with
+ * valid Pokemon 0xCB and 0xCC, entry ID >= 0) is in fo's met list; 0 when
+ * not or the battle result is 1; -1 when a record is unreadable. */
+int c3_battle_state_set_meet_enemies(C3BattleState *state);
+int c3_battle_fight_out_met(const C3BattleState *state, uint32_t fight_out, uint32_t fight_pokemon);
 /* fightOutPokemonIsHinsi (0x802038A4): 1 when the battler is not valid
  * (fightOutPokemonCheckValid) or its Pokemon has 0 HP (selector 0x7B).
  * fightOutPokemonIsGcHeroFightOutPokemon: the battler's trainer is the
