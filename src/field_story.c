@@ -209,7 +209,11 @@ static void page(Impl *s)
 static int message(Impl *s,RunTask *t,uint32_t id,const char *speaker,char *error)
 {
     if(s->dialog_owner&&s->dialog_owner!=t->key)return fail(error,"Concurrent original field messages are unsupported");
-    if(!c3_story_message(&s->vm,id,s->hero_name,"",speaker,s->full_message,sizeof s->full_message,error))return 0;
+    /* Control 2C prints the partner's saved name (hero +0xAC2), which the
+     * name entry may have just changed. */
+    C3GameSummary names;
+    if(!c3_game_state_summary(s->game,&names))return fail(error,"Game state names are unavailable");
+    if(!c3_story_message(&s->vm,id,s->hero_name,names.partner,speaker,s->full_message,sizeof s->full_message,error))return 0;
     s->dialog_owner=t->key;s->page_start=0;s->view.message_id=id;s->view.dialogue=1;s->view.choice=0;
     page(s);t->wait=W_MESSAGE;t->remaining=.12f;
     log_line(s,"story_message script=%08lx pc=%08lx id=%05lx",(unsigned long)t->call.script_id,

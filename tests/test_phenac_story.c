@@ -121,7 +121,7 @@ int main(int argc,char **argv)
      CHECK(!c3_game_state_partner(&game)&&flag(&game,0x3e4)==0&&flag(&game,0x3e5)==0);
      CHECK(c3_field_story_interact(&s->story,error));CHECK(logged("story_talk actor=0 script=01000021"));}
     /* The scene collects the partner's name when native 16 waits for it. */
-    {int named=0;
+    {int named=0,spoken=0;
      for(frame=0;frame<60000&&!flag(&game,0x3e5);++frame){
          if(c3_field_story_view(&s->story)->name_entry){
              CHECK(c3_field_story_view(&s->story)->name_entry==2&&!named);
@@ -130,9 +130,11 @@ int main(int argc,char **argv)
              CHECK(c3_field_story_name_result(&s->story,"Rui Two",error));named=1;
              CHECK(!c3_field_story_view(&s->story)->name_entry&&!c3_field_story_name_result(&s->story,"AGAIN",error));
          }
+         /* Later messages print the new name through control 2C. */
+         if(named&&strstr(c3_field_story_view(&s->story)->message,"Rui Two"))spoken=1;
          tick(s,frame);
      }
-     CHECK(named);}
+     CHECK(named&&spoken);}
     CHECK(frame<60000&&c3_game_state_partner(&game)&&flag(&game,0x3e5)==1);
     CHECK(c3_game_state_summary(&game,&summary)&&!strcmp(summary.partner,"Rui Two"));
     CHECK(logged("story_partner present=1")&&logged("story_name_entry mode=1 index=0 status=waiting_scene"));
