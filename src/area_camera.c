@@ -24,9 +24,9 @@ int c3_area_camera_parse(C3AreaCamera *track,const void *data,size_t bytes,char 
 {
     const unsigned char *p=data;C3AreaCamera next={0};
     if(!track||!p||bytes<64u||bytes>C3_AREA_CAMERA_MAX_BYTES||memcmp(p,"C3C1",4)||
-       word(p+4)!=1u||word(p+8)!=bytes||word(p+12)!=64u||word(p+28))
+       word(p+4)!=1u||word(p+8)!=bytes||word(p+12)!=64u||(word(p+28)&&(word(p+28)&0xffffu)!=0x1800u))
         return fail(error,capacity,"Invalid area camera header.");
-    next.frame_count=word(p+16);next.fps=real(p+20);next.loop=word(p+24);
+    next.frame_count=word(p+16);next.fps=real(p+20);next.loop=word(p+24);next.resource=word(p+28);
     if(!next.frame_count||next.frame_count>C3_AREA_CAMERA_MAX_FRAMES||next.loop>1u||
        !isfinite(next.fps)||next.fps<1||next.fps>120||64u+(size_t)next.frame_count*44u!=bytes)
         return fail(error,capacity,"Invalid area camera extent or clock.");

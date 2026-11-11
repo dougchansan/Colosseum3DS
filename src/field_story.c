@@ -152,7 +152,8 @@ static Person *person(Impl *s,uint32_t group,uint32_t id)
 {
     if(!group&&id==100)return &s->hero_actor;
     if(!group&&id==101)return s->partner_actor.public.model?&s->partner_actor:NULL;
-    if(group!=s->area->group)return NULL;
+    /* people.c peopleFindSelf: an exact group match first, then the index
+     * in any group. Floor actors are the only other people here. */
     for(uint32_t i=0;i<s->area->actor_count;++i)if(s->actors[i].public.index==id)return s->actors+i;
     return NULL;
 }
@@ -186,6 +187,14 @@ static int resume(Impl *s,RunTask *t,uint32_t value,char *error)
 {
     t->wait=W_NONE;
     return c3_story_resume(&s->vm,t->key,value)||fail(error,"Cannot resume original story task %u",t->key);
+}
+/* gs_floor.c starts each registered floor script (init, pre, main, post)
+ * with four arguments: floorDataBiosGetGroupID(entry), 0, 0, 0. The load
+ * script is run by floor.c fn_801129CC with none. */
+static int start_floor_script(Impl *s,uint32_t script,uint16_t *key,char *error)
+{
+    uint32_t args[4]={s->area->group,0,0,0};
+    return start(s,script,args,4,key,error);
 }
 static void page(Impl *s)
 {
@@ -308,7 +317,8 @@ static int run_native(Impl *s,RunTask *t,char *error)
         s->view.camera.target[2]=s->view.camera.eye[2]-cosf(y)*cosf(x);break;
     }
     case 0x2a:
-        if(a[0]!=s->area->group||a[1]!=0x00e51800u||!s->camera_track||!s->camera_track->frames)
+        if(a[0]!=s->area->group||!s->camera_track||!s->camera_track->frames||
+           a[1]!=(s->camera_track->resource?s->camera_track->resource:0x00e51800u))
             return fail(error,"Original camera %08lx is not prepared",(unsigned long)a[1]);
         s->view.camera_seconds=(float)a[2]/30.0f;s->camera_playing=1;s->camera_rate=1;
         s->view.camera_active=1;s->camera_mode=4;break;
@@ -738,7 +748,7 @@ int c3_field_story_enter(C3FieldStory *story,char *error)
             if(!start(s,p->source->move_script,args,4,&key,error))return 0;
         }
     }
-    return start(s,s->area->main_script,NULL,0,&s->main_key,error);
+    return start_floor_script(s,s->area->main_script,&s->main_key,error);
 }
 const C3FieldStoryView *c3_field_story_view(const C3FieldStory *story)
 {const Impl *s=story?story->impl:NULL;return s?&s->view:NULL;}
@@ -879,7 +889,7 @@ int c3_field_story_tick(C3FieldStory *story,float seconds,uint16_t pressed,char 
         ++s->setup_stage;
         if(s->setup_stage>2){s->preparing=0;s->view.prepared=1;log_line(s,"story_prepared floor=%lu",(unsigned long)s->area->floor);break;}
         uint32_t script=s->setup_stage==1?s->area->init_script:s->area->pre_script;
-        if(!start(s,script,NULL,0,&s->setup_key,error))return 0;
+        if(!start_floor_script(s,script,&s->setup_key,error))return 0;
     }
     for(unsigned i=0;i<C3_STORY_TASKS;++i){RunTask *t=s->tasks+i;
         if(!t->key||!c3_story_active(&s->vm,t->key))continue;
@@ -913,7 +923,7 @@ int c3_field_story_tick(C3FieldStory *story,float seconds,uint16_t pressed,char 
          * other floor tasks before it so no more input or event can race it. */
         for(unsigned i=0;i<C3_STORY_TASKS;++i)if(s->tasks[i].key)c3_story_stop(&s->vm,s->tasks[i].key);
         if(!start(s,0x05960009u,NULL,0,&s->exit_fade_key,error))return 0;
-        if(!start(s,s->area->post_script,NULL,0,&s->post_key,error))return 0;
+        if(!start_floor_script(s,s->area->post_script,&s->post_key,error))return 0;
         s->departure_started=1;
     }
     if(s->pending_floor&&s->departure_started&&!c3_story_active(&s->vm,s->post_key)&&

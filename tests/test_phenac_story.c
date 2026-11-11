@@ -49,7 +49,7 @@ static void tick(Scene *s,unsigned frame)
 int main(int argc,char **argv)
 {
     const C3FloorProfile *profile=c3_floor_profile(3);
-    CHECK(profile&&!strcmp(profile->prefix,"phenac")&&!strcmp(profile->story,"phenac.c3s")&&!profile->features);
+    CHECK(profile&&!strcmp(profile->prefix,"phenac")&&!strcmp(profile->story,"phenac.c3s")&&profile->features==C3_FLOOR_ROOM_CAMERA);
     CHECK(c3_floor_profile(C3_FLOOR_WORLD_MAP_ID)&&(c3_floor_profile(C3_FLOOR_WORLD_MAP_ID)->features&C3_FLOOR_WORLD_MAP));
     CHECK(!c3_floor_profile(0)&&!c3_floor_profile(0x7fff));
     if(argc<3){printf("phenac-story: %u profile checks passed; private integration skipped (needs <newgame dir> <phenac dir>)\n",checks);return 0;}
@@ -79,6 +79,8 @@ int main(int argc,char **argv)
     fprintf(trace,"phenac_packs actors=%lu models=%u transitions=%lu interactions=%lu links=%lu\n",
             (unsigned long)s->area.actor_count,models,(unsigned long)s->area.transition_count,
             (unsigned long)s->area.interaction_count,(unsigned long)s->area.link_count);
+    path(file,argv[2],"phenac_camera.c3c");CHECK(c3_area_camera_load(&s->camera,file,error,sizeof error));
+    CHECK(s->camera.resource==0x0c101800u);
     CHECK(c3_field_spawn(&s->map,0,&s->hero));
     path(file,argv[2],"phenac.c3s");
     CHECK(c3_field_story_load(&s->story,file,&game,&s->map,&s->area,&s->hero,&s->wes,s->models,&s->camera,trace,error));
@@ -108,6 +110,7 @@ int main(int argc,char **argv)
     (void)logged;
 
     c3_field_story_close(&s->story);c3_field_close(&s->map);c3_area_close(&s->area);
+    c3_area_camera_close(&s->camera);
     c3_title_close(&s->wes);for(unsigned i=0;i<C3_AREA_MAX_ACTORS;++i)c3_title_close(s->actors+i);
     free(s);c3_game_state_free(&game);
     fprintf(trace,"phenac_complete checks=%u\n",checks);

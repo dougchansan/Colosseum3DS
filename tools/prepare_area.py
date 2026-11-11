@@ -211,8 +211,12 @@ def sampled_lights(raw, data, archive_hash):
     return lights,bytes(header)+colors
 
 
-def sampled_camera(camera, archive_hash):
-    """Bounded original camera track, with its independent authored clock."""
+def sampled_camera(camera, archive_hash, resource=0):
+    """Bounded original camera track, with its independent authored clock.
+
+    resource is the original camera member ID stored in the header word at
+    offset 28; zero keeps the first shop pack's layout byte for byte.
+    """
     if len(camera.animations) != 1:
         raise ValueError("Expected one original area camera animation")
     animation = camera.animations[0]
@@ -221,7 +225,7 @@ def sampled_camera(camera, archive_hash):
         raise ValueError("Area camera sample bound exceeded")
     frames = b"".join(struct.pack("<11f",*title.camera_values(camera,frame)[:11]) for frame in sequence)
     header = bytearray(64)
-    struct.pack_into("<4s4IfII",header,0,b"C3C1",1,64+len(frames),64,len(sequence),60.,int(animation.loop),0)
+    struct.pack_into("<4s4IfII",header,0,b"C3C1",1,64+len(frames),64,len(sequence),60.,int(animation.loop),resource)
     header[32:64] = bytes.fromhex(archive_hash)
     return bytes(header)+frames
 
@@ -550,6 +554,17 @@ def prepare_floor_actors(disc, output, parser, floor):
             if sharers:
                 shared.append({"resource_id":"%08x" % owner["model_resource"],"file":owner["file"],
                                "actors":[owner["index"],*(actor["index"] for actor in sharers)]})
+        camera_reports = []
+        for index,identity in enumerate(profile.get("event_cameras",())):
+            # Type-0x18 camera members played by the field bank (native 2A).
+            _data,_raw,camera_scene = geometry.load_scene(archive,identity)
+            if len(camera_scene.cameras)!=1:
+                raise ValueError("Original event camera %08x changed" % identity)
+            track = sampled_camera(camera_scene.cameras[0],profile["sha256"],identity)
+            name = "%s_camera%s.c3c" % (profile["prefix"],"" if index==0 else str(index))
+            (stage/name).write_bytes(track)
+            camera_reports.append({"file":name,"resource_id":"%08x" % identity,"bytes":len(track),
+                                   "samples":(len(track)-64)//44,"sha256":hashlib.sha256(track).hexdigest()})
         collision = field.member(archive,profile["collision"])
         areas = [{"floor":profile["floor"],"actors":actors,
                   "transition_surfaces":source_collision_tables(collision,44),
@@ -571,7 +586,7 @@ def prepare_floor_actors(disc, output, parser, floor):
                                 "common.fsys":{"bytes":PROFILES["common.fsys"][0],
                                                "sha256":PROFILES["common.fsys"][1]}},
                     "source_members":source_members,"packs":reports,"actors":"area-actors.json",
-                    "shared_models":shared,"bounds":actor_bounds(actors,reports),
+                    "shared_models":shared,"event_cameras":camera_reports,"bounds":actor_bounds(actors,reports),
                     "event_surfaces":{"transition":len(areas[0]["transition_surfaces"]),
                                       "interaction":len(areas[0]["interaction_surfaces"])},
                     "limitations":[

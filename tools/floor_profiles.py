@@ -17,6 +17,8 @@ Adding a later floor is one new row here. Keys:
   script, messages                       field GSVM bank and message members
   prefix                                 <prefix>.c3f/.c3a, _map%u, _wes, _npc%u
   story_pack                             C3S1 file name read by the runtime
+  event_cameras                          optional camera members played by
+                                         the bank; first is <prefix>_camera.c3c
 
 Geometry keys (map, entrance_table, entrance_count, models, groups,
 frozen_instance_targets) are consumed by prepare_floor.py. Outskirt Stand's
@@ -80,6 +82,8 @@ FLOORS = {
         "messages": 0x015A0A00,
         "prefix": "phenac",
         "story_pack": "phenac.c3s",
+        # The only camera member the field bank plays (native 2A in fn 28).
+        "event_cameras": (0x0C101800,),
         # Original scene layout: nine map models and one camera.
         "models": 9,
         # Pack groups by original clock. Each tuple is (models, schedule).
