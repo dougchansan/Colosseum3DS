@@ -10,7 +10,7 @@
 #define PAD_A 0x0100u
 #define PAD_B 0x0200u
 #define PAD_DIRECTIONS 0x000fu
-#define MAX_WAYPOINTS 32u
+#define MAX_WAYPOINTS 64u /* Phenac actor 24 allocates 36 points (bank 013E0E00 fn 34). */
 
 typedef enum { W_NONE, W_SECONDS, W_TASK, W_MOTION, W_MOVE, W_CAMERA,
                W_CAMERA_MOVE, W_FADE, W_MESSAGE, W_CHOICE, W_TV, W_BATTLE } Wait;
