@@ -58,6 +58,14 @@ int main(int argc,char **argv)
     CHECK(profile&&!strcmp(profile->prefix,"phenac")&&!strcmp(profile->story,"phenac.c3s")&&profile->features==C3_FLOOR_ROOM_CAMERA);
     CHECK(c3_floor_profile(C3_FLOOR_WORLD_MAP_ID)&&(c3_floor_profile(C3_FLOOR_WORLD_MAP_ID)->features&C3_FLOOR_WORLD_MAP));
     CHECK(!c3_floor_profile(0)&&!c3_floor_profile(0x7fff));
+    /* Every Phenac floor of the lifecycle table has exactly one profile with
+     * its own prefix and story pack. */
+    {static const uint16_t floors[]={3,4,5,6,7,8,9,10,11,12,13,0x77};
+     for(unsigned i=0;i<sizeof floors/sizeof floors[0];++i){
+         const C3FloorProfile *a=c3_floor_profile(floors[i]);
+         CHECK(a&&a->floor==floors[i]&&!strncmp(a->prefix,"phenac",6)&&strstr(a->story,a->prefix)==a->story&&a->label[0]);
+         for(unsigned j=0;j<i;++j)CHECK(strcmp(a->prefix,c3_floor_profile(floors[j])->prefix));
+     }}
     if(argc<3){printf("phenac-story: %u profile checks passed; private integration skipped (needs <newgame dir> <phenac dir>)\n",checks);return 0;}
     trace=argc>3?fopen(argv[3],"w+"):tmpfile();CHECK(trace!=NULL);
     char file[1024];path(file,argv[1],"newgame.c3g");
