@@ -34,7 +34,8 @@ typedef enum {
     C3_PRESENT_EXP_BAR_BUSY,      /* menuFightStatusWaitAnimeEXP poll: 1 while battler a's
                                      EXP bar is still filling */
     C3_PRESENT_STATUS_RENEW,      /* fightMenuFightOutPokemonRenewStatusMenu(a, fight type b, 1) */
-    C3_PRESENT_GRID_UPDATE        /* battleGridUpdate(): a battler left the field */
+    C3_PRESENT_GRID_UPDATE,       /* battleGridUpdate(): a battler left the field */
+    C3_PRESENT_EFFECT_POOL_FREE   /* fn_801DA7AC(): stop and free every move effect */
 } C3BattlePresent;
 
 /* fightWazaDoEffectFunc(move, attacker, target, count): the move's effect

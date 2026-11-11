@@ -289,7 +289,7 @@ static int64_t now_speed(C3BattleHandlers *h,uint32_t fo,uint8_t badge,int weath
 }
 /* fightFloorSortFightOutPokemonPtrArySub(0, list, 8, 0): by speed, ties by
  * one draw (fightFloorCmpfightOutPokemonNimbleness, priority off). */
-static int sort_by_speed(C3BattleHandlers *h,C3BattleScript *sc,uint32_t list[8])
+int c3_battle_sort_by_speed(C3BattleHandlers *h,C3BattleScript *sc,uint32_t list[8])
 {
     C3BattleState *s=h->state;
     uint32_t badge=0;int weather=0,fault=0;
@@ -504,7 +504,7 @@ int c3_battle_ai_select(C3BattleHandlers *h,C3BattleScript *sc,uint32_t trainer,
         if(choose)order[n++]=fo;
     }
     if(fault)return refuse(sc,"AI battler records");
-    if(n&&!sort_by_speed(h,sc,order))return 0;
+    if(n&&!c3_battle_sort_by_speed(h,sc,order))return 0;
     for(unsigned i=0;i<n;++i)if(order[i]&&!choose_move(s,sc,trainer,order[i]))return 0;
     return 1;
 }

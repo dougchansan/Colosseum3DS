@@ -41,4 +41,9 @@ int c3_battle_ai_damage_estimate(C3BattleHandlers *h, C3BattleScript *sc, uint32
  * battler's attack action (kind 0x13) and FightWaza. The scored choices are
  * refused. Returns 1 when every battler that needed a move has one. */
 int c3_battle_ai_select(C3BattleHandlers *h, C3BattleScript *sc, uint32_t trainer, uint32_t order[8]);
+
+/* fightFloorSortFightOutPokemonPtrArySub(0, list, 8, 0): list by speed
+ * (fightOutPokemonGetNowNimbleness), each tie drawing once; empty entries go
+ * last. Shared by the AI entry and the start of battle. */
+int c3_battle_sort_by_speed(C3BattleHandlers *h, C3BattleScript *sc, uint32_t list[8]);
 #endif

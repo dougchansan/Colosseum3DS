@@ -20,7 +20,7 @@ resumable action frame. Each stage stops when the result global
 | Pre-load, pre-entry | `KaisiPreSubLoad` 0x8020C840, kind 2 `KaisiPre` 0x8020C15C | missing |
 | Trainer entry | kind 3 `KaisiNyuujouTrainer` 0x8020D1FC | **ported, on hardware** |
 | Send-out (active entry) | kind 4 `KaisiNyuujouPokemon` 0x8020CA98 → `fightOutPokemonCreate` 0x802068C8 | missing |
-| Start-of-battle setup | kind 5 `KaisiPost` 0x8020BFA0 (+ kind 6 weather init, `fightSeqInit`) | missing |
+| Start-of-battle setup | kind 5 `KaisiPost` 0x8020BFA0 (+ kind 6 weather init, `fightSeqInit`) | **lowered** (`src/battle_start.c`), host tests only |
 | Command input | kind 7 → `fightTrainerSelectFightAction` 0x801F923C → AI `fn_802342CC` or GC menu | missing (AI argmax only: `battle_rules.c`) |
 | Execution | kind 0xB 0x8020BBFC: sort `fightFloorSortFightOutPokemonPtrAry` 0x801F3B24 / nimbleness compare 0x801F3CE8, two passes, Focus Punch check `fn_80211A00` | missing |
 | Move use | kind 0x13 `OutWaza` 0x8020B72C → `fn_802128D0`, target `fn_8022B2CC`, script interpreter `fn_80211B94` with opcode map `lbl_8027A00C` | missing (damage core `fn_80232110` ported) |
@@ -969,6 +969,85 @@ only. Every other path is refused by name, as elsewhere.
      since Willie's AI does not reach them).
   5. The item routine (`fightTrainerAiSelectFightActionItem`) (done for an
      empty bag, Willie's case; items are refused).
+
+## Start of battle (map and plan)
+
+The battle thread runs kind 2 (`KaisiPre`), kind 3 (the trainer entry,
+ported), kind 4 (`KaisiNyuujouPokemon`) and kind 5 (`KaisiPost`), which runs
+kind 6 (`TenkouInit`).
+
+- **Kind 2 `fightActionFlowKaisiPre`** (0x6E4) is presentation only: the
+  floor's introduction animations (encounter and appear WZX, skippable), the
+  trainer's intro message (trainer data 8) and throw animation, the battle
+  music, or the hero/enemy intro for the other branch. Not lowered.
+- **Kind 4 `fightActionFlowKaisiNyuujouPokemon`** (0x548): for each trainer
+  on the side, its first battle-ready party members up to the active count
+  become battlers (`fightOutPokemonCreate` with the Pokémon's model
+  sequence, `fightOutPokemonRegWzxLoad`, the Pokédex and Shadow flags for an
+  opponent when floor 0x1E is 1, grid entries), then the ball-throw and
+  appearance effects, the appear messages (message variables 0x22, 0x23,
+  0x25) and floor 0x36 per battler during its effects. Not lowered yet: the
+  tests create the four battlers with `c3_battle_fight_out_pokemon_create`
+  (sequence 0) in its place.
+- **Kind 5 `fightActionFlowKaisiPost`** (lowered: `c3_battle_start_post`,
+  `src/battle_start.c`), in source order:
+  1. **Battler list** (`fightFloorCreateFightOutPokemonPtrAry`): FightFloor
+     `+0xA4C4` (floor 0x59, 8 pointers) gets every valid battler side by
+     side, trainer by trainer, slot by slot. (The valid-battler loop goes
+     slot by slot instead.)
+  2. **Speed sort** (`fightFloorSortFightOutPokemonPtrAry(0, 0)`): the same
+     `fightFloorSortFightOutPokemonPtrArySub(.., 8, 0)` as the AI entry, now
+     shared (`c3_battle_sort_by_speed`); each tie draws once.
+  3. **`fightSeqInit`:** per valid battler (`fn_80213558`, flag 0) the
+     one-turn fields 0x102..0x112, the erases of conditions 0x32, 0x37 and
+     0x33 (category 0xD8, on the battler), 0xED counted down; a rampage
+     (condition 0x12) or a Substitute (0x14) is refused. Each valid side's
+     condition 0x4D (category 6) is erased. The move cleanup
+     (`fn_802136A4`, the end-of-move service). The script work bytes
+     `lbl_80478D78[0..7]` and the current action `lbl_8047B62C` are cleared.
+     Flinch (0x11) is erased on battlers in battle.
+     `fightOutPokemonWriteJoutaiDataId` is an erase despite its name.
+  4. **Shadow check** (`fn_8022E6F0`, flag 0): only a Shadow Pokémon in
+     battle acts (its appearance and aura): refused.
+  5. **Kind 6 `fightActionFlowTenkouInit`:** first field effect 1
+     (`fightKoukaDoFightKoukaJoukenAndKouka(0, 1)`), table-driven:
+     - `lbl_80375CB8` row 1 (6-byte rows: condition, target, effect) is
+       condition 6, target 1 (the floor), effect 2.
+     - Condition 6 (`lbl_80375A08`, 24-byte rows, no linked rows) compares
+       `fightFloorGetStatus(0xB, 0x4E)`, whether the floor's condition 0x4E
+       can be written (`fn_8011B444`), with the constant 2.
+     - Effect 2 (`lbl_80363B18`, 10-byte rows, no link) is mode 0 on floor
+       field 0xA with value 0x4E: `fightFloorSetStatus` writes the floor
+       condition 0x4E (category 9) with argument 0 when it can be written.
+     Condition 0x4E is clear weather (the weather conditions are
+     0x4E..0x55); its turn-count row is fixed (-1), so nothing is drawn.
+     Then the weather (`fightFloorGetNowTenkouDataId(0, 0)`): any weather
+     but clear runs its start message `lbl_80378AA0`: refused.
+  6. **Ability check** (`fn_8022E410`) in speed order (loop flag 1 walks the
+     floor's sorted list): Drizzle, Sand Stream, Drought, Intimidate,
+     Trace, Forecast and Cloud Nine / Air Lock act on appearing: refused.
+  7. **Intimidate and Trace passes** (`fn_8022E314(1)`, `fn_8022E1C4`): the
+     end-of-move service's passes.
+  8. **Held-item check** (`fn_8022D084`) in speed order: each battler in
+     battle appoints its held item (floor 0x56: message variable 0x29 and
+     `+0xA4BC`); a held item is refused (its effects 0x20 and 0x17 are not
+     lowered).
+  9. **Shadow check** again (flag 1).
+  10. **Met lists, enemy registry, enemy arrays** (ported earlier).
+  11. **First-attack random:** floor 0x5B (`+0xA4E4`) from one draw.
+  12. `fn_801DA7AC` stops and frees the move-effect pool: presented as
+      `C3_PRESENT_EFFECT_POOL_FREE`.
+
+  On the original data: the order is the player's two Pokémon (speeds 71
+  and 46), then the two Zigzagoon (33 each), whose tie draws once; floor
+  0x5B takes the next draw: two draws in all. No ability, held item or Shadow Pokémon acts. The clear-weather
+  condition is written and the weather stays clear.
+- **Planned rounds:**
+  1. Kind 5 with kind 6 (done).
+  2. Kind 4: the battlers' creation from the party with their model
+     sequences, the Pokédex/Shadow flags and the appearance presentation.
+  3. Kind 2's presentation as presenter requests, then the stage sequence
+     2, 3, 4, 5 in one call.
 
 ## Increments
 

@@ -3,6 +3,7 @@
 #include "colosseum3ds/battle_ai.h"
 #include "colosseum3ds/battle_handlers.h"
 #include "colosseum3ds/battle_rules.h"
+#include "colosseum3ds/battle_start.h"
 #include "colosseum3ds/battle_preview.h"
 #include "colosseum3ds/game_state.h"
 #include <stddef.h>
@@ -796,6 +797,83 @@ int main(void)
      * When the item roll succeeds, Willie's empty bag gives no item action
      * (fightTrainerAiSelectFightActionItem returns 0) and the turn goes on
      * the same way; the draws are the same either way. */
+    /* Start of battle (fightActionFlowKaisiPost, kind 5) after the send-out
+     * created the four battlers: the floor's battler list sorted by speed
+     * (Zigzagoon A and B tie at 33: draws), fightSeqInit, the weather init
+     * writing the clear-weather condition 0x4E, the appear checks (no
+     * ability, held item or Shadow Pokemon acts), the met lists, enemy
+     * registry and enemy arrays, then floor 0x5B from the next draw. */
+    {
+        char error[C3_BATTLE_ERROR_SIZE];C3BattleState *s=w.state;
+        CHECK(c3_battle_state_from_entry(s,w.entry,w.pack,error));
+        s->conditions=(C3BattleDataRows){w.script_pack.conditions,w.script_pack.condition_count,C3_CONDITION_ROW_BYTES};
+        s->accuracy=(C3BattleDataRows){w.script_pack.accuracy,w.script_pack.accuracy_count,2};
+        s->target_kinds=(C3BattleDataRows){w.script_pack.target_kinds,w.script_pack.target_kind_count,8};
+        s->kaisuu=(C3BattleDataRows){w.script_pack.kaisuu,w.script_pack.kaisuu_count,8};
+        uint32_t fos[4];
+        for(unsigned side=0;side<2;++side)for(unsigned k=0;k<2;++k){
+            fos[side*2+k]=c3_battle_state_fight_out(s,side,k);
+            CHECK(c3_battle_fight_out_pokemon_create(&s->arena,fos[side*2+k],c3_battle_state_fight_pokemon(s,side,k),0,&s->species));
+        }
+        /* Fields the start resets, set beforehand. */
+        for(unsigned i=0;i<4;++i){
+            CHECK(c3_battle_fight_status_set(&s->arena,fos[i],0x102,0,1)&&c3_battle_fight_status_set(&s->arena,fos[i],0x112,0,1));
+            CHECK(c3_battle_fight_status_set(&s->arena,fos[i],0x113,0,1));
+        }
+        memset(&r,0,sizeof r);r.handlers.state=s;
+        r.handlers.damage=(C3BattleDamageTables){w.script_pack.stage_ratios,w.script_pack.stage_ratio_count,
+            w.script_pack.item_types,w.pack->sections[C3_PACK_T44].bytes,w.pack->sections[C3_PACK_T44].count};
+        r.handlers.present=present;r.handlers.present_user=&r.presentation;
+        C3BattleScriptServices sv=c3_battle_handler_services(&r.handlers);
+        CHECK(c3_battle_script_init(&r.script,&w.script_pack,&sv));
+        CHECK(c3_battle_script_write(&r.script,C3_SCRIPT_WSD_BASE+3,1,0x55));
+        int weather=-1;
+        CHECK(c3_battle_state_weather(s,0,&weather)&&weather==0);
+        CHECK(!c3_battle_condition_present(s,s->floor,0x4E,NULL));
+        C3BattleRng before=s->rng;
+        int ok=c3_battle_start_post(&r.handlers,&r.script);
+        printf("start of battle: %s, %u draws\n",ok?"done":r.script.failure,(unsigned)(s->rng.draws-before.draws));
+        CHECK(ok);
+        /* The floor list: the four battlers, by speed. */
+        const uint8_t *fl=c3_battle_arena_bytes(&s->arena,s->floor+0xA4C4u,32);
+        uint32_t list[8];unsigned seen=0;
+        for(unsigned i=0;i<8;++i)list[i]=be32_at(fl+4*i);
+        for(unsigned i=0;i<4;++i)for(unsigned k=0;k<4;++k)if(list[i]==fos[k])seen|=1u<<k;
+        CHECK(seen==15&&!list[4]&&!list[5]&&!list[6]&&!list[7]);
+        uint16_t speed[4];
+        for(unsigned i=0;i<4;++i){
+            unsigned k=0;while(fos[k]!=list[i])++k;
+            const uint8_t *pp=c3_battle_arena_bytes(&s->arena,c3_battle_state_fight_pokemon(s,k/2,k%2)+4,0x98);
+            speed[i]=(uint16_t)(pp[0x96]<<8|pp[0x97]);
+        }
+        printf("start of battle order: speeds %u %u %u %u\n",speed[0],speed[1],speed[2],speed[3]);
+        for(unsigned i=0;i+1<4;++i)CHECK(speed[i]>=speed[i+1]);
+        /* The ties drew; floor 0x5B is the draw after them, the last one. */
+        CHECK(s->rng.draws>=before.draws+2u);
+        C3BattleRng replay=before;uint16_t last=0;
+        while(replay.draws<s->rng.draws)CHECK(c3_battle_rng_next16(&replay,&last));
+        CHECK(replay.seed==s->rng.seed);
+        const uint8_t *fa=c3_battle_arena_bytes(&s->arena,s->floor+0xA4E4u,2);
+        CHECK((uint16_t)(fa[0]<<8|fa[1])==last);
+        /* fightSeqInit, the weather init and the appear checks. */
+        uint32_t v=0;
+        for(unsigned i=0;i<4;++i){
+            CHECK(c3_battle_fight_status_get(&s->arena,fos[i],0x102,0,&v)&&v==0);
+            CHECK(c3_battle_fight_status_get(&s->arena,fos[i],0x112,0,&v)&&v==0);
+            CHECK(c3_battle_fight_status_get(&s->arena,fos[i],0x113,0,&v)&&v==0);
+        }
+        CHECK(c3_battle_script_read(&r.script,C3_SCRIPT_WSD_BASE+3,1,&v)&&v==0&&r.script.action==0);
+        CHECK(c3_battle_condition_present(s,s->floor,0x4E,NULL)==1);
+        CHECK(c3_battle_state_weather(s,0,&weather)&&weather==0);
+        const uint8_t *ai=c3_battle_arena_bytes(&s->arena,s->floor+0xA4BCu,2);
+        CHECK(ai[0]==0&&ai[1]==0&&s->msgctrl[0x29]==C3_MSGREF_ITEM_NAME(0));
+        /* The met lists, registry and enemy arrays: Willie meets Umbreon and
+         * Espeon (entry IDs 11, 12) and registers them. */
+        CHECK(c3_battle_trainer_enemy(s,s->trainer[1],11)&&c3_battle_trainer_enemy(s,s->trainer[1],12));
+        char want[16];snprintf(want,sizeof want,"%d:0:0;",(int)C3_PRESENT_EFFECT_POOL_FREE);
+        CHECK(strlen(r.presentation.log)>=strlen(want)&&
+              strcmp(r.presentation.log+strlen(r.presentation.log)-strlen(want),want)==0);
+    }
     int seen_item=0,seen_move=0;
     for(unsigned skip=0;skip<8&&!(seen_item&&seen_move);++skip){
         battle_reset(&w,1,0,0,0,33,0);
