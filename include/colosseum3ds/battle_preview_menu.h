@@ -21,4 +21,11 @@ void c3_battle_preview_menu_init(C3BattlePreviewMenu *menu);
 int c3_battle_preview_menu_step(C3BattlePreviewMenu *menu,C3BattlePreview *battle,
                                 const C3BattlePreviewTables *tables,uint16_t pressed,
                                 char *error);
+/* Stylus tap at bottom-screen pixel (x, y), using the row layout of
+ * c3_battle_ui_draw_to. A tap on a legal move or a standing target selects
+ * it; the returned button bits (A or none) are then passed to
+ * c3_battle_preview_menu_step. Message pages and the confirm panel accept a
+ * tap as A; the leave question needs a button. */
+uint16_t c3_battle_preview_menu_touch(C3BattlePreviewMenu *menu,const C3BattlePreview *battle,
+                                      const C3BattlePreviewTables *tables,unsigned x,unsigned y);
 #endif

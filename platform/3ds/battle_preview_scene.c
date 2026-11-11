@@ -100,6 +100,9 @@ int c3_battle_preview_scene_run(const C3BattleRequest *request,const uint8_t *en
                 if(menu.event!=shown){menu.event=shown;dirty=1;}
             }
             uint16_t pressed=released?input.pressed:0;
+            /* A stylus tap selects a move or target row and confirms it. */
+            if(released&&input.touch_pressed&&complete)
+                pressed|=c3_battle_preview_menu_touch(&menu,battle,&tables,input.touch_x,input.touch_y);
             c3_ui_pager_sync(&ui_pager,(uint32_t)menu.page*0x10000u+(uint32_t)menu.event+1u);
             if(c3_ui_pager_advance(&ui_pager,&pressed))dirty=1;
             if(p->cursor<p->count&&p->events[p->cursor].kind==C3_PREVIEW_EVENT_HP)dirty=1;

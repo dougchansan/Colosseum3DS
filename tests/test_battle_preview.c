@@ -185,6 +185,25 @@ static void menu_control(void)
     CHECK(c3_battle_preview_menu_step(&m,&b,&t,C3_PREVIEW_A,e));CHECK(m.page==C3_PREVIEW_MENU_TARGET);
     CHECK(c3_battle_preview_menu_step(&m,&b,&t,C3_PREVIEW_DOWN,e));CHECK(m.target==3);
     CHECK(c3_battle_preview_menu_step(&m,&b,&t,C3_PREVIEW_B,e));CHECK(m.page==C3_PREVIEW_MENU_MOVE);
+    /* Stylus: a tap on a legal move row selects it and confirms; rows are
+     * 23 pixels from y 116, targets 35 pixels from y 125. */
+    {C3BattlePreviewMenu touch=m;uint8_t legal=c3_battle_preview_legal_moves(&b,&t,touch.actor);unsigned row;
+     CHECK(touch.page==C3_PREVIEW_MENU_MOVE&&legal);
+     for(row=0;row<4;++row)if(legal&(1u<<row)&&row!=touch.selection)break;
+     if(row<4){CHECK(c3_battle_preview_menu_touch(&touch,&b,&t,100,116+row*23+5)==C3_PREVIEW_A&&touch.selection==row);}
+     CHECK(c3_battle_preview_menu_touch(&touch,&b,&t,5,120)==0&&c3_battle_preview_menu_touch(&touch,&b,&t,100,100)==0);
+     CHECK(c3_battle_preview_menu_touch(&touch,&b,&t,100,230)==0&&c3_battle_preview_menu_touch(&touch,&b,&t,400,120)==0);
+     touch.page=C3_PREVIEW_MENU_TARGET;touch.target=2;
+     CHECK(c3_battle_preview_menu_touch(&touch,&b,&t,100,125+35+3)==C3_PREVIEW_A&&touch.target==3);
+     CHECK(c3_battle_preview_menu_touch(&touch,&b,&t,100,126)==C3_PREVIEW_A&&touch.target==2);
+     CHECK(c3_battle_preview_menu_touch(&touch,&b,&t,100,200)==0&&touch.target==2);
+     {C3BattlePreview fainted=b;fainted.mons[3].hp=0;
+      CHECK(c3_battle_preview_menu_touch(&touch,&fainted,&t,100,125+35+3)==0&&touch.target==2);}
+     touch.page=C3_PREVIEW_MENU_CONFIRM;
+     CHECK(c3_battle_preview_menu_touch(&touch,&b,&t,160,150)==C3_PREVIEW_A&&c3_battle_preview_menu_touch(&touch,&b,&t,160,100)==0);
+     touch.page=C3_PREVIEW_MENU_EVENTS;CHECK(c3_battle_preview_menu_touch(&touch,&b,&t,10,10)==C3_PREVIEW_A);
+     touch.page=C3_PREVIEW_MENU_LEAVE;CHECK(c3_battle_preview_menu_touch(&touch,&b,&t,160,150)==0);
+     CHECK(c3_battle_preview_menu_touch(NULL,&b,&t,1,1)==0);}
     CHECK(c3_battle_preview_menu_step(&m,&b,&t,C3_PREVIEW_X,e));CHECK(m.page==C3_PREVIEW_MENU_LEAVE);
     CHECK(c3_battle_preview_menu_step(&m,&b,&t,C3_PREVIEW_B,e));CHECK(m.page==C3_PREVIEW_MENU_MOVE);
     CHECK(!memcmp(&b,&saved,sizeof b));

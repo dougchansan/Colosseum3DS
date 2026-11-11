@@ -72,3 +72,27 @@ int c3_battle_preview_menu_step(C3BattlePreviewMenu *m,C3BattlePreview *b,
     }
     return 1;
 }
+
+uint16_t c3_battle_preview_menu_touch(C3BattlePreviewMenu *m,const C3BattlePreview *b,
+    const C3BattlePreviewTables *t,unsigned x,unsigned y)
+{
+    if(!m||!b||!t||x>=320||y>=240||m->actor>1)return 0;
+    switch(m->page){
+    case C3_PREVIEW_MENU_EVENTS:case C3_PREVIEW_MENU_RESULT:return y<220?C3_PREVIEW_A:0;
+    case C3_PREVIEW_MENU_MOVE:{
+        uint8_t mask=c3_battle_preview_legal_moves(b,t,m->actor);
+        if(x<15||x>=305)return 0;
+        if(!mask)return y>=120&&y<143?C3_PREVIEW_A:0; /* the single Struggle row */
+        if(y<116||y>=116+4*23)return 0;
+        unsigned row=(y-116)/23;
+        if(!(mask&(1u<<row)))return 0;
+        m->selection=row;return C3_PREVIEW_A;}
+    case C3_PREVIEW_MENU_TARGET:{
+        if(x<15||x>=305||y<125||y>=125+2*35)return 0;
+        unsigned target=2+(y-125)/35;
+        if(!b->mons[target].hp)return 0;
+        m->target=target;return C3_PREVIEW_A;}
+    case C3_PREVIEW_MENU_CONFIRM:return x>=7&&x<313&&y>=111&&y<213?C3_PREVIEW_A:0;
+    default:return 0;
+    }
+}
