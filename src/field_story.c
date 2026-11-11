@@ -996,6 +996,20 @@ int c3_field_story_transition(C3FieldStory *story,uint32_t source_id,char *error
     log_line(s,"story_door source=%lu script=%08lx",(unsigned long)source_id,(unsigned long)link->script);
     s->view.control=0;return start(s,link->script,link->args,4,&s->event_key,error);
 }
+/* hero_move.c dispatches the touched event surfaces as kind 2 through
+ * floor_character.c fn_80116D30 before the crossed ones (kind 1). The
+ * common door script 05960005 needs native 60 and the door table, which
+ * are not ported: those links are skipped and recorded once. */
+int c3_field_story_touch(C3FieldStory *story,uint32_t source_id,char *error)
+{
+    Impl *s=story?story->impl:NULL;if(!s||!s->view.control)return 0;
+    const C3AreaLink *link=c3_area_link(s->area,2,source_id);
+    if(!link)return 0;
+    if(link->script==0x05960005u){note_presentation(s,0x60,"door_open_event_unported");return 0;}
+    log_line(s,"story_touch source=%lu script=%08lx",(unsigned long)source_id,(unsigned long)link->script);
+    s->view.control=0;
+    return start(s,link->script,link->args,4,&s->event_key,error)?1:-1;
+}
 int c3_field_story_menu_event(C3FieldStory *story,uint32_t script,char *error)
 {
     Impl *s=story?story->impl:NULL;

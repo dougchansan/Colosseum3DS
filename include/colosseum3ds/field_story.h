@@ -60,6 +60,10 @@ C3StoryActor *c3_field_story_actor(C3FieldStory *story, uint32_t source_index);
 int c3_field_story_interact(C3FieldStory *story, char *error);
 int c3_field_story_transition(C3FieldStory *story, uint32_t surface_id,
                               char *error);
+/* Kind-2 event of a touched surface (c3_area_touch_events). Returns 1 when
+ * its original script was started, 0 when there is nothing to run and -1 on
+ * failure. */
+int c3_field_story_touch(C3FieldStory *story, uint32_t surface_id, char *error);
 /* Resolve the first-area human cylinders after map collision, with a ground
  * check, so moving into a visible NPC does not pass through it. */
 void c3_field_story_collide(C3FieldStory *story, const float before[3]);

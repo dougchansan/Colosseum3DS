@@ -174,3 +174,71 @@ const C3FieldTriangle *c3_area_transition_active(const C3Area *area,const C3Fiel
     }
     return NULL;
 }
+
+/* GScolsys2Thru.c getCpPointPoly / getCpPointLine / getCpPointPoint: the
+ * face, the flagged edges and the flagged corners of one event triangle
+ * against a sphere centre on the triangle's front side. */
+static int touch_pass(const C3FieldTriangle *t,const double point[3],double radius_sq,unsigned pass)
+{
+    static const uint16_t masks[3]={1,2,4};
+    double v[3][3],n[3],offset[3];
+    for(unsigned i=0;i<3;++i)for(unsigned j=0;j<3;++j)v[i][j]=t->vertices[i*3+j];
+    for(unsigned j=0;j<3;++j){n[j]=t->normal[j];offset[j]=point[j]-v[0][j];}
+    double side=dot(offset,n),nn=dot(n,n);
+    if(side<0||nn<=0)return 0;
+    if(pass==0){
+        double cp[3],a[3],u[3],w[3];
+        if(side*side/nn>=radius_sq)return 0;
+        for(unsigned j=0;j<3;++j){cp[j]=point[j]-n[j]*side/nn;a[j]=cp[j]-v[0][j];u[j]=v[1][j]-v[0][j];w[j]=v[2][j]-v[0][j];}
+        double uu=dot(u,u),uw=dot(u,w),ww=dot(w,w),d=uu*ww-uw*uw;
+        if(d<=1e-14)return 0;
+        double s=(dot(a,u)*ww-dot(a,w)*uw)/d,r=(dot(a,w)*uu-dot(a,u)*uw)/d;
+        return s>=0&&r>=0&&s+r<=1;
+    }
+    for(unsigned i=0;i<3;++i){
+        if(pass==1){
+            unsigned next=i+1<3?i+1:0;double edge[3],to[3],cp[3];
+            if(!(t->flags&masks[i]))continue;
+            for(unsigned j=0;j<3;++j){edge[j]=v[next][j]-v[i][j];to[j]=point[j]-v[i][j];}
+            double length=dot(edge,edge);if(length<=0)continue;
+            double at=dot(to,edge)/length;if(at<0||at>1)continue;
+            for(unsigned j=0;j<3;++j)cp[j]=point[j]-(v[i][j]+edge[j]*at);
+            if(dot(cp,cp)<radius_sq)return 1;
+        }else{
+            unsigned prev=i+2<3?i+2:i-1;double to[3];
+            if(!(t->flags&masks[i])||!(t->flags&masks[prev]))continue;
+            for(unsigned j=0;j<3;++j)to[j]=point[j]-v[i][j];
+            if(dot(to,to)<radius_sq)return 1;
+        }
+    }
+    return 0;
+}
+
+unsigned c3_area_touch_events(const C3Area *area,const C3FieldMap *map,const float before[3],
+                              const float after[3],float radius,uint16_t ids[4])
+{
+    unsigned count=0;double direction[3];
+    if(!area||!before||!after||!ids||!isfinite(radius)||radius<=0)return 0;
+    for(unsigned j=0;j<3;++j){
+        if(!isfinite(before[j])||!isfinite(after[j]))return 0;
+        direction[j]=(double)after[j]-before[j];
+    }
+    double length=sqrt(dot(direction,direction));
+    if(!(length>0))return 0;
+    /* GScolsys2ThruGetEventID: sample the step every `radius` along it. */
+    double step=radius/length,position=0;if(step>1)step=1;
+    while(position<1&&count<4){
+        double sample=position+step,point[3];if(sample>1)sample=1;
+        for(unsigned j=0;j<3;++j)point[j]=before[j]+direction[j]*sample;
+        for(unsigned pass=0;pass<3&&count<4;++pass)for(uint32_t i=0;i<area->transition_count&&count<4;++i){
+            const C3FieldTriangle *t=area->transitions+i;double n[3]={t->normal[0],t->normal[1],t->normal[2]};unsigned k;
+            if(map&&!c3_field_object_enabled(map,t->object))continue;
+            if(pass&&!(t->flags&7u))continue;
+            for(k=0;k<count;++k)if(ids[k]==t->source_id)break;
+            if(k<count||dot(n,direction)>=0)continue;
+            if(touch_pass(t,point,(double)radius*radius,pass))ids[count++]=t->source_id;
+        }
+        position+=step;
+    }
+    return count;
+}

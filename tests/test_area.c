@@ -64,6 +64,28 @@ static void mutation(C3Area *area,const uint8_t *original,unsigned offset,uint32
 static void contacts(C3Area *area)
 {
     float before[3]={1,0,0},after[3]={.2f,0,0};
+    /* Kind-2 touch query. Both fixture triangles lie in x=0 facing +x with
+     * edge flag 4 (edge v2->v0) set; their source IDs are 7 and 42. */
+    {uint16_t ids[4]={0};float from[3]={1,0,0},to[3]={.2f,0,0};
+     CHECK(c3_area_touch_events(area,NULL,from,to,.4f,ids)==2&&ids[0]==7&&ids[1]==42);
+     to[0]=.6f;CHECK(c3_area_touch_events(area,NULL,from,to,.4f,ids)==0);   /* still a radius away */
+     CHECK(c3_area_touch_events(area,NULL,to,from,.4f,ids)==0);            /* moving away */
+     from[0]=-.1f;to[0]=-.5f;CHECK(c3_area_touch_events(area,NULL,from,to,.4f,ids)==0); /* behind */
+     /* Just outside the flagged edge v2->v0 (y=-1.5 at z=0): the edge pass hits. */
+     from[0]=.9f;to[0]=.1f;from[1]=to[1]=-1.7f;CHECK(c3_area_touch_events(area,NULL,from,to,.4f,ids)==2);
+     /* Just outside the unflagged edge v0->v1 (z=-3): nothing. */
+     from[1]=to[1]=0;from[2]=to[2]=-3.2f;CHECK(c3_area_touch_events(area,NULL,from,to,.4f,ids)==0);
+     /* Corners need both adjoining edge flags; only one is set here. */
+     from[1]=to[1]=-3.2f;from[2]=to[2]=-3.2f;CHECK(c3_area_touch_events(area,NULL,from,to,.4f,ids)==0);
+     area->transitions[0].flags=7;CHECK(c3_area_touch_events(area,NULL,from,to,.4f,ids)==1&&ids[0]==7);
+     area->transitions[0].flags=0x1234;
+     from[1]=to[1]=0;from[2]=to[2]=0;from[0]=1;to[0]=.2f;
+     CHECK(!c3_area_touch_events(NULL,NULL,from,to,.4f,ids)&&!c3_area_touch_events(area,NULL,from,from,.4f,ids));
+     CHECK(!c3_area_touch_events(area,NULL,from,to,0,ids)&&!c3_area_touch_events(area,NULL,from,to,.4f,NULL));
+     C3FieldMap disabled={.object_count=2};uint16_t first=area->transitions[0].object,second=area->transitions[1].object;
+     area->transitions[0].object=0;area->transitions[1].object=1;CHECK(c3_field_set_object_enabled(&disabled,0,0));
+     CHECK(c3_area_touch_events(area,&disabled,from,to,.4f,ids)==1&&ids[0]==42);
+     area->transitions[0].object=first;area->transitions[1].object=second;}
     CHECK(c3_area_transition(area,before,after,.4f)==area->transitions);
     CHECK(!c3_area_transition(area,before,before,.4f));
     CHECK(!c3_area_transition(area,after,before,.4f));

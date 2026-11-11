@@ -45,4 +45,12 @@ const C3FieldTriangle *c3_area_transition(const C3Area *area,
 const C3FieldTriangle *c3_area_transition_active(const C3Area *area,const C3FieldMap *map,
                                         const float before[3], const float after[3], float radius);
 
+/* GScolsys2ThruGetEventID (kind 2 events): source IDs of the event
+ * surfaces a sphere of `radius` touches on its way from before to after,
+ * approached from their front side. Face, flagged edges and flagged corners
+ * are tested as in the original; at most four distinct IDs, in table order
+ * per pass. Returns the count. */
+unsigned c3_area_touch_events(const C3Area *area,const C3FieldMap *map,const float before[3],
+                              const float after[3],float radius,uint16_t ids[4]);
+
 #endif

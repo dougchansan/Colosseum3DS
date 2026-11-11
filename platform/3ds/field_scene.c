@@ -348,7 +348,17 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                         c3_field_story_collide(&story,before);
                         float from[3]={before[0],before[1]+8.5f*map.scale,before[2]};
                         float to[3]={player.position[0],player.position[1]+8.5f*map.scale,player.position[2]};
-                        const C3FieldTriangle *door=c3_area_transition_active(&area,&map,from,to,map.radius);
+                        /* Touched surfaces (kind 2) run before crossed ones
+                         * (kind 1), as in hero_move.c. A started touch
+                         * script takes the frame; the doorway follows once
+                         * it has finished and the player keeps moving. */
+                        uint16_t touched[4];int touch_started=0;
+                        unsigned touch_count=c3_area_touch_events(&area,&map,from,to,map.radius,touched);
+                        for(unsigned i=0;i<touch_count&&!touch_started;++i){
+                            touch_started=c3_field_story_touch(&story,touched[i],story_error);
+                            if(touch_started<0)goto story_failed;
+                        }
+                        const C3FieldTriangle *door=touch_started?NULL:c3_area_transition_active(&area,&map,from,to,map.radius);
                         if(door&&!c3_field_story_transition(&story,door->source_id,story_error))goto story_failed;
                     }
                 }
