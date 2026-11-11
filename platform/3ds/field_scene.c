@@ -51,22 +51,35 @@ int c3_field_scene_supports(uint32_t floor)
     snprintf(path,sizeof path,BOOT_ROOT "%s",profile->story);
     return exists(path);
 }
-/* Item service for script native 77. The PDA pack holds the item table and
- * names; it is read for the gift and released again. */
+/* The PDA pack holds the item and move tables and their names. Script
+ * services read it for one request and release it again. */
+static uint8_t *open_pda(C3PdaAssets *assets)
+{
+    FILE *file=fopen(BOOT_ROOT "pda.c3pd","rb");long length=0;uint8_t *data=NULL;
+    if(file&&!fseek(file,0,SEEK_END)&&(length=ftell(file))>=64&&length<=8*1024*1024&&!fseek(file,0,SEEK_SET)&&
+       (data=malloc((size_t)length))&&(fread(data,1,(size_t)length,file)!=(size_t)length||
+       !c3_pda_assets_open(assets,data,(size_t)length))){free(data);data=NULL;}
+    if(file)fclose(file);
+    return data;
+}
+/* Item service for script native 77. */
 static int receive_item(void *context,uint32_t item,uint32_t count,char *name,size_t capacity)
 {
     C3GameState *state=context;C3GameSummary summary;C3PdaAssets assets={0};C3InventoryItem info;
-    FILE *file=fopen(BOOT_ROOT "pda.c3pd","rb");long length=0;uint8_t *data=NULL;int result=-1;
-    if(file&&!fseek(file,0,SEEK_END)&&(length=ftell(file))>=64&&length<=8*1024*1024&&!fseek(file,0,SEEK_SET)&&
-       (data=malloc((size_t)length))&&fread(data,1,(size_t)length,file)==(size_t)length&&
-       c3_pda_assets_open(&assets,data,(size_t)length)&&c3_inventory_item(&assets,item,&info)&&
-       c3_game_state_summary(state,&summary)){
+    uint8_t *data=open_pda(&assets);int result=-1;
+    if(data&&c3_inventory_item(&assets,item,&info)&&c3_game_state_summary(state,&summary)){
         result=c3_inventory_receive(state,&assets,item,count);
         if(!c3_pda_text(&assets,info.name,summary.name,summary.partner,name,capacity))
             snprintf(name,capacity,"ITEM %lu",(unsigned long)item);
     }
-    if(file)fclose(file);
     free(data);return result;
+}
+/* Party service for script native D8. */
+static int restore_party(void *context)
+{
+    C3PdaAssets assets={0};uint8_t *data=open_pda(&assets);
+    int restored=data?c3_inventory_restore_party(context,&assets):-1;
+    free(data);return restored;
 }
 /* Destinations the original doorway script may request from a field. */
 static int floor_reachable(uint32_t floor)
@@ -264,6 +277,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     c3_field_story_set_floor_support(&story,floor_reachable);
     c3_field_story_enable_name_entry(&story,1);
     c3_field_story_set_item_service(&story,receive_item,state);
+    c3_field_story_set_party_service(&story,restore_party,state);
     if(!c3_field_story_prepare(&story,story_error))goto story_failed;
     view=c3_field_story_view(&story);
     if(trace){fprintf(trace,"field_begin floor=%lu previous=%lu spawn=%u new=%d maps=%lu npcs=%lu models=%lu arrival=%d duration=%.3f\n",

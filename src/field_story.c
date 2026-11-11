@@ -65,6 +65,7 @@ typedef struct {
     int name_entry_enabled;
     uint16_t (*random16)(void *context);void *random_context;
     C3FieldStoryReceive receive;void *receive_context;
+    C3FieldStoryRestore restore;void *restore_context;
     uint32_t message_values[256]; /* msgctrlSetValue: one word per control byte */
     char item_name[64],number_text[16];const char *message_speaker;
     Person partner_actor; /* (0,101); invisible until native 23 */
@@ -109,7 +110,7 @@ static int validate_native(const Impl *s,const C3StoryCall *c,char *error)
         /* Phenac City exterior bank 013E0E00 (native table lbl_802E1CF0). */
         {0x02,1,0},{0x16,2,0},{0x23,1,0},{0x31,0,0},{0x66,1,0},{0x7e,2,0},
         {0x82,3,0},{0x83,3,0},{0x89,3,0},{0xa1,3,0},{0xa4,6,0x3c},{0xa5,5,0x10},
-        {0x77,2,0},{0x84,2,0},{0xa9,2,0},{0xb1,6,0x10},{0xb4,0,0},{0xda,1,0},{0xe8,2,0}
+        {0x77,2,0},{0x84,2,0},{0xa9,2,0},{0xb1,6,0x10},{0xb4,0,0},{0xd8,1,0},{0xda,1,0},{0xe8,2,0}
     };
     for(unsigned i=0;i<sizeof signature/sizeof signature[0];++i){
         if(signature[i].id!=c->native)continue;
@@ -624,6 +625,19 @@ static int run_native(Impl *s,RunTask *t,char *error)
             }
         }
         }break;
+    case 0xd8:{
+        /* fn_801C852C: nothing unless flag value 08AE is zero. Mode 0 is
+         * fn_801D0AFC(0): pokemonAllKaihuku on every valid party member.
+         * Mode 1 clears two per-member attributes that are not identified. */
+        uint32_t battle_mode=0;
+        if(!flag(s,0x8ae,&battle_mode,error))return 0;
+        if(battle_mode)break;
+        if(a[0]!=0)return fail(error,"Native D8 mode %lu is not ported",(unsigned long)a[0]);
+        if(!s->restore)return fail(error,"Native D8 needs the party service, which this scene did not bind");
+        int restored=s->restore(s->restore_context);
+        if(restored<0)return fail(error,"The party could not be restored");
+        log_line(s,"story_party_restore mode=0 members=%d",restored);
+        }break;
     case 0xe8:
         /* fn_801C7730 moves the follower out of the hero-to-NPC corridor
          * and always returns 0. Without a follower on the field it returns
@@ -760,6 +774,10 @@ int c3_field_story_name_result(C3FieldStory *story,const char *name,char *error)
 void c3_field_story_set_item_service(C3FieldStory *story,C3FieldStoryReceive receive,void *context)
 {
     Impl *s=story?story->impl:NULL;if(s){s->receive=receive;s->receive_context=context;}
+}
+void c3_field_story_set_party_service(C3FieldStory *story,C3FieldStoryRestore restore,void *context)
+{
+    Impl *s=story?story->impl:NULL;if(s){s->restore=restore;s->restore_context=context;}
 }
 void c3_field_story_set_floor_support(C3FieldStory *story,int (*supported)(uint32_t floor))
 {

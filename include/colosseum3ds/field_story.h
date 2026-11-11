@@ -53,6 +53,10 @@ int c3_field_story_name_result(C3FieldStory *story,const char *name,char *error)
  * the item is invalid. Unbound, native 77 fails. */
 typedef int (*C3FieldStoryReceive)(void *context,uint32_t item,uint32_t count,char *name,size_t capacity);
 void c3_field_story_set_item_service(C3FieldStory *story,C3FieldStoryReceive receive,void *context);
+/* Full party restore (script native D8 mode 0, pokemonAllKaihuku). Returns
+ * the number of members restored or a negative value. Unbound, D8 fails. */
+typedef int (*C3FieldStoryRestore)(void *context);
+void c3_field_story_set_party_service(C3FieldStory *story,C3FieldStoryRestore restore,void *context);
 /* Floors the scene can load. Without a predicate only floors 1 and 2 pass;
  * any other destination blocks with an explicit notice. */
 void c3_field_story_set_floor_support(C3FieldStory *story,int (*supported)(uint32_t floor));

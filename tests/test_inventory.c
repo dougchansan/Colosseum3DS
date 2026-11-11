@@ -102,5 +102,16 @@ int main(int argc,char **argv){char directory[]="/tmp/c3-inventory-XXXXXX",path[
   CHECK(c3_inventory_receive(&state,&a,2,99)==99&&r16(bag+0x7f6)==1);
   CHECK(c3_inventory_receive(&state,&a,999,1)==-1&&c3_inventory_receive(&state,&a,1,0)==-1);
   CHECK(c3_inventory_receive(NULL,&a,1,1)==-1&&c3_inventory_receive(&state,NULL,1,1)==-1);}
+ /* Party restore: HP, PP of valid moves and a status condition record. */
+ {uint8_t *q0=(uint8_t*)c3_game_state_body(&state,NULL)+PARTY;unsigned members=0;
+  for(unsigned i=0;i<6;++i)members+=r16(q0+i*312)!=0;
+  w16(q0+0x8a,1);w16(q0+0x8c,100);w16(q0+0x64,5);q0[0x66]=9;q0[0x6c]=7;
+  uint8_t *m0=q0+0x78;unsigned full;w16(m0,10);m0[3]=0;m0[2]=0;
+  CHECK(c3_inventory_restore_party(&state,&a)==(int)members&&members>0);
+  full=m0[2];CHECK(r16(q0+0x8a)==100&&full>0&&!r16(q0+0x64)&&!q0[0x66]&&!q0[0x6c]);
+  w16(q0+0x64,2);q0[0x66]=4;m0[2]=1;CHECK(c3_inventory_restore_party(&state,&a)==(int)members);
+  CHECK(r16(q0+0x64)==2&&q0[0x66]==4&&m0[2]==full); /* condition 2 is not one of 3..8 */
+  w16(q0+0x64,0);q0[0x66]=0;
+  CHECK(c3_inventory_restore_party(NULL,&a)==-1&&c3_inventory_restore_party(&state,NULL)==-1);}
  free(after);free(before);c3_game_state_free(&state);free(pack);unlink(path);rmdir(directory);printf("Inventory transactions: %u checks passed.\n",checks);return 0;
 }

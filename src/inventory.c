@@ -172,3 +172,26 @@ int c3_inventory_receive(C3GameState *state,const C3PdaAssets *assets,unsigned i
     }
     free(before);free(after);return result;
 }
+
+int c3_inventory_restore_party(C3GameState *state,const C3PdaAssets *assets)
+{
+    size_t bytes=0;const uint8_t *body=c3_game_state_body(state,&bytes);
+    if(!body||!assets)return -1;
+    uint8_t *before=malloc(bytes),*after=malloc(bytes);int restored=-1;
+    if(before&&after){
+        memcpy(before,body,bytes);memcpy(after,body,bytes);restored=0;
+        for(unsigned slot=0;slot<6;++slot){
+            uint8_t *p=after+0xa0+slot*312;unsigned status=r16(p+0x64);
+            if(!r16(p))continue;
+            w16(p+0x8a,r16(p+0x8c));
+            for(unsigned i=0;i<4;++i){uint8_t *m=p+0x78+i*4;unsigned maximum;
+                if(!valid_move(r16(m))||!(maximum=max_pp(assets,m)))continue;
+                m[2]=(uint8_t)maximum;
+            }
+            if(status>=3&&status<=8){memset(p+0x64,0,7);memset(p+0x6c,0,6);}
+            ++restored;
+        }
+        if(!c3_game_state_inventory_commit(state,before,after,bytes))restored=-1;
+    }
+    free(before);free(after);return restored;
+}
