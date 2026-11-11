@@ -57,6 +57,15 @@ void c3_field_story_set_item_service(C3FieldStory *story,C3FieldStoryReceive rec
  * the number of members restored or a negative value. Unbound, D8 fails. */
 typedef int (*C3FieldStoryRestore)(void *context);
 void c3_field_story_set_party_service(C3FieldStory *story,C3FieldStoryRestore restore,void *context);
+/* Doors of this floor for script native 60 (floorEventCtrlDoor). rows and
+ * models are borrowed; models[i] may be NULL (the native then returns -1
+ * after its flag and collision changes, as for a missing model). A door
+ * model's clips are the source animation numbers. The scene reads each
+ * door's current clip and time to sample its model. */
+typedef struct C3StoryDoor { C3Title *model; uint32_t clip; float seconds; int playing; } C3StoryDoor;
+int c3_field_story_bind_doors(C3FieldStory *story,const C3AreaDoor *rows,uint32_t count,
+                              C3Title *const *models,char *error);
+const C3StoryDoor *c3_field_story_door(const C3FieldStory *story,uint32_t position);
 /* Floors the scene can load. Without a predicate only floors 1 and 2 pass;
  * any other destination blocks with an explicit notice. */
 void c3_field_story_set_floor_support(C3FieldStory *story,int (*supported)(uint32_t floor));

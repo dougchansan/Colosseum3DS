@@ -13,7 +13,7 @@
 #define MAX_WAYPOINTS 64u /* Phenac actor 24 allocates 36 points (bank 013E0E00 fn 34). */
 
 typedef enum { W_NONE, W_SECONDS, W_TASK, W_MOTION, W_MOVE, W_CAMERA,
-               W_CAMERA_MOVE, W_FADE, W_MESSAGE, W_CHOICE, W_TV, W_BATTLE, W_NAME, W_ITEM } Wait;
+               W_CAMERA_MOVE, W_FADE, W_MESSAGE, W_CHOICE, W_TV, W_BATTLE, W_NAME, W_ITEM, W_DOOR } Wait;
 typedef struct {
     uint16_t key, child;
     C3StoryCall call;
@@ -65,6 +65,7 @@ typedef struct {
     int name_entry_enabled;
     uint16_t (*random16)(void *context);void *random_context;
     C3FieldStoryReceive receive;void *receive_context;
+    const C3AreaDoor *door_rows;C3StoryDoor doors[C3_AREA_MAX_DOORS];uint32_t door_count;
     C3FieldStoryRestore restore;void *restore_context;
     uint32_t message_values[256]; /* msgctrlSetValue: one word per control byte */
     char item_name[64],number_text[16];const char *message_speaker;
@@ -110,7 +111,7 @@ static int validate_native(const Impl *s,const C3StoryCall *c,char *error)
         /* Phenac City exterior bank 013E0E00 (native table lbl_802E1CF0). */
         {0x02,1,0},{0x16,2,0},{0x23,1,0},{0x31,0,0},{0x66,1,0},{0x7e,2,0},
         {0x82,3,0},{0x83,3,0},{0x89,3,0},{0xa1,3,0},{0xa4,6,0x3c},{0xa5,5,0x10},
-        {0x77,2,0},{0x84,2,0},{0xa9,2,0},{0xb1,6,0x10},{0xb4,0,0},{0xd8,1,0},{0xda,1,0},{0xe8,2,0}
+        {0x77,2,0},{0x84,2,0},{0x60,3,0},{0xa9,2,0},{0xb1,6,0x10},{0xb4,0,0},{0xd8,1,0},{0xda,1,0},{0xe8,2,0}
     };
     for(unsigned i=0;i<sizeof signature/sizeof signature[0];++i){
         if(signature[i].id!=c->native)continue;
@@ -503,6 +504,32 @@ static int run_native(Impl *s,RunTask *t,char *error)
         /* cameraUpdate: recompute the field camera now. The scene derives
          * its camera from the current state on every frame. */
         break;
+    case 0x60:{
+        /* floorEventCtrlDoor(floor,index,mode): 0 open animated, 1 open
+         * instant, 2 close animated, 3 close instant. */
+        uint32_t position,mode=a[2]&0xffu,open=0,gate=0;const C3AreaDoor *row=NULL;C3StoryDoor *door=NULL;
+        for(position=0;position<s->door_count;++position)if(s->door_rows[position].index==a[1]){row=s->door_rows+position;door=s->doors+position;break;}
+        if(!row||mode>3){value=UINT32_MAX;break;}
+        if(row->open_flag&&!flag(s,row->open_flag,&open,error))return 0;
+        if(row->close_flag&&!flag(s,row->close_flag,&gate,error))return 0;
+        if(mode==0){
+            if(row->open_flag&&open){value=0;break;}       /* already open */
+            if(row->close_flag&&!gate){value=1;break;}     /* locked */
+        }
+        if(mode==2&&row->open_flag&&!open){value=0;break;} /* already closed */
+        if(row->open_flag&&!set_flag(s,row->open_flag,mode<2,error))return 0;
+        if(row->collision_id>=0)c3_field_set_object_enabled(s->map,(uint32_t)row->collision_id,mode>=2);
+        int animation=mode==0?row->open_anim:mode==2?row->close_anim:mode==1?row->open_end_anim:row->close_end_anim;
+        int last_frame=0;
+        if(mode&1u&&animation<0){animation=mode==1?row->open_anim:row->close_anim;last_frame=1;}
+        if(!row->resource||!door->model||animation<0||(uint32_t)animation>=door->model->clip_count){value=UINT32_MAX;break;}
+        door->clip=(uint32_t)animation;door->playing=!last_frame;
+        door->seconds=last_frame?(float)(door->model->clips[animation].frame_count-1u)/door->model->fps:0;
+        log_line(s,"story_door_control index=%lu mode=%lu clip=%d",(unsigned long)a[1],(unsigned long)mode,animation);
+        if(mode==1||mode==3){value=0;break;}
+        /* Modes 0 and 2 hold the hero in an event until the model stops. */
+        note_presentation(s,c->native,"door_sound_backend_pending");
+        ++s->event_depth;s->hero_ready=0;t->stage=position;t->wait=W_DOOR;return 1;}
     case 0x66:case 0x98:
         if(c->native==0x66){a[1]=0;a[2]=0;}
         s->view.battle_id=a[0];
@@ -728,6 +755,10 @@ static int wait_task(Impl *s,RunTask *t,float seconds,uint16_t *pressed,char *er
          log_line(s,"story_choice answer=%lu",(unsigned long)answer);
          close_message(s);return resume(s,t,answer,error);}
     case W_BATTLE:case W_NAME:return 1;
+    case W_DOOR:
+        if(t->stage<s->door_count&&s->doors[t->stage].playing)return 1;
+        if(s->event_depth)--s->event_depth;
+        return resume(s,t,0,error);
     case W_ITEM:{
         t->remaining-=seconds;if(t->remaining>0)return 1;
         uint32_t item=t->call.args[0];int32_t count=(int32_t)t->call.args[1];
@@ -778,6 +809,31 @@ void c3_field_story_set_item_service(C3FieldStory *story,C3FieldStoryReceive rec
 void c3_field_story_set_party_service(C3FieldStory *story,C3FieldStoryRestore restore,void *context)
 {
     Impl *s=story?story->impl:NULL;if(s){s->restore=restore;s->restore_context=context;}
+}
+int c3_field_story_bind_doors(C3FieldStory *story,const C3AreaDoor *rows,uint32_t count,
+                              C3Title *const *models,char *error)
+{
+    Impl *s=story?story->impl:NULL;
+    if(!s||s->entered||count>C3_AREA_MAX_DOORS||(count&&(!rows||!models)))return fail(error,"Invalid door binding");
+    memset(s->doors,0,sizeof s->doors);s->door_rows=rows;s->door_count=count;
+    for(uint32_t i=0;i<count;++i){
+        C3StoryDoor *door=s->doors+i;uint32_t open=0;door->model=models[i];
+        if(!door->model)continue;
+        if(door->model->fps<=0||rows[i].open_anim<0||(uint32_t)rows[i].open_anim>=door->model->clip_count)
+            return fail(error,"Door %lu model lacks its open animation",(unsigned long)rows[i].index);
+        /* A door whose open flag is already set stands open: the end of
+         * its open animation; otherwise its first frame. */
+        if(rows[i].open_flag&&!flag(s,rows[i].open_flag,&open,error))return 0;
+        door->clip=(uint32_t)rows[i].open_anim;
+        door->seconds=open?(float)(door->model->clips[door->clip].frame_count-1u)/door->model->fps:0;
+        if(rows[i].collision_id>=0)c3_field_set_object_enabled(s->map,(uint32_t)rows[i].collision_id,!open);
+    }
+    return 1;
+}
+const C3StoryDoor *c3_field_story_door(const C3FieldStory *story,uint32_t position)
+{
+    const Impl *s=story?story->impl:NULL;
+    return s&&position<s->door_count?s->doors+position:NULL;
 }
 void c3_field_story_set_floor_support(C3FieldStory *story,int (*supported)(uint32_t floor))
 {
@@ -980,6 +1036,12 @@ int c3_field_story_tick(C3FieldStory *story,float seconds,uint16_t pressed,char 
     /* Animation, camera, waits and fades share active elapsed time. Only
      * collision-sensitive translation retains a bounded movement step. */
     if(!advance_people(s,seconds,error))return 0;
+    for(uint32_t i=0;i<s->door_count;++i){C3StoryDoor *door=s->doors+i;
+        if(!door->playing||!door->model)continue;
+        float end=(float)(door->model->clips[door->clip].frame_count-1u)/door->model->fps;
+        door->seconds+=seconds;
+        if(door->seconds>=end){door->seconds=end;door->playing=0;}
+    }
     if(s->camera_playing&&s->view.camera_active)s->view.camera_seconds+=seconds*s->camera_rate;
     if(s->camera_move_time<s->camera_move_duration){
         s->camera_move_time=fminf(s->camera_move_duration,s->camera_move_time+seconds);
@@ -1128,7 +1190,8 @@ int c3_field_story_touch(C3FieldStory *story,uint32_t source_id,char *error)
     Impl *s=story?story->impl:NULL;if(!s||!s->view.control)return 0;
     const C3AreaLink *link=c3_area_link(s->area,2,source_id);
     if(!link)return 0;
-    if(link->script==0x05960005u){note_presentation(s,0x60,"door_open_event_unported");return 0;}
+    /* Without bound doors the common door script would only return -1. */
+    if(link->script==0x05960005u&&!s->door_count){note_presentation(s,0x60,"door_table_not_bound");return 0;}
     log_line(s,"story_touch source=%lu script=%08lx",(unsigned long)source_id,(unsigned long)link->script);
     s->view.control=0;
     return start(s,link->script,link->args,4,&s->event_key,error)?1:-1;

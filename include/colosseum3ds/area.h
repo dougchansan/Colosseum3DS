@@ -19,6 +19,19 @@ typedef struct C3AreaActor {
      * Zero means no prepared attachment part. Other part IDs remain closed. */
     uint32_t part1_bone_plus_one;
 } C3AreaActor;
+/* One row of the original door/elevator table lbl_80478ECC (0x18-byte
+ * FloorDoorEntry, floor_event.c): animation numbers of the door model
+ * (negative = none), the CCD object its collision uses, and the flags that
+ * record it open (open_flag) or gate it (close_flag). */
+#define C3_AREA_MAX_DOORS 16u
+typedef struct C3AreaDoor {
+    uint32_t index;    /* row index the scripts pass to native 60 */
+    int8_t open_anim, close_anim, open_end_anim, close_end_anim;
+    uint8_t door_type, part_index;
+    int16_t collision_id;
+    uint16_t open_flag, close_flag;
+    uint32_t resource; /* door model resource; zero = no model */
+} C3AreaDoor;
 typedef struct C3AreaLink {
     uint32_t kind, source_id, script, args[4], source_index;
 } C3AreaLink;
