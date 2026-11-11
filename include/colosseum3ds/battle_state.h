@@ -53,6 +53,8 @@ typedef struct {
                                     the battle DOL-table pack */
     C3BattleDataRows trainers;   /* trainer data rows (52), from the entry pack */
     C3BattleDataRows growth;     /* growth rows (0x194: u32 EXP per level), from the entry pack */
+    C3BattleDataRows kaisuu;     /* lbl_80315690 turn counts (8: s32 min, s32 max), set by the
+                                    caller from the battle DOL-table pack */
 } C3BattleState;
 
 /* Computed fightFloorGetStatus fields read from the encounter tables:
@@ -197,8 +199,10 @@ int c3_battle_condition_check(const C3BattleState *state, uint32_t fight_out,
  * +2, count limit +3, kaisuu row +4, selector +8, link +0xA. Slots: ID +0,
  * argument +2, kaisuu +4 (s8), +5, count +6, +8 (u32), +0xC (u16).
  *   write (fn_8011B2C0): clear the slot, store ID, argument and the kaisuu
- *     count; write type 4 also counts up to the limit. Only kaisuu row 0
- *     (min = max = -1, no draw) is modelled; other rows set *fault.
+ *     count (kaisuuGetKaisuu: min when min == max, else one draw from the
+ *     battle stream, min + draw % (max - min + 1)); write type 4 also counts
+ *     up to the limit. Without the turn-count rows only row 0 (-1) is
+ *     known; other rows set *fault.
  *   check write (fn_8011B444): 0 no slot, 1 refused, 2 writable.
  *   erase (fn_8011B788): zero the slot if it holds `id`. */
 int c3_battle_condition_write(C3BattleState *state, uint32_t object, uint16_t id, uint16_t argument, int *fault);

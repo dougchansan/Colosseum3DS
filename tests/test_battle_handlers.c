@@ -61,6 +61,7 @@ static void battle_reset(World *w,unsigned att_side,unsigned att_slot,unsigned d
     s->conditions=(C3BattleDataRows){w->script_pack.conditions,w->script_pack.condition_count,C3_CONDITION_ROW_BYTES};
     s->accuracy=(C3BattleDataRows){w->script_pack.accuracy,w->script_pack.accuracy_count,2};
     s->target_kinds=(C3BattleDataRows){w->script_pack.target_kinds,w->script_pack.target_kind_count,8};
+    s->kaisuu=(C3BattleDataRows){w->script_pack.kaisuu,w->script_pack.kaisuu_count,8};
     for(unsigned side=0;side<2;++side)for(unsigned k=0;k<2;++k)
         CHECK(c3_battle_fight_out_pokemon_create(&s->arena,c3_battle_state_fight_out(s,side,k),
             c3_battle_state_fight_pokemon(s,side,k),0,&s->species));
@@ -815,9 +816,16 @@ int main(void)
     }
 
     /* A guaranteed secondary effect pending (work byte 3 bit 0x80, set just
-     * before 0x15) on a hit needs fn_802249B8: refused, with no draw. */
-    battle_reset(&w,1,0,0,0,33,0);
-    {
+     * before 0x15) on a hit applies fn_802249B8 without a draw:
+     *   0x85 (a status condition) is refused in the status block;
+     *   0x87 confuses Umbreon (condition 9) and runs the confusion sequence
+     *        (0x66 without a model, effect wait 7, "became confused" 0x756E,
+     *        the timed close, effect wait 6);
+     *   0x88 makes it flinch (condition 0x11).
+     * Then work byte 3 and 0x8047B625 are cleared and the script goes on. */
+    for(unsigned kind=0;kind<3;++kind){
+        static const uint8_t injected[3]={0x85,0x87,0x88};
+        battle_reset(&w,1,0,0,0,33,0);
         memset(&r,0,sizeof r);r.handlers.state=w.state;
         r.handlers.present=present;r.handlers.present_user=&r.presentation;r.handlers.present_move=present_move;
         r.handlers.effect_signal=effect_signal;
@@ -827,15 +835,38 @@ int main(void)
         C3BattleScriptServices sv=c3_battle_handler_services(&r.handlers);
         CHECK(c3_battle_script_init(&r.script,&w.script_pack,&sv));
         CHECK(c3_battle_script_call(&r.script,w.script_pack.effects[0],1,1));
-        C3BattleScriptStatus st=C3_SCRIPT_RUNNING;uint64_t draws=0;
-        for(unsigned i=0;i<64&&st!=C3_SCRIPT_FAILED;++i){
-            if(r.script.pc==0x80375FB7u){c3_battle_script_write(&r.script,0x80478D7Bu,1,0x85);draws=w.state->rng.draws;}
+        C3BattleScriptStatus st=C3_SCRIPT_RUNNING;uint64_t draws=0;C3BattleRng at_effect={0};
+        for(unsigned i=0;i<96&&st!=C3_SCRIPT_FAILED;++i){
+            if(r.script.pc==0x80375FB7u&&r.script.depth==1&&!draws){
+                c3_battle_script_write(&r.script,0x80478D7Bu,1,injected[kind]);draws=w.state->rng.draws;
+                at_effect=w.state->rng;
+            }
             st=c3_battle_script_step(&r.script);
             if(at_end(&r))break;
             if(st==C3_SCRIPT_WAITING)CHECK(c3_battle_script_resume(&r.script));
         }
-        printf("guaranteed effect: %s\n",why(&r));
-        CHECK(strstr(why(&r),"guaranteed secondary effect")!=NULL&&w.state->rng.draws==draws);
+        uint32_t umbreon=c3_battle_state_fight_out(w.state,0,0),v=0;
+        printf("guaranteed effect %02x: %s\n",(unsigned)injected[kind],why(&r));
+        /* Confusion's turn count (kaisuu row 7: 2..5) is the only draw. */
+        CHECK(draws&&w.state->rng.draws==draws+(kind==1?1u:0u));
+        if(kind==0){CHECK(strstr(why(&r),"status condition effect")!=NULL);continue;}
+        CHECK(r.reached_end&&r.end_pc==0x80375FC8u);
+        CHECK(c3_battle_script_read(&r.script,0x80478D7Bu,1,&v)&&v==0);
+        CHECK(c3_battle_script_read(&r.script,0x8047B625u,1,&v)&&v==0);
+        if(kind==1){
+            CHECK(c3_battle_condition_check(w.state,umbreon,9,NULL)==1);
+            uint16_t tick=0;CHECK(c3_battle_rng_next16(&at_effect,&tick));
+            const uint8_t *rec=c3_battle_arena_bytes(&w.state->arena,umbreon,0x6E0);int found=0;
+            for(unsigned o=0;o+16<=0x6E0;o+=2)
+                if(rec[o]==0&&rec[o+1]==9&&rec[o+2]==0&&rec[o+3]==0&&(int8_t)rec[o+4]==2+tick%4){found=1;break;}
+            printf("confusion turns: %d\n",2+tick%4);
+            CHECK(found);
+            CHECK(strstr(r.presentation.log,"8:756e:0;3:0:0;")!=NULL);
+            CHECK(w.state->msgctrl[0x12]==umbreon);                            /* floor 0x47 */
+        }else{
+            CHECK(c3_battle_condition_check(w.state,umbreon,0x11,NULL)==1);
+            CHECK(c3_battle_condition_check(w.state,umbreon,9,NULL)!=1);
+        }
     }
 
     /* Without the battle-start enemy arrays the HP update refuses. */

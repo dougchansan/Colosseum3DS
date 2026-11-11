@@ -37,6 +37,7 @@
 #define C3_CONDITION_TABLE_BYTES 0x6B8u
 #define C3_ACCURACY_STAGES 13u
 #define C3_TARGET_KINDS 30u
+#define C3_KAISUU_ROWS 10u   /* lbl_80478B20 turn-count rows */
 
 typedef struct {
     const uint8_t *script;                  /* borrowed: C3_SCRIPT_REGION_BYTES */
@@ -55,6 +56,8 @@ typedef struct {
     const uint8_t *target_kinds;            /* lbl_80375AC8: fight-target kinds, 8 bytes each
                                                (+0 status kind, +1 relative flag, +4 buff) */
     uint32_t target_kind_count;             /* lbl_80478D40 */
+    const uint8_t *kaisuu;                  /* lbl_80315690: turn counts (s32 min, s32 max) */
+    uint32_t kaisuu_count;                  /* lbl_80478B20 */
 } C3BattleScriptPack;
 
 /* Validates header, digest, section order/bases/lengths and every effect

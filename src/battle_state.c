@@ -320,12 +320,25 @@ int c3_battle_condition_write(C3BattleState *s,uint32_t object,uint16_t id,uint1
     uint8_t *slot=condition_slot(s,object,id,&row,fault);
     if(!slot)return 1;
     uint8_t type=row?row[2]:0,limit=row?row[3]:0,kaisuu=row?row[4]:0;
-    if(kaisuu!=0){if(fault)*fault=1;return 0;}                   /* kaisuuGetKaisuu: rows 1+ not packed */
+    /* kaisuuGetKaisuu: rows past the count read 0, as kaisuuBiosGetMin/Max. */
+    int32_t min=-1,max=-1;
+    if(kaisuu!=0||s->kaisuu.rows){
+        const uint8_t *k=s->kaisuu.rows&&kaisuu<s->kaisuu.count?s->kaisuu.rows+kaisuu*8u:NULL;
+        if(!s->kaisuu.rows){if(fault)*fault=1;return 0;}
+        min=k?(int32_t)((uint32_t)k[0]<<24|(uint32_t)k[1]<<16|(uint32_t)k[2]<<8|k[3]):0;
+        max=k?(int32_t)((uint32_t)k[4]<<24|(uint32_t)k[5]<<16|(uint32_t)k[6]<<8|k[7]):0;
+    }
+    int32_t count=min;
+    if(max!=min){
+        uint16_t tick=0;
+        if(!c3_battle_rng_next16(&s->rng,&tick)){if(fault)*fault=1;return 0;}
+        count=min+(int32_t)tick%(max-min+1);
+    }
     uint8_t old=type==4?slot[6]:0;                               /* fn_8011A030 */
     slot_zero(slot);
     slot[0]=(uint8_t)(id>>8);slot[1]=(uint8_t)id;
     slot[2]=(uint8_t)(argument>>8);slot[3]=(uint8_t)argument;
-    slot[4]=0xFF;                                                /* kaisuu row 0: -1 */
+    slot[4]=(uint8_t)(int8_t)count;
     if(type==4){uint8_t count=(uint8_t)(old+1u);slot[6]=limit<count?limit:count;}
     return 1;
 }

@@ -24,7 +24,7 @@ from pathlib import Path
 
 DOL_SHA1 = "870e8b9693ca780782d80f22a6a4572d8ba9458f"
 DOL_BYTES = 3779808
-VERSION = 5
+VERSION = 6
 HEADER_BYTES = 64
 EFFECT_COUNT = 214
 SECTIONS = (
@@ -43,6 +43,8 @@ SECTIONS = (
     (b"ED0 ", 0x80279ED0, 0x24),                      # rodata lbl_80279ED0 (item -> type pairs)
     (b"TGC ", 0x80478D40, 4),                         # .sdata fight-target kind count
     (b"TGT ", 0x80375AC8, 30 * 8),                    # fight-target kind rows (8 each)
+    (b"KAC ", 0x80478B20, 4),                         # .sdata turn-count row count
+    (b"KAI ", 0x80315690, 10 * 8),                    # turn counts (s32 min, s32 max; kaisuu.c)
 )
 CONDITION_ROW = 0x14
 
@@ -78,6 +80,8 @@ def make_pack(dol):
         raise ValueError("Unexpected stat-stage or critical-rate count")
     if u32(blobs[13], 0) != 30:
         raise ValueError("Unexpected fight-target kind count")
+    if u32(blobs[15], 0) != 10:
+        raise ValueError("Unexpected turn-count table size")
     directory = b"".join(struct.pack(">4sII", tag, base, length) for tag, base, length in SECTIONS)
     payload = directory + b"".join(blobs)
     header = bytearray(HEADER_BYTES)

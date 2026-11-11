@@ -716,6 +716,56 @@ interpreter yet.
   - With Zigzagoon B also at 0 HP, the end check finds Willie's side with
     no HP and is refused before any fight result is written.
 
+- Secondary effects (`fn_802249B8`, from `0x15`), confusion and flinch.
+  - `0x15` now applies the effect instead of refusing it:
+    - with work byte 3 bit 0x80 on a hit, `(0, 0x80)` without a draw;
+    - after a draw at or under the chance, `(0, 0)`, or `(0, 0x80)` at a
+      chance of 100 or more.
+    When the effect runs a sequence, `0x15` returns `CALL` and finishes in
+    its next phase with `fn_802249B8`'s PC + 1 and the byte clears, without
+    drawing again.
+  - **Prologue:**
+    - Bit 0x40 aims the effect at the attacker; otherwise it goes to the
+      defender. The target becomes floor 0x47 (message variables 0x12 and
+      0x1D, then `+0xA488`) and the other battler floor 0x4B.
+    - Shield Dust (ability 0x13) and Safeguard (side condition 0x4B) block
+      the weaker effects without hit marker 0x2000. A target out of battle
+      blocks, except for effects 0x0B and 0x1F. A Substitute blocks unless
+      the effect is the attacker's own.
+    - The effect's condition (`lbl_80279EF4`) already held blocks it.
+  - **7, confusion:** condition 9 is written unless the target has Own
+    Tempo (0x14) or is already confused, then the confusion sequence
+    `0x8037951B` runs:
+    1. `0x66` (`fn_8021DF80`), the status animation, only on a battler
+       model;
+    2. effect wait 7;
+    3. "became confused" (0x756E) and the timed close;
+    4. effect wait 6.
+  - **8, flinch:** condition 0x11 is written unless the target has Inner
+    Focus (0x27) or 0x112 is set.
+  - **Refused by name:**
+    - the status effects (below 7: sleep, poison, burn, freeze, paralysis);
+    - the Inner Focus message (`lbl_80379868`);
+    - every other effect kind;
+    - writes of Pokemon-level conditions (categories 0x7C / 0xC8,
+      `fn_801219F4`).
+  - **Turn counts:** the battle DOL-table pack is now version 6, adding
+    `KAC` (`lbl_80478B20`, 10) and `KAI` (`lbl_80315690`, s32 min and max
+    per row). The state's condition writer draws the turn count as
+    `kaisuuGetKaisuu` does: min when min == max, else min + draw % (max -
+    min + 1). Confusion (row 7) lasts 2 to 5 turns; flinch (row 2) is
+    always 1.
+  - Willie's battle sets these effects with Bite (8) and Confusion (7);
+    Struggle's 0xCE (attacker recoil) is still refused.
+
+  On the original data:
+  - A guaranteed confusion (0x87) on Zigzagoon's Tackle confuses Umbreon,
+    drawing once for its turn count (4 in the test), and shows "became
+    confused".
+  - A guaranteed flinch (0x88) writes condition 0x11 without a draw.
+  - A guaranteed 0x85 is refused in the status block. All three run to the
+    end of the move script with work byte 3 and `0x8047B625` cleared.
+
 ## Increments
 
 1. **Execution and end of turn through original code.** A minimal

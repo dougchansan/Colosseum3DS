@@ -9,8 +9,8 @@
 #include <string.h>
 
 #define CHECK(x) do{if(!(x)){fprintf(stderr,"%s:%d: CHECK(%s)\n",__FILE__,__LINE__,#x);exit(1);}}while(0)
-#define DIRECTORY_END (64u+15u*12u)
-#define PACK_BYTES (DIRECTORY_END+C3_SCRIPT_REGION_BYTES+C3_SCRIPT_EFFECTS*4u+C3_SCRIPT_WSD_BYTES+C3_SCRIPT_WDT_BYTES+4u+C3_CONDITION_TABLE_BYTES+4u+C3_ACCURACY_STAGES*2u+4u+26u+4u+8u+0x24u+4u+C3_TARGET_KINDS*8u)
+#define DIRECTORY_END (64u+17u*12u)
+#define PACK_BYTES (DIRECTORY_END+C3_SCRIPT_REGION_BYTES+C3_SCRIPT_EFFECTS*4u+C3_SCRIPT_WSD_BYTES+C3_SCRIPT_WDT_BYTES+4u+C3_CONDITION_TABLE_BYTES+4u+C3_ACCURACY_STAGES*2u+4u+26u+4u+8u+0x24u+4u+C3_TARGET_KINDS*8u+4u+C3_KAISUU_ROWS*8u)
 #define AT(a) ((a)-C3_SCRIPT_REGION_BASE)
 
 static void put32(uint8_t *p,uint32_t v){p[0]=(uint8_t)(v>>24);p[1]=(uint8_t)(v>>16);p[2]=(uint8_t)(v>>8);p[3]=(uint8_t)v;}
@@ -34,23 +34,24 @@ static int spass(void *u,struct C3BattleScript *sc,C3BattleScriptPass p,uint8_t 
 static uint8_t *synthetic_pack(void)
 {
     static uint8_t b[PACK_BYTES];memset(b,0,sizeof b);
-    static const char *tags[15]={"SCR ","EFF ","WSD ","WDT ","CNC ","CND ","HTC ","HIT ","ABC ","ABR ","CRC ","CRT ","ED0 ",
-        "TGC ","TGT "};
-    const uint32_t bases[15]={C3_SCRIPT_REGION_BASE,0x80379BFFu,C3_SCRIPT_WSD_BASE,C3_SCRIPT_WDT_BASE,0x80478B48u,0x8035BBA8u,
-        0x80478D70u,0x80375DD0u,0x80478D68u,0x80375D10u,0x80478D60u,0x80478D58u,0x80279ED0u,0x80478D40u,0x80375AC8u};
-    const uint32_t lens[15]={C3_SCRIPT_REGION_BYTES,C3_SCRIPT_EFFECTS*4u,C3_SCRIPT_WSD_BYTES,C3_SCRIPT_WDT_BYTES,4u,
-        C3_CONDITION_TABLE_BYTES,4u,C3_ACCURACY_STAGES*2u,4u,26u,4u,8u,0x24u,4u,C3_TARGET_KINDS*8u};
-    memcpy(b,"C3W1",4);put32(b+4,5);put32(b+8,PACK_BYTES);put32(b+12,15);
+    static const char *tags[17]={"SCR ","EFF ","WSD ","WDT ","CNC ","CND ","HTC ","HIT ","ABC ","ABR ","CRC ","CRT ","ED0 ",
+        "TGC ","TGT ","KAC ","KAI "};
+    const uint32_t bases[17]={C3_SCRIPT_REGION_BASE,0x80379BFFu,C3_SCRIPT_WSD_BASE,C3_SCRIPT_WDT_BASE,0x80478B48u,0x8035BBA8u,
+        0x80478D70u,0x80375DD0u,0x80478D68u,0x80375D10u,0x80478D60u,0x80478D58u,0x80279ED0u,0x80478D40u,0x80375AC8u,0x80478B20u,0x80315690u};
+    const uint32_t lens[17]={C3_SCRIPT_REGION_BYTES,C3_SCRIPT_EFFECTS*4u,C3_SCRIPT_WSD_BYTES,C3_SCRIPT_WDT_BYTES,4u,
+        C3_CONDITION_TABLE_BYTES,4u,C3_ACCURACY_STAGES*2u,4u,26u,4u,8u,0x24u,4u,C3_TARGET_KINDS*8u,4u,C3_KAISUU_ROWS*8u};
+    memcpy(b,"C3W1",4);put32(b+4,6);put32(b+8,PACK_BYTES);put32(b+12,17);
     static const uint8_t dol[20]={0x87,0x0e,0x8b,0x96,0x93,0xca,0x78,0x07,0x82,0xd8,0x0f,0x22,0xa6,0xa4,0x57,0x2d,0x8b,0xa9,0x45,0x8f};
     memcpy(b+16,dol,20);
-    for(unsigned i=0;i<15;++i){memcpy(b+64+12*i,tags[i],4);put32(b+68+12*i,bases[i]);put32(b+72+12*i,lens[i]);}
+    for(unsigned i=0;i<17;++i){memcpy(b+64+12*i,tags[i],4);put32(b+68+12*i,bases[i]);put32(b+72+12*i,lens[i]);}
     uint8_t *eff=b+DIRECTORY_END+C3_SCRIPT_REGION_BYTES;
-    {   /* counts: accuracy 13, stage ratios 13, critical 5, target kinds 30 */
-        size_t at=DIRECTORY_END;for(unsigned i=0;i<15;++i){
+    {   /* counts: accuracy 13, stage ratios 13, critical 5, target kinds 30, turn counts 10 */
+        size_t at=DIRECTORY_END;for(unsigned i=0;i<17;++i){
             if(i==6)put32(b+at,C3_ACCURACY_STAGES);
             if(i==8)put32(b+at,13);
             if(i==10)put32(b+at,5);
             if(i==13)put32(b+at,C3_TARGET_KINDS);
+            if(i==15)put32(b+at,C3_KAISUU_ROWS);
             at+=lens[i];}
     }
     for(unsigned i=0;i<C3_SCRIPT_EFFECTS;++i)put32(eff+4*i,C3_SCRIPT_REGION_BASE+i);

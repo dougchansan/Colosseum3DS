@@ -28,6 +28,7 @@
  *   0x1B fn_80223F1C  faint end: status slot, opponents' records
  *   0x23 fn_802232F4  EXP award (faint mark sequence lbl_80378721)
  *   0x24 fn_80222C44  battle end check (faint script lbl_80378798)
+ *   0x66 fn_8021DF80  status animation (battler model only)
  *   0x49 fn_8021FAD4  move end: after-move reactions and bookkeeping
  *   0x12 fn_8022622C  with a message open (work byte 7): wait the operand's
  *                     frames, close the message, clear the flag
@@ -952,11 +953,22 @@ static int op_hp_bar_wait(C3BattleHandlers *h,C3BattleScript *sc)
  * that applies runs fn_802249B8, which is not lowered yet: refused. The
  * draw happens whenever the first (bit 0x80) branch is not taken, even with
  * no effect pending. */
-static int op_effect_chance(C3BattleHandlers *h,C3BattleScript *sc)
+static int secondary_effect(C3BattleHandlers *h,C3BattleScript *sc,uint8_t param1,uint8_t param2);
+/* After fn_802249B8 (skipIncrement): work byte 3 and 0x8047B625 cleared. */
+static int effect_chance_finish(C3BattleScript *sc,int applied)
+{
+    if(applied==0)return C3_SCRIPT_HANDLER_FAIL;
+    if(applied==2)return C3_SCRIPT_HANDLER_CALL;           /* the effect's sequence runs first */
+    c3_battle_script_write(sc,EFFECT_ID_BYTE,1,0);
+    c3_battle_script_write(sc,EFFECT_FLAG_BYTE,1,0);
+    return C3_SCRIPT_HANDLER_DONE;
+}
+static int op_effect_chance(C3BattleHandlers *h,C3BattleScript *sc,unsigned phase)
 {
     C3BattleState *s=h->state;
     uint32_t attacker=0,effect=0;
     int fault=0;
+    if(phase==1){sc->pc+=1;return effect_chance_finish(sc,1);}   /* fn_802249B8's PC + 1 after its sequence */
     present(h,C3_PRESENT_TRAINER_MENUS_CLOSE,0,0);
     present(h,C3_PRESENT_STATUS_MENUS_CLOSE,0,0);
     present(h,C3_PRESENT_MESSAGE_CLOSE,0,0);
@@ -967,14 +979,17 @@ static int op_effect_chance(C3BattleHandlers *h,C3BattleScript *sc)
     uint16_t chance=(uint16_t)(uint8_t)waza(s,0,move,0xC);
     if(ability==0x20)chance=(uint16_t)(chance*2u);
     if(!c3_battle_script_read(sc,EFFECT_ID_BYTE,1,&effect))return stop(sc,"effect byte");
-    if((effect&0x80u)&&waza_hit(s,fw,&fault))return stop(sc,"guaranteed secondary effect (fn_802249B8)");
+    if((effect&0x80u)&&waza_hit(s,fw,&fault)){
+        c3_battle_script_write(sc,EFFECT_ID_BYTE,1,effect&0x7Fu);
+        return effect_chance_finish(sc,secondary_effect(h,sc,0,0x80));
+    }
     if(fault)return stop(sc,"effect chance hit check");
     uint16_t random=0;
     if(!c3_battle_rng_next16(&s->rng,&random))return stop(sc,"random stream");
     if(random%100u<=chance&&effect!=0){
         int hit=waza_hit(s,fw,&fault);
         if(fault)return stop(sc,"effect chance hit check");
-        if(hit)return stop(sc,"secondary effect (fn_802249B8)");
+        if(hit)return effect_chance_finish(sc,secondary_effect(h,sc,0,chance>=100?0x80:0));
     }
     sc->pc+=1;
     c3_battle_script_write(sc,EFFECT_ID_BYTE,1,0);
@@ -1869,6 +1884,110 @@ static int op_exp_award(C3BattleHandlers *h,C3BattleScript *sc,unsigned phase)
     return C3_SCRIPT_HANDLER_DONE;
 }
 
+/* ---- secondary effects (fn_802249B8) ------------------------------------- */
+
+/* fn_802025B8 / fn_8020248C on a battler: the record by category (0xCD its
+ * FightPokemon, 0xD8 itself); the Pokemon-level writer (0x7C / 0xC8,
+ * fn_801219F4) is not modelled: -1. */
+static int battler_condition_object(C3BattleState *s,uint32_t fo,uint16_t id,uint32_t *object)
+{
+    uint16_t category=condition_category(s,id);
+    if(category==0xD8){*object=fo;return 1;}
+    if(category==0xCD){*object=fo?get(s,fo,0xD6):0;return 1;}
+    if(category==0x7C||category==0xC8)return -1;
+    *object=0;return 0;
+}
+static int battler_write(C3BattleState *s,uint32_t fo,uint16_t id,int *fault)
+{
+    uint32_t object=0;
+    int r=battler_condition_object(s,fo,id,&object);
+    if(r<=0)return r;
+    if(c3_battle_condition_check_write(s,object,id,fault)==2&&!c3_battle_condition_write(s,object,id,0,fault))*fault=1;
+    return 1;
+}
+/* fightFloorSetStatus(0x47, fo): message variables 0x12 and 0x1D (its
+ * ability's name), cleared for 0 or an invalid battler, then +0xA488. */
+static int floor_set_effect_target(C3BattleState *s,uint32_t fo)
+{
+    int fault=0;
+    int valid=fo&&c3_battle_fight_out_check_valid(s,fo,&fault)==1;
+    c3_battle_msgctrl_set(s,0x12,valid?fo:0);
+    c3_battle_msgctrl_set(s,0x1D,valid?C3_MSGREF_ABILITY_NAME((uint16_t)get(s,fo,0x100)):0);
+    uint8_t *p=c3_battle_arena_bytes(&s->arena,s->floor+0xA488u,4);
+    if(fault||!p)return 0;
+    p[0]=(uint8_t)(fo>>24);p[1]=(uint8_t)(fo>>16);p[2]=(uint8_t)(fo>>8);p[3]=(uint8_t)fo;
+    return 1;
+}
+/* lbl_80279EF4: the condition each effect writes or is blocked by. */
+static const uint16_t effect_conditions[16]={0,8,3,6,7,5,4,9,0x11,0,0x0B,0,0x22,0x0E,0,0};
+#define CONFUSION_SEQUENCE 0x8037951Bu   /* lbl_80399F58[7] */
+/* fn_802249B8(param1, param2) for work byte 3. Bit 0x40 aims the effect at
+ * the attacker instead of the defender (floor 0x47 the target, 0x4B the
+ * other). Shield Dust (ability 0x13) and Safeguard (side condition 0x4B)
+ * block weaker effects, as do a target out of battle and a Substitute.
+ * Implemented: 7 confusion (condition 9 unless Own Tempo 0x14; the
+ * confusion sequence) and 8 flinch (condition 0x11 unless Inner Focus 0x27
+ * or 0x112). Returns 1 with the PC advanced, 2 with the sequence pushed
+ * (the caller advances after it), 0 refused. */
+static int secondary_effect(C3BattleHandlers *h,C3BattleScript *sc,uint8_t param1,uint8_t param2)
+{
+    C3BattleState *s=h->state;
+    uint32_t attacker=0,defender=0,effect=0,flags=0,deck=0;
+    int fault=0;
+    if(!c3_battle_target(&s->arena,s->floor,0x11,0,&attacker)||!c3_battle_target(&s->arena,s->floor,0x12,0,&defender))
+        return stop(sc,"secondary effect targets"),0;
+    if(!c3_battle_script_read(sc,EFFECT_ID_BYTE,1,&effect)||!c3_battle_script_read(sc,HIT_MARKER,4,&flags))
+        return stop(sc,"effect byte"),0;
+    uint32_t ctx=defender,other=attacker;
+    uint8_t self=0;
+    if(effect&0x40u){ctx=attacker;other=defender;effect&=0xBFu;self=0x40;c3_battle_script_write(sc,EFFECT_ID_BYTE,1,effect);}
+    if(!floor_set_effect_target(s,ctx)||!floor_appoint(s,other))return stop(sc,"floor effect target"),0;
+    uint16_t ability=(uint16_t)get(s,ctx,0x100);
+    if(!c3_battle_state_target_now(s,2,ctx,&deck))return stop(sc,"effect target side"),0;
+    if(ability==0x13&&!(flags&0x2000u)&&param1==0&&effect<0xA){sc->pc+=1;return 1;}             /* Shield Dust */
+    if(deck&&c3_battle_condition_present(s,deck,0x4B,&fault)==1&&!(flags&0x2000u)&&param1==0&&effect<8){sc->pc+=1;return 1;}
+    if(!fight_out(s,ctx,&fault)&&effect!=0xB&&effect!=0x1F){sc->pc+=1;return 1;}
+    if(c3_battle_condition_check(s,ctx,0x14,&fault)==1&&self!=0x40){sc->pc+=1;return 1;}     /* Substitute */
+    if(fault)return stop(sc,"secondary effect records"),0;
+    if(effect<7)return stop(sc,"status condition effect (fn_802249B8 status block)"),0;
+    uint16_t blocking=effect<16?effect_conditions[effect]:0;
+    if(effect>=16)return stop(sc,"secondary effect kind (fn_802249B8)"),0;
+    if(blocking&&c3_battle_condition_check(s,ctx,blocking,&fault)==1){sc->pc+=1;return 1;}
+    switch(effect){
+    case 7:
+        if(ability!=0x14&&c3_battle_condition_check(s,ctx,9,&fault)!=1){
+            int w=battler_write(s,ctx,9,&fault);
+            if(w<0||fault)return stop(sc,"confusion condition"),0;
+            return c3_battle_script_call(sc,CONFUSION_SEQUENCE,sc->action,0)?2:(stop(sc,"confusion sequence"),0);
+        }
+        sc->pc+=1;return 1;
+    case 8:
+        if(ability==0x27&&(param1==1||param2==0x80))return stop(sc,"Inner Focus message (lbl_80379868)"),0;
+        if(ability!=0x27&&get(s,ctx,0x112)==0){
+            int w=battler_write(s,ctx,0x11,&fault);
+            if(w<0||fault)return stop(sc,"flinch condition"),0;
+        }
+        sc->pc+=1;return 1;
+    default:
+        return stop(sc,"secondary effect kind (fn_802249B8)"),0;
+    }
+}
+
+/* 0x66 fn_8021DF80 (operands: target kind, u32 kind at +3): for kind 7 and
+ * hit marker bit 0x80 clear, the confusion animation on the target's battler
+ * model and its status panel; nothing without a model. */
+static int op_status_animation(C3BattleHandlers *h,C3BattleScript *sc)
+{
+    C3BattleState *s=h->state;
+    uint32_t kind=0,which=0,flags=0,fo=0;
+    if(!c3_battle_script_fetch(sc,1,1,&kind)||!c3_battle_script_fetch(sc,3,4,&which))return C3_SCRIPT_HANDLER_FAIL;
+    if(!c3_battle_state_target_now(s,(uint16_t)kind,0,&fo))return stop(sc,"status animation target");
+    if(!c3_battle_script_read(sc,HIT_MARKER,4,&flags))return stop(sc,"hit marker");
+    if(!(flags&0x80u)&&which==7&&get(s,fo,0xEE))return stop(sc,"status animation (battler model)");
+    sc->pc+=7;
+    return C3_SCRIPT_HANDLER_DONE;
+}
+
 int c3_battle_handler_dispatch(void *user,C3BattleScript *sc,uint8_t op,unsigned phase)
 {
     C3BattleHandlers *h=user;(void)phase;
@@ -1892,7 +2011,7 @@ int c3_battle_handler_dispatch(void *user,C3BattleScript *sc,uint8_t op,unsigned
     case 0x0F:return op_effect_message(h,sc);
     case 0x10:return op_message_open(h,sc);
     case 0x12:return op_message_close(h,sc,phase);
-    case 0x15:return op_effect_chance(h,sc);
+    case 0x15:return op_effect_chance(h,sc,phase);
     case 0x19:return op_faint_check(h,sc,phase);
     case 0x1A:return op_faint_begin(h,sc);
     case 0x1B:return op_faint_end(h,sc);
@@ -1900,6 +2019,7 @@ int c3_battle_handler_dispatch(void *user,C3BattleScript *sc,uint8_t op,unsigned
     case 0x24:return op_battle_end_check(h,sc);
     case 0x49:return op_move_end(h,sc);
     case 0x56:return op_cry(h,sc);
+    case 0x66:return op_status_animation(h,sc);
     case 0x5C:return op_damage_blink(h,sc);
     default:return C3_SCRIPT_HANDLER_NONE;
     }
