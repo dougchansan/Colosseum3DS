@@ -714,7 +714,8 @@ interpreter yet.
     battlers. The knockout turn completes (`C3_SCRIPT_DONE`), with Zigzagoon
     B still in battle and the result 0.
   - With Zigzagoon B also at 0 HP, the end check finds Willie's side with
-    no HP and is refused before any fight result is written.
+    no HP (at this commit refused before any fight result was written; see
+    the battle result below).
 
 - Secondary effects (`fn_802249B8`, from `0x15`), confusion and flinch.
   - `0x15` now applies the effect instead of refusing it:
@@ -765,6 +766,28 @@ interpreter yet.
   - A guaranteed flinch (0x88) writes condition 0x11 without a draw.
   - A guaranteed 0x85 is refused in the status block. All three run to the
     end of the move script with work byte 3 and `0x8047B625` cleared.
+
+- Battle result (`0x24`, `fn_80222C44`).
+  - **How the result is set:** each side's remaining HP is summed over
+    kinds 5 (side 1) and 4 (side 0). A side at 0 requests fight result 2
+    (side 1) or 3 (side 0) through the existing port of the original
+    setter, `fightFloorSetFightResultId` (`c3_battle_rules_combine_result`,
+    floor 0x23 as its draw flag). The original's own combination rules
+    decide the stored value; both sides at 0 can become a draw.
+  - **A decided battle** skips the replacement check. It only reviews the
+    self-destruct draw rule: result 7, with floor 0x34 and a move of
+    effect 7, reads the rules option `fn_80077AF4` (refused).
+  - **Scope:** the value is the battle's own variable (`lbl_8047B5D8`, the
+    state's `result`). Nothing is written to the save or the story records
+    here. Rewards and the result transaction remain increment 4.
+
+  On the original data:
+  - With Zigzagoon B already at 0 HP, Umbreon's Tackle knocking out
+    Zigzagoon A runs the faint sequence and EXP award. The end check then
+    takes result 2 from the original setter, and
+    `fightFloorIsGcHeroWin(2)` with the player on the host side is 1. The
+    passes and the cleanup finish the call.
+  - A single knockout (Zigzagoon B still in battle) leaves the result at 0.
 
 ## Increments
 

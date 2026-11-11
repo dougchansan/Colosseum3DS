@@ -1,6 +1,7 @@
 /* Original move scripts running battle-logic opcodes over the real trainer
  * entry. Needs C3_ENTRY_PACK, C3_ENTRY_NEWGAME and C3_SCRIPT_PACK. */
 #include "colosseum3ds/battle_handlers.h"
+#include "colosseum3ds/battle_rules.h"
 #include "colosseum3ds/battle_preview.h"
 #include "colosseum3ds/game_state.h"
 #include <stddef.h>
@@ -783,17 +784,25 @@ int main(void)
     }
 
     /* Willie's last Pokemon: Zigzagoon B already at 0 HP when Umbreon knocks
-     * out Zigzagoon A. The battle end check finds his side with no HP left,
-     * which would set the fight result: refused by name before anything is
-     * written, the result still 0. */
+     * out Zigzagoon A. Zigzagoon A's faint sequence and EXP award run; the
+     * battle end check finds Willie's side (kind 5, side 1) with no HP left
+     * and the original setter takes fight result 2 (floor 0x23 draw flag),
+     * which fightFloorIsGcHeroWin reads as the player's win. The decided
+     * battle skips the replacement check; the passes and the cleanup follow
+     * and the call completes. Nothing outside the battle state is written. */
     battle_reset(&w,0,0,1,0,33,0);
     {
         uint8_t *a_hp=c3_battle_arena_bytes(&w.state->arena,c3_battle_state_fight_pokemon(w.state,1,0)+4+0x8A,2);
         uint8_t *b_hp=c3_battle_arena_bytes(&w.state->arena,c3_battle_state_fight_pokemon(w.state,1,1)+4+0x8A,2);
         a_hp[0]=0;a_hp[1]=1;b_hp[0]=0;b_hp[1]=0;
-        CHECK(run_effect_mode(&w,&r,0,1)==C3_SCRIPT_FAILED);
-        printf("last knockout: %s\n",why(&r));
-        CHECK(strstr(why(&r),"battle result")!=NULL&&w.state->result==0);
+        CHECK(w.state->result==0);
+        C3BattleScriptStatus st=run_effect_mode(&w,&r,0,1);
+        uint8_t won=0;
+        printf("last knockout: status %d: %s, result %u\n",(int)st,why(&r),(unsigned)w.state->result);
+        CHECK(st==C3_SCRIPT_DONE&&w.state->result==2);
+        CHECK(c3_battle_rules_hero_win(w.state->result,1,&won)&&won==1);
+        CHECK(strstr(r.presentation.log,"8:7545:0;")!=NULL&&strstr(r.presentation.log,"8:7532:0;")!=NULL);
+        CHECK(strstr(r.presentation.log,"17:0:0;")==NULL);                 /* no fn_80222EF0 clear */
     }
 
     /* A held item on Espeon (Umbreon's partner, outside this exchange): move

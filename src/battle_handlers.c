@@ -37,6 +37,7 @@
  * Script variables (hit marker 0x8047B618, ...) are the interpreter's
  * windows; battle records are the state's arena. */
 #include "colosseum3ds/battle_handlers.h"
+#include "colosseum3ds/battle_rules.h"
 #include "colosseum3ds/battle_runtime_trainer.h"
 #include <stdio.h>
 #include <string.h>
@@ -1467,12 +1468,16 @@ static int can_send_in(const C3BattleState *s,uint32_t trainer,int *fault)
 }
 
 /* Operand: u32 whose low byte selects the replacement check. Each side's
- * remaining HP (fightSideGetFightPokemonNokoriHp over kinds 5 and 4); a side
- * at 0 sets the fight result (fightFloorSetFightResultId 2 / 3), which is
- * refused by name, as is an already decided battle. With the low byte 1 a
- * battler out of battle needs the replacement check
- * (fightFloorIsIrekaeFightOutPokemon) or fn_80222EF0's cleanup: refused.
- * With every battler in battle neither does anything. */
+ * remaining HP (fightSideGetFightPokemonNokoriHp over kinds 5 and 4, side 1
+ * then side 0); a side at 0 requests fight result 2 / 3 through the
+ * original setter (fightFloorSetFightResultId, c3_battle_rules_combine_result,
+ * floor 0x23 its draw flag): the original computes the result here, nothing
+ * is assumed. A decided battle then only reviews the self-destruct draw
+ * rule (result 7 with floor 0x34 and a move of effect 7 reads the rules
+ * option fn_80077AF4, which is refused) and the script goes on; otherwise,
+ * with the low byte 1, the replacement check and fn_80222EF0 run. The state
+ * result is the battle's own variable (lbl_8047B5D8): no save or story
+ * record is written here. */
 static int op_battle_end_check(C3BattleHandlers *h,C3BattleScript *sc)
 {
     C3BattleState *s=h->state;
@@ -1486,9 +1491,27 @@ static int op_battle_end_check(C3BattleHandlers *h,C3BattleScript *sc)
         uint32_t side=0,hp=0;
         if(!c3_battle_state_target_now(s,kinds[i],0,&side))return stop(sc,"side target");
         if(!c3_battle_side_remaining_hp(s,side,(uint16_t)trainers,(uint16_t)pokemon,&hp))return stop(sc,"side remaining HP");
-        if(!hp)return stop(sc,"battle result: a side has no HP left (fightFloorSetFightResultId)");
+        if(!hp){
+            uint32_t draw_flag=0;
+            C3BattleRuleResult set={0};
+            if(!c3_battle_floor_value(s,0x23,&draw_flag))return stop(sc,"floor field 0x23");
+            if((uint8_t)draw_flag>1||s->result>7)return stop(sc,"fight result range");
+            if(!c3_battle_rules_combine_result(s->result,kinds[i]==5?2u:3u,(uint8_t)draw_flag,&set))
+                return stop(sc,"fightFloorSetFightResultId");
+            s->result=set.result;
+        }
     }
-    if(s->result)return stop(sc,"decided battle (fn_80222C44 result branch)");
+    if(s->result){
+        uint32_t rule=0,attacker=0;
+        if(!c3_battle_floor_value(s,0x34,&rule))return stop(sc,"floor field 0x34");
+        if(!c3_battle_target(&s->arena,s->floor,0x11,0,&attacker))return stop(sc,"attacker");
+        uint32_t fw=attacker?get(s,attacker,0xD9):0;
+        uint16_t move=fw?(uint16_t)waza(s,fw,0,0x28):0;
+        if((uint8_t)rule==1&&(uint16_t)waza(s,0,move,9)==7&&s->result==7)
+            return stop(sc,"self-destruct draw rule (rules option fn_80077AF4)");
+        sc->pc+=5;
+        return C3_SCRIPT_HANDLER_DONE;
+    }
     if((operand&0xFFu)==1){
         /* fightFloorIsIrekaeFightOutPokemon: over the valid trainers
          * (fightFloorLoopValidFightTrainer, no threads), a trainer with a
