@@ -42,7 +42,8 @@ void c3_field_ui_draw_to(C3BottomUi *ui,const C3GameSummary *summary,FieldPhase 
         c3_ui_text(ui,20,80,280,3,phase==FIELD_SETUP?"Loading the original area...":"Arriving...",C3_UI_WHITE);
     }else if(page==PAUSE_CLOSED&&story&&story->blocked[0]){
         c3_ui_dialogue(ui,pager,story->blocked,0,0);
-        if(!pager->more)c3_ui_footer(ui,story->battle_id==10?"A: combat preview   X / START: menu":"X / START: main menu");
+        if(!pager->more)c3_ui_footer(ui,story->battle_id==10?"A: battle   X / START: menu":
+            story->battle_id?"A: skip as a win (temporary)   X: menu":"X / START: main menu");
     }else if(page==PAUSE_CLOSED&&story&&story->dialogue){
         c3_ui_dialogue(ui,pager,story->message,story->choice,!story->choice_no);
     }else if(page==PAUSE_CLOSED){

@@ -479,7 +479,8 @@ static int run_native(Impl *s,RunTask *t,char *error)
             log_line(s,"story_battle_snapshot encounter=%lu player_party=%u status=waiting_backend save_unchanged=1",
                      (unsigned long)a[0],s->battle_request.player_party_count);
         }
-        snprintf(s->view.blocked,sizeof s->view.blocked,"Original battle %lu requested.\nCombat backend is not ported yet.\nNo result or victory flag was written.",(unsigned long)a[0]);
+        if(a[0]==10)snprintf(s->view.blocked,sizeof s->view.blocked,"A trainer battle is about to begin.");
+        else snprintf(s->view.blocked,sizeof s->view.blocked,"Battle %lu is not playable in this build yet.\nThe story can continue as if it were won.\nNothing is added to your party or money.",(unsigned long)a[0]);
         log_line(s,"story_battle encounter=%lu status=waiting_backend result_written=0",(unsigned long)a[0]);
         t->wait=W_BATTLE;return 1;
     case 0x67:

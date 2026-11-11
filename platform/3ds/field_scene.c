@@ -289,6 +289,17 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         if(phase==FIELD_CONTROL){
             if(page==PAUSE_CLOSED){
                 if(view->blocked[0]&&(input.pressed&(C3_PAD_START|C3_PAD_X))){result=0;break;}
+                if(view->blocked[0]&&view->battle_id&&view->battle_id!=10&&(input.pressed&C3_PAD_A)){
+                    /* Temporary shortcut: only encounter 10 has a battle
+                     * scene. Any other requested encounter is reported as
+                     * the hero's win (result ID 2) so the original script
+                     * can continue; nothing is written to the party. */
+                    uint32_t skipped=view->battle_id;
+                    if(!c3_field_story_battle_result(&story,2,story_error))goto story_failed;
+                    if(trace){fprintf(trace,"field_battle_skipped encounter=%lu result_reported=2 temporary=1 party_writeback=0\n",
+                        (unsigned long)skipped);fflush(trace);}
+                    dirty=1;continue;
+                }
                 if(view->blocked[0]&&view->battle_id==10&&(input.pressed&C3_PAD_A)){
                     c3_n3ds_log_memory(trace,"field_battle_before_drain");
                     if(c3_render_recover(trace,"field-to-battle",frames,C3_RECOVER_DRAIN)==C3_RECOVERY_EXIT){result=1;break;}
