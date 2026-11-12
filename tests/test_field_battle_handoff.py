@@ -18,7 +18,7 @@ class FieldBattleHandoffTests(unittest.TestCase):
                          source.index('/* Modal preview time')]
         ordered = ['C3_RECOVER_DRAIN', 'release_field_models(storage,count)',
                    'c3_battle_preview_from_game_state', '"battle-to-field"',
-                   'restore_field_models(', 'c3_stage_renderer_init(',
+                   'restore_field_models(', 'field_renderer_init(',
                    'c3_stage_renderer_set_tv(']
         positions = [handoff.index(token) for token in ordered]
         self.assertEqual(positions, sorted(positions))

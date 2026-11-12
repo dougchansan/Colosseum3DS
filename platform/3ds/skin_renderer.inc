@@ -11,8 +11,9 @@
  * Eligibility is fixed when the scene is initialised: the model's lights must
  * fit the shader and the batch must be supported (no specular, no
  * normal-generated UVs, at most C3_SKIN_MAX_BONES bones). The caller opts in
- * by copying c3_stage_renderer_gpu_skin_mask into a retained title's
- * gpu_batches; the draw refuses masks outside it. */
+ * by copying c3_stage_renderer_gpu_skin_mask into a title's gpu_batches,
+ * which takes effect on frames the title is retained; the draw refuses masks
+ * outside it. */
 #include "colosseum3ds/skin_uniforms.h"
 
 typedef struct { float pos[3], normal[3], uv[2], uv2[2]; uint8_t rgba[4]; float slot; } SkinGPUVertex;
@@ -122,9 +123,12 @@ static int skin_init(const C3Title *const *models, size_t count, char *error, si
 /* Per frame and model, before staging: validate the opt-in and reduce lights. */
 static int skin_model_prepare(size_t model, const C3Title *title, char *error, size_t capacity)
 {
-    if (!title->gpu_batches) return 1;
-    if (!title->retained || (title->gpu_batches & ~skin_eligible[model]))
-        { fail(error, capacity, "GPU-skinned batches need a retained title within the eligible mask."); return 0; }
+    /* A title that is not retained this frame (a field passenger, whose
+     * vertices its vehicle rewrites) is staged on the CPU as c3_title_animate
+     * already treats it. */
+    if (!title->gpu_batches || !title->retained) return 1;
+    if (title->gpu_batches & ~skin_eligible[model])
+        { fail(error, capacity, "GPU-skinned batches must lie within the eligible mask."); return 0; }
     if (!c3_skin_lights(title, &skin_lights[model]))
         { fail(error, capacity, "GPU-skinned model lights exceed the skin shader."); return 0; }
     return 1;
@@ -132,7 +136,7 @@ static int skin_model_prepare(size_t model, const C3Title *title, char *error, s
 
 static inline bool skin_batch_gpu(const C3Title *title, uint32_t batch)
 {
-    return (title->gpu_batches >> batch) & 1u;
+    return title->retained && ((title->gpu_batches >> batch) & 1u);
 }
 
 static void skin_vec4(int location, const float v[4])

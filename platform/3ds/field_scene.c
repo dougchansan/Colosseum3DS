@@ -164,6 +164,28 @@ static int save_game(C3GameState *state,const char *path,FILE *trace,char *messa
     return ok;
 }
 
+/* Every stage renderer init of the field. Wes and the area's NPCs (bit per
+ * model in `actors`) get a GPU skin stream; their supported batches are then
+ * skinned and lit by the GPU on every frame field_story retains them. Map
+ * packs are static and staged once; the TV and arrival parts stay on the CPU.
+ * models[i] is storage+i for every field model. */
+static int field_renderer_init(C3Title *storage,const C3Title *const *models,uint32_t count,
+                               uint64_t actors,char *error,size_t capacity)
+{
+#ifndef C3_NO_GPU_SKIN
+    c3_stage_renderer_request_gpu_skin(actors);
+#else
+    (void)actors;
+#endif
+    if(c3_stage_renderer_init(models,count,error,capacity))return 1;
+#ifndef C3_NO_GPU_SKIN
+    for(uint32_t i=0;i<count;++i)storage[i].gpu_batches=c3_stage_renderer_gpu_skin_mask(i);
+#else
+    (void)storage;
+#endif
+    return 0;
+}
+
 /* Return 2 only after a real source doorway and its post callback finish. */
 static int run_area(C3GameState *state,int new_game,const char *save_path,
                     FILE *trace,char *error,size_t capacity)
@@ -179,7 +201,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     int result=-1,yes=0,dirty=1,arrival_end_sampled=0,entered=0,lights_loaded=0;
     FieldPhase phase=FIELD_SETUP;PausePage page=PAUSE_CLOSED;
     float elapsed=0,phase_seconds=0,arrival_seconds=0;
-    uint64_t previous=0,next_console=0,next_trace=0;
+    uint64_t previous=0,next_console=0,next_trace=0,skin_actors=0;
     C3UiPager ui_pager={0};
     C3NameEntry name_entry;int naming=0;
     C3IngameMenu *ingame=calloc(1,sizeof *ingame);
@@ -271,7 +293,9 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                 (unsigned long)map.floor,(unsigned long)count,(unsigned long)cpu_models);
         fflush(trace);
     }
-    if(c3_stage_renderer_init(models,count,error,capacity))goto done;
+    skin_actors=UINT64_C(1)<<wes_index;
+    for(uint32_t i=arrival_index+arrival_count;i<count&&i<64u;++i)if(i!=tv_index)skin_actors|=UINT64_C(1)<<i;
+    if(field_renderer_init(storage,models,count,skin_actors,error,capacity))goto done;
     if(tv_index!=UINT32_MAX&&!c3_stage_renderer_set_tv(tv_index,1,1,true,error,capacity))goto done;
     snprintf(path,sizeof path,"%s_ready",prefix);
     c3_n3ds_log_memory(trace,path);
@@ -382,7 +406,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                     c3_n3ds_log_memory(trace,"field_battle_before_restore");
                     if(!restore_field_models(storage,count,model_paths,&story,
                         elapsed,error,capacity)){result=-1;break;}
-                    if(c3_stage_renderer_init(models,count,error,capacity)){result=-1;break;}
+                    if(field_renderer_init(storage,models,count,skin_actors,error,capacity)){result=-1;break;}
                     if(tv_index!=UINT32_MAX&&!c3_stage_renderer_set_tv(tv_index,1,1,
                         view->tv_enabled,error,capacity)){result=-1;break;}
                     c3_n3ds_log_memory(trace,"field_battle_restored");
@@ -447,7 +471,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                     if(c3_render_recover(trace,"pda-to-field",frames,C3_RECOVER_DRAIN)==C3_RECOVERY_EXIT){result=1;break;}
                     if(!c3_pda_preview_close(&pda_preview)){snprintf(error,capacity,"PDA renderer still owns its model.");result=-1;break;}
                     ingame->preview=0;ingame->dirty=1;input.pressed&=(uint16_t)~C3_PAD_B;
-                    if(c3_stage_renderer_init(models,count,error,capacity)||
+                    if(field_renderer_init(storage,models,count,skin_actors,error,capacity)||
                        (tv_index!=UINT32_MAX&&!c3_stage_renderer_set_tv(tv_index,1,1,view->tv_enabled,error,capacity))){result=-1;break;}
                     previous=c3_n3ds_active_time_us();
                 }
@@ -456,7 +480,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                     if(c3_render_recover(trace,"pda-to-field",frames,C3_RECOVER_DRAIN)==C3_RECOVERY_EXIT){result=1;break;}
                     if(!c3_pda_preview_close(&pda_preview)){snprintf(error,capacity,"PDA renderer still owns its model.");result=-1;break;}
                     ingame->preview=0;ingame->dirty=1;
-                    if(c3_stage_renderer_init(models,count,error,capacity)||
+                    if(field_renderer_init(storage,models,count,skin_actors,error,capacity)||
                        (tv_index!=UINT32_MAX&&!c3_stage_renderer_set_tv(tv_index,1,1,view->tv_enabled,error,capacity))){result=-1;break;}
                     if(event.kind==C3_INGAME_PREVIEW)event.kind=C3_INGAME_NONE;
                     previous=c3_n3ds_active_time_us();
@@ -478,7 +502,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                                 if(c3_render_recover(trace,"pda-failed",frames,C3_RECOVER_DRAIN)==C3_RECOVERY_EXIT){result=1;break;}
                                 if(!c3_pda_preview_close(&pda_preview)){result=-1;break;}
                             }
-                            if(c3_stage_renderer_init(models,count,error,capacity)||
+                            if(field_renderer_init(storage,models,count,skin_actors,error,capacity)||
                                (tv_index!=UINT32_MAX&&!c3_stage_renderer_set_tv(tv_index,1,1,view->tv_enabled,error,capacity))){result=-1;break;}
                             c3_ingame_error(ingame,preview_error);
                         }
