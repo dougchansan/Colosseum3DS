@@ -37,36 +37,68 @@ int c3_ui_assets_open(C3UiAssets *a,const void *memory,size_t size)
     checked.data=d;checked.size=size;*a=checked;return 1;
 }
 
+/* The 3DS ARM11 has no divide instruction: every '/' below used to be a
+ * library call, three per blended pixel plus one per scaled coordinate, and a
+ * battle redraw took 34 ms. (x+1+(x>>8))>>8 equals x/255 for every
+ * 0 <= x <= 255*255+127, the full range a blend produces (checked
+ * exhaustively), and alpha 255 returns the source colour exactly, so output is
+ * byte-identical (tests/test_bottom_ui_golden.c). */
+static inline unsigned div255(unsigned x){return (x+1u+(x>>8))>>8;}
+
 static void pixel(C3BottomUi *ui,int x,int y,uint32_t color,unsigned alpha)
 {
     if(!ui||!ui->pixels||x<0||x>=320||y<0||y>=240||!alpha)return;
     size_t index=ui->rotated_bgr?(size_t)x*240u+239u-(unsigned)y:(size_t)y*320u+(unsigned)x;
+    unsigned r=(color>>16)&255u,g=(color>>8)&255u,b=color&255u;
     if(ui->rotated_bgr==C3_UI_ROTATED_RGB565){
         unsigned char *p=ui->pixels+index*2u;
-        unsigned old=(unsigned)p[0]|(unsigned)p[1]<<8;
-        unsigned r5=old>>11,g6=(old>>5)&63u,b5=old&31u;
-        unsigned r=((((color>>16)&255u)*alpha)+((r5<<3)|(r5>>2))*(255u-alpha)+127u)/255u;
-        unsigned g=((((color>>8)&255u)*alpha)+((g6<<2)|(g6>>4))*(255u-alpha)+127u)/255u;
-        unsigned b=(((color&255u)*alpha)+((b5<<3)|(b5>>2))*(255u-alpha)+127u)/255u;
+        if(alpha<255u){
+            unsigned old=(unsigned)p[0]|(unsigned)p[1]<<8;
+            unsigned r5=old>>11,g6=(old>>5)&63u,b5=old&31u;
+            r=div255(r*alpha+((r5<<3)|(r5>>2))*(255u-alpha)+127u);
+            g=div255(g*alpha+((g6<<2)|(g6>>4))*(255u-alpha)+127u);
+            b=div255(b*alpha+((b5<<3)|(b5>>2))*(255u-alpha)+127u);
+        }
         unsigned next=(r>>3)<<11|(g>>2)<<5|(b>>3);
         p[0]=(unsigned char)next;p[1]=(unsigned char)(next>>8);return;
     }
-    size_t at=index*3u;
-    unsigned char *p=ui->pixels+at;
-    unsigned r=(color>>16)&255u,g=(color>>8)&255u,b=color&255u;
+    unsigned char *p=ui->pixels+index*3u;
     if(ui->rotated_bgr){unsigned swap=r;r=b;b=swap;}
-    p[0]=(unsigned char)((r*alpha+p[0]*(255u-alpha)+127u)/255u);
-    p[1]=(unsigned char)((g*alpha+p[1]*(255u-alpha)+127u)/255u);
-    p[2]=(unsigned char)((b*alpha+p[2]*(255u-alpha)+127u)/255u);
+    if(alpha==255u){p[0]=(unsigned char)r;p[1]=(unsigned char)g;p[2]=(unsigned char)b;return;}
+    p[0]=(unsigned char)div255(r*alpha+p[0]*(255u-alpha)+127u);
+    p[1]=(unsigned char)div255(g*alpha+p[1]*(255u-alpha)+127u);
+    p[2]=(unsigned char)div255(b*alpha+p[2]*(255u-alpha)+127u);
 }
 
 void c3_ui_rect(C3BottomUi *ui,int x,int y,int w,int h,uint32_t color)
 {
     /* Clip before adding extents, including adversarial host-test inputs. */
-    if(w<=0||h<=0||x>=320||y>=240)return;
+    if(w<=0||h<=0||x>=320||y>=240||!ui||!ui->pixels)return;
     int left=x<0?0:x,top=y<0?0:y;
     int right=(int64_t)x+w>320?320:x+w,bottom=(int64_t)y+h>240?240:y+h;
-    for(int yy=top;yy<bottom;++yy)for(int xx=left;xx<right;++xx)pixel(ui,xx,yy,color,255);
+    if(left>=right||top>=bottom)return;
+    /* Opaque fill: the bytes pixel() would write, without per-pixel work.
+     * In the rotated layouts one screen column is contiguous in memory. */
+    unsigned r=(color>>16)&255u,g=(color>>8)&255u,b=color&255u;
+    if(ui->rotated_bgr==C3_UI_ROTATED_RGB565){
+        unsigned v=(r>>3)<<11|(g>>2)<<5|(b>>3);unsigned char lo=(unsigned char)v,hi=(unsigned char)(v>>8);
+        for(int xx=left;xx<right;++xx){
+            unsigned char *p=ui->pixels+((size_t)xx*240u+240u-(unsigned)bottom)*2u;
+            for(int n=bottom-top;n>0;--n,p+=2){p[0]=lo;p[1]=hi;}
+        }
+        return;
+    }
+    if(ui->rotated_bgr){
+        for(int xx=left;xx<right;++xx){
+            unsigned char *p=ui->pixels+((size_t)xx*240u+240u-(unsigned)bottom)*3u;
+            for(int n=bottom-top;n>0;--n,p+=3){p[0]=(unsigned char)b;p[1]=(unsigned char)g;p[2]=(unsigned char)r;}
+        }
+        return;
+    }
+    for(int yy=top;yy<bottom;++yy){
+        unsigned char *p=ui->pixels+((size_t)yy*320u+(unsigned)left)*3u;
+        for(int n=right-left;n>0;--n,p+=3){p[0]=(unsigned char)r;p[1]=(unsigned char)g;p[2]=(unsigned char)b;}
+    }
 }
 
 void c3_ui_begin(C3BottomUi *ui,unsigned char *pixels,int rotated,
@@ -93,9 +125,16 @@ void c3_ui_sprite(C3BottomUi *ui,unsigned id,int x,int y,int w,int h)
 void c3_ui_rgba(C3BottomUi *ui,const uint8_t *src,unsigned sw,unsigned sh,int x,int y,int w,int h)
 {
     if(!ui||!src||!sw||sw>1024||!sh||sh>1024||w<=0||h<=0||w>640||h>480||x>=320||y>=240||x < -w||y < -h)return;
-    for(int yy=0;yy<h;++yy)for(int xx=0;xx<w;++xx){
-        const unsigned char *p=src+((size_t)((unsigned)yy*sh/(unsigned)h)*sw+(unsigned)xx*sw/(unsigned)w)*4u;
-        pixel(ui,x+xx,y+yy,(uint32_t)p[0]<<16|(uint32_t)p[1]<<8|p[2],p[3]);
+    /* Same nearest mapping as before, divided once per column and row. */
+    unsigned columns[640];
+    for(int xx=0;xx<w;++xx)columns[xx]=(unsigned)xx*sw/(unsigned)w;
+    for(int yy=0;yy<h;++yy){
+        if(y+yy<0||y+yy>=240)continue;
+        const unsigned char *row=src+(size_t)((unsigned)yy*sh/(unsigned)h)*sw*4u;
+        for(int xx=0;xx<w;++xx){
+            const unsigned char *p=row+(size_t)columns[xx]*4u;
+            pixel(ui,x+xx,y+yy,(uint32_t)p[0]<<16|(uint32_t)p[1]<<8|p[2],p[3]);
+        }
     }
 }
 
@@ -110,13 +149,20 @@ static void panel(C3BottomUi *ui,unsigned sprite,int x,int y,int w,int h)
     /* Nine-slice the source window. Keep its corners/border, stretch only the
      * middle texels; the original 640x480 window is reflowed, not letterboxed. */
     unsigned border=sprite==C3_UI_HP_FRAME&&sw>=16&&sh>=16?8u:4u;
-    for(int yy=0;yy<h;++yy)for(int xx=0;xx<w;++xx){
-        unsigned sx=xx<4?(unsigned)xx*border/4u:xx>=w-4?sw-border+(unsigned)(xx-w+4)*border/4u:
+    /* Source columns once per call, source row once per row (w <= 320). */
+    unsigned columns[320];
+    for(int xx=0;xx<w;++xx)
+        columns[xx]=xx<4?(unsigned)xx*border/4u:xx>=w-4?sw-border+(unsigned)(xx-w+4)*border/4u:
             border+(unsigned)(xx-4)*(sw-2u*border)/(unsigned)(w-8);
+    for(int yy=0;yy<h;++yy){
+        if(y+yy<0||y+yy>=240)continue;
         unsigned sy=yy<4?(unsigned)yy*border/4u:yy>=h-4?sh-border+(unsigned)(yy-h+4)*border/4u:
             border+(unsigned)(yy-4)*(sh-2u*border)/(unsigned)(h-8);
-        const unsigned char *p=src+((size_t)sy*sw+sx)*4u;
-        pixel(ui,x+xx,y+yy,(uint32_t)p[0]<<16|(uint32_t)p[1]<<8|p[2],p[3]);
+        const unsigned char *row=src+(size_t)sy*sw*4u;
+        for(int xx=0;xx<w;++xx){
+            const unsigned char *p=row+(size_t)columns[xx]*4u;
+            pixel(ui,x+xx,y+yy,(uint32_t)p[0]<<16|(uint32_t)p[1]<<8|p[2],p[3]);
+        }
     }
 }
 
@@ -338,10 +384,13 @@ void c3_ui_title(C3BottomUi *ui,int waiting,int accepted)
         if(sw>=96){
             /* Reuse the main menu's rounded blue button: preserve its end
              * caps and stretch a text-free vertical strip behind PRESS START. */
-            for(unsigned y=0;y<58;++y)for(unsigned x=0;x<264;++x){
-                unsigned sx=x<32?x:x>=232?sw-32u+x-232u:24u;
-                const unsigned char *p=src+((size_t)(y*sh/58u)*sw+sx)*4u;
-                pixel(ui,28+(int)x,94+(int)y,(uint32_t)p[0]<<16|(uint32_t)p[1]<<8|p[2],p[3]);
+            for(unsigned y=0;y<58;++y){
+                const unsigned char *row=src+(size_t)(y*sh/58u)*sw*4u;
+                for(unsigned x=0;x<264;++x){
+                    unsigned sx=x<32?x:x>=232?sw-32u+x-232u:24u;
+                    const unsigned char *p=row+(size_t)sx*4u;
+                    pixel(ui,28+(int)x,94+(int)y,(uint32_t)p[0]<<16|(uint32_t)p[1]<<8|p[2],p[3]);
+                }
             }
         }else c3_ui_panel(ui,28,94,264,58);
         c3_ui_sprite(ui,C3_UI_START,50,109,220,26);
