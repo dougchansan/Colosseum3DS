@@ -280,10 +280,44 @@ every new button press, and the walk was D-pad taps a median 0.96 s apart
 windows hold 28.3-30.2 frames, matching what was reported. Intervals now
 carry `perf_interval_us` and `perf_fps`.
 
+## Battle on hardware (Willie preview)
+
+Measured on a New 3DS with a probe build that boots straight into the
+Willie preview with a fresh game and no save writes
+(`make -f Makefile.3ds BUILD=build-3ds-probe C3_EXTRA_CFLAGS=-DC3_BATTLE_PREVIEW_PROBE`,
+trace in `preview-probe.log`). Route: Umbreon Bite on Zigzagoon A, Espeon
+Confusion on Zigzagoon B; both Zigzagoon Tackle. Phases are split by the
+`wzx_*` start/complete lines; `battle_frame` carries interval sums of the
+bottom-screen redraw (`ui_us`, `ui_draws`), `c3_battle_stage_step`
+(`step_us`) and the draw (`draw_us`).
+
+| phase | fps before | fps after | per frame after (step / draw / UI) |
+| --- | ---: | ---: | --- |
+| idle | 21.8 | 21.8 | 14.1 / 25.0 / 0 ms |
+| Confusion | 12.6 | 17.5 | 16.2 / 29.9 / 10.9 ms |
+| Tackle | 11.8 | 16.6 | 18.1 / 25.5 / 12.7 ms |
+| damage | 12.3 | 16.8 | 18.7 / 25.8 / 12.7 ms |
+
+The effects themselves were not the main cost. HP events redraw the
+bottom screen every frame, and each redraw took 34 ms because the
+software UI divided by 255 three times per pixel and per scaled coordinate
+on a CPU without a divide instruction. `src/bottom_ui.c` now writes opaque
+pixels directly and blends without division: 12.8 ms per redraw, output
+byte-identical (`tests/test_bottom_ui_golden.c`). Effect logic adds only
+2-5 ms to the step.
+
+What still keeps the battle under 30 fps is the idle cost: 13.5 ms of
+skinning and 20.9 ms of lighting/staging for about 17,500 actor vertices
+every frame (the two loops at about 0.8 and 1.2 microseconds per vertex).
+That needs GPU skinning or a much cheaper CPU loop; see Not done.
+
 ## Not done
 
 - Confusion still rebuilds and uploads its 98,304-vertex grid every frame,
-  and particles still issue one draw per quad. Both remain the worst spikes.
+  and particles still issue one draw per quad. On hardware these cost a few
+  ms (Confusion's draw is about 5 ms above idle), far less than the actor
+  skinning below.
+- A battle UI redraw is still 12.8 ms; HP events redraw every frame.
 - Wes and the people in the story field are still animated, placed in a
   second pass and staged in full every frame (`src/field_story.c`).
 - No culling, no state deduplication, no index buffers, no smaller vertex.
