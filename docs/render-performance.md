@@ -390,6 +390,32 @@ at 28.9 fps, level with idle moments of the same run (29.4). The remaining
 copies (backdrop, present) are two 150 KB memcpys that drawing straight
 into the framebuffer could merge, not attempted.
 
+## The last half frame: trace writes
+
+With CPU at 9 ms and GPU at 17 ms the battle still ran at 29.4 fps: every
+interval held 29 frames in about 1,003 ms or 30 in about 1,019 ms, i.e. one or
+two frames a second took three VBlanks. The cadence counters
+(`perf_spacing2/3/_more`, `perf_late_wake`, `perf_late_acquire`) split the
+cause: over 48 seconds, 48 cadence waits woke after a later refresh (exactly
+one per second) and no acquisition was delayed by a busy GPU. The once-a-
+second trace `fflush` to the SD card held the main thread past the refresh.
+
+`c3_trace_open` (`platform/3ds/trace_writer.c`) returns an `fopencookie`
+stream whose writes only copy into a 256 KiB RAM ring; a thread one priority
+below the main thread on the same core drains it to the file while the main
+thread sleeps in its pacing. Callers' `fprintf`/`fflush`/`fclose` are
+unchanged; `boot-trace.log` and `preview-probe.log` use it, so the field
+benefits too. Idle battle, 48 seconds each:
+
+| | before (420f708) | after (5527507) |
+| --- | ---: | ---: |
+| frames on the 2-VBlank cadence | 1,382 / 1,430 | 1,440 / 1,440 |
+| 3 and 4+ VBlank frames | 38 and 10 | 0 and 0 |
+| late wakes | 48 | 0 |
+| fps median / min | 29.42 / 28.91 | 29.92 / 29.90 |
+
+Trace bytes still in the ring when the application crashes are lost.
+
 ## Not done
 
 - Confusion still rebuilds and uploads its 98,304-vertex grid every frame,
@@ -403,5 +429,4 @@ into the framebuffer could merge, not attempted.
 - GPU skinning covers battle actors only. Field actors (Wes, people) rewrite
   sampled vertices after animation (passengers, developer floor) and need
   that moved into placement first. The CPU arena still reserves 56 bytes for
-  every GPU-skinned vertex, and the battle sits at 29.4 rather than 29.9 fps
-  idle; neither is investigated yet.
+  every GPU-skinned vertex.
