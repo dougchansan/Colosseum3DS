@@ -381,8 +381,31 @@ before (the perf-3fb3 run with GPU-native textures) against 4560997:
 
 The remaining CPU vertices are batches the skin program does not cover.
 Linear memory free after the area loaded: 18.6 MB. Wes and Willie render as
-before in native-size captures, idle and walking. Only Outskirt was
-measured; Phenac City's 26 people should gain more.
+before in native-size captures, idle and walking.
+
+Phenac City (36 models: 8 map packs, Wes, partner, 26 people) on a New 3DS,
+a save moved to floor 3 so the arrival event plays, then 12 s idle and
+walking; the same commit (0453902) built with and without
+`-DC3_NO_GPU_SKIN`, per frame:
+
+| | CPU skinning | GPU skinning |
+| --- | ---: | ---: |
+| fps, idle / walking | 13.7 / 13.4 | 25.0 / 26.0 |
+| vertices skinned on the CPU | 44,658 | 9,282 |
+| animate | 29.0 ms | 9.8 ms |
+| prepare | 31.7 ms | 5.3 ms |
+| submit | 4.3 ms | 5.2 ms |
+| upload | 2,442 KB | 508 KB |
+| GPU frame (median) | 30.9 ms | 27.6 ms |
+| linear memory free after load | 14.8 MB | 12.1 MB |
+
+Phenac is now GPU-bound: in control, 736 of 1,995 acquisitions waited for
+the previous GPU frame (12.8 ms per frame), 38% of frames took three
+VBlanks, and the CPU work (about 21 ms) fits. Its map packs are not yet
+GPU-native (`tools/pack_textures.py` lowered Outskirt's GPU frame by about
+2.7 ms). Before this work no Phenac pack had run on hardware: person npc11
+pairs alpha tests GREATER 127 and GREATER 0, which `valid_batch` refused,
+and the whole area failed to load.
 
 ## Bottom-screen redraw
 
