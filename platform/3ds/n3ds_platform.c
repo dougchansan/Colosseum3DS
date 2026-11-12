@@ -92,7 +92,7 @@ int c3_n3ds_init(char *error, size_t capacity)
     return 0;
 }
 
-static uint16_t previous_touch_x, previous_touch_y;
+static uint16_t previous_touch_x, previous_touch_y, stick_armed_direction;
 static bool previous_touch;
 
 bool c3_n3ds_poll(C3N3dsInput *input)
@@ -111,6 +111,18 @@ bool c3_n3ds_poll(C3N3dsInput *input)
     previous_buttons = input->held;
     input->stick_x = normalize_axis(circle.dx);
     input->stick_y = normalize_axis(circle.dy);
+    /* Menus read direction edges from `pressed`. A Circle Pad push past 80
+     * of 127 adds one D-pad edge; it re-arms below 40. `held` is unchanged,
+     * so field movement still reads the stick itself. */
+    {
+        uint16_t stick = 0;
+        int x = input->stick_x, y = input->stick_y, ax = x < 0 ? -x : x, ay = y < 0 ? -y : y;
+        if (ax >= ay && ax > 80) stick = x > 0 ? C3_PAD_RIGHT : C3_PAD_LEFT;
+        else if (ay > ax && ay > 80) stick = y > 0 ? C3_PAD_UP : C3_PAD_DOWN;
+        if (stick && !stick_armed_direction) input->pressed |= stick;
+        if (stick) stick_armed_direction = stick;
+        else if (ax < 40 && ay < 40) stick_armed_direction = 0;
+    }
     input->cstick_x = normalize_axis(cstick.dx);
     input->cstick_y = normalize_axis(cstick.dy);
     input->trigger_l = (keys & KEY_L) ? 255 : 0;

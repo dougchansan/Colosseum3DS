@@ -145,7 +145,7 @@ static int run_title(FILE *trace, C3GameState *state,
         clip_seconds += delta;
         phase_seconds += delta;
         float fade = 1.0f;
-        if (phase == TITLE_INTRO && (input.pressed & (C3_PAD_A | C3_PAD_B | C3_PAD_START))) {
+        if (phase == TITLE_INTRO && ((input.pressed & (C3_PAD_A | C3_PAD_B | C3_PAD_START)) || input.touch_pressed)) {
             phase = TITLE_SKIP_OUT;
             phase_seconds = 0.0f;
         }
@@ -176,7 +176,7 @@ static int run_title(FILE *trace, C3GameState *state,
             if (trace) { fprintf(trace, "dev_floor_request input=%04x\n", input.pressed); fflush(trace); }
             break;
 #endif
-        } else if (phase == TITLE_WAIT_START && (input.pressed & (C3_PAD_A | C3_PAD_START))) {
+        } else if (phase == TITLE_WAIT_START && ((input.pressed & (C3_PAD_A | C3_PAD_START)) || input.touch_pressed)) {
             phase = TITLE_ACCEPTED; phase_seconds = 0.0f;
         } else if (phase == TITLE_ACCEPTED && phase_seconds >= 1.0f) {
             C3GameMenuSave view;

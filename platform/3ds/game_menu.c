@@ -161,6 +161,45 @@ static uint16_t directions(C3GameMenu *menu, const C3N3dsInput *input, float del
     return held;
 }
 
+/* The main menu is a 2x3 grid as drawn: CONTINUE | COLOSSEUM BATTLE,
+ * NEW GAME | BATTLE NOW, OPTIONS | QUIT. Each entry lists its neighbour for
+ * UP, DOWN, LEFT, RIGHT; -1 keeps the selection. */
+static void choose_main(C3GameMenu *menu, uint16_t move)
+{
+    static const signed char next[6][4] = {
+        {1, 4, -1, 3},  /* NEW GAME */
+        {-1, 0, -1, 2}, /* CONTINUE */
+        {-1, 3, 1, -1}, /* COLOSSEUM BATTLE */
+        {2, 5, 0, -1},  /* BATTLE NOW */
+        {0, -1, -1, 5}, /* OPTIONS */
+        {3, -1, 4, -1}, /* QUIT */
+    };
+    unsigned before = menu->selection;
+    int to = -1;
+    if (before >= 6) return;
+    if (move & C3_PAD_UP) to = next[before][0];
+    else if (move & C3_PAD_DOWN) to = next[before][1];
+    else if (move & C3_PAD_LEFT) to = next[before][2];
+    else if (move & C3_PAD_RIGHT) to = next[before][3];
+    if (to >= 0 && (unsigned)to != before) { menu->selection = (unsigned)to; menu->dirty = 1; }
+}
+
+/* Stylus on the main menu: the two story lines, the two battle lines,
+ * OPTIONS and QUIT, in their drawn rectangles. Returns -1 elsewhere. */
+static int main_touch(unsigned x, unsigned y)
+{
+    if (y >= 5 && y < 142) {
+        int lower = y >= 102;
+        if (x >= 5 && x < 155) return lower ? 0 : 1;
+        if (x >= 165 && x < 315) return lower ? 3 : 2;
+    }
+    if (y >= 148 && y < 188) {
+        if (x >= 5 && x < 145) return 4;
+        if (x >= 185 && x < 290) return 5;
+    }
+    return -1;
+}
+
 static void choose(C3GameMenu *menu, uint16_t move, unsigned *selection, unsigned count)
 {
     unsigned before = *selection;
@@ -202,7 +241,11 @@ C3GameMenuEvent c3_game_menu_update(C3GameMenu *menu, const C3N3dsInput *input, 
     int accept = !!(input->pressed & C3_PAD_A), back = !!(input->pressed & C3_PAD_B);
     switch (menu->page) {
     case C3_MENU_MAIN:
-        choose(menu, move, &menu->selection, 6);
+        choose_main(menu, move);
+        if (input->touch_pressed) {
+            int touched = main_touch(input->touch_x, input->touch_y);
+            if (touched >= 0) { menu->selection = (unsigned)touched; menu->dirty = 1; accept = 1; }
+        }
         if (back || (accept && menu->selection == 5)) {
             event.kind = C3_MENU_EVENT_RETURN_TITLE;
             c3_game_menu_set_pending(menu, "Returning to the title...");
@@ -354,7 +397,7 @@ void c3_game_menu_draw_to(C3GameMenu *menu,C3BottomUi *ui)
         }
         c3_ui_panel(ui,5,190,310,49);
         c3_ui_text(ui,14,190,290,2,message(menu,ids[menu->selection],fallbacks[menu->selection]),C3_UI_WHITE);
-        c3_ui_text(ui,14,224,290,1,"D-pad: choose   A: confirm   B: title",C3_UI_MUTED);
+        c3_ui_text(ui,14,224,290,1,"Touch or D-pad: choose   A: confirm   B: title",C3_UI_MUTED);
         break;
     }
     case C3_MENU_NAME_KEYBOARD: {
