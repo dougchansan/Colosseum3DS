@@ -119,6 +119,12 @@ int c3_battle_stage_load(C3BattleStage *s,const char *root,const uint16_t hp[4],
     if(!reflect_load(s,root,error,cap)||!confusion_load(s,root,error,cap)||!confusion_camera_load(s,root,error,cap)||!tail_load(s,root,error,cap)||!growl_load(s,root,error,cap)||!stat_down_load(s,root,error,cap)||!tackle_load(s,root,error,cap))goto bad;
     c3_battle_presentation_init(&s->presentation,hp);
     if(!c3_battle_presentation_wait_limit(&s->presentation,20000))goto invalid;
+#ifndef C3_NO_GPU_SKIN
+    /* Only the animated actors (four Pokemon slots, two trainers) are worth
+     * the linear memory of a GPU skin stream. */
+    {uint64_t actors=0;for(uint32_t i=0;i<s->count&&i<64u;++i)if(s->slots[i]<6u)actors|=UINT64_C(1)<<i;
+     c3_stage_renderer_request_gpu_skin(actors);}
+#endif
     if(c3_stage_renderer_init(s->draw,s->count,error,cap)!=C3_RENDER_OK)goto bad;
     s->initialized=1;
     if(s->damage_available&&c3_stage_renderer_particle_pack(&s->particle_pack,error,cap)!=C3_RENDER_OK)return 0;

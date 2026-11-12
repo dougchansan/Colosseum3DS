@@ -28,7 +28,7 @@ static int confusion_step(C3BattleStage *s,uint32_t ms,char *e,size_t n){(void)s
 static float confusion_owner_seconds(const C3BattleStage *s){(void)s;return 0;}
 static int confusion_bind_particles(C3BattleStage *s,char *e,size_t n){(void)s;(void)e;(void)n;return 1;}
 int c3_stage_renderer_confusion(const C3ConfusionType12 *s){(void)s;return 1;}
-uint64_t c3_stage_renderer_gpu_skin_mask(size_t m){(void)m;return 0;}
+uint64_t c3_stage_renderer_gpu_skin_mask(size_t m){(void)m;return 0;}void c3_stage_renderer_request_gpu_skin(uint64_t m){(void)m;}
 static int stage_sound(C3BattleStage *s,uint32_t id,char *e,size_t n){return s->sound_cue(++s->cue_serial,id,e,n);}
 static int tackle_step(C3BattleStage *s,uint32_t ms,char *e,size_t n){(void)s;(void)ms;(void)e;(void)n;return 1;}
 static int stat_down_step(C3BattleStage *s,uint32_t ms,char *e,size_t n){(void)s;(void)ms;(void)e;(void)n;return 1;}

@@ -18,7 +18,7 @@ static uint32_t ids[8192],stopped[8192];
 int c3_stage_renderer_confusion_program(const C3WzxConfusionProgram *p,char *e,size_t n){(void)p;(void)e;(void)n;return 1;}
 int c3_stage_renderer_confusion(const C3ConfusionType12 *p){(void)p;return 1;}
 int c3_stage_renderer_init(const C3Title *const *m,size_t n,char *e,size_t z){(void)e;(void)z;models=(unsigned)n;assert(n<=16);unsigned vertices=0;for(unsigned i=0;i<n;++i)vertices+=m[i]->vertex_count;assert(vertices<=131072);memset(modulation,128,sizeof modulation);memset(modulated,0,sizeof modulated);pack_count=0;return C3_RENDER_OK;}
-uint64_t c3_stage_renderer_gpu_skin_mask(size_t m){(void)m;return 0;}
+uint64_t c3_stage_renderer_gpu_skin_mask(size_t m){(void)m;return 0;}void c3_stage_renderer_request_gpu_skin(uint64_t m){(void)m;}
 int c3_stage_renderer_set_static(size_t i,bool value){(void)value;assert(i<models);return 1;}
 int c3_stage_renderer_set_modulation(size_t i,const uint8_t rgb[3]){assert(i<models);modulated[i]=(uint8_t)(rgb!=NULL);if(rgb)memcpy(modulation[i],rgb,3);else memset(modulation[i],128,3);return 1;}
 int c3_stage_renderer_get_modulation(size_t i,uint8_t rgb[3],int *enabled){assert(i<models);memcpy(rgb,modulation[i],3);*enabled=modulated[i];return 1;}

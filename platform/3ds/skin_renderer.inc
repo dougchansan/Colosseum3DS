@@ -29,6 +29,15 @@ static C3SkinLights skin_lights[C3_STAGE_MAX_MODELS];
 /* The skin program is bound; the title program's state must be restored
  * before the next CPU-path draw. */
 static bool skin_bound;
+/* Models (bit per index) the next init may give a GPU stream. Linear memory
+ * is scarce in the battle (about 4 MB free before audio), so only animated
+ * actors are requested; static arena packs are already cached on the CPU. */
+static uint64_t skin_requested;
+
+void c3_stage_renderer_request_gpu_skin(uint64_t models)
+{
+    skin_requested = models;
+}
 
 uint64_t c3_stage_renderer_gpu_skin_mask(size_t model)
 {
@@ -63,8 +72,11 @@ static int skin_init(const C3Title *const *models, size_t count, char *error, si
 {
     memset(skin_eligible, 0, sizeof skin_eligible);
     skin_bound = false;
+    uint64_t requested = skin_requested;
+    skin_requested = 0; /* one request per scene */
     size_t total = 0;
     for (size_t m = 0; m < count; ++m) {
+        if (m >= 64u || !((requested >> m) & 1u)) continue;
         C3SkinLights lights;
         if (!c3_skin_lights(models[m], &lights)) continue;
         uint64_t mask = 0;
