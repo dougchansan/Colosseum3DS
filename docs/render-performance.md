@@ -359,13 +359,44 @@ of Confusion's hit show the same models, shading and textures. Effect
 phases now spend most of their remaining CPU time in the 13 ms bottom-screen
 redraw.
 
+## Bottom-screen redraw
+
+`battle_frame` also breaks the redraw down per primitive (`ui_begin_us`,
+`ui_panel_us`, `ui_text_us`, `ui_rect_us`, `ui_sprite_us`, `ui_present_us`
+and counts; `C3UiPerf` in `colosseum3ds/bottom_ui.h`). A battle redraw with
+the GPU-skinned probe build, per redraw on a New 3DS:
+
+| part | before (154fe2d) | after (b4ee268) |
+| --- | ---: | ---: |
+| 5 panels (4 HP frames, message box) | 7.77 ms | 1.21 ms |
+| backdrop | 3.51 ms | 1.63 ms |
+| text (114 glyphs) | 1.39 ms | 1.39 ms |
+| present (copy + flush) | 0.86 ms | 1.79 ms |
+| total | 13.85 ms | 6.26 ms |
+
+- The backdrop gradient never changes: it is rendered once per framebuffer
+  layout and copied (it was 240 one-pixel rows, 76,800 scattered writes in
+  the rotated layout).
+- Drawing functions record the areas they touched since `c3_ui_begin`. A
+  panel drawn over untouched backdrop always yields the same pixels, so it
+  is cached (8 entries, keyed by asset pack, sprite, rectangle and layout)
+  and copied on later redraws; anything drawn underneath first disables the
+  cache for that panel.
+- `tests/test_bottom_ui_golden.c` renders every scene twice per layout;
+  all 49 framebuffers match the bytes recorded before any UI optimisation.
+
+Effect frames went from about 28 to 20 ms of CPU and Tackle/damage now run
+at 28.9 fps, level with idle moments of the same run (29.4). The remaining
+copies (backdrop, present) are two 150 KB memcpys that drawing straight
+into the framebuffer could merge, not attempted.
+
 ## Not done
 
 - Confusion still rebuilds and uploads its 98,304-vertex grid every frame,
   and particles still issue one draw per quad. On hardware these cost a few
   ms (Confusion's draw is about 5 ms above idle), far less than the actor
   skinning below.
-- A battle UI redraw is still 12.8 ms; HP events redraw every frame.
+- A battle UI redraw is 6.3 ms; HP events still redraw every frame.
 - Wes and the people in the story field are still animated, placed in a
   second pass and staged in full every frame (`src/field_story.c`).
 - No culling, no state deduplication, no index buffers, no smaller vertex.
