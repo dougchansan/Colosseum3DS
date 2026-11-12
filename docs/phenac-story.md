@@ -68,3 +68,25 @@ See the commands in the commit that added `tools/floor_profiles.py`:
 `prepare_floor.py`, `prepare_area.py`, `prepare_story.py` with
 `--floor phenac`, then `prepare_area_runtime.py`. The flat SD set is 39
 files (the 38 from those tools plus `phenac_camera.c3c`).
+
+## Hardware playtest, 2026-11-11 (build 01051e8, New 3DS)
+
+The owner played Continue → shop → Willie → world map → cancel → Outskirt.
+The trace (`boot-trace.log`, private) shows `preview_exit outcome=2`,
+`story_battle_result encounter=10 result=2 native98_resumed=1`, native 67,
+the script's own writes of flags `0x3DE`, `0xA5A`, `0x3DF`, the exit door,
+`world_map_begin visible=2`, cancel and a clean return to Outskirt Stand.
+Battle taps, cameras, animations and move sounds worked.
+
+Fixed in 729dbda: PRESS START ignored taps; main-menu D-pad did not follow
+the drawn grid; menus ignored the Circle Pad.
+
+Open items from the playtest:
+
+| Item | Note |
+| --- | --- |
+| Field movement is jumpy | frame rate; renderer work in progress |
+| Battle load shows a debug console for a while | battle load time and loading screen |
+| No background music in field or battle | BGM backend not ported |
+| World map is a text list | needs the original 3D map, markers, journey and location art from `world_map.fsys` |
+| World-map cancel reloads the area | the original also relinks the floor; avoid the reload by keeping the loaded area across the world map |
