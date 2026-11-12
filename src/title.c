@@ -503,7 +503,7 @@ static int animate(C3Title *title, uint32_t clip_index, float seconds)
     const uint8_t *first,*last,*material_first;
     const float (*skin)[12];
     C3TitleCamera camera;
-    uint64_t changed=0,needed=0,skinned=0,stale=0;
+    uint64_t changed=0,needed=0,skinned=0,stale=0,gpu=0,gpu_bones=0;
     uint32_t index,next,bone,batch,i;
     double frame;
     float fraction;
@@ -555,7 +555,12 @@ static int animate(C3Title *title, uint32_t clip_index, float seconds)
             memcmp(state->uv2_offset,prior->uv2_offset,sizeof state->uv2_offset) ||
             memcmp(state->uv_cross,prior->uv_cross,sizeof state->uv_cross) ||
             memcmp(state->uv2_cross,prior->uv2_cross,sizeof state->uv2_cross);
-        if (!title->retained || (differs && !title->hidden && state->visible>=0.5f)) {
+        if (title->retained && ((title->gpu_batches>>batch)&1u)) {
+            /* The GPU skins this batch from pose.skin every draw. Its sampled
+             * vertices are not maintained, so a later CPU draw must rebuild. */
+            if (!title->hidden && state->visible>=0.5f) { gpu|=UINT64_C(1)<<batch; gpu_bones|=title->batch_bones[batch]; }
+            stale|=UINT64_C(1)<<batch;
+        } else if (!title->retained || (differs && !title->hidden && state->visible>=0.5f)) {
             skinned|=UINT64_C(1)<<batch;
             needed|=title->batch_bones[batch];
         } else if (differs) stale|=UINT64_C(1)<<batch;
@@ -569,7 +574,7 @@ static int animate(C3Title *title, uint32_t clip_index, float seconds)
     skin=placement->enabled ? (const float (*)[12])scratch_placed : (const float (*)[12])scratch_sampled;
     for (bone=0; bone<title->bone_count; ++bone) {
         float *n=scratch_normals[bone];
-        if (!((needed>>bone)&1u)) continue;
+        if (!(((needed|gpu_bones)>>bone)&1u)) continue;
         if (!normal_matrix(scratch_sampled[bone],n)) {
             if(!bone_hidden(title,material_first,bone))return 0;
             memset(n,0,sizeof scratch_normals[bone]);
@@ -591,10 +596,18 @@ static int animate(C3Title *title, uint32_t clip_index, float seconds)
     }
     /* Nothing below can fail: commit the pose, then the changed vertices. */
     memcpy(title->pose.matrices,scratch_sampled,title->bone_count*sizeof scratch_sampled[0]);
+    for (bone=0; bone<title->bone_count; ++bone) {
+        if (!((gpu_bones>>bone)&1u)) continue;
+        memcpy(title->pose.skin[bone],skin[bone],sizeof title->pose.skin[bone]);
+        memcpy(title->pose.skin_normal[bone],scratch_normals[bone],sizeof title->pose.skin_normal[bone]);
+    }
     for (batch=0;batch<title->batch_count;++batch) {
         C3TitleMaterialState *state=scratch_materials+batch;
         const C3TitleBatch *b=title->batches+batch;
-        if ((skinned>>batch)&1u) {
+        if ((gpu>>batch)&1u) {
+            title->batch_current[batch]=0;
+            perf.vertices_gpu+=b->count;
+        } else if ((skinned>>batch)&1u) {
             skin_batch(title,b,state,skin,title->batch_unit_normals[batch]);
             ++title->batch_revision[batch];
             /* A legacy caller may rewrite these vertices after this call. */

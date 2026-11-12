@@ -48,6 +48,7 @@ typedef struct {
      * input, so intervals are not always one second: read frames per
      * interval_us, never frames alone. */
     uint64_t interval_us;
+    uint32_t vertices_gpu;                /* skinned and lit by the GPU (skin_renderer.inc) */
 } C3RenderPerf;
 void c3_stage_renderer_perf_take(C3RenderPerf *perf);
 /* Scene-side placement time (microseconds) that is not inside c3_title_animate. */

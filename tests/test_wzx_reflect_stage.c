@@ -11,6 +11,7 @@ static unsigned counts,static_count,particles_bound,reflect_audio,last_cue,audio
 int c3_stage_renderer_confusion_program(const C3WzxConfusionProgram *p,char *e,size_t n){(void)p;(void)e;(void)n;return 1;}
 int c3_stage_renderer_confusion(const C3ConfusionType12 *s){(void)s;return 1;}
 int c3_stage_renderer_init(const C3Title *const *m,size_t n,char *e,size_t c){(void)e;(void)c;counts=n;unsigned v=0;for(unsigned i=0;i<n;i++)v+=m[i]->vertex_count;assert(n<=16&&v<=131072);return 0;}
+uint64_t c3_stage_renderer_gpu_skin_mask(size_t m){(void)m;return 0;}
 int c3_stage_renderer_set_static(size_t i,bool value){assert(i<counts);static_count+=value;return 1;}
 int c3_stage_renderer_set_modulation(size_t i,const uint8_t rgb[3]){assert(i<counts);enabled[i]=(rgb!=NULL);return 1;}
 int c3_stage_renderer_get_modulation(size_t i,uint8_t rgb[3],int *enabled_out){(void)i;memset(rgb,128,3);*enabled_out=0;return 1;}

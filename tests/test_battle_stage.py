@@ -25,6 +25,7 @@ int c3_title_animate(C3Title *t,uint32_t c,float seconds){(void)seconds;return c
 int c3_stage_renderer_confusion_program(const C3WzxConfusionProgram *p,char *e,size_t n){(void)p;(void)e;(void)n;return 1;}
 int c3_stage_renderer_confusion(const C3ConfusionType12 *s){(void)s;return 1;}
 int c3_stage_renderer_init(const C3Title *const *m,size_t n,char *e,size_t c){(void)m;(void)n;(void)e;(void)c;assert(!gpu);gpu=1;return 0;}
+uint64_t c3_stage_renderer_gpu_skin_mask(size_t m){(void)m;return 0;}
 int c3_stage_renderer_set_static(size_t n,bool e){(void)n;(void)e;return 1;}
 int c3_stage_renderer_set_modulation(size_t n,const uint8_t rgb[3]){(void)n;(void)rgb;return 1;}
 int c3_stage_renderer_get_modulation(size_t i,uint8_t rgb[3],int *enabled){(void)i;memset(rgb,128,3);*enabled=0;return 1;}

@@ -228,6 +228,14 @@ static void C3D_ImmDrawBegin(int primitive)
 static int confusion_prepare(const C3D_Mtx *clip,const C3D_Mtx *view,char *e,size_t n){assert(frame_open);return test_confusion||test_capture_classes;}
 static int confusion_draw(const C3D_Mtx *mvp,C3TitleRenderStats *stats,char *e,size_t n){assert(frame_open);if(test_capture_classes)assert(class_draws==6);else assert(test_confusion&&capture_draws==2&&main_draws==2&&particle_calls==0);++composites;return 1;}
 static void confusion_shutdown(void){}
+/* GPU skinning is off in this fixture: every batch takes the CPU path. */
+static bool skin_bound;
+static int skin_model_prepare(size_t model,const C3Title *t,char *e,size_t n){return 1;}
+static bool skin_batch_gpu(const C3Title *t,uint32_t b){return false;}
+static void skin_draw(size_t m,const C3Title *t,uint32_t i,const C3D_Mtx *mvp){assert(0);}
+static void skin_restore(const SceneBinding *b,const C3D_Mtx *mvp){assert(!skin_bound);}
+static void skin_shutdown(void){}
+static void skin_fini(void){}
 static void particle_line_shutdown(void){}
 static void particle_line_fini(void){}
 

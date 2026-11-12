@@ -393,6 +393,10 @@ int c3_battle_stage_step(C3BattleStage *s,uint32_t ms,char *error,size_t cap)
          * before), unchanged batches keep their vertices and a hidden actor is
          * not skinned at all. */
         m->retained=1;m->hidden=(uint8_t)!visible;
+#ifndef C3_NO_GPU_SKIN
+        /* Supported batches are skinned and lit by the GPU from pose.skin. */
+        m->gpu_batches=c3_stage_renderer_gpu_skin_mask(i);
+#endif
         if(identity)m->placement.enabled=0;
         else{
             for(unsigned axis=0;axis<5;++axis)if(!isfinite(t[axis]))return fail(error,cap,"Battle actor transform overflow.");

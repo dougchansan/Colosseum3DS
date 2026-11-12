@@ -103,6 +103,10 @@ typedef struct {
     float matrices[C3_TITLE_MAX_BONES][12]; /* row-major affine 3x4 */
     C3TitleMaterialState materials[C3_TITLE_MAX_BATCHES];
     C3TitleCamera camera;
+    /* For bones of visible gpu_batches only: the placed matrix and normal
+     * matrix c3_title_animate would have skinned those vertices with. */
+    float skin[C3_TITLE_MAX_BONES][12];
+    float skin_normal[C3_TITLE_MAX_BONES][9];
 } C3TitlePose;
 
 /* World placement folded into the bone matrices by c3_title_animate, so an
@@ -145,6 +149,10 @@ typedef struct {
      * reports every batch invisible. Both default to the legacy behaviour:
      * every vertex of every batch is rewritten by every call. */
     uint8_t retained, hidden;
+    /* Caller-set, for retained titles only: batches the GPU skins and lights
+     * (colosseum3ds/skin_uniforms.h). animate leaves their draw_vertices
+     * unwritten and fills pose.skin/skin_normal for their bones instead. */
+    uint64_t gpu_batches;
     C3TitlePlacement placement;
     /* Maintained by the loader and c3_title_animate; read-only for callers.
      * batch_revision advances whenever a batch's draw_vertices are rewritten. */
@@ -163,6 +171,7 @@ typedef struct {
     uint32_t calls;
     uint32_t vertices_animated; /* skinned */
     uint32_t vertices_retained; /* left untouched: unchanged or invisible */
+    uint32_t vertices_gpu;      /* visible gpu_batches vertices, skinned by the GPU */
 } C3TitlePerf;
 void c3_title_perf_clock(uint64_t (*now_us)(void));
 void c3_title_perf_take(C3TitlePerf *out);

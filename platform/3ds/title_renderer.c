@@ -269,6 +269,8 @@ static int validate_asset(const C3Title *title, char *error, size_t capacity)
     return 0;
 }
 
+#include "skin_renderer.inc"
+
 int c3_stage_renderer_init(const C3Title *const *models, size_t count,
                           char *error, size_t capacity)
 {
@@ -355,6 +357,7 @@ int c3_stage_renderer_init(const C3Title *const *models, size_t count,
         }
     }
     scene_count = count;
+    if (!skin_init(models, count, error, capacity)) goto cleanup;
     if (error && capacity) error[0] = '\0';
     return 0;
 cleanup:
@@ -1065,6 +1068,7 @@ int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
     for (size_t model = 0; model < count; ++model) {
         if (tv.configured && model == tv.model && !tv.enabled && !confusion_active) continue;
         const C3Title *title = models[model];
+        if (!skin_model_prepare(model, title, error, capacity)) { stage_frame_abort(); return C3_RENDER_ERROR; }
         const C3D_Mtx *model_view = tv.configured && tv.enabled && model == tv.model && !confusion_active ? &tv_view : &view;
         TitleGPUVertex *destination = vertices + scenes[model].first_vertex;
         _Static_assert(sizeof(C3D_Mtx)==64,"Prepared-view cache matrix extent");
@@ -1078,6 +1082,7 @@ int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
             const C3TitleBatch *batch = &title->batches[i];
             const C3TitleMaterialState *material = &title->pose.materials[i];
             if (material->visible < 0.5f) continue;
+            if (skin_batch_gpu(title, i)) continue; /* skinned, lit and UV-mapped by the GPU */
             bool flip_v = tv.configured && tv.enabled && model == tv.screen_model && batch->texture == tv.texture;
             if (tracked && c3_stage_cache_batch(cache, title, i, flip_v)) {
                 if (stats) { ++stats->cached_batches; stats->vertices_static += batch->count; }
@@ -1141,7 +1146,9 @@ int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
         else if (offscreen) C3D_SetViewport(0, 0, 256, 256);
         else C3D_SetViewport((240-display_height)/2, (400-display_width)/2, display_height, display_width);
         C3D_BindProgram(&program);
-        C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, mvp_location, capture ? &capture_mvp : offscreen ? &tv_mvp : &mvp);
+        skin_bound = false;
+        const C3D_Mtx *pass_mvp = capture ? &capture_mvp : offscreen ? &tv_mvp : &mvp;
+        C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, mvp_location, pass_mvp);
         C3D_FVUnifSet(GPU_VERTEX_SHADER, color_pass_location, 1, 0, 0, 0);
         C3D_AttrInfo *attributes = C3D_GetAttrInfo();
         AttrInfo_Init(attributes);
@@ -1215,7 +1222,8 @@ int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
                      * this material's combiner does not sample that unit. */
                     C3D_TexBind(1, batch->flags & (C3_TITLE_DUAL_MODULATE | C3_TITLE_REFLECTION_BLEND) ?
                         &textures[binding->textures[batch->texture2]] : base_texture);
-                    C3D_DrawArrays(GPU_TRIANGLES, batch->first, batch->count);
+                    if (skin_batch_gpu(title, i)) skin_draw(model, title, i, pass_mvp);
+                    else { skin_restore(binding, pass_mvp); C3D_DrawArrays(GPU_TRIANGLES, batch->first, batch->count); }
                     if (stats) { stats->draw_calls++; stats->vertices += batch->count; }
                     if (batch->flags & C3_TITLE_SPECULAR) {
                         /* Add the independent GX specular raster channel after
@@ -1253,6 +1261,8 @@ int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
             }
         }
     } /* The texture-backed pass precedes the main camera in one GPU queue. */
+    /* Composites, particles, HUD and fade assume the title program. */
+    skin_restore(&scenes[0], &mvp);
     if(confusion_active&&!confusion_draw(&mvp,stats,error,capacity)){
         stage_frame_abort();return C3_RENDER_ERROR;
     }
@@ -1327,6 +1337,7 @@ void c3_title_renderer_shutdown(void)
     /* Target deletion drains the linked GPU queue. Do not use FrameSync here:
      * HOME cancellation can shut down while VBlank callbacks are suspended. */
     confusion_shutdown();
+    skin_shutdown();
     if (target) { C3D_RenderTargetDelete(target); target = NULL; }
     if (tv_target) { C3D_RenderTargetDelete(tv_target); tv_target = NULL; }
     if (tv.configured) C3D_TexDelete(&tv_texture);
@@ -1365,6 +1376,7 @@ void c3_stage_renderer_fini(void)
     }
     if (c3d_started) { C3D_Fini(); c3d_started = false; }
     particle_line_fini();
+    skin_fini();
     if (program_started) { shaderProgramFree(&program); program_started = false; }
     if (shader) { DVLB_Free(shader); shader = NULL; }
 }

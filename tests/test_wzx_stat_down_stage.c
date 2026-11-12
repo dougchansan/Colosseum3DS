@@ -16,6 +16,7 @@ static void camera_signature(const C3BattleCamera *c,uint32_t out[6]){out[0]=c->
 int c3_stage_renderer_confusion_program(const C3WzxConfusionProgram *p,char *e,size_t n){(void)p;(void)e;(void)n;return 1;}
 int c3_stage_renderer_confusion(const C3ConfusionType12 *s){(void)s;return 1;}
 int c3_stage_renderer_init(const C3Title *const *m,size_t n,char *e,size_t cap){(void)e;(void)cap;counts=(unsigned)n;assert(n<=16);unsigned vertices=0;for(unsigned i=0;i<n;++i)vertices+=m[i]->vertex_count;assert(vertices<=131072);memset(enabled,0,sizeof enabled);memset(rgb,128,sizeof rgb);pack_count=0;return C3_RENDER_OK;}
+uint64_t c3_stage_renderer_gpu_skin_mask(size_t m){(void)m;return 0;}
 int c3_stage_renderer_set_static(size_t i,bool value){(void)value;assert(i<counts);return 1;}
 int c3_stage_renderer_set_modulation(size_t i,const uint8_t value[3]){assert(i<counts);enabled[i]=value!=NULL;if(value)memcpy(rgb[i],value,3);else memset(rgb[i],128,3);return 1;}
 int c3_stage_renderer_get_modulation(size_t i,uint8_t value[3],int *on){assert(i<counts);*on=enabled[i];memcpy(value,rgb[i],3);return 1;}

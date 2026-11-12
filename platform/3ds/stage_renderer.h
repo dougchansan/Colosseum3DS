@@ -48,6 +48,10 @@ int c3_stage_renderer_set_battle_hud(const C3StageBattleHud *hud, char *error, s
  * It cannot coexist with an initialized title renderer. */
 int c3_stage_renderer_init(const C3Title *const *models, size_t count,
                           char *error, size_t capacity);
+/* After init: the batches of model the GPU can skin and light
+ * (colosseum3ds/skin_uniforms.h). A caller may copy it into that retained
+ * title's gpu_batches; zero when nothing qualifies. */
+uint64_t c3_stage_renderer_gpu_skin_mask(size_t model);
 /* Source field-camera texture entry0, fixed 256x256 RGBA8 plus depth. Call
  * after init and before the first draw. The TV model stays excluded from the
  * main camera even when disabled. Repeated calls may toggle enabled but may

@@ -137,6 +137,7 @@ static void stage_frame_end(C3TitleRenderStats *stats)
     stage_perf.animate_calls += animation.calls;
     stage_perf.vertices_animated += animation.vertices_animated;
     stage_perf.vertices_retained += animation.vertices_retained;
+    stage_perf.vertices_gpu += animation.vertices_gpu;
     stage_perf.animate_us += animation.animate_us;
     if (animation.animate_us > stage_perf.animate_max_us) stage_perf.animate_max_us = animation.animate_us;
     stage_perf.prepare_us += stats->prepare_us;
@@ -189,7 +190,7 @@ void c3_stage_renderer_perf_format(char *text, size_t capacity)
         " perf_vertices_static=%lu perf_cached_models=%lu perf_cached_batches=%lu"
         " perf_upload_us=%llu perf_upload_bytes=%llu perf_submit_us=%llu perf_submit_max_us=%llu"
         " perf_end_us=%llu perf_pace_us=%llu perf_gpu_wait_us=%llu perf_gpu_busy=%lu perf_gpu_max_ms=%.3f"
-        " perf_interval_us=%llu perf_fps=%.2f",
+        " perf_interval_us=%llu perf_fps=%.2f perf_vertices_gpu=%lu",
         (unsigned long)p.frames, (unsigned long long)p.animate_us, (unsigned long long)p.animate_max_us,
         (unsigned long)p.animate_calls, (unsigned long)p.vertices_animated, (unsigned long)p.vertices_retained,
         (unsigned long long)p.place_us, (unsigned long long)p.prepare_us, (unsigned long long)p.prepare_max_us,
@@ -199,5 +200,6 @@ void c3_stage_renderer_perf_format(char *text, size_t capacity)
         (unsigned long long)p.submit_us, (unsigned long long)p.submit_max_us,
         (unsigned long long)p.end_us, (unsigned long long)p.pace_us, (unsigned long long)p.gpu_wait_us,
         (unsigned long)p.gpu_busy, (double)p.gpu_max_ms, (unsigned long long)p.interval_us,
-        p.interval_us ? (double)p.frames * 1000000.0 / (double)p.interval_us : 0.0);
+        p.interval_us ? (double)p.frames * 1000000.0 / (double)p.interval_us : 0.0,
+        (unsigned long)p.vertices_gpu);
 }

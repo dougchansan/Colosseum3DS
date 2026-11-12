@@ -152,6 +152,12 @@ battle_fight_pokemon.o: $(TOPDIR)/build/battle_fight_pokemon_original.inc
 battle_party_sort.o: $(TOPDIR)/build/battle_party_sort_original.inc
 battle_runtime_trainer.o: $(TOPDIR)/build/battle_runtime_trainer_original.inc
 
+# The GPU skin program is a second DVLE of the title shader binary, so both
+# programs share one code blob (no shader code upload when switching).
+title_shader.shbin: title_shader.v.pica title_skin_shader.pica
+	@echo $(notdir $^)
+	@picasso -o $@ $^
+
 %.shbin.o %_shbin.h: %.shbin
 	$(bin2o)
 

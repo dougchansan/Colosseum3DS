@@ -115,6 +115,9 @@ static void install_completion_counters(void) { completion_hooks = true; }
 #define gspSetEventCallback(...) ((void)0)
 
 static void confusion_shutdown(void){}
+static int skin_init(const C3Title *const *m,size_t c,char *e,size_t n){(void)m;(void)c;(void)e;(void)n;return 1;}
+static void skin_shutdown(void){}
+static void skin_fini(void){}
 static void particle_line_shutdown(void){}
 static void particle_line_fini(void){}
 #include "renderer_lifecycle.inc"
