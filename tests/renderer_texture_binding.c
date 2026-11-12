@@ -35,7 +35,7 @@ static C3ParticleSystem *particle_srt_system;
 static C3ParticleSystem *particle_order_system;
 static uint64_t particle_render_frame;
 static TitleGPUVertex *particle_vertices;
-static bool scene_drawn;
+static bool scene_drawn, frame_acquired;
 static SceneBinding scenes[C3_STAGE_MAX_MODELS];
 static C3StageVertexCache vertex_cache[C3_STAGE_MAX_MODELS];
 static uint8_t model_modulation[C3_STAGE_MAX_MODELS][4];
@@ -103,7 +103,6 @@ enum {
 #define C3D_ImmDrawEnd NOOP
 #define gfxFlushBuffers NOOP
 #define prepare_specular NOOP
-#define raster_color(...) ((void)++prepared)
 #define raster_specular NOOP
 #define view_normal(view, source, output) memcpy(output, source, sizeof(float)*3)
 #define combiner NOOP
@@ -115,6 +114,17 @@ static uint64_t simulated_ticks;
 static unsigned begin_attempts;
 static uint64_t svcGetSystemTick(void)
 { simulated_ticks += SYSCLOCK_ARM11 / 1000; return simulated_ticks; }
+/* Pacing contract: Citro3D's VBlank count advances with simulated time and
+ * every bounded wait sleeps in small steps instead of blocking on an event. */
+static unsigned pace_sleeps;
+static uint32_t C3D_FrameCounter(int screen)
+{ assert(screen == 0); return (uint32_t)(simulated_ticks / (SYSCLOCK_ARM11 / 60)); }
+static void svcSleepThread(int64_t nanoseconds)
+{ assert(nanoseconds > 0 && nanoseconds <= 1000000); ++pace_sleeps; assert(pace_sleeps < 100000); }
+static unsigned perf_takes;
+void c3_title_perf_clock(uint64_t (*now_us)(void)) { assert(now_us); }
+void c3_title_perf_take(C3TitlePerf *out)
+{ ++perf_takes; if (out) { memset(out, 0, sizeof *out); out->calls = 2; out->vertices_animated = 3; out->animate_us = 5; } }
 static void Mtx_Identity(C3D_Mtx *matrix) { memset(matrix,0,sizeof *matrix);matrix->data[0]=matrix->data[5]=matrix->data[10]=matrix->data[15]=1; }
 static void C3D_FVUnifMtx4x4(int shader_type, int location, const C3D_Mtx *matrix)
 { (void)matrix; ++gpu_writes; }
@@ -222,7 +232,22 @@ static void draw_battle_hud(C3TitleRenderStats *stats) { (void)stats; }
  * fixture continues executing the production authored-geometry draw path. */
 static int draw_particles(const C3TitleCamera *camera,const C3D_Mtx *mvp,C3TitleRenderStats *stats,char *error,size_t capacity)
 {(void)camera;(void)mvp;(void)stats;if(test_confusion){assert(composites==1&&active_target==target);++particle_calls;}if(getenv("C3_TEST_PARTICLE_OVERLOAD")){snprintf(error,capacity,"Particle command budget exceeded");return 0;}return 1;}
+static bool C3D_FrameBegin(unsigned flags);
+static void C3D_FrameEnd(unsigned flags);
+#include "frame_pacing.inc"
+#undef GSPGPU_FlushDataCache
+#define GSPGPU_FlushDataCache(address, bytes) stage_flush((address), (bytes))
 #include "title_renderer_draw.inc"
+
+/* Staging runs the production routine; count what each draw staged. */
+static int counted_draw(const C3Title *const *models, size_t count, const C3TitleCamera *camera, float fade,
+                        C3TitleRenderStats *stats, char *error, size_t capacity)
+{
+    int result = c3_stage_renderer_draw(models, count, camera, fade, stats, error, capacity);
+    prepared += stats->vertices_prepared;
+    return result;
+}
+#define c3_stage_renderer_draw counted_draw
 
 int main(int argc, char **argv)
 {
@@ -298,29 +323,67 @@ int main(int argc, char **argv)
         puts("Particle overload closed acquired frame safely");return 0;
     }
     if(getenv("C3_TEST_STATIC")) {
+#define DRAW_OK() assert(c3_stage_renderer_draw(models,1,&title.pose.camera,1,&stats,error,sizeof error)==C3_RENDER_OK)
         vertex_cache[0].enabled=true;
-        for(unsigned frame=0;frame<3;++frame)
-            assert(c3_stage_renderer_draw(models,1,&title.pose.camera,1,&stats,error,sizeof error)==C3_RENDER_OK);
+        for(unsigned frame=0;frame<3;++frame)DRAW_OK();
         assert(prepared==3 && draws==3); /* one staging pass, three real draws */
         assert(stats.cached_models==1&&stats.vertices_prepared==0);
-        view_key=1;
-        assert(c3_stage_renderer_draw(models,1,&title.pose.camera,1,&stats,error,sizeof error)==C3_RENDER_OK);
-        assert(prepared==3); /* diffuse cache is view independent */
-        vertex_cache[0].view_dependent=true;view_key=2;
-        assert(c3_stage_renderer_draw(models,1,&title.pose.camera,1,&stats,error,sizeof error)==C3_RENDER_OK);
+        assert(stats.cached_batches==1&&stats.vertices_static==3&&stats.upload_bytes==0);
+        view_key=1;DRAW_OK();
+        assert(prepared==3); /* unlit diffuse does not depend on the view */
+        /* Material alpha is baked into unlit vertices unless the source
+         * selects vertex alpha alone. */
+        title.pose.materials[0].alpha=.5f;DRAW_OK();
         assert(prepared==6&&stats.cached_models==0&&stats.vertices_prepared==3);
-        assert(c3_stage_renderer_draw(models,1,&title.pose.camera,1,&stats,error,sizeof error)==C3_RENDER_OK);
-        assert(prepared==6);
-        vertex_cache[0].valid=false;
-        assert(c3_stage_renderer_draw(models,1,&title.pose.camera,1,&stats,error,sizeof error)==C3_RENDER_OK);
-        assert(prepared==9);
+        assert(stats.upload_bytes==3*sizeof(TitleGPUVertex));
+        batch.render_mode=2u<<13;DRAW_OK();assert(prepared==9);
+        title.pose.materials[0].alpha=.25f;DRAW_OK();assert(prepared==9);
+        /* A lit normal-reflection batch depends on lights and on the view. */
+        batch.flags|=C3_TITLE_LIT|C3_TITLE_REFLECTION_BLEND;expected_second=&textures[7];
+        DRAW_OK();assert(prepared==12);
+        DRAW_OK();assert(prepared==12);
+        view_key=2;DRAW_OK();assert(prepared==15&&stats.vertices_prepared==3);
+        DRAW_OK();assert(prepared==15&&stats.cached_models==1);
+        title.pose.materials[0].uv2_offset[0]=.5f;DRAW_OK();assert(prepared==18);
+        title.light_count=1;title.lights[0].rgba[0]=.5f;DRAW_OK();assert(prepared==21);
+        DRAW_OK();assert(prepared==21);
+        title.lights[0].rgba[0]=.75f;DRAW_OK();assert(prepared==24);
+        /* c3_title_animate advances the revision of a batch it rewrites. */
+        ++title.batch_revision[0];DRAW_OK();assert(prepared==27);
+        /* A hidden batch is neither staged nor drawn; its range stays valid. */
+        unsigned visible_draws=draws;
+        title.pose.materials[0].visible=0;DRAW_OK();
+        assert(prepared==27&&draws==visible_draws&&stats.cached_models==1&&stats.cached_batches==0);
+        title.pose.materials[0].visible=1;DRAW_OK();assert(prepared==27&&draws==visible_draws+1);
+        /* ...unless its inputs changed while it was hidden. */
+        title.pose.materials[0].visible=0;++title.batch_revision[0];DRAW_OK();assert(prepared==27);
+        title.pose.materials[0].visible=1;DRAW_OK();assert(prepared==30);
+        c3_stage_cache_reset(&vertex_cache[0]);DRAW_OK();assert(prepared==33);
+        DRAW_OK();assert(prepared==33);
         vertex_cache[0].enabled=false;
-        for(unsigned frame=0;frame<2;++frame)
-            assert(c3_stage_renderer_draw(models,1,&title.pose.camera,1,&stats,error,sizeof error)==C3_RENDER_OK);
-        assert(prepared==15 && draws==9);
+        for(unsigned frame=0;frame<2;++frame)DRAW_OK();
+        assert(prepared==39&&stats.cached_models==0&&stats.cached_batches==0);
+        /* A retained title is tracked without the renderer-side opt-in, and
+         * never trusts keys recorded before the untracked frames. */
+        title.retained=1;DRAW_OK();assert(prepared==42);
+        DRAW_OK();assert(prepared==42&&stats.cached_models==1);
+        title.retained=0;DRAW_OK();assert(prepared==45);
+        /* Two refreshes per frame: the cadence waited, and reported it. */
+        assert(stats.wait_us>0&&stats.wait_us<=40000&&pace_sleeps);
+        assert(C3D_FrameCounter(0)>=2u*frame_ends&&C3D_FrameCounter(0)<=2u*frame_ends+1u);
+        /* Every successful draw submitted one frame and owns the next. */
+        assert(frame_acquired&&frame_open&&frame_ends==draws+2&&perf_takes==frame_ends+1);
+        C3RenderPerf interval;c3_stage_renderer_perf_take(&interval);
+        assert(interval.frames==frame_ends&&interval.vertices_prepared==45);
+        assert(interval.animate_calls==2*frame_ends&&interval.vertices_animated==3*frame_ends);
+        assert(interval.animate_us==5*frame_ends&&interval.animate_max_us==5);
+        assert(interval.upload_bytes==45*sizeof(TitleGPUVertex)&&interval.gpu_busy==0);
+        char line[1024];c3_stage_renderer_perf_format(line,sizeof line);
+        assert(strstr(line," perf_frames=0 ")==line&&strstr(line," perf_gpu_max_ms=0.000"));
         assert(c3_stage_renderer_try_shutdown());
-        assert(!vertex_cache[0].valid && !vertex_cache[0].enabled);
-        puts("Static staging reuse, camera invalidation, opt-out and teardown passed");
+        assert(!frame_acquired&&!frame_open&&frame_ends==draws+3);
+        assert(!vertex_cache[0].enabled&&!vertex_cache[0].batches[0].state);
+        puts("Static staging reuse, input invalidation, opt-out, pacing ownership and teardown passed");
         return 0;
     }
     if(getenv("C3_TEST_TV")) {

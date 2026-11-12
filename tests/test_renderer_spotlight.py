@@ -19,6 +19,10 @@ class RendererSpotlightTests(unittest.TestCase):
         normalize = source[source.index("static float normalize("):source.index("static unsigned morton8(")]
         light = source[source.index("static float attenuation("):source.index("/* HSD state.c")]
         test = r'''
+/* Production evaluates the cone once per light and the angle per vertex. */
+static float cone_attenuation(const C3TitleLight *l,const float to_light[3])
+{SpotCone cone=spot_cone(l);return spotlight_attenuation(&cone,to_light);}
+#define spotlight_attenuation cone_attenuation
 int main(void) {
     C3TitleLight l={.pos={0,0,0},.interest={0,0,1},.spot_function=3,.spot_cutoff=60,
         .reference_distance=10,.reference_brightness=.25f,.distance_function=3};
@@ -43,7 +47,7 @@ int main(void) {
 '''
         with tempfile.TemporaryDirectory() as directory:
             path=Path(directory)/"spot.c"
-            path.write_text('#include "colosseum3ds/title.h"\n#include <math.h>\n#include <assert.h>\n'+normalize+light+test)
+            path.write_text('#include "colosseum3ds/title.h"\n#include <math.h>\n#include <assert.h>\n#include <stdbool.h>\n'+normalize+light+test)
             flags=shlex.split(os.environ.get("CFLAGS","-std=c11 -O2 -Wall -Wextra -Wpedantic -Werror"))
             exe=Path(directory)/"spot"
             result=subprocess.run(compiler+flags+["-I",str(ROOT/"include"),str(path),"-lm","-o",str(exe)],capture_output=True,text=True)

@@ -25,7 +25,7 @@ static C3ParticleSystem *particle_srt_system;
 static C3ParticleSystem *particle_order_system;
 static uint64_t particle_render_frame;
 static TitleGPUVertex *particle_vertices;
-static bool scene_drawn;
+static bool scene_drawn, frame_acquired;
 static SceneBinding scenes[C3_STAGE_MAX_MODELS];
 static C3StageVertexCache vertex_cache[C3_STAGE_MAX_MODELS];
 static uint8_t model_modulation[C3_STAGE_MAX_MODELS][4];

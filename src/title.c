@@ -86,13 +86,9 @@ static void read_floats(float *out, const uint8_t *p, uint32_t count)
  * neighboring visible sample interpolates toward the authored collapse. */
 static int bone_hidden(const C3Title *title, const uint8_t *materials, uint32_t bone)
 {
-    for(uint32_t batch=0;batch<title->batch_count;++batch){
-        const C3TitleBatch *b=title->batches+batch;
-        if(f32(materials+batch*title->material_frame_bytes+20u)!=0.0f){
-            for(uint32_t i=b->first;i<b->first+b->count;++i)
-                if(title->vertices[i].bone==bone)return 0;
-        }
-    }
+    for(uint32_t batch=0;batch<title->batch_count;++batch)
+        if(f32(materials+batch*title->material_frame_bytes+20u)!=0.0f&&
+           ((title->batch_bones[batch]>>bone)&1u))return 0;
     return 1;
 }
 
@@ -247,6 +243,19 @@ static int decode_owned(C3Title *title, char *error, size_t capacity)
         next_vertex += b->count;
     }
     if (next_vertex != title->vertex_count) return fail(error,capacity,"Title batches do not cover vertices");
+    for (i = 0; i < title->batch_count; ++i) {
+        const C3TitleBatch *b = title->batches+i;
+        uint64_t bones = 0;
+        uint8_t unit_normals = 1;
+        for (j = b->first; j < b->first+b->count; ++j) {
+            const C3TitleVertex *v = title->vertices+j;
+            float squared = v->normal[0]*v->normal[0]+v->normal[1]*v->normal[1]+v->normal[2]*v->normal[2];
+            bones |= UINT64_C(1) << v->bone;
+            if (!(fabsf(squared-1.0f) <= C3_TITLE_UNIT_TOLERANCE)) unit_normals = 0;
+        }
+        title->batch_bones[i] = bones;
+        title->batch_unit_normals[i] = unit_normals;
+    }
     next_pixel=offsets[6];
     for (i=0; i<title->texture_count; ++i) {
         const uint8_t *p=data+offsets[2]+i*TEXTURE_BYTES;
@@ -322,6 +331,10 @@ int c3_title_instance(C3Title *instance, const C3Title *owner, char *error, size
     *instance = *owner;
     instance->draw_vertices = sampled;
     instance->borrowed_storage = 1;
+    /* The copied vertices match the owner's pose and skinned placement; the
+     * instance starts with the legacy contract and no placement of its own. */
+    instance->retained = instance->hidden = 0;
+    memset(&instance->placement, 0, sizeof instance->placement);
     instance->resident_bytes = sizeof *instance + owner->vertex_count * sizeof *sampled;
     if (error && capacity) error[0] = '\0';
     return 1;
@@ -374,16 +387,112 @@ static float interpolate(const uint8_t *a, const uint8_t *b, uint32_t index, flo
     return first+(last-first)*fraction;
 }
 
-int c3_title_animate(C3Title *title, uint32_t clip_index, float seconds)
+static uint64_t (*perf_clock)(void);
+static C3TitlePerf perf;
+
+void c3_title_perf_clock(uint64_t (*now_us)(void))
 {
-    C3TitlePose pose;
-    float normals[C3_TITLE_MAX_BONES][9];
+    perf_clock=now_us;
+}
+
+void c3_title_perf_take(C3TitlePerf *out)
+{
+    if (out) *out=perf;
+    memset(&perf,0,sizeof perf);
+}
+
+uint64_t c3_title_perf_animate_us(void)
+{
+    return perf.animate_us;
+}
+
+/* One model is sampled at a time on the main thread. Keeping the per-bone and
+ * per-batch scratch out of the frame keeps the 32 KiB stack shallow. */
+static float scratch_sampled[C3_TITLE_MAX_BONES][12];
+static float scratch_placed[C3_TITLE_MAX_BONES][12];
+static float scratch_normals[C3_TITLE_MAX_BONES][9];
+static uint8_t scratch_rigid[C3_TITLE_MAX_BONES];
+static C3TitleMaterialState scratch_materials[C3_TITLE_MAX_BATCHES];
+
+static int placement_skins_alike(const C3TitlePlacement *a, const C3TitlePlacement *b)
+{
+    if (!a->enabled || !b->enabled) return !a->enabled && !b->enabled;
+    return !memcmp(a->matrix,b->matrix,sizeof a->matrix) && !memcmp(a->normal,b->normal,sizeof a->normal);
+}
+
+/* N * transpose(N) within tolerance of identity: lengths are preserved. */
+static int orthonormal(const float *n)
+{
+    const float tolerance=C3_TITLE_UNIT_TOLERANCE;
+    float aa=n[0]*n[0]+n[1]*n[1]+n[2]*n[2],bb=n[3]*n[3]+n[4]*n[4]+n[5]*n[5],cc=n[6]*n[6]+n[7]*n[7]+n[8]*n[8];
+    float ab=n[0]*n[3]+n[1]*n[4]+n[2]*n[5],ac=n[0]*n[6]+n[1]*n[7]+n[2]*n[8],bc=n[3]*n[6]+n[4]*n[7]+n[5]*n[8];
+    return fabsf(aa-1.0f)<=tolerance && fabsf(bb-1.0f)<=tolerance && fabsf(cc-1.0f)<=tolerance &&
+           fabsf(ab)<=tolerance && fabsf(ac)<=tolerance && fabsf(bc)<=tolerance;
+}
+
+/* Positions and UVs keep the original expressions. Normals are normalised in
+ * single precision, or not at all when both the source normals and the bone's
+ * normal matrix are unit within C3_TITLE_UNIT_TOLERANCE. */
+static void skin_batch(const C3Title *title, const C3TitleBatch *b, const C3TitleMaterialState *state,
+                       const float (*matrices)[12], int unit_normals)
+{
+    const C3TitleVertex *restrict source=title->vertices+b->first;
+    const C3TitleVertex *end=source+b->count;
+    C3TitleDrawVertex *restrict target=title->draw_vertices+b->first;
+    const float us=state->uv_scale[0],uc=state->uv_cross[0],uo=state->uv_offset[0];
+    const float vc=state->uv_cross[1],vs=state->uv_scale[1],vo=state->uv_offset[1];
+    const float u2s=state->uv2_scale[0],u2c=state->uv2_cross[0],u2o=state->uv2_offset[0];
+    const float v2c=state->uv2_cross[1],v2s=state->uv2_scale[1],v2o=state->uv2_offset[1];
+    for (;source<end;++source,++target) {
+        const float *m=matrices[source->bone],*n=scratch_normals[source->bone];
+        const float px=source->pos[0],py=source->pos[1],pz=source->pos[2];
+        const float sx=source->normal[0],sy=source->normal[1],sz=source->normal[2];
+        const float u=source->uv[0],v=source->uv[1],u2=source->uv2[0],v2=source->uv2[1];
+        const float x=m[0]*px+m[1]*py+m[2]*pz+m[3];
+        const float y=m[4]*px+m[5]*py+m[6]*pz+m[7];
+        const float z=m[8]*px+m[9]*py+m[10]*pz+m[11];
+        float nx=n[0]*sx+n[1]*sy+n[2]*sz;
+        float ny=n[3]*sx+n[4]*sy+n[5]*sz;
+        float nz=n[6]*sx+n[7]*sy+n[8]*sz;
+        if (!(unit_normals && scratch_rigid[source->bone])) {
+            float squared=nx*nx+ny*ny+nz*nz;
+            if (squared>1e-30f) {
+                float scale=1.0f/sqrtf(squared);
+                nx*=scale; ny*=scale; nz*=scale;
+            } else {
+                /* Degenerate lengths keep the original double-precision rule. */
+                double length=sqrt((double)nx*nx+(double)ny*ny+(double)nz*nz);
+                if (length>0.0) { nx=(float)(nx/length); ny=(float)(ny/length); nz=(float)(nz/length); }
+            }
+        }
+        target->pos[0]=x; target->pos[1]=y; target->pos[2]=z;
+        target->normal[0]=nx; target->normal[1]=ny; target->normal[2]=nz;
+        target->uv[0]=u*us+v*uc+uo;
+        target->uv[1]=u*vc+v*vs+vo;
+        target->uv2[0]=u2*u2s+v2*u2c+u2o;
+        target->uv2[1]=u2*v2c+v2*v2s+v2o;
+        memcpy(target->rgba,source->rgba,4);
+    }
+}
+
+static int animate(C3Title *title, uint32_t clip_index, float seconds)
+{
     const C3TitleClip *clip;
-    const uint8_t *first,*last;
-    uint32_t index,next,bone,batch,i,j;
+    const C3TitlePlacement *placement;
+    const uint8_t *first,*last,*material_first;
+    const float (*skin)[12];
+    C3TitleCamera camera;
+    uint64_t changed=0,needed=0,skinned=0,stale=0;
+    uint32_t index,next,bone,batch,i;
     double frame;
     float fraction;
+    int all;
     if (!title || !title->file_data || !title->draw_vertices || clip_index>=title->clip_count || !isfinite(seconds)) return 0;
+    placement=&title->placement;
+    if (placement->enabled) {
+        for (i=0;i<12;++i) if (!bounded(placement->matrix[i],1e12f)) return 0;
+        for (i=0;i<9;++i) if (!bounded(placement->normal[i],1e6f)) return 0;
+    }
     clip=title->clips+clip_index;
     frame=seconds>0 ? (double)seconds*(double)title->fps : 0.0;
     if (clip->loop && clip->frame_count>1u) frame=fmod(frame,(double)(clip->frame_count-1u));
@@ -393,17 +502,20 @@ int c3_title_animate(C3Title *title, uint32_t clip_index, float seconds)
     fraction=(float)(frame-(double)index);
     first=title->file_data+title->frame_offset+(clip->first_frame+index)*title->frame_bytes;
     last=title->file_data+title->frame_offset+(clip->first_frame+next)*title->frame_bytes;
-    memset(&pose,0,sizeof pose);
+    /* The legacy contract rewrites everything. A retained model rewrites a
+     * batch only when a bone it uses, its UV state or the placement differs
+     * from what its sampled vertices were last built from. */
+    all=!title->retained || !placement_skins_alike(placement,&title->skinned_placement);
     for (bone=0; bone<title->bone_count; ++bone,first+=48u,last+=48u) {
-        for (i=0;i<12;++i) pose.matrices[bone][i]=interpolate(first,last,i,fraction);
-        if (!normal_matrix(pose.matrices[bone],normals[bone])) {
-            if(!bone_hidden(title,first+(title->bone_count-bone)*48u,bone))return 0;
-            memset(normals[bone],0,sizeof normals[bone]);
-            normals[bone][0]=normals[bone][4]=normals[bone][8]=1.0f;
-        }
+        float *m=scratch_sampled[bone];
+        for (i=0;i<12;++i) m[i]=interpolate(first,last,i,fraction);
+        if (all || memcmp(m,title->pose.matrices[bone],sizeof scratch_sampled[bone])) changed|=UINT64_C(1)<<bone;
     }
+    material_first=first;
     for (batch=0;batch<title->batch_count;++batch,first+=title->material_frame_bytes,last+=title->material_frame_bytes) {
-        C3TitleMaterialState *state=pose.materials+batch;
+        C3TitleMaterialState *state=scratch_materials+batch;
+        const C3TitleMaterialState *prior=title->pose.materials+batch;
+        int differs;
         for (i=0;i<2;++i) {
             state->uv_scale[i]=interpolate(first,last,i,fraction);
             state->uv_offset[i]=interpolate(first,last,i+2u,fraction);
@@ -415,34 +527,81 @@ int c3_title_animate(C3Title *title, uint32_t clip_index, float seconds)
         for (i=0;i<3;++i) state->specular_origin[i]=title->format_version>=3u ? interpolate(first,last,i+20u,fraction):0.0f;
         state->alpha=interpolate(first,last,4u,fraction); state->visible=f32(first+20u);
         for (i=0;i<3;++i) { state->tev0[i]=f32(first+24u+i*4u); state->konst[i]=f32(first+36u+i*4u); }
+        differs=!title->batch_current[batch] || (changed&title->batch_bones[batch]) ||
+            memcmp(state->uv_scale,prior->uv_scale,sizeof state->uv_scale) ||
+            memcmp(state->uv_offset,prior->uv_offset,sizeof state->uv_offset) ||
+            memcmp(state->uv2_scale,prior->uv2_scale,sizeof state->uv2_scale) ||
+            memcmp(state->uv2_offset,prior->uv2_offset,sizeof state->uv2_offset) ||
+            memcmp(state->uv_cross,prior->uv_cross,sizeof state->uv_cross) ||
+            memcmp(state->uv2_cross,prior->uv2_cross,sizeof state->uv2_cross);
+        if (!title->retained || (differs && !title->hidden && state->visible>=0.5f)) {
+            skinned|=UINT64_C(1)<<batch;
+            needed|=title->batch_bones[batch];
+        } else if (differs) stale|=UINT64_C(1)<<batch;
     }
-    for (i=0;i<3;++i) { pose.camera.eye[i]=interpolate(first,last,i,fraction); pose.camera.target[i]=interpolate(first,last,i+3u,fraction); }
-    pose.camera.roll=interpolate(first,last,6u,fraction);
-    pose.camera.fov_y_degrees=interpolate(first,last,7u,fraction);
-    pose.camera.near_plane=interpolate(first,last,8u,fraction);
-    pose.camera.far_plane=interpolate(first,last,9u,fraction);
-    pose.camera.aspect=interpolate(first,last,10u,fraction);
-    for (batch=0;batch<title->batch_count;++batch) {
-        const C3TitleBatch *b=title->batches+batch;
-        const C3TitleMaterialState *state=pose.materials+batch;
-        for (i=b->first;i<b->first+b->count;++i) {
-            const C3TitleVertex *source=title->vertices+i;
-            C3TitleDrawVertex *target=title->draw_vertices+i;
-            const float *m=pose.matrices[source->bone],*n=normals[source->bone];
-            double length;
-            for (j=0;j<3;++j) {
-                target->pos[j]=m[j*4u]*source->pos[0]+m[j*4u+1u]*source->pos[1]+m[j*4u+2u]*source->pos[2]+m[j*4u+3u];
-                target->normal[j]=n[j*3u]*source->normal[0]+n[j*3u+1u]*source->normal[1]+n[j*3u+2u]*source->normal[2];
-            }
-            length=sqrt((double)target->normal[0]*target->normal[0]+(double)target->normal[1]*target->normal[1]+(double)target->normal[2]*target->normal[2]);
-            if (length>0.0) for (j=0;j<3;++j) target->normal[j]=(float)(target->normal[j]/length);
-            target->uv[0]=source->uv[0]*state->uv_scale[0]+source->uv[1]*state->uv_cross[0]+state->uv_offset[0];
-            target->uv[1]=source->uv[0]*state->uv_cross[1]+source->uv[1]*state->uv_scale[1]+state->uv_offset[1];
-            target->uv2[0]=source->uv2[0]*state->uv2_scale[0]+source->uv2[1]*state->uv2_cross[0]+state->uv2_offset[0];
-            target->uv2[1]=source->uv2[0]*state->uv2_cross[1]+source->uv2[1]*state->uv2_scale[1]+state->uv2_offset[1];
-            memcpy(target->rgba,source->rgba,4);
+    for (i=0;i<3;++i) { camera.eye[i]=interpolate(first,last,i,fraction); camera.target[i]=interpolate(first,last,i+3u,fraction); }
+    camera.roll=interpolate(first,last,6u,fraction);
+    camera.fov_y_degrees=interpolate(first,last,7u,fraction);
+    camera.near_plane=interpolate(first,last,8u,fraction);
+    camera.far_plane=interpolate(first,last,9u,fraction);
+    camera.aspect=interpolate(first,last,10u,fraction);
+    skin=placement->enabled ? (const float (*)[12])scratch_placed : (const float (*)[12])scratch_sampled;
+    for (bone=0; bone<title->bone_count; ++bone) {
+        float *n=scratch_normals[bone];
+        if (!((needed>>bone)&1u)) continue;
+        if (!normal_matrix(scratch_sampled[bone],n)) {
+            if(!bone_hidden(title,material_first,bone))return 0;
+            memset(n,0,sizeof scratch_normals[bone]);
+            n[0]=n[4]=n[8]=1.0f;
         }
+        if (placement->enabled) {
+            const float *p=placement->matrix,*q=placement->normal,*m=scratch_sampled[bone];
+            float *out=scratch_placed[bone],rotated[9];
+            for (i=0;i<3;++i) {
+                uint32_t column;
+                for (column=0;column<4;++column)
+                    out[i*4u+column]=p[i*4u]*m[column]+p[i*4u+1u]*m[4u+column]+p[i*4u+2u]*m[8u+column]+(column==3u ? p[i*4u+3u]:0.0f);
+                for (column=0;column<3;++column)
+                    rotated[i*3u+column]=q[i*3u]*n[column]+q[i*3u+1u]*n[3u+column]+q[i*3u+2u]*n[6u+column];
+            }
+            memcpy(n,rotated,sizeof rotated);
+        }
+        scratch_rigid[bone]=(uint8_t)orthonormal(n);
     }
-    title->pose=pose; title->active_clip=clip_index; title->active_frame=(float)frame;
+    /* Nothing below can fail: commit the pose, then the changed vertices. */
+    memcpy(title->pose.matrices,scratch_sampled,title->bone_count*sizeof scratch_sampled[0]);
+    for (batch=0;batch<title->batch_count;++batch) {
+        C3TitleMaterialState *state=scratch_materials+batch;
+        const C3TitleBatch *b=title->batches+batch;
+        if ((skinned>>batch)&1u) {
+            skin_batch(title,b,state,skin,title->batch_unit_normals[batch]);
+            ++title->batch_revision[batch];
+            /* A legacy caller may rewrite these vertices after this call. */
+            title->batch_current[batch]=title->retained;
+            perf.vertices_animated+=b->count;
+        } else {
+            if ((stale>>batch)&1u) title->batch_current[batch]=0;
+            perf.vertices_retained+=b->count;
+        }
+        if (placement->enabled && placement->origin) {
+            const float *p=placement->matrix;
+            float x=state->specular_origin[0],y=state->specular_origin[1],z=state->specular_origin[2];
+            for (i=0;i<3;++i) state->specular_origin[i]=p[i*4u]*x+p[i*4u+1u]*y+p[i*4u+2u]*z+p[i*4u+3u];
+        }
+        if (title->hidden) state->visible=0.0f;
+        title->pose.materials[batch]=*state;
+    }
+    title->pose.camera=camera;
+    title->skinned_placement=*placement;
+    title->active_clip=clip_index; title->active_frame=(float)frame;
     return 1;
+}
+
+int c3_title_animate(C3Title *title, uint32_t clip_index, float seconds)
+{
+    uint64_t started=perf_clock ? perf_clock() : 0;
+    int result=animate(title,clip_index,seconds);
+    ++perf.calls;
+    if (perf_clock) perf.animate_us+=perf_clock()-started;
+    return result;
 }

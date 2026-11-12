@@ -18,6 +18,20 @@ uint32_t C3D_FrameCounter(int screen);
 
 #define WATCHDOG_US UINT64_C(3000000)
 #define HEARTBEAT_US UINT64_C(1000000)
+/* An ordinary busy queue is retried every two milliseconds, so a frame that
+ * is a little late costs that much and not a whole display refresh. */
+#define POLL_NS INT64_C(2000000)
+#define VBLANK_POLLS 8u
+
+/* The paused recovery view has nothing to do between display refreshes. Wait
+ * for Citro3D to count the next top-screen VBlank, but never longer than
+ * 16 ms and never on a GSP event: the count stops while the application is
+ * suspended, and input must keep being polled. */
+static void wait_vblank(void)
+{
+    uint32_t before = C3D_FrameCounter(0);
+    for (unsigned i = 0; i < VBLANK_POLLS && C3D_FrameCounter(0) == before; ++i) svcSleepThread(POLL_NS);
+}
 
 static void (*pause_callback)(int);
 static bool callback_paused;
@@ -158,6 +172,7 @@ C3RenderRecoveryResult c3_render_recover(FILE *trace, const char *scene,
             record(trace, scene, "heartbeat", submitted_frames, elapsed, ready, pending_exit, last_pressed);
             next_heartbeat = now + HEARTBEAT_US;
         }
-        svcSleepThread(16000000);
+        if (paused) wait_vblank();
+        else svcSleepThread(POLL_NS);
     }
 }

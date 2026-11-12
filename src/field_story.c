@@ -1331,21 +1331,9 @@ static int attachment_pose(Impl *s,Person *p,char *error)
 }
 static void transform(C3Title *model,const C3FieldPlayer *q,const Person *p)
 {
-    if(!p->parent){
-        /* Ordinary field actors need only a rigid Y rotation. Preserve the
-         * cheap path on ARM11; a rigid rotation keeps unit normals unit. */
-        float sine=sinf(q->yaw),cosine=cosf(q->yaw);
-        for(uint32_t i=0;i<model->vertex_count;++i){C3TitleDrawVertex *v=model->draw_vertices+i;
-            float x=v->pos[0],z=v->pos[2],nx=v->normal[0],nz=v->normal[2];
-            v->pos[0]=cosine*x+sine*z+q->position[0];v->pos[1]+=q->position[1];v->pos[2]=-sine*x+cosine*z+q->position[2];
-            v->normal[0]=cosine*nx+sine*nz;v->normal[2]=-sine*nx+cosine*nz;
-        }
-        for(uint32_t i=0;i<model->batch_count;++i){float *origin=model->pose.materials[i].specular_origin,x=origin[0],z=origin[2];
-            origin[0]=cosine*x+sine*z+q->position[0];origin[1]+=q->position[1];origin[2]=-sine*x+cosine*z+q->position[2];}
-        return;
-    }
-    float euler[3]={0,q->yaw,0},scale[3]={1,1,1},r[9];
-    if(p->parent){memcpy(euler,p->world_rotation,sizeof euler);memcpy(scale,p->world_scale,sizeof scale);}
+    /* Passengers only: free actors are placed inside c3_title_animate. */
+    float euler[3],scale[3],r[9];
+    memcpy(euler,p->world_rotation,sizeof euler);memcpy(scale,p->world_scale,sizeof scale);
     rotation_matrix(euler,r);
     for(uint32_t i=0;i<model->vertex_count;++i){C3TitleDrawVertex *v=model->draw_vertices+i;
         float pos[3],normal[3];
@@ -1374,6 +1362,14 @@ int c3_field_story_sample(C3FieldStory *story,char *error)
         if(p==&s->hero_actor&&s->view.control)clip=s->hero->motion==2?s->map->run_clip:s->hero->motion==1?s->map->walk_clip:s->map->idle_clip;
         if(clip>=model->clip_count)return fail(error,"Actor clip is out of range");
         model->clips[clip].loop=(uint32_t)p->public.loop;
+        /* A free actor's rigid yaw placement is folded into its bones, so an
+         * unchanged sample keeps its staged vertices and a hidden actor is not
+         * skinned. Passengers wait for their vehicle's sample: legacy path. */
+        if(!p->parent){
+            const C3FieldPlayer *q=pose(s,p);
+            c3_title_place_yaw(model,q->position,cosf(q->yaw),sinf(q->yaw),1.0f,1);
+            model->retained=1;model->hidden=(uint8_t)!p->public.visible;
+        }else{model->retained=0;model->hidden=0;model->placement.enabled=0;}
         if(!c3_title_animate(model,clip,pose(s,p)->animation_seconds))return fail(error,"Original actor animation sample failed");
     }
     /* All parent samples are current before resolving a passenger. Original
@@ -1381,7 +1377,7 @@ int c3_field_story_sample(C3FieldStory *story,char *error)
     for(uint32_t i=0;i<=s->area->actor_count;++i)
         if(!attachment_pose(s,i==s->area->actor_count?&s->hero_actor:s->actors+i,error))return 0;
     for(uint32_t i=0;i<=s->area->actor_count;++i){Person *p=i==s->area->actor_count?&s->hero_actor:s->actors+i;
-        C3Title *model=p->public.model;if(!model)continue;
+        C3Title *model=p->public.model;if(!model||!p->parent)continue;
         transform(model,pose(s,p),p);
         if(!p->public.visible)for(uint32_t b=0;b<model->batch_count;++b)model->pose.materials[b].visible=0;
     }

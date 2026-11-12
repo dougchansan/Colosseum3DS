@@ -503,8 +503,14 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
             }else if(input.pressed&C3_PAD_B||(page==PAUSE_MESSAGE&&input.pressed&C3_PAD_A)){page=PAUSE_MAIN;dirty=1;}
         }
         int sampled=1;
-        for(uint32_t i=0;i<map.map_pack_count;++i)sampled&=c3_title_animate(storage+i,0,elapsed);
+        /* Nothing rewrites a map pack's sampled vertices, so only batches whose
+         * bones, UVs or lights changed are skinned and staged again. The flag
+         * is set here because a battle return reloads the packs. */
+        for(uint32_t i=0;i<map.map_pack_count;++i){storage[i].retained=1;sampled&=c3_title_animate(storage+i,0,elapsed);}
+        /* Actor placement is the story sample's time outside c3_title_animate. */
+        uint64_t place_clock=c3_n3ds_time_us(),place_animate=c3_title_perf_animate_us();
         if(!c3_field_story_sample(&story,story_error))goto story_failed;
+        c3_stage_renderer_perf_place(c3_n3ds_time_us()-place_clock-(c3_title_perf_animate_us()-place_animate));
         if(phase==FIELD_ARRIVAL){for(uint32_t i=0;i<arrival_count;++i)sampled&=c3_title_animate(storage+arrival_index+i,0,phase_seconds);}
         else if(phase==FIELD_ARRIVAL_OUT&&!arrival_end_sampled){
             sampled&=c3_title_animate(arrival,0,fmaxf(0,arrival_seconds-.1f/30.0f));arrival_end_sampled=1;
@@ -551,11 +557,15 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         ++frames;
         if(trace&&(now>=next_trace||input.pressed)){
             C3TitleRenderSnapshot snapshot;c3_stage_renderer_snapshot(&snapshot);
-            fprintf(trace,"field_tick floor=%lu phase=%u menu=%u control=%d message=%05lx input=%04x stick=%d,%d xyz=%.4f,%.4f,%.4f yaw=%.4f motion=%lu sample=%.2f hits=%lu time=%lu draws=%lu command_words=%lu gpu_bytes=%lu\n",
+            char perf[1024];c3_stage_renderer_perf_format(perf,sizeof perf);
+            fprintf(trace,"field_tick floor=%lu phase=%u menu=%u control=%d message=%05lx input=%04x stick=%d,%d xyz=%.4f,%.4f,%.4f yaw=%.4f motion=%lu sample=%.2f hits=%lu time=%lu draws=%lu command_words=%lu gpu_bytes=%lu"
+                " vertices=%lu vertices_prepared=%lu cached_models=%lu gpu_previous_ms=%.3f%s\n",
                 (unsigned long)map.floor,(unsigned)phase,(unsigned)page,view->control,(unsigned long)view->message_id,input.pressed,input.stick_x,input.stick_y,
                 (double)player.position[0],(double)player.position[1],(double)player.position[2],(double)player.yaw,(unsigned long)player.motion,
                 (double)wes->active_frame,(unsigned long)player.collision_count,(unsigned long)summary.play_seconds,
-                (unsigned long)stats.draw_calls,(unsigned long)snapshot.last_command_words,(unsigned long)stats.gpu_buffer_bytes);
+                (unsigned long)stats.draw_calls,(unsigned long)snapshot.last_command_words,(unsigned long)stats.gpu_buffer_bytes,
+                (unsigned long)stats.vertices,(unsigned long)stats.vertices_prepared,(unsigned long)stats.cached_models,
+                (double)stats.gpu_previous_ms,perf);
             /* A queued cue alone does not prove DSP playback progressed. */
             if(pda_audio_ready&&ingame->active&&ingame->page==C3_GAME_TONES)c3_pda_audio_trace(trace,"pda_menu_tick");
             fflush(trace);next_trace=now+UINT64_C(1000000);

@@ -6,8 +6,14 @@
 #include "colosseum3ds/particle_pack.h"
 #include "colosseum3ds/wzx_confusion.h"
 
-#define C3_STAGE_MAX_MODELS 16u
-#define C3_STAGE_MAX_VERTICES 131072u
+/* Sized for Phenac City's exterior: 8 map packs, Wes and 26 people are 35
+ * models, 128,358 vertices and 75 unique textures (7.19 MB of arena plus
+ * 8.79 MB of RGBA8, 15.98 MB of the 32 MiB linear heap). A model is only a
+ * range of the shared arena plus a texture remap, so the model bound costs
+ * static bookkeeping (about 6 KiB per model), not GPU objects. The arena is
+ * allocated for the scene's actual vertex total; at the bound it is 11.0 MB. */
+#define C3_STAGE_MAX_MODELS 48u
+#define C3_STAGE_MAX_VERTICES 196608u
 #define C3_STAGE_MAX_TEXTURES 128u
 #define C3_STAGE_MAX_PARTICLE_BANKS 8u
 

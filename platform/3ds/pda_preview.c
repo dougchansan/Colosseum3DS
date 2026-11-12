@@ -4,9 +4,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+/* A PDA model is one actor split into a few parts. Its descriptor bound stays
+ * 16 parts; the stage model bound is sized for whole field scenes. */
+#define C3_PDA_MAX_PARTS 16u
+_Static_assert(C3_PDA_MAX_PARTS<=C3_STAGE_MAX_MODELS,"PDA parts must fit the stage");
 struct C3PdaPreview {
-    C3Title models[C3_STAGE_MAX_MODELS];
-    const C3Title *draw[C3_STAGE_MAX_MODELS];
+    C3Title models[C3_PDA_MAX_PARTS];
+    const C3Title *draw[C3_PDA_MAX_PARTS];
     unsigned count,initialized;
     float center[3],radius,yaw,pitch;
 };
@@ -23,7 +27,7 @@ bool c3_pda_preview_close(C3PdaPreview **out)
 }
 int c3_pda_preview_open(C3PdaPreview **out,const char *root,uint16_t species,uint32_t pid,uint32_t ot,char *e,size_t n)
 {
-    unsigned char bytes[64+48*C3_STAGE_MAX_MODELS];char path[512];
+    unsigned char bytes[64+48*C3_PDA_MAX_PARTS];char path[512];
     if(!out||*out||!root)return fail(e,n,"Invalid PDA preview ownership.");
     if(!species||species>411)return fail(e,n,"Invalid saved species preview.");
     if(species==201)return fail(e,n,"Unown has no canonical default PKX binding; saved-form routing is unsupported.");
@@ -35,7 +39,7 @@ int c3_pda_preview_open(C3PdaPreview **out,const char *root,uint16_t species,uin
     size_t size=fread(bytes,1,sizeof bytes,f);int extra=fgetc(f),io=ferror(f);fclose(f);
     if(io||extra!=EOF||size<64||memcmp(bytes,"C3PD",4)||word(bytes+4)!=2||word(bytes+8)!=size||word(bytes+12)!=species)return fail(e,n,"Invalid PDA model descriptor.");
     unsigned count=word(bytes+16);
-    if(!count||count>C3_STAGE_MAX_MODELS||size!=64+48*count)return fail(e,n,"PDA model part count exceeds limits.");
+    if(!count||count>C3_PDA_MAX_PARTS||size!=64+48*count)return fail(e,n,"PDA model part count exceeds limits.");
     for(unsigned i=50;i<64;++i)if(bytes[i])return fail(e,n,"Invalid PDA descriptor reserved bytes.");
     for(unsigned i=44;i<47;++i)if(bytes[i]>3)return fail(e,n,"Invalid source shiny routing.");
     float bounds[6];for(unsigned i=0;i<6;++i){bounds[i]=real(bytes+20+i*4);if(!isfinite(bounds[i]))return fail(e,n,"Invalid PDA model bounds.");}
@@ -50,6 +54,8 @@ int c3_pda_preview_open(C3PdaPreview **out,const char *root,uint16_t species,uin
         if(snprintf(path,sizeof path,"%s/%u/%s",root,species,name)>=(int)sizeof path)goto invalid;
         if(!c3_title_load(&s->models[i],path,e,n))goto bad;
         s->count=i+1;s->draw[i]=&s->models[i];
+        /* The preview only orbits its camera; sampled vertices are never rewritten. */
+        s->models[i].retained=1;
         if(s->models[i].clip_count!=1||!s->models[i].clips[0].loop)goto invalid;
     }
     if(species==308){

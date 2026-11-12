@@ -90,9 +90,10 @@ int c3_dev_floor_scene_run(FILE *trace, char *error, size_t capacity)
         fflush(trace);
     }
     if (c3_stage_renderer_init(models, count, error, capacity)) goto done;
-    /* Static packs carry one sample; let the renderer keep their arrays. */
-    for (uint32_t i = 0; i < map.map_pack_count; ++i)
-        if (storage[i].frame_count == 1u) c3_stage_renderer_set_static(i, true);
+    /* Nothing here rewrites sampled vertices: Wes is placed through the title
+     * placement. Every pack is retained, so the animation and the renderer
+     * touch only batches whose bones, UVs or lights changed. */
+    for (uint32_t i = 0; i < count; ++i) storage[i].retained = 1;
     c3_n3ds_log_memory(trace, "dev_floor_ready");
     previous = c3_n3ds_active_time_us();
     result = 1;
@@ -117,9 +118,9 @@ int c3_dev_floor_scene_run(FILE *trace, char *error, size_t capacity)
         for (uint32_t i = 0; i < map.map_pack_count; ++i)
             if (storage[i].frame_count > 1u) sampled &= c3_title_animate(storage + i, 0, elapsed);
         uint32_t clip = player.motion == 2 ? map.run_clip : player.motion == 1 ? map.walk_clip : map.idle_clip;
+        c3_title_place_yaw(wes, player.position, cosf(player.yaw), sinf(player.yaw), 1.0f, 1);
         sampled &= c3_title_animate(wes, clip, player.animation_seconds);
         if (!sampled) { snprintf(error, capacity, "A developer floor animation sample failed."); result = -1; break; }
-        c3_dev_floor_place_actor(wes, &player);
         c3_field_camera(&map, &player, &camera);
         if (now >= next_status || input.pressed) {
             draw_status(profile, &map, &player, spawn);
@@ -135,11 +136,17 @@ int c3_dev_floor_scene_run(FILE *trace, char *error, size_t capacity)
         if (draw_result) { result = -1; break; }
         ++frames;
         if (trace && (now >= next_trace || input.pressed)) {
-            fprintf(trace, "dev_floor_tick floor=%lu entrance=%lu input=%04x stick=%d,%d xyz=%.4f,%.4f,%.4f yaw=%.4f motion=%lu hits=%lu draws=%lu gpu_bytes=%lu\n",
+            char perf[1024];
+            c3_stage_renderer_perf_format(perf, sizeof perf);
+            fprintf(trace, "dev_floor_tick floor=%lu entrance=%lu input=%04x stick=%d,%d xyz=%.4f,%.4f,%.4f yaw=%.4f motion=%lu hits=%lu draws=%lu gpu_bytes=%lu"
+                    " vertices=%lu vertices_prepared=%lu cached_models=%lu command_words=%lu gpu_previous_ms=%.3f%s\n",
                     (unsigned long)map.floor, (unsigned long)spawn, input.pressed, input.stick_x, input.stick_y,
                     (double)player.position[0], (double)player.position[1], (double)player.position[2],
                     (double)player.yaw, (unsigned long)player.motion, (unsigned long)player.collision_count,
-                    (unsigned long)stats.draw_calls, (unsigned long)stats.gpu_buffer_bytes);
+                    (unsigned long)stats.draw_calls, (unsigned long)stats.gpu_buffer_bytes,
+                    (unsigned long)stats.vertices, (unsigned long)stats.vertices_prepared,
+                    (unsigned long)stats.cached_models, (unsigned long)stats.command_words,
+                    (double)stats.gpu_previous_ms, perf);
             fflush(trace);
             next_trace = now + UINT64_C(1000000);
         }

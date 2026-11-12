@@ -71,8 +71,9 @@ file to `/3ds/Colosseum3DS/dev-floor/`. Keep the manifest private.
 
 The C3F uses the existing C3F1 layout with floor 3, map resource
 `00620200`, ten entrances and eight map packs. The loader's map-pack bound is
-now 15 (`C3_FIELD_MAX_MODEL_PACKS`: sixteen stage models minus Wes); the
-story field scene still checks its complete model count.
+now 47 (`C3_FIELD_MAX_MODEL_PACKS`: 48 stage models minus Wes;
+`tools/prepare_floor.py` still writes at most 15); the story field scene still
+checks its complete model count.
 
 ## Converter changes
 

@@ -36,6 +36,8 @@ static const C3TitleTexture *texture_sources[C3_STAGE_MAX_TEXTURES];
 static uint32_t texture_count, vertex_count;
 static size_t gpu_buffer_bytes;
 static bool scene_drawn;
+/* A successful nonblocking FrameBegin that has not been ended yet. */
+static bool frame_acquired;
 static C3StageBattleHud battle_hud;
 static uint32_t hud_texture = UINT32_MAX;
 #define C3_HUD_MAX_VERTICES ((9u + 8u * 48u) * 6u)
@@ -311,12 +313,15 @@ int c3_stage_renderer_init(const C3Title *const *models, size_t count,
             const C3TitleTexture *source = &title->textures[i];
             uint32_t found;
             /* Split packs may reference the same original image. Reuse its
-             * GPU copy only when bytes and sampler state are identical. */
+             * GPU copy only when bytes and sampler state are identical.
+             * Models that share one owner through c3_title_instance present
+             * the very same pixel storage, which needs no byte comparison. */
             for (found = 0; found < texture_count; ++found) {
                 const C3TitleTexture *prior = texture_sources[found];
                 if (prior->width == source->width && prior->height == source->height &&
                     prior->wrap_s == source->wrap_s && prior->wrap_t == source->wrap_t &&
-                    prior->size == source->size && !memcmp(prior->pixels, source->pixels, source->size)) break;
+                    prior->size == source->size &&
+                    (prior->pixels == source->pixels || !memcmp(prior->pixels, source->pixels, source->size))) break;
             }
             if (found == texture_count) {
                 if (texture_count >= C3_STAGE_MAX_TEXTURES ||
@@ -357,7 +362,7 @@ int c3_stage_renderer_set_tv(size_t model, size_t screen_model, uint32_t texture
         if (tv.model != model || tv.screen_model != screen_model || tv.texture != texture) {
             fail(error, capacity, "Television binding cannot change during an owned scene."); return 0;
         }
-        if(tv.enabled!=enabled)for(size_t i=0;i<scene_count;++i)vertex_cache[i].valid=false;
+        if(tv.enabled!=enabled)for(size_t i=0;i<scene_count;++i)c3_stage_cache_reset(&vertex_cache[i]);
         tv.enabled = enabled;
         if (error && capacity) error[0] = '\0';
         return 1;
@@ -395,18 +400,19 @@ int c3_stage_renderer_set_tv(size_t model, size_t screen_model, uint32_t texture
     return 1;
 }
 
-/* Opt-in only: caller owns immutable sampled vertices, materials and lights.
- * Frame/camera-dependent effects must not opt in. Disabling invalidates cached
- * bytes before any caller mutation. The flag is reset for every scene. */
+/* Opt-in for a single-sample pack whose sampled vertices the caller never
+ * rewrites. Its batches are then staged only when a tracked input changes
+ * (stage_cache.h): lights, view-dependent shading and visibility are detected
+ * here, so those need no opt-out. Disabling or re-enabling forgets what was
+ * staged. The flag is reset for every scene. Animated packs opt in through
+ * C3Title.retained instead. */
 int c3_stage_renderer_set_static(size_t model, bool enabled)
 {
     if(model>=scene_count)return 0;
     const C3Title *t=scenes[model].asset;
     if(enabled&&(t->clip_count!=1||t->clips[0].frame_count!=1))return 0;
     C3StageVertexCache *c=&vertex_cache[model];
-    c->enabled=enabled;c->valid=false;c->view_dependent=false;
-    for(uint32_t i=0;i<t->batch_count;++i)
-        if(t->batches[i].flags&(C3_TITLE_SPECULAR|C3_TITLE_REFLECTION_BLEND))c->view_dependent=true;
+    c->enabled=enabled;c3_stage_cache_reset(c);
     return 1;
 }
 int c3_stage_renderer_set_modulation(size_t model, const uint8_t rgb[3])
@@ -438,74 +444,180 @@ static float attenuation(const C3TitleLight *light, float distance)
     return 1.0f / denom;
 }
 
-static float spotlight_attenuation(const C3TitleLight *light, const float to_light[3])
+/* Inline forms of fmaxf(0, v) and fmaxf(0, fminf(1, v)), including their
+ * NaN results; the library calls dominated the per-vertex cost on ARM11. */
+static inline float positive_part(float value)
 {
-    if (!light->spot_function || light->spot_cutoff <= 0 || light->spot_cutoff > 90) return 1;
-    float direction[3];
-    for (unsigned i=0;i<3;++i) direction[i]=light->interest[i]-light->pos[i];
-    normalize(direction); /* HSD's degenerate light vector also falls back to +Z. */
-    float cosine=fmaxf(0, -(direction[0]*to_light[0]+direction[1]*to_light[1]+direction[2]*to_light[2]));
-    float cutoff=cosf(light->spot_cutoff * (3.14159265358979323846f / 180.0f));
+    return value > 0.0f ? value : 0.0f;
+}
+
+static inline float unit_interval(float value)
+{
+    return !(value < 1.0f) ? 1.0f : positive_part(value);
+}
+
+/* GXInitLightSpot COS2 cone, evaluated once per light instead of per vertex. */
+typedef struct { float axis[3], cutoff; bool active; } SpotCone;
+
+static SpotCone spot_cone(const C3TitleLight *light)
+{
+    SpotCone cone = {{0, 0, 1}, 1, false};
+    if (!light->spot_function || light->spot_cutoff <= 0 || light->spot_cutoff > 90) return cone;
+    cone.active = true;
+    for (unsigned i=0;i<3;++i) cone.axis[i]=light->interest[i]-light->pos[i];
+    normalize(cone.axis); /* HSD's degenerate light vector also falls back to +Z. */
+    cone.cutoff=cosf(light->spot_cutoff * (3.14159265358979323846f / 180.0f));
+    return cone;
+}
+
+static float spotlight_attenuation(const SpotCone *cone, const float to_light[3])
+{
+    if (!cone->active) return 1;
+    float cosine=positive_part(-(cone->axis[0]*to_light[0]+cone->axis[1]*to_light[1]+cone->axis[2]*to_light[2]));
+    float cutoff=cone->cutoff;
     /* GXInitLightSpot COS2: a=(0,-c/(1-c),1/(1-c)). The hardware
      * clamps the direction dot before evaluating the angular polynomial.
-     * Distance attenuation is applied independently by raster_color. */
+     * Distance attenuation is applied independently by stage_batch. */
     if (cutoff >= 1) return cosine >= 1 ? 1 : 0;
-    return fmaxf(0, (cosine*cosine-cutoff*cosine)/(1-cutoff));
+    return positive_part((cosine*cosine-cutoff*cosine)/(1-cutoff));
 }
 
 /* HSD state.c uses a white material raster channel, ambient material * ambient
  * light, and clamped Lambert diffuse. Its MObj texture stages multiply this
- * channel afterward. Specular is a separate channel added after texturing. */
-static void raster_color(const C3Title *title, const C3TitleBatch *batch,
-                         const C3TitleMaterialState *material,
-                         const C3TitleDrawVertex *source, float rgba[4])
+ * channel afterward. Specular is a separate channel added after texturing.
+ *
+ * The active lights of one model are reduced once to what the vertex loop
+ * needs, in the original order so the float sums are unchanged: the single
+ * ambient light HSD uses, infinite lights with their direction already
+ * normalised (their source position is 2^20 times its value; interest controls
+ * specular/spot direction, not this path), and point/spot lights. Colours of
+ * channels a light does not drive are zero, which adds exactly nothing. */
+typedef struct {
+    float color[3], alpha;
+    float vector[3]; /* infinite: unit direction; point/spot: position */
+    const C3TitleLight *light;
+    SpotCone cone;
+    unsigned type; /* 0 ambient, 1 infinite, 2 point, 3 spot */
+} StageLight;
+
+typedef struct {
+    StageLight lights[C3_TITLE_MAX_LIGHTS];
+    unsigned count;
+} LightSetup;
+
+/* byte / 255.0f, the same quotient the per-vertex divide produced. */
+static float byte_unit[256];
+
+static void byte_unit_init(void)
 {
-    unsigned color_source = batch->render_mode & 3u;
-    if (!color_source) color_source = 1;
-    unsigned alpha_source = (batch->render_mode >> 13) & 3u;
-    if (!alpha_source) alpha_source = color_source;
-    float vertex_alpha = source->rgba[3] / 255.0f;
-    if (!(batch->flags & C3_TITLE_LIT)) {
-        for (unsigned c = 0; c < 3; ++c) {
-            float vertex_color = source->rgba[c] / 255.0f;
-            rgba[c] = color_source == 1 ? batch->diffuse[c] : color_source == 2 ? vertex_color :
-                      clamp01(vertex_color + batch->diffuse[c]);
-        }
-        rgba[3] = alpha_source == 1 ? material->alpha : alpha_source == 2 ? vertex_alpha : material->alpha * vertex_alpha;
-        return;
-    }
-    float normal[3] = {source->normal[0], source->normal[1], source->normal[2]};
-    normalize(normal);
-    float light_color[3] = {0, 0, 0}, light_alpha = 0.0f;
+    if (byte_unit[255] != 1.0f) for (unsigned i=0;i<256;++i) byte_unit[i]=(float)i/255.0f;
+}
+
+static void light_setup(const C3Title *title, LightSetup *setup)
+{
     bool ambient_seen = false;
-    for (uint32_t i = 0; i < title->light_count; ++i) {
+    setup->count = 0;
+    for (uint32_t i = 0; i < title->light_count && i < C3_TITLE_MAX_LIGHTS; ++i) {
         const C3TitleLight *light = &title->lights[i];
+        StageLight *out = &setup->lights[setup->count];
         if (light->flags & 32u) continue;
         unsigned type = light->flags & 3u;
         if (type == 0) {
             if (ambient_seen) continue; /* HSD uses one active ambient light. */
             ambient_seen = true;
-            if (light->flags & 4u) for (unsigned c = 0; c < 3; ++c) light_color[c] += batch->ambient[c] * light->rgba[c];
-            if (light->flags & 16u) light_alpha += light->rgba[3];
-            continue;
         }
-        float direction[3];
-        /* HSD infinite diffuse lights place the source position at 2^20 times
-         * its value. Interest controls specular/spot direction, not this path. */
-        for (unsigned c = 0; c < 3; ++c)
-            direction[c] = type == 1 ? light->pos[c] : light->pos[c] - source->pos[c];
-        float distance = normalize(direction);
-        float intensity = fmaxf(0.0f, normal[0]*direction[0] + normal[1]*direction[1] + normal[2]*direction[2]);
-        if (type >= 2) intensity *= attenuation(light, distance);
-        if (type == 3) intensity *= spotlight_attenuation(light, direction);
-        if (light->flags & 4u) for (unsigned c = 0; c < 3; ++c) light_color[c] += intensity * light->rgba[c];
-        if (light->flags & 16u) light_alpha += intensity * light->rgba[3];
+        if (!(light->flags & 20u)) continue;
+        out->type = type;
+        out->light = light;
+        for (unsigned c = 0; c < 3; ++c) out->color[c] = light->flags & 4u ? light->rgba[c] : 0.0f;
+        out->alpha = light->flags & 16u ? light->rgba[3] : 0.0f;
+        memcpy(out->vector, light->pos, sizeof out->vector);
+        if (type == 1) normalize(out->vector);
+        out->cone = spot_cone(light);
+        ++setup->count;
     }
-    for (unsigned c = 0; c < 3; ++c)
-        rgba[c] = clamp01(light_color[c]) * (color_source & 2u ? source->rgba[c] / 255.0f : 1.0f);
-    /* MObjMakeTExp multiplies texture/material alpha by (1 - raster alpha).
-     * The optional vertex-alpha channel is independent of light alpha. */
-    rgba[3] = (1.0f - clamp01(light_alpha)) * (alpha_source & 2u ? vertex_alpha : 1.0f);
+}
+
+/* Stage one batch: positions and UVs are copied, the raster colour is lit.
+ * Specular and normal-generated UVs are added by the caller. Against the
+ * previous per-vertex routine the unlit path is bit-identical. The lit path
+ * is bit-identical too unless it skips renormalising a normal that is
+ * already unit within 1e-4 in squared length, where the colour differs by a
+ * relative 1e-4 at most: under one 8-bit step. */
+static void stage_batch(const LightSetup *setup, const C3TitleBatch *batch,
+                        const C3TitleMaterialState *material,
+                        const C3TitleDrawVertex *restrict source,
+                        TitleGPUVertex *restrict destination, uint32_t count, bool flip_v)
+{
+    unsigned color_source = batch->render_mode & 3u;
+    if (!color_source) color_source = 1;
+    unsigned alpha_source = (batch->render_mode >> 13) & 3u;
+    if (!alpha_source) alpha_source = color_source;
+    const C3TitleDrawVertex *end = source + count;
+    byte_unit_init();
+    if (!(batch->flags & C3_TITLE_LIT)) {
+        const float diffuse[3] = {batch->diffuse[0], batch->diffuse[1], batch->diffuse[2]};
+        const float alpha = material->alpha;
+        for (; source < end; ++source, ++destination) {
+            const float vertex_alpha = byte_unit[source->rgba[3]];
+            memcpy(destination->pos, source->pos, sizeof destination->pos);
+            destination->uv[0] = source->uv[0];
+            destination->uv[1] = flip_v ? 1.0f - source->uv[1] : source->uv[1];
+            memcpy(destination->uv2, source->uv2, sizeof destination->uv2);
+            for (unsigned c = 0; c < 3; ++c) {
+                const float vertex_color = byte_unit[source->rgba[c]];
+                destination->rgba[c] = color_source == 1 ? diffuse[c] : color_source == 2 ? vertex_color :
+                                       unit_interval(vertex_color + diffuse[c]);
+            }
+            destination->rgba[3] = alpha_source == 1 ? alpha : alpha_source == 2 ? vertex_alpha : alpha * vertex_alpha;
+            destination->specular[0] = destination->specular[1] = destination->specular[2] = 0.0f;
+        }
+        return;
+    }
+    const bool vertex_color = (color_source & 2u) != 0, vertex_alpha = (alpha_source & 2u) != 0;
+    const float ambient[3] = {batch->ambient[0], batch->ambient[1], batch->ambient[2]};
+    for (; source < end; ++source, ++destination) {
+        float normal[3] = {source->normal[0], source->normal[1], source->normal[2]};
+        float squared = normal[0]*normal[0] + normal[1]*normal[1] + normal[2]*normal[2];
+        float red = 0.0f, green = 0.0f, blue = 0.0f, alpha = 0.0f;
+        if (fabsf(squared - 1.0f) > 1e-4f) normalize(normal);
+        for (unsigned i = 0; i < setup->count; ++i) {
+            const StageLight *light = &setup->lights[i];
+            float intensity;
+            if (light->type == 0) {
+                red += ambient[0] * light->color[0];
+                green += ambient[1] * light->color[1];
+                blue += ambient[2] * light->color[2];
+                alpha += light->alpha;
+                continue;
+            }
+            if (light->type == 1) {
+                intensity = positive_part(normal[0]*light->vector[0] + normal[1]*light->vector[1] + normal[2]*light->vector[2]);
+            } else {
+                float direction[3] = {light->vector[0] - source->pos[0], light->vector[1] - source->pos[1],
+                                      light->vector[2] - source->pos[2]};
+                float distance = normalize(direction);
+                intensity = positive_part(normal[0]*direction[0] + normal[1]*direction[1] + normal[2]*direction[2]);
+                intensity *= attenuation(light->light, distance);
+                if (light->type == 3) intensity *= spotlight_attenuation(&light->cone, direction);
+            }
+            red += intensity * light->color[0];
+            green += intensity * light->color[1];
+            blue += intensity * light->color[2];
+            alpha += intensity * light->alpha;
+        }
+        memcpy(destination->pos, source->pos, sizeof destination->pos);
+        destination->uv[0] = source->uv[0];
+        destination->uv[1] = flip_v ? 1.0f - source->uv[1] : source->uv[1];
+        memcpy(destination->uv2, source->uv2, sizeof destination->uv2);
+        destination->rgba[0] = unit_interval(red) * (vertex_color ? byte_unit[source->rgba[0]] : 1.0f);
+        destination->rgba[1] = unit_interval(green) * (vertex_color ? byte_unit[source->rgba[1]] : 1.0f);
+        destination->rgba[2] = unit_interval(blue) * (vertex_color ? byte_unit[source->rgba[2]] : 1.0f);
+        /* MObjMakeTExp multiplies texture/material alpha by (1 - raster alpha).
+         * The optional vertex-alpha channel is independent of light alpha. */
+        destination->rgba[3] = (1.0f - unit_interval(alpha)) * (vertex_alpha ? byte_unit[source->rgba[3]] : 1.0f);
+        destination->specular[0] = destination->specular[1] = destination->specular[2] = 0.0f;
+    }
 }
 
 typedef struct { float position[3], half_direction[3], color[3]; } SpecularLight;
@@ -754,6 +866,11 @@ static bool camera_matrices(const C3TitleCamera *camera, C3D_Mtx *mvp, C3D_Mtx *
     return true;
 }
 
+#include "frame_pacing.inc"
+/* From here on every cache flush of a CPU-written linear range, including the
+ * HUD, particle and Confusion ranges below, is timed and counted. */
+#define GSPGPU_FlushDataCache(address, bytes) stage_flush((address), (bytes))
+
 int c3_stage_renderer_set_battle_hud(const C3StageBattleHud *hud, char *error, size_t capacity)
 {
     if (!hud || !scene_count) return fail(error, capacity, "HUD requires an owned stage.");
@@ -906,21 +1023,25 @@ int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
     if (tv.configured && tv.enabled &&
         !camera_matrices(&models[tv.model]->pose.camera, &tv_mvp, &tv_view, false))
         return fail(error, capacity, "Invalid sampled television camera.");
-    if (!C3D_FrameBegin(C3D_FRAME_NONBLOCK)) return C3_RENDER_BUSY;
+    /* The frame is normally already owned: the previous draw acquired it
+     * before the caller simulated. Otherwise make the one nonblocking attempt. */
+    if (!stage_frame_begin()) return C3_RENDER_BUSY;
     scene_drawn=true;
     uint64_t start = svcGetSystemTick();
+    uint64_t prepare_start = stage_now_us();
     int confusion_active=confusion_prepare(&capture_mvp,&capture_view,error,capacity);
-    if(confusion_active<0){C3D_FrameEnd(0);return C3_RENDER_ERROR;}
+    if(confusion_active<0){stage_frame_abort();return C3_RENDER_ERROR;}
     if(confusion_active){
         for(size_t model=0;model<count;++model)
             for(uint32_t i=0;i<models[model]->batch_count;++i)
                 if((models[model]->batches[i].render_mode&0x60000000u)==0x20000000u){
-                    C3D_FrameEnd(0);
+                    stage_frame_abort();
                     return fail(error,capacity,"Unsupported original HSD transparency class for capture.");
                 }
     }
-    /* FrameBegin drains the previous GPU queue before this single bounded
-     * arena is overwritten. No CPU buffer is reused within an open frame. */
+    /* FrameBegin drained the previous GPU queue before this single bounded
+     * arena is written. Ranges of tracked batches whose inputs did not change
+     * are left as they are: the arena persists across completed frames. */
     if (stats) stats->gpu_previous_ms = C3D_GetDrawingTime();
     for (size_t model = 0; model < count; ++model) {
         if (tv.configured && model == tv.model && !tv.enabled && !confusion_active) continue;
@@ -928,36 +1049,42 @@ int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
         const C3D_Mtx *model_view = tv.configured && tv.enabled && model == tv.model && !confusion_active ? &tv_view : &view;
         TitleGPUVertex *destination = vertices + scenes[model].first_vertex;
         _Static_assert(sizeof(C3D_Mtx)==64,"Prepared-view cache matrix extent");
-        if(c3_stage_cache_hit(&vertex_cache[model],model_view)){
-            if(stats)++stats->cached_models;
-            continue;
-        }
+        C3StageVertexCache *cache = &vertex_cache[model];
+        bool tracked = c3_stage_cache_frame(cache, title, model_view);
+        uint32_t staged_first = UINT32_MAX, staged_end = 0;
+        LightSetup lights;
+        bool lights_ready = false;
+        lights.count = 0;
         for (uint32_t i = 0; i < title->batch_count; ++i) {
             const C3TitleBatch *batch = &title->batches[i];
             const C3TitleMaterialState *material = &title->pose.materials[i];
             if (material->visible < 0.5f) continue;
-            SpecularLight specular[C3_TITLE_MAX_LIGHTS];
-            if (batch->flags & C3_TITLE_SPECULAR)
-                prepare_specular(title, material, model_view, scenes[model].specular_lights, specular);
+            bool flip_v = tv.configured && tv.enabled && model == tv.screen_model && batch->texture == tv.texture;
+            if (tracked && c3_stage_cache_batch(cache, title, i, flip_v)) {
+                if (stats) { ++stats->cached_batches; stats->vertices_static += batch->count; }
+                continue;
+            }
+            if (batch->first < staged_first) staged_first = batch->first;
+            if (batch->first + batch->count > staged_end) staged_end = batch->first + batch->count;
             if(stats)stats->vertices_prepared+=batch->count;
-            for (uint32_t j = batch->first; j < batch->first + batch->count; ++j) {
-                const C3TitleDrawVertex *source = &title->draw_vertices[j];
-                memcpy(destination[j].pos, source->pos, sizeof(destination[j].pos));
-                memcpy(destination[j].uv, source->uv, sizeof(destination[j].uv));
-                memcpy(destination[j].uv2, source->uv2, sizeof(destination[j].uv2));
-                /* Normal uploads reverse pixel rows to retain GX's top-origin
-                 * UVs. A texture-backed framebuffer has native bottom-origin
-                 * rows, so reverse V only on the screen sampling this target.
-                 * The colored-corner RTT probe verifies this convention. */
-                if (tv.configured && tv.enabled && model == tv.screen_model && batch->texture == tv.texture)
-                    destination[j].uv[1] = 1.0f-source->uv[1];
-                raster_color(title, batch, material, source, destination[j].rgba);
-                memset(destination[j].specular, 0, sizeof(destination[j].specular));
-                if (batch->flags & C3_TITLE_SPECULAR)
-                    raster_specular(batch, source, model_view, scenes[model].specular_lights, specular, destination[j].specular);
-                if ((batch->flags & C3_TITLE_REFLECTION_BLEND) && !(batch->flags&C3_TITLE_SECOND_UV_BLEND)) {
+            if ((batch->flags & C3_TITLE_LIT) && !lights_ready) { light_setup(title, &lights); lights_ready = true; }
+            /* Normal uploads reverse pixel rows to retain GX's top-origin
+             * UVs. A texture-backed framebuffer has native bottom-origin
+             * rows, so flip_v reverses V only on the screen sampling this
+             * target. The colored-corner RTT probe verifies this convention. */
+            stage_batch(&lights, batch, material, title->draw_vertices + batch->first,
+                        destination + batch->first, batch->count, flip_v);
+            if (batch->flags & C3_TITLE_SPECULAR) {
+                SpecularLight specular[C3_TITLE_MAX_LIGHTS];
+                prepare_specular(title, material, model_view, scenes[model].specular_lights, specular);
+                for (uint32_t j = batch->first; j < batch->first + batch->count; ++j)
+                    raster_specular(batch, &title->draw_vertices[j], model_view, scenes[model].specular_lights,
+                                    specular, destination[j].specular);
+            }
+            if ((batch->flags & C3_TITLE_REFLECTION_BLEND) && !(batch->flags&C3_TITLE_SECOND_UV_BLEND)) {
+                for (uint32_t j = batch->first; j < batch->first + batch->count; ++j) {
                     float normal[3];
-                    view_normal(model_view, source->normal, normal);
+                    view_normal(model_view, title->draw_vertices[j].normal, normal);
                     float u = normal[0]*0.5f + 0.5f, v = -normal[1]*0.5f + 0.5f;
                     destination[j].uv2[0] = u*material->uv2_scale[0] + v*material->uv2_cross[0] + material->uv2_offset[0];
                     destination[j].uv2[1] = u*material->uv2_cross[1] + v*material->uv2_scale[1] + material->uv2_offset[1];
@@ -968,11 +1095,12 @@ int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
                 }
             }
         }
-        GSPGPU_FlushDataCache(destination,(size_t)title->vertex_count*sizeof(*vertices));
-        c3_stage_cache_record(&vertex_cache[model],model_view);
+        /* Only the rewritten span needs cache maintenance. */
+        if (staged_end)
+            GSPGPU_FlushDataCache(destination + staged_first, (size_t)(staged_end - staged_first) * sizeof(*vertices));
+        else if (tracked && stats) ++stats->cached_models;
     }
-    /* Only rewritten ranges need cache maintenance. Immutable arena ranges
-     * retain their GPU bytes across completed frames. */
+    uint64_t submit_start = stage_now_us(), prepare_upload_us = frame_upload_us;
     unsigned tv_passes=tv.configured&&tv.enabled?1u:0u;
     unsigned target_passes = 1u+tv_passes+(confusion_active?1u:0u);
     for (unsigned target_pass = 0; target_pass < target_passes; ++target_pass) {
@@ -1107,10 +1235,10 @@ int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
         }
     } /* The texture-backed pass precedes the main camera in one GPU queue. */
     if(confusion_active&&!confusion_draw(&mvp,stats,error,capacity)){
-        C3D_FrameEnd(0);return C3_RENDER_ERROR;
+        stage_frame_abort();return C3_RENDER_ERROR;
     }
     if(!draw_particles(camera,&mvp,stats,error,capacity)){
-        C3D_FrameEnd(0);return C3_RENDER_ERROR;
+        stage_frame_abort();return C3_RENDER_ERROR;
     }
     draw_battle_hud(stats);
     fade = clamp01(fade);
@@ -1143,12 +1271,20 @@ int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
         if (stats) { stats->draw_calls++; stats->vertices += 3; }
     }
     if (stats) {
+        uint64_t submit_end = stage_now_us();
         stats->draw_prepare_us = (svcGetSystemTick() - start) * 1000000ull / SYSCLOCK_ARM11;
         stats->gpu_buffer_bytes = gpu_buffer_bytes;
+        /* Cache flushes are reported once, as upload time, not twice. */
+        stats->prepare_us = (uint32_t)(submit_start - prepare_start - prepare_upload_us);
+        stats->submit_us = (uint32_t)(submit_end - submit_start - (frame_upload_us - prepare_upload_us));
+        stats->upload_us = (uint32_t)frame_upload_us;
+        stats->upload_bytes = (uint32_t)frame_upload_bytes;
     }
-    gfxFlushBuffers();
-    C3D_FrameEnd(0);
+    /* The top framebuffer is GPU-written and the bottom screen's owner
+     * flushes when it redraws, so no CPU framebuffer flush belongs here. */
+    stage_frame_end(stats);
     record_submission(stats);
+    stage_frame_next(stats);
     if (error && capacity) error[0] = '\0';
     return 0;
 }
@@ -1162,6 +1298,9 @@ int c3_title_renderer_draw(const C3Title *title, float fade,
 
 void c3_title_renderer_shutdown(void)
 {
+    /* An owned frame holds no commands: FrameBegin already proved the queue
+     * idle, so closing it empty keeps the documented quiescence barrier. */
+    if (frame_acquired) { C3D_FrameEnd(0); frame_acquired = false; }
     scene_count = 0;
     memset(scenes, 0, sizeof(scenes));
     memset(vertex_cache, 0, sizeof vertex_cache);
@@ -1214,11 +1353,18 @@ void c3_stage_renderer_fini(void)
 bool c3_stage_renderer_is_idle(void)
 {
     if (!c3d_started) return true;
-    if (!C3D_FrameBegin(C3D_FRAME_NONBLOCK)) return false;
+    /* A frame the pacing code already owns is the same proof of quiescence.
+     * Any other caller arrives from a busy wait, a recovery or a scene
+     * change: stage every tracked batch again on the next draw. */
+    if (!frame_acquired) {
+        if (!C3D_FrameBegin(C3D_FRAME_NONBLOCK)) return false;
+        for (size_t i = 0; i < scene_count; ++i) c3_stage_cache_reset(&vertex_cache[i]);
+    }
     /* Close the acquired frame without adding GPU commands. Existing scene
      * memory remains owned until the caller chooses to resume or shut down.
      * Keep this frame empty; GPU-producing frame-end hooks are not allowed. */
     C3D_FrameEnd(0);
+    frame_acquired = false;
     return true;
 }
 
@@ -1233,11 +1379,12 @@ bool c3_stage_renderer_try_shutdown(void)
 int c3_stage_renderer_probe_clear(void)
 {
     if (!target || !scene_count) return C3_RENDER_ERROR;
-    if (!C3D_FrameBegin(C3D_FRAME_NONBLOCK)) return C3_RENDER_BUSY;
+    if (!frame_acquired && !C3D_FrameBegin(C3D_FRAME_NONBLOCK)) return C3_RENDER_BUSY;
     C3D_RenderTargetClear(target, C3D_CLEAR_ALL, 0x204060FF, 0);
     C3D_FrameDrawOn(target);
     gfxFlushBuffers();
     C3D_FrameEnd(0);
+    frame_acquired = false;
     record_submission(NULL);
     return C3_RENDER_OK;
 }

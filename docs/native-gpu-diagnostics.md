@@ -38,11 +38,12 @@ render target, textures, and vertex arena. `c3_stage_renderer_fini`, called from
 platform shutdown, finalizes Citro3D before freeing the program and DVLB. Partial
 driver initialization and scene allocation failures have distinct cleanup paths.
 
-The stage model limit is now 16. The combined 131072-vertex, 128-unique-texture,
-and 32 MiB GPU-storage limits remain. This permits the interior's separate TV
-model without requiring duplicate copies of the other scene models. The new
-capacity fixture exercises 16 models, disjoint vertex ranges, texture sharing,
-complete cleanup, and rejection of a 17th model before driver allocation.
+The stage model limit is now 48 and the combined vertex limit 196608 (see
+[render-performance.md](render-performance.md) for the Phenac City budget);
+the 128-unique-texture and 32 MiB GPU-storage limits remain. The capacity
+fixture exercises the maximum model count, disjoint vertex ranges, texture
+sharing, complete cleanup, and rejection of one model more before driver
+allocation.
 
 ## Completion evidence
 

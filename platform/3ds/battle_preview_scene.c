@@ -135,22 +135,29 @@ int c3_battle_preview_scene_run(const C3BattleRequest *request,const uint8_t *en
                 if(recovered==C3_RECOVERY_RESUME_PAUSED)previous_time=c3_n3ds_active_time_us();
             }else{
                 ++frames;
-                ++interval_frames;uint64_t full_frame_us=c3_n3ds_time_us()-frame_start;
+                /* The draw also paces presentation; keep these two fields CPU time. */
+                uint64_t draw_cpu_us=c3_n3ds_time_us()-render_start-stats.wait_us;
+                ++interval_frames;uint64_t full_frame_us=c3_n3ds_time_us()-frame_start-stats.wait_us;
                 if(full_frame_us>full_frame_peak_us)full_frame_peak_us=full_frame_us;
                 if(trace&&now-metric_time>=1000000u){
-                    fprintf(trace,"battle_render frames=%u draw_cpu_us=%llu gpu_previous_ms=%.3f draws=%lu vertices=%lu gpu_buffer_bytes=%lu vertices_prepared=%lu cached_models=%lu command_words=%lu particle_command_words=%lu command_capacity_words=%lu\n",frames,
-                        (unsigned long long)(c3_n3ds_time_us()-render_start),(double)stats.gpu_previous_ms,
+                    char perf[1024];c3_stage_renderer_perf_format(perf,sizeof perf);
+                    fprintf(trace,"battle_render frames=%u draw_cpu_us=%llu gpu_previous_ms=%.3f draws=%lu vertices=%lu gpu_buffer_bytes=%lu vertices_prepared=%lu cached_models=%lu command_words=%lu particle_command_words=%lu command_capacity_words=%lu%s\n",frames,
+                        (unsigned long long)draw_cpu_us,(double)stats.gpu_previous_ms,
                         (unsigned long)stats.draw_calls,(unsigned long)stats.vertices,(unsigned long)stats.gpu_buffer_bytes,
                         (unsigned long)stats.vertices_prepared,(unsigned long)stats.cached_models,
-                        (unsigned long)stats.command_words,(unsigned long)stats.particle_command_words,(unsigned long)stats.command_capacity_words);
+                        (unsigned long)stats.command_words,(unsigned long)stats.particle_command_words,(unsigned long)stats.command_capacity_words,perf);
                     c3_n3ds_log_memory(trace,"battle_render");fflush(trace);metric_time=now;
                     uint32_t particle_peak=stage->particles.peak_particles;
                     if(stage->confusion_damage_particles&&stage->confusion_damage_particles->peak_particles>particle_peak)
                         particle_peak=stage->confusion_damage_particles->peak_particles;
-                    fprintf(trace,"battle_frame sample_clock_cpu_us=%llu sample_clock_peak_us=%llu full_cpu_frame_us=%llu full_cpu_peak_us=%llu interval_frames=%u particles=%lu particle_vertices=%lu particle_live_peak=%lu\n",
+                    fprintf(trace,"battle_frame sample_clock_cpu_us=%llu sample_clock_peak_us=%llu full_cpu_frame_us=%llu full_cpu_peak_us=%llu interval_frames=%u particles=%lu particle_vertices=%lu particle_live_peak=%lu"
+                        " draw_prepare_us=%llu prepare_us=%lu upload_us=%lu upload_bytes=%lu submit_us=%lu wait_us=%lu cached_batches=%lu vertices_static=%lu\n",
                         (unsigned long long)sample_cpu_us,(unsigned long long)sample_cpu_peak_us,
                         (unsigned long long)full_frame_us,(unsigned long long)full_frame_peak_us,interval_frames,
-                        (unsigned long)stats.particles,(unsigned long)stats.particle_vertices,(unsigned long)particle_peak);
+                        (unsigned long)stats.particles,(unsigned long)stats.particle_vertices,(unsigned long)particle_peak,
+                        (unsigned long long)stats.draw_prepare_us,(unsigned long)stats.prepare_us,(unsigned long)stats.upload_us,
+                        (unsigned long)stats.upload_bytes,(unsigned long)stats.submit_us,(unsigned long)stats.wait_us,
+                        (unsigned long)stats.cached_batches,(unsigned long)stats.vertices_static);
                     sample_cpu_peak_us=full_frame_peak_us=0;interval_frames=0;
                     c3_battle_audio_player_trace(trace,"battle_render");
                 }
