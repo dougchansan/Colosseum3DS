@@ -85,7 +85,10 @@ int main(int argc,char **argv)
     static const int layouts[3]={0,1,C3_UI_ROTATED_RGB565};
     unsigned char *frame=malloc(320u*240u*3u+64u);assert(frame);
     int print=argc>1,failures=0;
-    for(unsigned l=0;l<3;++l)for(int s=0;s<8;++s){
+    /* Every scene twice: the second pass copies cached panels and the backdrop
+     * template, and must still reproduce the recorded bytes. */
+    c3_ui_perf_take(NULL);
+    for(unsigned l=0;l<3;++l)for(int s=0;s<8;++s)for(int pass=0;pass<2;++pass){
         size_t bytes=320u*240u*(layouts[l]==C3_UI_ROTATED_RGB565?2u:3u);
         memset(frame,0xa5,320u*240u*3u+64u);
         C3BottomUi ui;c3_ui_begin(&ui,frame+32,layouts[l],&assets,NULL);
@@ -93,9 +96,12 @@ int main(int argc,char **argv)
         scene(&ui,s);
         for(unsigned k=0;k<32;++k)assert(frame[k]==0xa5&&frame[32+bytes+k]==0xa5);
         uint64_t h=fnv(frame+32,bytes);
-        if(print)printf("layout %u scene %d 0x%016llxull\n",l,s,(unsigned long long)h);
-        else if(h!=expected[l][s]){printf("layout %u scene %d: 0x%016llx != 0x%016llx\n",l,s,(unsigned long long)h,(unsigned long long)expected[l][s]);++failures;}
+        if(print){if(!pass)printf("layout %u scene %d 0x%016llxull\n",l,s,(unsigned long long)h);}
+        else if(h!=expected[l][s]){printf("layout %u scene %d pass %d: 0x%016llx != 0x%016llx\n",l,s,pass,(unsigned long long)h,(unsigned long long)expected[l][s]);++failures;}
     }
+    C3UiPerf perf;c3_ui_perf_take(&perf);
+    /* Scenes 1-4 and 6 draw panels over untouched backdrop (6 also over a panel). */
+    if(!print&&perf.panel_cache_hits<10u){printf("panel cache hits: %u\n",perf.panel_cache_hits);++failures;}
     /* The fallback 8x8 font path. */
     {C3BottomUi ui;const unsigned char *font=data+TABLE;c3_ui_begin(&ui,frame+32,1,NULL,font);
      c3_ui_text(&ui,10,10,300,3,"FALLBACK FONT 0123",0x88ff00);c3_ui_title(&ui,0,0);
@@ -103,6 +109,6 @@ int main(int argc,char **argv)
      else if(h!=0x5dafc071c536681full){printf("fallback: 0x%016llx\n",(unsigned long long)h);++failures;}}
     free(frame);free(data);
     if(!print&&failures)return 1;
-    if(!print)printf("bottom UI golden: 25 framebuffers byte-identical\n");
+    if(!print)printf("bottom UI golden: 49 framebuffers byte-identical, %u panels from cache\n",perf.panel_cache_hits);
     return 0;
 }

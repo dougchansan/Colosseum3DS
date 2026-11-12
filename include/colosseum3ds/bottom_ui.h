@@ -11,6 +11,11 @@ typedef struct {
     const unsigned char *fallback_font; /* libctru 8x8 ASCII, borrowed */
     int rotated_bgr; /* 0: RGB8, 1: rotated BGR8, 2: rotated RGB565. */
     int content_inset; /* Additional horizontal clearance for framed menus. */
+    /* Maintained by the drawing functions since c3_ui_begin: areas no longer
+     * showing the plain backdrop. A panel drawn over untouched backdrop is
+     * cached and later copied instead of re-blended. */
+    int16_t touched[64][4];
+    unsigned touched_count; /* > 64: everything counts as touched */
 } C3BottomUi;
 typedef struct {
     uint32_t identity;
@@ -30,6 +35,7 @@ int c3_ui_assets_open(C3UiAssets *assets,const void *data,size_t size);
 typedef struct {
     uint64_t begin_us, panel_us, text_us, rect_us, sprite_us;
     uint32_t panels, glyphs, rects, sprites;
+    uint32_t panel_cache_hits; /* panels copied from the cache */
 } C3UiPerf;
 void c3_ui_perf_clock(uint64_t (*now_us)(void));
 void c3_ui_perf_take(C3UiPerf *out);

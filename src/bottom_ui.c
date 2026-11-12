@@ -1,5 +1,6 @@
 #include "colosseum3ds/bottom_ui.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #define HEADER 32u
@@ -77,12 +78,58 @@ static void pixel(C3BottomUi *ui,int x,int y,uint32_t color,unsigned alpha)
     p[2]=(unsigned char)div255(b*alpha+p[2]*(255u-alpha)+127u);
 }
 
+/* Areas drawn since c3_ui_begin (clipped, exclusive right/bottom). The panel
+ * cache only reuses or captures pixels of a panel drawn over untouched
+ * backdrop, so a cached copy is exactly what blending would produce. */
+static void touch(C3BottomUi *ui,int x,int y,int w,int h)
+{
+    if(!ui||w<=0||h<=0)return;
+    int64_t l=x<0?0:x,t=y<0?0:y,r=(int64_t)x+w>320?320:(int64_t)x+w,b=(int64_t)y+h>240?240:(int64_t)y+h;
+    if(l>=r||t>=b)return;
+    if(ui->touched_count>=64u){ui->touched_count=65u;return;}
+    int16_t *q=ui->touched[ui->touched_count++];
+    q[0]=(int16_t)l;q[1]=(int16_t)t;q[2]=(int16_t)r;q[3]=(int16_t)b;
+}
+
+static int untouched(const C3BottomUi *ui,int l,int t,int r,int b)
+{
+    if(ui->touched_count>64u)return 0;
+    for(unsigned i=0;i<ui->touched_count;++i){
+        const int16_t *q=ui->touched[i];
+        if(l<q[2]&&q[0]<r&&t<q[3]&&q[1]<b)return 0;
+    }
+    return 1;
+}
+
+static unsigned bytes_per_pixel(const C3BottomUi *ui){return ui->rotated_bgr==C3_UI_ROTATED_RGB565?2u:3u;}
+
+/* Copy the clipped rectangle between the framebuffer and a packed buffer.
+ * Rotated layouts keep a screen column contiguous; RGB8 keeps a row. */
+static void copy_rect(C3BottomUi *ui,int l,int t,int r,int b,unsigned char *buffer,int to_screen)
+{
+    unsigned bpp=bytes_per_pixel(ui);
+    if(ui->rotated_bgr){
+        size_t run=(size_t)(b-t)*bpp;
+        for(int x=l;x<r;++x,buffer+=run){
+            unsigned char *p=ui->pixels+((size_t)x*240u+240u-(unsigned)b)*bpp;
+            if(to_screen)memcpy(p,buffer,run);else memcpy(buffer,p,run);
+        }
+        return;
+    }
+    size_t run=(size_t)(r-l)*3u;
+    for(int y=t;y<b;++y,buffer+=run){
+        unsigned char *p=ui->pixels+((size_t)y*320u+(unsigned)l)*3u;
+        if(to_screen)memcpy(p,buffer,run);else memcpy(buffer,p,run);
+    }
+}
+
 static void rect_fill(C3BottomUi *ui,int x,int y,int w,int h,uint32_t color);
 
 void c3_ui_rect(C3BottomUi *ui,int x,int y,int w,int h,uint32_t color)
 {
     ++ui_perf.rects;
     UI_TIMED(rect_us, rect_fill(ui,x,y,w,h,color));
+    touch(ui,x,y,w,h);
 }
 
 static void rect_fill(C3BottomUi *ui,int x,int y,int w,int h,uint32_t color)
@@ -121,10 +168,29 @@ void c3_ui_begin(C3BottomUi *ui,unsigned char *pixels,int rotated,
 {
     if(!ui)return;
     ui->pixels=pixels;ui->rotated_bgr=rotated==C3_UI_ROTATED_RGB565?rotated:!!rotated;ui->assets=assets;ui->fallback_font=fallback;ui->content_inset=0;
-    /* The original title palette and quiet field backdrop. No frame ownership. */
-    UI_TIMED(begin_us, for(int y=0;y<240;++y){
-        unsigned c=(unsigned)(240-y)/18u;
-        rect_fill(ui,0,y,320,1,((5u+c)<<16)|((12u+c*2u)<<8)|(16u+c*2u));
+    ui->touched_count=0;
+    if(!pixels)return;
+    /* The original title palette and quiet field backdrop. No frame ownership.
+     * It never changes: render it once per layout (240 one-pixel rows are
+     * 76,800 scattered writes in a rotated framebuffer, 3.5 ms on a New 3DS)
+     * and copy it afterwards. */
+    UI_TIMED(begin_us, {
+        static unsigned char *backdrop[3];
+        size_t bytes=320u*240u*bytes_per_pixel(ui);
+        unsigned char *template=backdrop[ui->rotated_bgr];
+        if(!template&&(template=malloc(bytes))){
+            C3BottomUi plain=*ui;plain.pixels=template;
+            for(int y=0;y<240;++y){
+                unsigned c=(unsigned)(240-y)/18u;
+                rect_fill(&plain,0,y,320,1,((5u+c)<<16)|((12u+c*2u)<<8)|(16u+c*2u));
+            }
+            backdrop[ui->rotated_bgr]=template;
+        }
+        if(template)memcpy(pixels,template,bytes);
+        else for(int y=0;y<240;++y){
+            unsigned c=(unsigned)(240-y)/18u;
+            rect_fill(ui,0,y,320,1,((5u+c)<<16)|((12u+c*2u)<<8)|(16u+c*2u));
+        }
     });
 }
 
@@ -143,6 +209,7 @@ void c3_ui_rgba(C3BottomUi *ui,const uint8_t *src,unsigned sw,unsigned sh,int x,
 {
     ++ui_perf.sprites;
     UI_TIMED(sprite_us, rgba_blit(ui,src,sw,sh,x,y,w,h));
+    if(ui&&src&&w>0&&h>0&&w<=640&&h<=480)touch(ui,x,y,w,h);
 }
 
 static void rgba_blit(C3BottomUi *ui,const uint8_t *src,unsigned sw,unsigned sh,int x,int y,int w,int h)
@@ -163,10 +230,48 @@ static void rgba_blit(C3BottomUi *ui,const uint8_t *src,unsigned sw,unsigned sh,
 
 static void panel_draw(C3BottomUi *ui,unsigned sprite,int x,int y,int w,int h);
 
+/* Finished pixels of panels drawn over untouched backdrop, keyed by
+ * everything that determines them. 8 entries, least recently used replaced. */
+typedef struct {
+    const unsigned char *assets; size_t asset_bytes;
+    unsigned sprite; int x,y,w,h,layout;
+    unsigned char *pixels; size_t bytes, capacity; unsigned age;
+} PanelCache;
+static PanelCache panel_cache[8];
+static unsigned panel_clock;
+
+static void panel_cached(C3BottomUi *ui,unsigned sprite,int x,int y,int w,int h)
+{
+    if(!ui||!ui->pixels||!ui->assets||!ui->assets->data||sprite>=C3_UI_SPRITES||
+       w<12||h<12||w>320||h>240||x>=320||y>=240||x < -w||y < -h){panel_draw(ui,sprite,x,y,w,h);return;}
+    int l=x<0?0:x,t=y<0?0:y,r=x+w>320?320:x+w,b=y+h>240?240:y+h;
+    if(!untouched(ui,l,t,r,b)){panel_draw(ui,sprite,x,y,w,h);return;}
+    size_t bytes=(size_t)(r-l)*(size_t)(b-t)*bytes_per_pixel(ui);
+    PanelCache *slot=NULL;
+    for(unsigned i=0;i<8u;++i){
+        PanelCache *c=&panel_cache[i];
+        if(c->pixels&&c->assets==ui->assets->data&&c->asset_bytes==ui->assets->size&&c->sprite==sprite&&
+           c->x==x&&c->y==y&&c->w==w&&c->h==h&&c->layout==ui->rotated_bgr&&c->bytes==bytes){
+            copy_rect(ui,l,t,r,b,c->pixels,1);
+            c->age=++panel_clock;++ui_perf.panel_cache_hits;touch(ui,x,y,w,h);return;
+        }
+        if(!slot||c->age<slot->age)slot=c;
+    }
+    panel_draw(ui,sprite,x,y,w,h);
+    if(slot->capacity<bytes){
+        unsigned char *grown=realloc(slot->pixels,bytes);
+        if(!grown)return;
+        slot->pixels=grown;slot->capacity=bytes;
+    }
+    copy_rect(ui,l,t,r,b,slot->pixels,0);
+    slot->assets=ui->assets->data;slot->asset_bytes=ui->assets->size;slot->sprite=sprite;
+    slot->x=x;slot->y=y;slot->w=w;slot->h=h;slot->layout=ui->rotated_bgr;slot->bytes=bytes;slot->age=++panel_clock;
+}
+
 static void panel(C3BottomUi *ui,unsigned sprite,int x,int y,int w,int h)
 {
     ++ui_perf.panels;
-    UI_TIMED(panel_us, panel_draw(ui,sprite,x,y,w,h));
+    UI_TIMED(panel_us, panel_cached(ui,sprite,x,y,w,h));
 }
 
 static void panel_draw(C3BottomUi *ui,unsigned sprite,int x,int y,int w,int h)
@@ -195,6 +300,7 @@ static void panel_draw(C3BottomUi *ui,unsigned sprite,int x,int y,int w,int h)
             pixel(ui,x+xx,y+yy,(uint32_t)p[0]<<16|(uint32_t)p[1]<<8|p[2],p[3]);
         }
     }
+    touch(ui,x,y,w,h);
 }
 
 void c3_ui_panel(C3BottomUi *ui,int x,int y,int w,int h)
@@ -254,6 +360,7 @@ int c3_ui_text_right(C3BottomUi *ui,int right,int y,int width,const char *text,u
 {
     int result;
     UI_TIMED(text_us, result=text_right_draw(ui,right,y,width,text,color));
+    if(result)touch(ui,right-result,y,result+2,18);
     return result;
 }
 
@@ -261,6 +368,7 @@ size_t c3_ui_text(C3BottomUi *ui,int x,int y,int width,int lines,const char *tex
 {
     size_t result;
     UI_TIMED(text_us, result=text_draw(ui,x,y,width,lines,text,color));
+    if(ui&&text&&width>=16&&width<=320&&lines>=1&&lines<=15)touch(ui,x,y,width+2,lines*17+2);
     return result;
 }
 
@@ -421,6 +529,7 @@ static void title_heading(C3BottomUi *ui)
         }
         cursor+=advance(ui,c);
     }
+    touch(ui,0,62,320,22); /* the scaled heading and its shadow */
 }
 
 void c3_ui_title(C3BottomUi *ui,int waiting,int accepted)
@@ -441,6 +550,7 @@ void c3_ui_title(C3BottomUi *ui,int waiting,int accepted)
                     pixel(ui,28+(int)x,94+(int)y,(uint32_t)p[0]<<16|(uint32_t)p[1]<<8|p[2],p[3]);
                 }
             }
+            touch(ui,28,94,264,58);
         }else c3_ui_panel(ui,28,94,264,58);
         c3_ui_sprite(ui,C3_UI_START,50,109,220,26);
         c3_ui_sprite(ui,C3_UI_HAND,14,114,29,21);
