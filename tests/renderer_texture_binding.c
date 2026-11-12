@@ -473,7 +473,11 @@ int main(int argc, char **argv)
     assert(valid_batch(&title, &batch));
     C3TitleBatch invalid = batch;
     invalid.alpha_compare0 = invalid.alpha_compare1 = 4;
+    /* GREATER 127 AND GREATER 0 reduces to the first test; the reverse
+     * would need the second reference, which one GPU alpha test cannot use. */
     invalid.alpha_ref0 = 127; invalid.alpha_ref1 = 0;
+    assert(valid_batch(&title, &invalid));
+    invalid.alpha_ref0 = 0; invalid.alpha_ref1 = 127;
     assert(!valid_batch(&title, &invalid));
     invalid.alpha_ref0 = invalid.alpha_ref1 = 256;
     assert(!valid_batch(&title, &invalid));

@@ -184,7 +184,9 @@ static bool valid_batch(const C3Title *title, const C3TitleBatch *batch)
     bool alpha_supported=batch->alpha_op==0 &&
         ((batch->alpha_compare0==7&&alpha_second_always) ||
          (batch->alpha_compare0==4&&(alpha_second_always ||
-          (batch->alpha_compare1==4&&batch->alpha_ref0==batch->alpha_ref1))));
+          /* GREATER r0 AND GREATER r1 is GREATER r0 when r1 <= r0 (a
+           * Phenac City person pairs 127 with 0). */
+          (batch->alpha_compare1==4&&batch->alpha_ref1<=batch->alpha_ref0))));
     if (!batch->count || batch->count % 3 || batch->first > title->vertex_count ||
         batch->count > title->vertex_count - batch->first || batch->texture >= title->texture_count ||
         (batch->color_mode != 0 && batch->color_mode != 3 && batch->color_mode != 4) ||
