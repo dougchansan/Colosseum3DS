@@ -1,4 +1,5 @@
 #include "boot_scene.h"
+#include "trace_writer.h"
 #include "field_scene.h"
 #include "dev_floor_scene.h"
 #include "game_menu.h"
@@ -308,7 +309,7 @@ int c3_boot_scene_run(int core_status)
     C3GameMenuOptions session_options = {0};
     int options_edited = 0;
     c3_movie_player_set_mono(0);
-    FILE *trace = fopen("sdmc:/3ds/Colosseum3DS/boot-trace.log", "w");
+    FILE *trace = c3_trace_open("sdmc:/3ds/Colosseum3DS/boot-trace.log");
     if (trace) { fprintf(trace, "boot_build %s core=%d\n", C3_BUILD_ID, core_status); fflush(trace); }
     c3_n3ds_log_memory(trace, "boot_start");
     int result = c3_movie_player_run(BOOT_ROOT "tpc.c3v", "tpc", trace, error, sizeof(error));

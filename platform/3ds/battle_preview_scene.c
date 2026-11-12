@@ -1,4 +1,5 @@
 #include "battle_preview_scene.h"
+#include "trace_writer.h"
 #include "bottom_screen.h"
 #include "game_ui_views.h"
 #include "n3ds_platform.h"
@@ -242,7 +243,7 @@ int c3_battle_preview_from_game_state(const C3GameState *state,FILE *trace,int *
 int c3_battle_preview_probe_run(void)
 {
     C3GameState state={0};C3BattleData data;C3BattleRequest request;char error[192]={0};int result=1;
-    FILE *trace=fopen("sdmc:/3ds/Colosseum3DS/preview-probe.log","w");
+    FILE *trace=c3_trace_open("sdmc:/3ds/Colosseum3DS/preview-probe.log");
     if(c3_game_state_new(&state,"WES",0x12345678u,BOOT_ROOT "newgame.c3g",error)&&
        c3_battle_load(&data,BOOT_ROOT "willie.c3b",error)){
         size_t bytes;const uint8_t *body=c3_game_state_body(&state,&bytes);const uint32_t args[]={10,1,0};
