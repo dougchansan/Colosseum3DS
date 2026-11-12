@@ -7,7 +7,7 @@ HEADERS += vendor/colosseum/include/game/gs_colsys.h vendor/colosseum/include/ga
 UPSTREAM = vendor/colosseum/src/hsd/random.c vendor/colosseum/src/game/GScolsys2Util_exact_8010C77C.c vendor/colosseum/src/game/pokemon_range_8012795C.c
 
 .PHONY: all test clean 3ds verify-source
-all: build/test_bottom_ui
+all: build/test_bottom_ui build/test_first_person
 all: build/test_core build/test_data build/test_pokemon build/test_model build/test_movie build/test_save build/test_title build/test_field build/test_dev_floor build/test_world_map build/test_name_entry build/test_game_menu build/test_game_state build/test_render_recovery build/test_area build/test_area_camera build/test_area_lights build/test_story build/test_field_story build/test_phenac_story build/test_battle build/test_battle_action build/test_battle_rng
 
 build:
@@ -45,6 +45,9 @@ build/test_dev_floor: tests/test_dev_floor.c src/dev_floor.c src/field.c include
 
 build/test_area: tests/test_area.c src/area.c src/field.c include/colosseum3ds/area.h include/colosseum3ds/field.h | build
 	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_area.c src/area.c src/field.c $(LDFLAGS) -lm -o $@
+
+build/test_first_person: tests/test_first_person.c src/first_person.c include/colosseum3ds/first_person.h include/colosseum3ds/field.h | build
+	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_first_person.c src/first_person.c $(LDFLAGS) -lm -o $@
 
 build/test_area_camera: tests/test_area_camera.c src/area_camera.c include/colosseum3ds/area_camera.h | build
 	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_area_camera.c src/area_camera.c $(LDFLAGS) -lm -o $@
@@ -135,6 +138,7 @@ test: all
 	./build/test_render_recovery
 	./build/test_area
 	./build/test_area_camera
+	./build/test_first_person
 	./build/test_area_lights
 	./build/test_story
 	./build/test_field_story

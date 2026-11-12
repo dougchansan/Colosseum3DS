@@ -8,6 +8,7 @@
 #include <string.h>
 
 static bool graphics_started;
+static bool console_is_new;
 static uint16_t previous_buttons;
 static uint16_t deferred_buttons;
 static aptHookCookie clock_hook;
@@ -81,10 +82,10 @@ int c3_n3ds_init(char *error, size_t capacity)
         snprintf(error, capacity, "New 3DS detection failed: 0x%08lX", (unsigned long)result);
         return -1;
     }
-    if (!is_new) {
-        snprintf(error, capacity, "A New 3DS/XL or New 2DS XL is required.");
-        return -1;
-    }
+    /* An original 3DS/2DS runs too: slower (268 MHz, no L2) and with less
+     * application memory, so the 30 fps target applies to New models only.
+     * The model is recorded in every memory trace line. */
+    console_is_new = is_new;
     /* This is a request to the system; it is not a measured clock-rate claim. */
     osSetSpeedupEnable(true);
     c3_bottom_screen_init();
@@ -169,8 +170,8 @@ void c3_n3ds_log_memory(FILE *trace, const char *stage)
 {
     if (!trace) return;
     struct mallinfo memory = mallinfo();
-    fprintf(trace, "platform_memory stage=%s heap_bytes=%lu linear_heap_bytes=%lu linear_free_bytes=%lu\n",
-            stage ? stage : "unspecified",
+    fprintf(trace, "platform_memory stage=%s console=%s heap_bytes=%lu linear_heap_bytes=%lu linear_free_bytes=%lu\n",
+            stage ? stage : "unspecified", console_is_new ? "new3ds" : "old3ds",
             (unsigned long)envGetHeapSize(), (unsigned long)envGetLinearHeapSize(),
             (unsigned long)linearSpaceFree());
     fprintf(trace, "platform_allocator stage=%s arena_bytes=%lu used_bytes=%lu free_in_arena_bytes=%lu\n",

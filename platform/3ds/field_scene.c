@@ -12,6 +12,7 @@
 #include "stage_renderer.h"
 #include "colosseum3ds/field.h"
 #include "colosseum3ds/field_story.h"
+#include "colosseum3ds/first_person.h"
 #include "colosseum3ds/floor_profile.h"
 #include "colosseum3ds/inventory.h"
 #include "colosseum3ds/name_entry.h"
@@ -103,6 +104,9 @@ int c3_field_scene_available(void)
     for(unsigned i=0;i<5;++i){snprintf(path,sizeof path,BOOT_ROOT "shop_npc%u.c3t",i);if(!exists(path))return 0;}
     return 1;
 }
+
+/* Optional first-person view; kept across floor loads like the recomp mod. */
+static C3FirstPerson first_person;
 
 static void hide(C3Title *model)
 {
@@ -397,6 +401,16 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                     continue;
                 }
                 if(view->control&&!story_consumed_input){
+                    if(c3_first_person_chord(input.held,input.pressed)){
+                        /* Hold ZL/ZR (or R on a 3DS without them) and press X. */
+                        c3_first_person_toggle(&first_person,&player,map.floor);
+                        input.pressed&=(uint16_t)~(C3_PAD_X|C3_PAD_Z|C3_PAD_R);
+                        if(trace){fprintf(trace,"first_person enabled=%d yaw=%.4f\n",first_person.enabled,(double)first_person.yaw);fflush(trace);}
+                    }
+                    if(first_person.enabled){
+                        c3_first_person_look(&first_person,input.cstick_x,input.cstick_y,delta);
+                        c3_first_person_touch(&first_person,input.touch_held,input.touch_x,input.touch_y);
+                    }
                     if(input.pressed&(C3_PAD_START|C3_PAD_X)){
                         c3_ingame_init(ingame,state);
                         int original=c3_ingame_load(ingame,BOOT_ROOT "pda.c3pd");
@@ -406,7 +420,8 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                     else if(input.pressed&C3_PAD_A){if(!c3_field_story_interact(&story,story_error))goto story_failed;dirty=1;}
                     else{
                         float before[3];memcpy(before,player.position,sizeof before);
-                        if(!c3_field_move(&map,&player,input.stick_x,input.stick_y,input.held,map.camera_yaw,delta)){
+                        float move_yaw=first_person.enabled?c3_first_person_move_yaw(&first_person):map.camera_yaw;
+                        if(!c3_field_move(&map,&player,input.stick_x,input.stick_y,input.held,move_yaw,delta)){
                             snprintf(error,capacity,"Field movement failed.");result=-1;break;
                         }
                         c3_field_story_collide(&story,before);
@@ -529,7 +544,12 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
             else fade=fminf(1,phase_seconds);
         }else{
             for(uint32_t i=0;i<arrival_count;++i)hide(storage+arrival_index+i);
-            if(view->camera_active)camera=view->camera;else c3_field_camera(&map,&player,&camera);
+            if(view->camera_active)camera=view->camera;
+            else if(first_person.enabled){
+                /* Scripted cameras above suspend the view; arrivals start it level. */
+                c3_first_person_arrive(&first_person,&player,map.floor);
+                c3_first_person_camera(&first_person,&map,&player,&camera);hide(wes);
+            }else c3_field_camera(&map,&player,&camera);
             if(phase==FIELD_FADE_IN)fade=fminf(fade,phase_seconds/(arrival?1.0f:.5f));
         }
         if(!c3_game_state_summary(state,&summary)){snprintf(error,capacity,"Game state became unavailable.");result=-1;break;}
