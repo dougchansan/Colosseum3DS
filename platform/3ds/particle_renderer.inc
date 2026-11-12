@@ -33,7 +33,7 @@ int c3_stage_renderer_particle_pack(const C3ParticlePack *pack,char *error,size_
     }
     for(uint32_t i=0;i<pack->texture_count;++i){
         const C3ParticlePackTexture *p=&pack->textures[i];
-        C3TitleTexture source={p->width,p->height,0,0,p->rgba,(size_t)p->width*p->height*4};
+        C3TitleTexture source={.width=p->width,.height=p->height,.pixels=p->rgba,.size=(size_t)p->width*p->height*4};
         if(!upload_texture(&textures[texture_count],&source))return fail(error,cap,"Particle texture upload failed.");
         particle_binding_textures[particle_binding_count][i]=texture_count++;
         gpu_buffer_bytes+=source.size;

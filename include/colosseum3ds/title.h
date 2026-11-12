@@ -61,9 +61,18 @@ typedef struct {
 
 typedef struct {
     uint32_t width, height, wrap_s, wrap_t; /* 0=clamp, 1=repeat, 2=mirror */
-    const uint8_t *pixels;                 /* top row first, RGBA8 */
+    const uint8_t *pixels;                 /* top row first, RGBA8 (unless gpu_native) */
     size_t size;
+    /* tools/pack_textures.py output: pixels are the finished PICA image
+     * (8x8 Morton tiles, rows bottom-up, levels contiguous) in gpu_format
+     * (C3_TITLE_GPU_RGBA8 or C3_TITLE_GPU_RGB565) with `levels` mip levels. */
+    uint32_t gpu_native, gpu_format, levels;
 } C3TitleTexture;
+
+#define C3_TITLE_GPU_RGBA8 0u
+#define C3_TITLE_GPU_RGB565 3u
+/* Bytes of a gpu_native image: each level is a quarter of the one before. */
+size_t c3_title_texture_bytes(uint32_t width, uint32_t height, uint32_t gpu_format, uint32_t levels);
 
 typedef struct { uint32_t first_frame, frame_count, loop; } C3TitleClip;
 

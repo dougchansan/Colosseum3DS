@@ -32,6 +32,13 @@ static int fail(char *error, size_t capacity, const char *message)
     return 0;
 }
 
+size_t c3_title_texture_bytes(uint32_t width, uint32_t height, uint32_t gpu_format, uint32_t levels)
+{
+    size_t level = (size_t)width * height * (gpu_format == C3_TITLE_GPU_RGB565 ? 2u : 4u), total = 0;
+    for (uint32_t i = 0; i < levels; ++i, level >>= 2) total += level;
+    return total;
+}
+
 static int bounded(float value, float magnitude)
 {
     return isfinite(value) && fabsf(value) <= magnitude;
@@ -158,7 +165,10 @@ static int decode_owned(C3Title *title, char *error, size_t capacity)
         !title->light_count || title->light_count > C3_TITLE_MAX_LIGHTS ||
         !isfinite(title->fps) || title->fps < 1.0f || title->fps > 120.0f)
         return fail(error, capacity, "Title section count or timing exceeds limits");
-    for (i = 112u; i < HEADER_BYTES; ++i) if (data[i]) return fail(error, capacity, "Reserved title header bytes must be zero");
+    /* Byte 112 is the texture encoding: 0 = RGBA8 rows, 1 = GPU-native
+     * (tools/pack_textures.py). The rest stays reserved. */
+    if (data[112] > 1u) return fail(error, capacity, "Unknown title texture encoding");
+    for (i = 113u; i < HEADER_BYTES; ++i) if (data[i]) return fail(error, capacity, "Reserved title header bytes must be zero");
     for (i = 0; i < 7u; ++i) offsets[i] = u32(data+44u+i*4u);
     title->frame_offset = offsets[5];
     title->frame_bytes = u32(data+72u);
@@ -261,10 +271,21 @@ static int decode_owned(C3Title *title, char *error, size_t capacity)
         const uint8_t *p=data+offsets[2]+i*TEXTURE_BYTES;
         C3TitleTexture *t=title->textures+i;
         uint32_t pixel_offset=u32(p+8),pixel_bytes=u32(p+12);
-        t->width=u32(p); t->height=u32(p+4); t->wrap_s=u32(p+16); t->wrap_t=u32(p+20);
+        uint32_t wrap_word=u32(p+16);
+        t->width=u32(p); t->height=u32(p+4); t->wrap_s=wrap_word&0xFFu; t->wrap_t=u32(p+20);
+        t->gpu_native=data[112]; t->gpu_format=C3_TITLE_GPU_RGBA8; t->levels=1u;
+        if (t->gpu_native) {
+            uint32_t smaller=t->width<t->height?t->width:t->height, max_levels=1u;
+            while (smaller>8u) { smaller>>=1; ++max_levels; }
+            t->gpu_format=(wrap_word>>8)&0xFFu; t->levels=((wrap_word>>16)&0xFFu)+1u;
+            if (wrap_word>>24 || (t->gpu_format!=C3_TITLE_GPU_RGBA8 && t->gpu_format!=C3_TITLE_GPU_RGB565) ||
+                t->levels>max_levels)
+                return fail(error,capacity,"Invalid GPU-native title texture format or levels");
+        } else if (wrap_word>2u) return fail(error,capacity,"Invalid title texture extent or wrapping");
         if (t->width<8u || t->width>1024u || t->height<8u || t->height>1024u ||
             (t->width&(t->width-1u)) || (t->height&(t->height-1u)) ||
-            t->wrap_s>2u || t->wrap_t>2u || pixel_bytes!=t->width*t->height*4u ||
+            t->wrap_s>2u || t->wrap_t>2u ||
+            pixel_bytes!=c3_title_texture_bytes(t->width,t->height,t->gpu_format,t->levels) ||
             pixel_offset!=next_pixel || (uint64_t)pixel_offset+pixel_bytes>title->file_bytes)
             return fail(error,capacity,"Invalid title texture extent or wrapping");
         t->pixels=data+pixel_offset; t->size=pixel_bytes; next_pixel+=pixel_bytes;

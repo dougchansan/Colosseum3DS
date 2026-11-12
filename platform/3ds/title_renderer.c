@@ -146,6 +146,20 @@ static void write_texture_pixels(C3D_Tex *gpu,const C3TitleTexture *source,const
 }
 static bool upload_texture(C3D_Tex *gpu, const C3TitleTexture *source)
 {
+    if (source->gpu_native) {
+        /* tools/pack_textures.py already wrote the exact PICA image,
+         * mip levels included, in citro3d's contiguous level layout. */
+        GPU_TEXCOLOR format = source->gpu_format == C3_TITLE_GPU_RGB565 ? GPU_RGB565 : GPU_RGBA8;
+        if (!C3D_TexInitWithParams(gpu, NULL, (C3D_TexInitParams){(u16)source->width, (u16)source->height,
+                (u8)(source->levels - 1u), format, GPU_TEX_2D, false})) return false;
+        if (C3D_TexCalcTotalSize(gpu->size, gpu->maxLevel) != source->size) { C3D_TexDelete(gpu); return false; }
+        memcpy(gpu->data, source->pixels, source->size);
+        C3D_TexFlush(gpu);
+        C3D_TexSetFilter(gpu, GPU_LINEAR, GPU_LINEAR);
+        if (source->levels > 1u) C3D_TexSetFilterMipmap(gpu, GPU_LINEAR);
+        C3D_TexSetWrap(gpu, wrap_mode(source->wrap_s), wrap_mode(source->wrap_t));
+        return true;
+    }
     if (!C3D_TexInit(gpu, source->width, source->height, GPU_RGBA8)) return false;
     write_texture_pixels(gpu,source,NULL);
     C3D_TexSetFilter(gpu, GPU_LINEAR, GPU_LINEAR);
@@ -157,8 +171,8 @@ int c3_stage_renderer_set_texture_routing(const uint8_t route[3],char *error,siz
 {
     if(!scene_count||scene_drawn||tv.configured||!route||route[0]>3||route[1]>3||route[2]>3)
         return fail(error,capacity,"Texture routing requires a fresh sole actor scene.");
-    for(unsigned i=0;i<texture_count;++i)if(!texture_sources[i])
-        return fail(error,capacity,"Texture routing requires only authored actor textures.");
+    for(unsigned i=0;i<texture_count;++i)if(!texture_sources[i]||texture_sources[i]->gpu_native)
+        return fail(error,capacity,"Texture routing requires only authored RGBA8 actor textures.");
     for(unsigned i=0;i<texture_count;++i)write_texture_pixels(&textures[i],texture_sources[i],route);
     return C3_RENDER_OK;
 }
@@ -246,8 +260,11 @@ static int validate_asset(const C3Title *title, char *error, size_t capacity)
         const C3TitleTexture *t = &title->textures[i];
         if (!t->pixels || t->width < 8 || t->height < 8 || t->width > 1024 || t->height > 1024 ||
             (t->width & (t->width - 1)) || (t->height & (t->height - 1)) ||
-            t->size != (size_t)t->width * t->height * 4u || t->wrap_s > 2 || t->wrap_t > 2)
-            return fail(error, capacity, "Title textures must be power-of-two RGBA8, 8..1024 pixels.");
+            t->size != (t->gpu_native ? c3_title_texture_bytes(t->width, t->height, t->gpu_format, t->levels)
+                                      : (size_t)t->width * t->height * 4u) ||
+            (t->gpu_native && (!t->levels || (t->gpu_format != C3_TITLE_GPU_RGBA8 && t->gpu_format != C3_TITLE_GPU_RGB565))) ||
+            t->wrap_s > 2 || t->wrap_t > 2)
+            return fail(error, capacity, "Title textures must be power-of-two RGBA8 or GPU-native, 8..1024 pixels.");
     }
     return 0;
 }
@@ -320,7 +337,8 @@ int c3_stage_renderer_init(const C3Title *const *models, size_t count,
                 const C3TitleTexture *prior = texture_sources[found];
                 if (prior->width == source->width && prior->height == source->height &&
                     prior->wrap_s == source->wrap_s && prior->wrap_t == source->wrap_t &&
-                    prior->size == source->size &&
+                    prior->size == source->size && prior->gpu_native == source->gpu_native &&
+                    prior->gpu_format == source->gpu_format && prior->levels == source->levels &&
                     (prior->pixels == source->pixels || !memcmp(prior->pixels, source->pixels, source->size))) break;
             }
             if (found == texture_count) {
@@ -330,7 +348,8 @@ int c3_stage_renderer_init(const C3Title *const *models, size_t count,
                 }
                 if (!upload_texture(&textures[found], source)) { fail(error, capacity, "Scene texture allocation failed."); goto cleanup; }
                 texture_sources[texture_count++] = source;
-                gpu_buffer_bytes += textures[found].size;
+                /* A GPU-native source is the whole mip chain, byte for byte. */
+                gpu_buffer_bytes += source->gpu_native ? source->size : textures[found].size;
             }
             binding->textures[i] = found;
         }
@@ -894,7 +913,7 @@ int c3_stage_renderer_set_battle_hud(const C3StageBattleHud *hud, char *error, s
             pixels[p]=pixels[p+1]=pixels[p+2]=255;
             pixels[p+3]=(font->gfx[c*8+y]&(0x80u>>x))?255:0;
         }
-        C3TitleTexture source={128,64,0,0,pixels,128u*64u*4u};
+        C3TitleTexture source={.width=128,.height=64,.pixels=pixels,.size=128u*64u*4u};
         bool ok=upload_texture(&textures[texture_count],&source);
         free(pixels);
         if (!ok) return fail(error,capacity,"HUD atlas upload failed.");

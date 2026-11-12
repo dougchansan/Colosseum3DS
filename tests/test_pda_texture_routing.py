@@ -33,7 +33,7 @@ int main(void){
   pixels[at+2]=91+x+y;pixels[at+3]=151+x*3+y;
  }
  memcpy(original,pixels,sizeof pixels);
- C3TitleTexture texture={8,8,0,0,pixels,sizeof pixels};C3D_Tex gpu={output};
+ C3TitleTexture texture={.width=8,.height=8,.pixels=pixels,.size=sizeof pixels};C3D_Tex gpu={output};
  /* All64 route triples include repeated channels and alpha-to-RGB. */
  for(unsigned r=0;r<4;r++)for(unsigned g=0;g<4;g++)for(unsigned b=0;b<4;b++){
   uint8_t route[3]={r,g,b};write_texture_pixels(&gpu,&texture,route);
