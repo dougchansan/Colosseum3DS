@@ -106,18 +106,26 @@ old-versus-new difference on those packs: colour 5.4e-6, one 8-bit step.
 
 ## Frame ownership and pacing
 
-`platform/3ds/frame_pacing.inc`. A successful draw now ends like this:
+`platform/3ds/frame_pacing.inc`. A draw now:
 
-1. hold until one VBlank after the frame was acquired, then `C3D_FrameEnd`;
-2. wait until two VBlanks after the frame was acquired (the 30 fps cap);
-3. acquire the next frame with nonblocking `C3D_FrameBegin`, polling every
-   0.5 ms for at most 100 ms.
+1. waits until two VBlanks after the previous frame was acquired (the 30 fps
+   cap; acquisitions are VBlank-aligned);
+2. acquires the frame with nonblocking `C3D_FrameBegin`, polling every
+   0.5 ms for at most 100 ms;
+3. stages, builds commands and calls `C3D_FrameEnd` at once.
 
-The caller therefore polls input, simulates and animates with the GPU frame
-already owned, and a busy GPU no longer throws away a finished animation
-sample. With CPU plus GPU work under two VBlanks every frame is swapped
-exactly two VBlanks after it was acquired. Slower frames are not delayed
-further. Simulation still uses real elapsed time.
+The scene's input, script and skinning run before the draw, on the CPU, while
+the GPU is still drawing the previous frame. With staging plus GPU work under
+two VBlanks every frame is swapped two VBlanks after the last. Slower frames
+are not delayed further. Simulation still uses real elapsed time.
+
+History: the first version acquired the next frame right after submitting
+and held submission until one VBlank after acquisition. On hardware
+(3ef1b3f, Outskirt Stand) that serialised about 20 ms of CPU work with an
+11-13 ms GPU frame. Standing still it held 29-30 fps, but near Willie and
+while running it fell to 26-27 fps, with `perf_pace_us` *rising* (13-14 ms
+per frame) and `perf_gpu_busy` on about half the frames: frames were missing
+the second VBlank, not running out of CPU.
 
 The VBlank clock is `C3D_FrameCounter(0)` (confirmed in the pinned
 libcitro3d: `onVBlank0` counts once per VBlank at the default 60 Hz rate).

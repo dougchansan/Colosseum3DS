@@ -1,23 +1,24 @@
 /* Included by the sole Citro3D owner. Frame ownership, presentation cadence
  * and the interval performance counters of the shared stage renderer.
  *
- * Ownership. A frame is acquired with one nonblocking C3D_FrameBegin and stays
- * open (frame_acquired) until it is submitted, aborted, or closed empty by
- * c3_stage_renderer_is_idle / shutdown. After a successful submission the
- * renderer waits for the cadence and then acquires the next frame, so the
- * caller polls input, simulates and animates with the GPU already owned and a
- * busy GPU never discards a finished animation sample. If the GPU does not
- * release within C3_PACE_ACQUIRE_LIMIT_US the draw still returns OK without a
- * frame; the next draw then reports C3_RENDER_BUSY and the scene's existing
- * c3_render_recover path (watchdog, input, exit) applies unchanged.
+ * Ownership. A draw acquires its frame when staging starts and submits it at
+ * the end, so the scene's input, script and skinning for the next frame run
+ * on the CPU while the GPU draws this one. (Acquiring right after submission,
+ * as first written, serialised CPU and GPU: on hardware 20 ms of CPU plus an
+ * 11-13 ms GPU frame missed the second VBlank and Outskirt fell to 26 fps.)
+ * A busy GPU is polled for at most C3_PACE_ACQUIRE_LIMIT_US; the draw then
+ * reports C3_RENDER_BUSY and the scene's existing c3_render_recover path
+ * (watchdog, input, exit) applies unchanged. An owned frame outside a draw
+ * exists only after c3_stage_renderer_probe_clear-style callers; is_idle and
+ * shutdown close it empty.
  *
  * Cadence. Citro3D's VBlank counter is the clock (one count per top-screen
  * VBlank at its default 60 Hz rate; nothing here calls C3D_FrameRate). With
- * the frame acquired at count A, submission is held until A+N-1 and the next
- * acquisition until A+N (N = C3_RENDER_VBLANKS_PER_FRAME, default 2). With
- * CPU+GPU work under N VBlanks every frame is therefore swapped at A+N:
- * 30 presentations per second at a fixed interval. Slower frames are not
- * delayed further. Waits poll the counter with short sleeps and never block
+ * the previous frame acquired at count A, the next acquisition waits until
+ * A+N (N = C3_RENDER_VBLANKS_PER_FRAME, default 2), so acquisitions are
+ * VBlank-aligned and, with staging plus GPU work under N VBlanks, swaps are
+ * N VBlanks apart: 30 presentations per second at a fixed interval. Slower
+ * frames are not delayed further. Waits poll the counter with short sleeps and never block
  * on a GSP event, because Citro3D stops counting while the application is
  * suspended: each wait also ends at the time those VBlanks would have taken
  * since the frame was acquired, so a silent counter degrades to the same rate
@@ -79,7 +80,9 @@ static void stage_frame_acquired(uint64_t now)
     }
 }
 
-/* One nonblocking attempt unless the frame is already owned. */
+/* Hold for the cadence, then acquire, polling a busy GPU for at most
+ * C3_PACE_ACQUIRE_LIMIT_US. Called when staging starts, so the scene's input,
+ * script and skinning for this frame ran while the GPU drew the last one. */
 static bool stage_frame_begin(void)
 {
     if (!perf_clock_installed) {
@@ -88,15 +91,24 @@ static bool stage_frame_begin(void)
         c3_title_perf_take(NULL);
         perf_clock_installed = true;
     }
+    frame_wait_us = 0;
     if (!frame_acquired) {
-        uint64_t now = stage_now_us();
-        if (!C3D_FrameBegin(C3D_FRAME_NONBLOCK)) {
+        uint64_t started, now;
+        if (C3_RENDER_VBLANKS_PER_FRAME && pace_anchor_us) pace_wait(C3_RENDER_VBLANKS_PER_FRAME);
+        started = now = stage_now_us();
+        for (;;) {
+            if (C3D_FrameBegin(C3D_FRAME_NONBLOCK)) { stage_frame_acquired(now); break; }
             if (!busy_since_us) busy_since_us = now;
-            return false;
+            if (now - started >= C3_PACE_ACQUIRE_LIMIT_US) {
+                frame_wait_us += now - started;
+                return false;
+            }
+            svcSleepThread(C3_PACE_POLL_NS);
+            now = stage_now_us();
         }
-        stage_frame_acquired(now);
+        frame_wait_us += now - started;
     }
-    frame_upload_us = frame_upload_bytes = frame_wait_us = 0;
+    frame_upload_us = frame_upload_bytes = 0;
     return true;
 }
 
@@ -108,12 +120,13 @@ static void stage_frame_abort(void)
     frame_acquired = false;
 }
 
-/* Hold for the cadence, submit, and fold this frame into the interval. */
+/* Submit at once and fold this frame into the interval. Acquisition is
+ * VBlank-aligned, so the swap interval stays even without holding here, and
+ * the GPU gets the whole remaining interval. */
 static void stage_frame_end(C3TitleRenderStats *stats)
 {
     C3TitlePerf animation;
     uint64_t started, now;
-    if (C3_RENDER_VBLANKS_PER_FRAME > 1u) pace_wait(C3_RENDER_VBLANKS_PER_FRAME - 1u);
     started = stage_now_us();
     C3D_FrameEnd(0);
     frame_acquired = false;
@@ -139,22 +152,11 @@ static void stage_frame_end(C3TitleRenderStats *stats)
     if (stats->gpu_previous_ms > stage_perf.gpu_max_ms) stage_perf.gpu_max_ms = stats->gpu_previous_ms;
 }
 
-/* Cap the rate, then own the next frame before the caller simulates. The
- * time this draw spent waiting, for the cadence and for the GPU, is reported
- * in stats->wait_us so callers can keep timing their CPU work alone. */
+/* The time this draw spent waiting, for the cadence and for the GPU, is
+ * reported in stats->wait_us so callers can keep timing their CPU work alone. */
 static void stage_frame_next(C3TitleRenderStats *stats)
 {
-    uint64_t started, now;
-    if (C3_RENDER_VBLANKS_PER_FRAME) pace_wait(C3_RENDER_VBLANKS_PER_FRAME);
-    started = now = stage_now_us();
-    for (;;) {
-        if (C3D_FrameBegin(C3D_FRAME_NONBLOCK)) { stage_frame_acquired(now); break; }
-        if (!busy_since_us) busy_since_us = now;
-        if (now - started >= C3_PACE_ACQUIRE_LIMIT_US) break;
-        svcSleepThread(C3_PACE_POLL_NS);
-        now = stage_now_us();
-    }
-    stats->wait_us = (uint32_t)(frame_wait_us + (now - started));
+    stats->wait_us = (uint32_t)frame_wait_us;
 }
 
 void c3_stage_renderer_perf_take(C3RenderPerf *perf)

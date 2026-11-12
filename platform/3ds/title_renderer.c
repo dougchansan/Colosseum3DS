@@ -1023,9 +1023,9 @@ int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
     if (tv.configured && tv.enabled &&
         !camera_matrices(&models[tv.model]->pose.camera, &tv_mvp, &tv_view, false))
         return fail(error, capacity, "Invalid sampled television camera.");
-    /* The frame is normally already owned: the previous draw acquired it
-     * before the caller simulated. Otherwise make the one nonblocking attempt. */
-    if (!stage_frame_begin()) return C3_RENDER_BUSY;
+    /* Wait for the cadence and acquire the frame now, after the caller
+     * simulated; a GPU still busy past the bounded limit reports BUSY. */
+    if (!stage_frame_begin()) { stage_frame_next(stats); return C3_RENDER_BUSY; }
     scene_drawn=true;
     uint64_t start = svcGetSystemTick();
     uint64_t prepare_start = stage_now_us();

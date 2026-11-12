@@ -128,6 +128,8 @@ void c3_title_perf_take(C3TitlePerf *out)
 static void Mtx_Identity(C3D_Mtx *matrix) { memset(matrix,0,sizeof *matrix);matrix->data[0]=matrix->data[5]=matrix->data[10]=matrix->data[15]=1; }
 static void C3D_FVUnifMtx4x4(int shader_type, int location, const C3D_Mtx *matrix)
 { (void)matrix; ++gpu_writes; }
+static unsigned begin_count;
+static uint32_t last_begin_vblank, min_begin_gap = UINT32_MAX;
 static bool C3D_FrameBegin(unsigned flags)
 {
     assert(flags == C3D_FRAME_NONBLOCK);
@@ -135,6 +137,11 @@ static bool C3D_FrameBegin(unsigned flags)
     ++begin_attempts;
     if (queued_busy) return false;
     frame_open = true;
+    {   /* Smallest VBlank gap between consecutive acquisitions. */
+        uint32_t now = C3D_FrameCounter(0);
+        if (begin_count++ && now - last_begin_vblank < min_begin_gap) min_begin_gap = now - last_begin_vblank;
+        last_begin_vblank = now;
+    }
     return true;
 }
 static void C3D_FrameEnd(unsigned flags)
@@ -368,11 +375,13 @@ int main(int argc, char **argv)
         title.retained=1;DRAW_OK();assert(prepared==42);
         DRAW_OK();assert(prepared==42&&stats.cached_models==1);
         title.retained=0;DRAW_OK();assert(prepared==45);
-        /* Two refreshes per frame: the cadence waited, and reported it. */
+        /* Two refreshes per frame: each acquisition waited for the cadence
+         * before staging, reported the wait, and no frame came early. */
         assert(stats.wait_us>0&&stats.wait_us<=40000&&pace_sleeps);
-        assert(C3D_FrameCounter(0)>=2u*frame_ends&&C3D_FrameCounter(0)<=2u*frame_ends+1u);
-        /* Every successful draw submitted one frame and owns the next. */
-        assert(frame_acquired&&frame_open&&frame_ends==draws+2&&perf_takes==frame_ends+1);
+        assert(begin_count==frame_ends&&min_begin_gap==2u);
+        /* Every successful draw acquired and submitted exactly one frame and
+         * owns nothing afterwards, so the next frame's CPU work overlaps the GPU. */
+        assert(!frame_acquired&&!frame_open&&frame_ends==draws+2&&perf_takes==frame_ends+1);
         C3RenderPerf interval;c3_stage_renderer_perf_take(&interval);
         assert(interval.frames==frame_ends&&interval.vertices_prepared==45);
         assert(interval.animate_calls==2*frame_ends&&interval.vertices_animated==3*frame_ends);
@@ -381,6 +390,7 @@ int main(int argc, char **argv)
         char line[1024];c3_stage_renderer_perf_format(line,sizeof line);
         assert(strstr(line," perf_frames=0 ")==line&&strstr(line," perf_gpu_max_ms=0.000"));
         assert(c3_stage_renderer_try_shutdown());
+        /* Teardown proves the GPU idle by acquiring and closing one empty frame. */
         assert(!frame_acquired&&!frame_open&&frame_ends==draws+3);
         assert(!vertex_cache[0].enabled&&!vertex_cache[0].batches[0].state);
         puts("Static staging reuse, input invalidation, opt-out, pacing ownership and teardown passed");
@@ -417,7 +427,9 @@ int main(int argc, char **argv)
         memcpy(original, storage, sizeof(original));
         assert(c3_stage_renderer_draw(models, 1, &title.pose.camera, fade,
                                       &stats, error, sizeof(error)) == C3_RENDER_BUSY);
-        assert(begin_attempts == 1 && frame_ends == 0 && gpu_writes == 0);
+        /* A busy GPU is polled in short sleeps for the bounded limit, then reported. */
+        assert(begin_attempts > 1 && begin_attempts <= 202 && stats.wait_us >= 100000 && stats.wait_us < 110000);
+        assert(frame_ends == 0 && gpu_writes == 0);
         assert(memcmp(original, storage, sizeof(original)) == 0);
         assert(draws == 0 && binds == 0 && overlays == 0);
         assert(!c3_stage_renderer_is_idle());

@@ -242,3 +242,55 @@ unsigned c3_area_touch_events(const C3Area *area,const C3FieldMap *map,const flo
     }
     return count;
 }
+
+static uint32_t door_word(const unsigned char *p)
+{ return (uint32_t)p[0]|(uint32_t)p[1]<<8|(uint32_t)p[2]<<16|(uint32_t)p[3]<<24; }
+static int door_fail(char *error,size_t capacity,const char *message)
+{ if(error&&capacity)snprintf(error,capacity,"%s",message);return 0; }
+
+int c3_area_doors_parse(C3AreaDoors *doors,const void *data,size_t bytes,char *error,size_t capacity)
+{
+    const unsigned char *p=data;C3AreaDoors next;
+    if(!doors||!p||bytes<32u||memcmp(p,"C3D1",4)||door_word(p+4)!=1u||door_word(p+8)!=bytes||door_word(p+20)!=64u)
+        return door_fail(error,capacity,"Invalid door pack header.");
+    memset(&next,0,sizeof next);next.floor=door_word(p+12);next.count=door_word(p+16);
+    for(unsigned i=24;i<32;++i)if(p[i])return door_fail(error,capacity,"Invalid door pack header.");
+    if(!next.floor||next.floor>65535u||next.count>C3_AREA_MAX_DOORS||bytes!=32u+(size_t)next.count*64u)
+        return door_fail(error,capacity,"Invalid door pack extent.");
+    for(uint32_t i=0;i<next.count;++i){
+        const unsigned char *r=p+32u+i*64u;C3AreaDoor *d=next.rows+i;int terminated=0;
+        d->index=door_word(r);
+        d->open_anim=(int8_t)r[4];d->close_anim=(int8_t)r[5];d->open_end_anim=(int8_t)r[6];d->close_end_anim=(int8_t)r[7];
+        d->alternate_a=(int8_t)r[8];d->alternate_b=(int8_t)r[9];d->door_type=r[10];d->part_index=r[11];
+        d->collision_id=(int16_t)(r[12]|r[13]<<8);d->open_flag=(uint16_t)(r[14]|r[15]<<8);
+        d->close_flag=(uint16_t)(r[16]|r[17]<<8);d->part_bone_plus_one=(uint16_t)(r[18]|r[19]<<8);
+        d->resource=door_word(r+20);memcpy(d->file,r+24,40);
+        if(i&&d->index<=next.rows[i-1].index)return door_fail(error,capacity,"Door pack rows are not in table order.");
+        if(d->open_anim<-1||d->close_anim<-1||d->open_end_anim<-1||d->close_end_anim<-1||
+           d->alternate_a<-1||d->alternate_b<-1||d->open_anim>=(int)C3_TITLE_MAX_CLIPS||d->close_anim>=(int)C3_TITLE_MAX_CLIPS||
+           d->open_end_anim>=(int)C3_TITLE_MAX_CLIPS||d->close_end_anim>=(int)C3_TITLE_MAX_CLIPS||
+           d->alternate_a>=(int)C3_TITLE_MAX_CLIPS||d->alternate_b>=(int)C3_TITLE_MAX_CLIPS||
+           d->collision_id<-1||d->part_bone_plus_one>C3_TITLE_MAX_BONES)
+            return door_fail(error,capacity,"Invalid door pack row.");
+        for(unsigned j=0;j<40;++j){
+            char c=d->file[j];
+            if(!c){terminated=1;continue;}
+            if(terminated||!((c>='a'&&c<='z')||(c>='0'&&c<='9')||c=='_'||c=='.'))
+                return door_fail(error,capacity,"Invalid door pack file name.");
+        }
+        if(!terminated||d->file[0]=='.'||strstr(d->file,".."))return door_fail(error,capacity,"Invalid door pack file name.");
+    }
+    *doors=next;if(error&&capacity)error[0]=0;return 1;
+}
+
+int c3_area_doors_load(C3AreaDoors *doors,const char *path,char *error,size_t capacity)
+{
+    unsigned char data[32u+C3_AREA_MAX_DOORS*64u+1u];size_t bytes;FILE *file;
+    if(!doors||!path)return door_fail(error,capacity,"Invalid door pack arguments.");
+    file=fopen(path,"rb");
+    if(!file)return door_fail(error,capacity,"Prepared door pack was not found.");
+    bytes=fread(data,1,sizeof data,file);
+    if(ferror(file)||!feof(file)){fclose(file);return door_fail(error,capacity,"Invalid door pack file size.");}
+    fclose(file);
+    return c3_area_doors_parse(doors,data,bytes,error,capacity);
+}

@@ -31,7 +31,15 @@ typedef struct C3AreaDoor {
     int16_t collision_id;
     uint16_t open_flag, close_flag;
     uint32_t resource; /* door model resource; zero = no model */
+    int8_t alternate_a, alternate_b; /* elevator travel animations */
+    uint16_t part_bone_plus_one;     /* sampled bone of model part part_index; 0 = none */
+    char file[40];                   /* prepared object pack; empty = not prepared */
 } C3AreaDoor;
+/* C3D1: the door-table rows of one floor with their object pack names. */
+typedef struct C3AreaDoors {
+    uint32_t floor, count;
+    C3AreaDoor rows[C3_AREA_MAX_DOORS];
+} C3AreaDoors;
 typedef struct C3AreaLink {
     uint32_t kind, source_id, script, args[4], source_index;
 } C3AreaLink;
@@ -58,6 +66,9 @@ const C3FieldTriangle *c3_area_transition(const C3Area *area,
 const C3FieldTriangle *c3_area_transition_active(const C3Area *area,const C3FieldMap *map,
                                         const float before[3], const float after[3], float radius);
 
+/* Zero-initialize before use. A failed parse leaves the previous table. */
+int c3_area_doors_parse(C3AreaDoors *doors, const void *data, size_t bytes, char *error, size_t capacity);
+int c3_area_doors_load(C3AreaDoors *doors, const char *path, char *error, size_t capacity);
 /* GScolsys2ThruGetEventID (kind 2 events): source IDs of the event
  * surfaces a sphere of `radius` touches on its way from before to after,
  * approached from their front side. Face, flagged edges and flagged corners
