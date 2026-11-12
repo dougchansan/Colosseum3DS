@@ -55,6 +55,9 @@ static void stage_flush(const void *address, size_t bytes)
 }
 
 /* Wait until `vblanks` refreshes have been counted since the frame was acquired. */
+/* The VBlank count when the cadence wait ended, for the late-frame counters. */
+static uint32_t pace_released;
+
 static void pace_wait(uint32_t vblanks)
 {
     const uint32_t target = pace_anchor + vblanks;
@@ -64,6 +67,9 @@ static void pace_wait(uint32_t vblanks)
         svcSleepThread(C3_PACE_POLL_NS);
         now = stage_now_us();
     }
+    pace_released = C3D_FrameCounter(0);
+    /* Woke after a later refresh than the one waited for. */
+    if ((int32_t)(pace_released - target) > 0) ++stage_perf.late_wake;
     stage_perf.pace_us += now - started;
     frame_wait_us += now - started;
 }
@@ -71,7 +77,17 @@ static void pace_wait(uint32_t vblanks)
 static void stage_frame_acquired(uint64_t now)
 {
     frame_acquired = true;
-    pace_anchor = C3D_FrameCounter(0);
+    uint32_t counter = C3D_FrameCounter(0);
+    if (pace_anchor_us) {
+        /* Refreshes between successive acquisitions; 2 is the cadence. */
+        uint32_t spacing = counter - pace_anchor;
+        if (spacing <= 2u) ++stage_perf.spacing_2;
+        else if (spacing == 3u) ++stage_perf.spacing_3;
+        else ++stage_perf.spacing_more;
+        /* A busy GPU held acquisition past the refresh the wait ended on. */
+        if ((int32_t)(counter - pace_released) > 0) ++stage_perf.late_acquire;
+    }
+    pace_anchor = counter;
     pace_anchor_us = now;
     if (busy_since_us) {
         stage_perf.gpu_wait_us += now - busy_since_us;
@@ -190,7 +206,8 @@ void c3_stage_renderer_perf_format(char *text, size_t capacity)
         " perf_vertices_static=%lu perf_cached_models=%lu perf_cached_batches=%lu"
         " perf_upload_us=%llu perf_upload_bytes=%llu perf_submit_us=%llu perf_submit_max_us=%llu"
         " perf_end_us=%llu perf_pace_us=%llu perf_gpu_wait_us=%llu perf_gpu_busy=%lu perf_gpu_max_ms=%.3f"
-        " perf_interval_us=%llu perf_fps=%.2f perf_vertices_gpu=%lu",
+        " perf_interval_us=%llu perf_fps=%.2f perf_vertices_gpu=%lu"
+        " perf_spacing2=%lu perf_spacing3=%lu perf_spacing_more=%lu perf_late_wake=%lu perf_late_acquire=%lu",
         (unsigned long)p.frames, (unsigned long long)p.animate_us, (unsigned long long)p.animate_max_us,
         (unsigned long)p.animate_calls, (unsigned long)p.vertices_animated, (unsigned long)p.vertices_retained,
         (unsigned long long)p.place_us, (unsigned long long)p.prepare_us, (unsigned long long)p.prepare_max_us,
@@ -201,5 +218,6 @@ void c3_stage_renderer_perf_format(char *text, size_t capacity)
         (unsigned long long)p.end_us, (unsigned long long)p.pace_us, (unsigned long long)p.gpu_wait_us,
         (unsigned long)p.gpu_busy, (double)p.gpu_max_ms, (unsigned long long)p.interval_us,
         p.interval_us ? (double)p.frames * 1000000.0 / (double)p.interval_us : 0.0,
-        (unsigned long)p.vertices_gpu);
+        (unsigned long)p.vertices_gpu, (unsigned long)p.spacing_2, (unsigned long)p.spacing_3,
+        (unsigned long)p.spacing_more, (unsigned long)p.late_wake, (unsigned long)p.late_acquire);
 }

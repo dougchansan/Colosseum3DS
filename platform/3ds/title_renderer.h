@@ -49,6 +49,10 @@ typedef struct {
      * interval_us, never frames alone. */
     uint64_t interval_us;
     uint32_t vertices_gpu;                /* skinned and lit by the GPU (skin_renderer.inc) */
+    /* Cadence: refreshes between acquisitions (2 = on time), cadence waits
+     * that woke after a later refresh, acquisitions a busy GPU delayed past
+     * the refresh the wait ended on. */
+    uint32_t spacing_2, spacing_3, spacing_more, late_wake, late_acquire;
 } C3RenderPerf;
 void c3_stage_renderer_perf_take(C3RenderPerf *perf);
 /* Scene-side placement time (microseconds) that is not inside c3_title_animate. */
