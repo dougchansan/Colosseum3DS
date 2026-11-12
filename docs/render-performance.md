@@ -233,6 +233,44 @@ to watch. That figure is computed, not measured on hardware.
 Identical textures are shared across packs by content; models that share one
 owner through `c3_title_instance` are matched by pointer first.
 
+## GPU-native field textures
+
+The field's large images are real 1024x1024 GameCube textures (CMPR, half a
+byte per texel there). The prepare tools emit RGBA8 rows, which the renderer
+used to swizzle into a single-level RGBA8 texture: 4 MiB each, always sampled
+from full size on a 400x240 screen. `tools/pack_textures.py` rewrites a
+finished C3T pack's texture section into the exact PICA image (header byte
+112 = 1; the descriptor's wrap_s word carries format and level count):
+
+- opaque images: RGB565 with a box-filtered mip chain down to 8 texels;
+- images with any alpha below 255: single-level RGBA8, so alpha-tested
+  cutouts do not erode;
+- `--max-dimension` drops leading mip levels (not used yet).
+
+The renderer copies these bytes and enables trilinear filtering
+(`C3D_TexSetFilterMipmap`). Legacy packs load unchanged. Run it on the field
+packs after preparation:
+
+    python tools/pack_textures.py <boot>/outskirt_map0.c3t <out>/outskirt_map0.c3t --report <out>/outskirt_map0.json
+
+Measured on a New 3DS (build 0d61814, same binary, same route; standing at
+the stand, then a D-pad square past the wagon; `field_tick` intervals,
+loading and exit excluded):
+
+| | original packs | GPU-native packs |
+| --- | ---: | ---: |
+| Outskirt texture bytes (11 packs) | 22.35 MB | 15.05 MB |
+| GPU storage at Outskirt (`gpu_bytes`) | 15.66 MB | 11.81 MB |
+| standing: GPU ms per frame, median / p90 | 13.03 / 14.07 | 11.56 / 13.53 |
+| walking: GPU ms per frame, median / p90 | 15.79 / 19.14 | 13.13 / 15.37 |
+| walking: worst interval `gpu_max_ms` | 20.05 | 16.70 |
+| standing fps | 30 | 30 |
+
+Native-size console captures and the Azahar A/B show no visible difference
+(Azahar mean difference about 2/255 per channel). Walking still reports 29
+frames in most one-second intervals in both runs while the GPU has about 17
+ms of slack, so that shortfall is on the CPU side, not textures.
+
 ## Not done
 
 - Confusion still rebuilds and uploads its 98,304-vertex grid every frame,
