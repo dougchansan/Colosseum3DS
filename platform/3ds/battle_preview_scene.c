@@ -73,13 +73,14 @@ int c3_battle_preview_scene_run(const C3BattleRequest *request,const uint8_t *en
         }
     }
     previous_time=c3_n3ds_active_time_us(); /* Loading time is not battle time. */
+    c3_ui_perf_clock(c3_n3ds_time_us);c3_ui_perf_take(NULL);
     if(trace){fprintf(trace,"battle_load wall_us=%llu effects=%u source_camera=%u audio=%u\n",
         (unsigned long long)(c3_n3ds_time_us()-load_start),stage?stage->damage_available:0,stage?stage->camera_available:0,stage&&stage->sound_cue?1:0);fflush(trace);}
     unsigned frames=0;uint64_t metric_time=previous_time;
     uint64_t sample_cpu_us=0,full_frame_peak_us=0,sample_cpu_peak_us=0;unsigned interval_frames=0;
     /* Interval sums (all frames, not only the last one) for the bottom-screen
      * redraw, the stage step and the CPU part of the draw. */
-    uint64_t ui_us_sum=0,step_us_sum=0,draw_us_sum=0;unsigned ui_draws=0;
+    uint64_t ui_us_sum=0,step_us_sum=0,draw_us_sum=0,present_us_sum=0;unsigned ui_draws=0;
     C3UiPager ui_pager={0};
     unsigned last_turn=0;C3BattlePreviewMenuPage previous=menu.page;unsigned previous_event=0;
     while(c3_n3ds_poll(&input)){
@@ -123,8 +124,9 @@ int c3_battle_preview_scene_run(const C3BattleRequest *request,const uint8_t *en
             }
         }
         if(dirty){uint64_t ui_start=c3_n3ds_time_us();
-            c3_battle_ui_draw_to(c3_bottom_screen_begin(),battle,&tables,&menu,stage?&stage->presentation:NULL,error,&ui_pager);c3_bottom_screen_present();dirty=0;
-            ui_us_sum+=c3_n3ds_time_us()-ui_start;++ui_draws;}
+            c3_battle_ui_draw_to(c3_bottom_screen_begin(),battle,&tables,&menu,stage?&stage->presentation:NULL,error,&ui_pager);
+            uint64_t present_start=c3_n3ds_time_us();c3_bottom_screen_present();dirty=0;
+            present_us_sum+=c3_n3ds_time_us()-present_start;ui_us_sum+=c3_n3ds_time_us()-ui_start;++ui_draws;}
         if(stage&&stage->initialized&&!error[0]){
             C3TitleRenderStats stats;
             /* All command/message/status UI now lives on the bottom screen.
@@ -155,18 +157,24 @@ int c3_battle_preview_scene_run(const C3BattleRequest *request,const uint8_t *en
                     uint32_t particle_peak=stage->particles.peak_particles;
                     if(stage->confusion_damage_particles&&stage->confusion_damage_particles->peak_particles>particle_peak)
                         particle_peak=stage->confusion_damage_particles->peak_particles;
+                    C3UiPerf ui;c3_ui_perf_take(&ui);
                     fprintf(trace,"battle_frame sample_clock_cpu_us=%llu sample_clock_peak_us=%llu full_cpu_frame_us=%llu full_cpu_peak_us=%llu interval_frames=%u particles=%lu particle_vertices=%lu particle_live_peak=%lu"
                         " draw_prepare_us=%llu prepare_us=%lu upload_us=%lu upload_bytes=%lu submit_us=%lu wait_us=%lu cached_batches=%lu vertices_static=%lu"
-                        " ui_us=%llu ui_draws=%u step_us=%llu draw_us=%llu\n",
+                        " ui_us=%llu ui_draws=%u step_us=%llu draw_us=%llu"
+                        " ui_present_us=%llu ui_begin_us=%llu ui_panel_us=%llu ui_text_us=%llu ui_rect_us=%llu ui_sprite_us=%llu"
+                        " ui_panels=%lu ui_glyphs=%lu ui_rects=%lu ui_sprites=%lu\n",
                         (unsigned long long)sample_cpu_us,(unsigned long long)sample_cpu_peak_us,
                         (unsigned long long)full_frame_us,(unsigned long long)full_frame_peak_us,interval_frames,
                         (unsigned long)stats.particles,(unsigned long)stats.particle_vertices,(unsigned long)particle_peak,
                         (unsigned long long)stats.draw_prepare_us,(unsigned long)stats.prepare_us,(unsigned long)stats.upload_us,
                         (unsigned long)stats.upload_bytes,(unsigned long)stats.submit_us,(unsigned long)stats.wait_us,
                         (unsigned long)stats.cached_batches,(unsigned long)stats.vertices_static,
-                        (unsigned long long)ui_us_sum,ui_draws,(unsigned long long)step_us_sum,(unsigned long long)draw_us_sum);
+                        (unsigned long long)ui_us_sum,ui_draws,(unsigned long long)step_us_sum,(unsigned long long)draw_us_sum,
+                        (unsigned long long)present_us_sum,(unsigned long long)ui.begin_us,(unsigned long long)ui.panel_us,
+                        (unsigned long long)ui.text_us,(unsigned long long)ui.rect_us,(unsigned long long)ui.sprite_us,
+                        (unsigned long)ui.panels,(unsigned long)ui.glyphs,(unsigned long)ui.rects,(unsigned long)ui.sprites);
                     sample_cpu_peak_us=full_frame_peak_us=0;interval_frames=0;
-                    ui_us_sum=step_us_sum=draw_us_sum=0;ui_draws=0;
+                    ui_us_sum=step_us_sum=draw_us_sum=present_us_sum=0;ui_draws=0;
                     c3_battle_audio_player_trace(trace,"battle_render");
                 }
             }

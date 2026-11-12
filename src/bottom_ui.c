@@ -12,6 +12,13 @@
 static uint32_t u32(const unsigned char *p)
 { return (uint32_t)p[0]|(uint32_t)p[1]<<8|(uint32_t)p[2]<<16|(uint32_t)p[3]<<24; }
 
+static uint64_t (*ui_clock)(void);
+static C3UiPerf ui_perf;
+void c3_ui_perf_clock(uint64_t (*now_us)(void)) { ui_clock = now_us; }
+void c3_ui_perf_take(C3UiPerf *out) { if (out) *out = ui_perf; memset(&ui_perf, 0, sizeof ui_perf); }
+#define UI_TIMED(field, body) do { uint64_t ui_started_ = ui_clock ? ui_clock() : 0; body; \
+    if (ui_clock) ui_perf.field += ui_clock() - ui_started_; } while (0)
+
 int c3_ui_assets_open(C3UiAssets *a,const void *memory,size_t size)
 {
     const unsigned char *d=memory;
@@ -70,7 +77,15 @@ static void pixel(C3BottomUi *ui,int x,int y,uint32_t color,unsigned alpha)
     p[2]=(unsigned char)div255(b*alpha+p[2]*(255u-alpha)+127u);
 }
 
+static void rect_fill(C3BottomUi *ui,int x,int y,int w,int h,uint32_t color);
+
 void c3_ui_rect(C3BottomUi *ui,int x,int y,int w,int h,uint32_t color)
+{
+    ++ui_perf.rects;
+    UI_TIMED(rect_us, rect_fill(ui,x,y,w,h,color));
+}
+
+static void rect_fill(C3BottomUi *ui,int x,int y,int w,int h,uint32_t color)
 {
     /* Clip before adding extents, including adversarial host-test inputs. */
     if(w<=0||h<=0||x>=320||y>=240||!ui||!ui->pixels)return;
@@ -107,10 +122,10 @@ void c3_ui_begin(C3BottomUi *ui,unsigned char *pixels,int rotated,
     if(!ui)return;
     ui->pixels=pixels;ui->rotated_bgr=rotated==C3_UI_ROTATED_RGB565?rotated:!!rotated;ui->assets=assets;ui->fallback_font=fallback;ui->content_inset=0;
     /* The original title palette and quiet field backdrop. No frame ownership. */
-    for(int y=0;y<240;++y){
+    UI_TIMED(begin_us, for(int y=0;y<240;++y){
         unsigned c=(unsigned)(240-y)/18u;
-        c3_ui_rect(ui,0,y,320,1,((5u+c)<<16)|((12u+c*2u)<<8)|(16u+c*2u));
-    }
+        rect_fill(ui,0,y,320,1,((5u+c)<<16)|((12u+c*2u)<<8)|(16u+c*2u));
+    });
 }
 
 void c3_ui_sprite(C3BottomUi *ui,unsigned id,int x,int y,int w,int h)
@@ -122,7 +137,15 @@ void c3_ui_sprite(C3BottomUi *ui,unsigned id,int x,int y,int w,int h)
     c3_ui_rgba(ui,src,sw,sh,x,y,w,h);
 }
 
+static void rgba_blit(C3BottomUi *ui,const uint8_t *src,unsigned sw,unsigned sh,int x,int y,int w,int h);
+
 void c3_ui_rgba(C3BottomUi *ui,const uint8_t *src,unsigned sw,unsigned sh,int x,int y,int w,int h)
+{
+    ++ui_perf.sprites;
+    UI_TIMED(sprite_us, rgba_blit(ui,src,sw,sh,x,y,w,h));
+}
+
+static void rgba_blit(C3BottomUi *ui,const uint8_t *src,unsigned sw,unsigned sh,int x,int y,int w,int h)
 {
     if(!ui||!src||!sw||sw>1024||!sh||sh>1024||w<=0||h<=0||w>640||h>480||x>=320||y>=240||x < -w||y < -h)return;
     /* Same nearest mapping as before, divided once per column and row. */
@@ -138,7 +161,15 @@ void c3_ui_rgba(C3BottomUi *ui,const uint8_t *src,unsigned sw,unsigned sh,int x,
     }
 }
 
+static void panel_draw(C3BottomUi *ui,unsigned sprite,int x,int y,int w,int h);
+
 static void panel(C3BottomUi *ui,unsigned sprite,int x,int y,int w,int h)
+{
+    ++ui_perf.panels;
+    UI_TIMED(panel_us, panel_draw(ui,sprite,x,y,w,h));
+}
+
+static void panel_draw(C3BottomUi *ui,unsigned sprite,int x,int y,int w,int h)
 {
     if(w<12||h<12||w>320||h>240||x>=320||y>=240||x < -w||y < -h)return;
     if(!ui||!ui->assets||!ui->assets->data){
@@ -178,6 +209,7 @@ static unsigned advance(const C3BottomUi *ui,unsigned c)
 
 static void glyph(C3BottomUi *ui,int x,int y,unsigned c,uint32_t color)
 {
+    ++ui_perf.glyphs;
     if(c<32||c>126)c='?';
     if(ui->assets&&ui->assets->data){
         const unsigned char *d=ui->assets->data,*p=d+u32(d+GLYPH_TABLE+(c-32u)*8u+4);
@@ -215,7 +247,24 @@ static int text_width(const C3BottomUi *ui,const char *text)
     return 0;
 }
 
+static int text_right_draw(C3BottomUi *ui,int right,int y,int width,const char *text,uint32_t color);
+static size_t text_draw(C3BottomUi *ui,int x,int y,int width,int lines,const char *text,uint32_t color);
+
 int c3_ui_text_right(C3BottomUi *ui,int right,int y,int width,const char *text,uint32_t color)
+{
+    int result;
+    UI_TIMED(text_us, result=text_right_draw(ui,right,y,width,text,color));
+    return result;
+}
+
+size_t c3_ui_text(C3BottomUi *ui,int x,int y,int width,int lines,const char *text,uint32_t color)
+{
+    size_t result;
+    UI_TIMED(text_us, result=text_draw(ui,x,y,width,lines,text,color));
+    return result;
+}
+
+static int text_right_draw(C3BottomUi *ui,int right,int y,int width,const char *text,uint32_t color)
 {
     if(right<0||right>320||y < -240||y>240||width<1||width>320)return 0;
     int measured=text_width(ui,text);
@@ -225,7 +274,7 @@ int c3_ui_text_right(C3BottomUi *ui,int right,int y,int width,const char *text,u
     return measured;
 }
 
-size_t c3_ui_text(C3BottomUi *ui,int x,int y,int width,int lines,const char *text,uint32_t color)
+static size_t text_draw(C3BottomUi *ui,int x,int y,int width,int lines,const char *text,uint32_t color)
 {
     size_t pos=0;int cursor=0,line=0;
     if(!ui||!text||width<16||width>320||lines<1||lines>15||x < -320||x>320||y < -240||y>240)return 0;

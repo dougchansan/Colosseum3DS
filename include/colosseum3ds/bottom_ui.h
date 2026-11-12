@@ -25,6 +25,14 @@ enum { C3_UI_STORY, C3_UI_BATTLE, C3_UI_OPTIONS, C3_UI_QUIT,
 #define C3_UI_GOLD 0xffdc63u
 enum { C3_UI_RGB8, C3_UI_ROTATED_BGR8, C3_UI_ROTATED_RGB565 };
 int c3_ui_assets_open(C3UiAssets *assets,const void *data,size_t size);
+/* Interval counters per drawing primitive, timed only while a microsecond
+ * clock is installed (counts are always kept). take copies and clears. */
+typedef struct {
+    uint64_t begin_us, panel_us, text_us, rect_us, sprite_us;
+    uint32_t panels, glyphs, rects, sprites;
+} C3UiPerf;
+void c3_ui_perf_clock(uint64_t (*now_us)(void));
+void c3_ui_perf_take(C3UiPerf *out);
 void c3_ui_begin(C3BottomUi *ui,unsigned char *pixels,int rotated_bgr,
                  const C3UiAssets *assets,const unsigned char *fallback_font);
 void c3_ui_rect(C3BottomUi *ui,int x,int y,int w,int h,uint32_t color);
