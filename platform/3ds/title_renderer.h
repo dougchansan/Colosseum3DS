@@ -44,6 +44,10 @@ typedef struct {
     uint64_t gpu_wait_us;                 /* waiting for a busy GPU to release the next frame */
     uint32_t gpu_busy;                    /* frames whose acquisition found the GPU busy */
     float gpu_max_ms;                     /* largest completed GPU drawing time */
+    /* Wall time since the previous take (0 on the first). Scenes also take on
+     * input, so intervals are not always one second: read frames per
+     * interval_us, never frames alone. */
+    uint64_t interval_us;
 } C3RenderPerf;
 void c3_stage_renderer_perf_take(C3RenderPerf *perf);
 /* Scene-side placement time (microseconds) that is not inside c3_title_animate. */

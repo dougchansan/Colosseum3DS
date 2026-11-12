@@ -173,6 +173,10 @@ unchanged and come first. Divide sums by `perf_frames` for per-frame values.
 | `perf_pace_us` | idle time holding the cadence |
 | `perf_gpu_wait_us`, `perf_gpu_busy` | time waiting for a busy GPU; frames whose acquisition found it busy |
 | `perf_gpu_max_ms` | largest completed GPU drawing time |
+| `perf_interval_us`, `perf_fps` | wall time since the previous take; frames per second over it |
+
+The field also prints a line on every new button press, which ends the
+interval early. Judge frame rate by `perf_fps`, not `perf_frames`.
 
 Where they are printed:
 
@@ -197,7 +201,7 @@ What to expect on hardware, to accept or reject each change:
   `perf_prepare_us / perf_vertices_prepared` fall well below the measured 0.9
   and 1.45 microseconds; `perf_place_us` is zero in the battle and on the
   developer floor.
-- Pacing: `perf_frames` settles at 30 per second with `perf_pace_us` above
+- Pacing: `perf_fps` settles at 29.9 (59.83 Hz / 2) with `perf_pace_us` above
   zero and `perf_gpu_busy` near zero. `perf_gpu_busy` close to `perf_frames`
   means the scene is GPU-bound or over budget.
 
@@ -267,9 +271,14 @@ loading and exit excluded):
 | standing fps | 30 | 30 |
 
 Native-size console captures and the Azahar A/B show no visible difference
-(Azahar mean difference about 2/255 per channel). Walking still reports 29
-frames in most one-second intervals in both runs while the GPU has about 17
-ms of slack, so that shortfall is on the CPU side, not textures.
+(Azahar mean difference about 2/255 per channel).
+
+Walking showed `perf_frames` of 28-29 in both runs. That was the counter,
+not the game: the field writes a trace line, which takes the interval, on
+every new button press, and the walk was D-pad taps a median 0.96 s apart
+(input redirection allows at most 0.5 s per press). At 29.92 fps those
+windows hold 28.3-30.2 frames, matching what was reported. Intervals now
+carry `perf_interval_us` and `perf_fps`.
 
 ## Not done
 

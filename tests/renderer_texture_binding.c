@@ -388,7 +388,13 @@ int main(int argc, char **argv)
         assert(interval.animate_us==5*frame_ends&&interval.animate_max_us==5);
         assert(interval.upload_bytes==45*sizeof(TitleGPUVertex)&&interval.gpu_busy==0);
         char line[1024];c3_stage_renderer_perf_format(line,sizeof line);
-        assert(strstr(line," perf_frames=0 ")==line&&strstr(line," perf_gpu_max_ms=0.000"));
+        assert(strstr(line," perf_frames=0 ")==line&&strstr(line," perf_gpu_max_ms=0.000 "));
+        /* Each interval reports its own length (the simulated clock advances
+         * 1 ms per read), and fps is frames over that length. */
+        assert(interval.interval_us==0||interval.interval_us>=1000);
+        assert(strstr(line," perf_interval_us=")&&strstr(line," perf_fps=0.00"));
+        C3RenderPerf next;c3_stage_renderer_perf_take(&next);
+        assert(next.frames==0&&next.interval_us>=1000&&next.interval_us<=3000);
         assert(c3_stage_renderer_try_shutdown());
         /* Teardown proves the GPU idle by acquiring and closing one empty frame. */
         assert(!frame_acquired&&!frame_open&&frame_ends==draws+3);

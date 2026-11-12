@@ -161,6 +161,13 @@ static void stage_frame_next(C3TitleRenderStats *stats)
 
 void c3_stage_renderer_perf_take(C3RenderPerf *perf)
 {
+    /* The field also traces on every new button press, which restarts its
+     * one-second window: a walk of taps 0.96 s apart read as 28-29 frames
+     * while running at a full 30 fps. Every interval carries its length. */
+    static uint64_t interval_start_us;
+    uint64_t now = stage_now_us();
+    stage_perf.interval_us = interval_start_us ? now - interval_start_us : 0;
+    interval_start_us = now;
     if (perf) *perf = stage_perf;
     memset(&stage_perf, 0, sizeof stage_perf);
 }
@@ -181,7 +188,8 @@ void c3_stage_renderer_perf_format(char *text, size_t capacity)
         " perf_prepare_us=%llu perf_prepare_max_us=%llu perf_vertices_prepared=%lu"
         " perf_vertices_static=%lu perf_cached_models=%lu perf_cached_batches=%lu"
         " perf_upload_us=%llu perf_upload_bytes=%llu perf_submit_us=%llu perf_submit_max_us=%llu"
-        " perf_end_us=%llu perf_pace_us=%llu perf_gpu_wait_us=%llu perf_gpu_busy=%lu perf_gpu_max_ms=%.3f",
+        " perf_end_us=%llu perf_pace_us=%llu perf_gpu_wait_us=%llu perf_gpu_busy=%lu perf_gpu_max_ms=%.3f"
+        " perf_interval_us=%llu perf_fps=%.2f",
         (unsigned long)p.frames, (unsigned long long)p.animate_us, (unsigned long long)p.animate_max_us,
         (unsigned long)p.animate_calls, (unsigned long)p.vertices_animated, (unsigned long)p.vertices_retained,
         (unsigned long long)p.place_us, (unsigned long long)p.prepare_us, (unsigned long long)p.prepare_max_us,
@@ -190,5 +198,6 @@ void c3_stage_renderer_perf_format(char *text, size_t capacity)
         (unsigned long long)p.upload_us, (unsigned long long)p.upload_bytes,
         (unsigned long long)p.submit_us, (unsigned long long)p.submit_max_us,
         (unsigned long long)p.end_us, (unsigned long long)p.pace_us, (unsigned long long)p.gpu_wait_us,
-        (unsigned long)p.gpu_busy, (double)p.gpu_max_ms);
+        (unsigned long)p.gpu_busy, (double)p.gpu_max_ms, (unsigned long long)p.interval_us,
+        p.interval_us ? (double)p.frames * 1000000.0 / (double)p.interval_us : 0.0);
 }
