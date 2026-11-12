@@ -306,10 +306,58 @@ pixels directly and blends without division: 12.8 ms per redraw, output
 byte-identical (`tests/test_bottom_ui_golden.c`). Effect logic adds only
 2-5 ms to the step.
 
-What still keeps the battle under 30 fps is the idle cost: 13.5 ms of
+What then kept the battle under 30 fps was the idle cost: 13.5 ms of
 skinning and 20.9 ms of lighting/staging for about 17,500 actor vertices
 every frame (the two loops at about 0.8 and 1.2 microseconds per vertex).
-That needs GPU skinning or a much cheaper CPU loop; see Not done.
+GPU skinning below removed it.
+
+## GPU skinning
+
+Batches a caller opts into (`C3Title.gpu_batches`, retained titles only)
+are skinned, lit and UV-mapped by a second vertex program, DVLE 1 of
+`title_shader.shbin` (`platform/3ds/title_skin_shader.pica`, built together
+with `title_shader.v.pica` so switching programs uploads no shader code).
+
+- Vertices stay in bind space in a static 48-byte stream written once at
+  scene init (`platform/3ds/skin_renderer.inc`), with the vertex's palette
+  slot. Instances of one pack share it.
+- `c3_title_animate` no longer skins those batches; it stores the placed
+  bone matrix and normal matrix of their bones in `pose.skin` and
+  `pose.skin_normal`.
+- Per draw: up to 10 bones (position and normal rows), the model's ambient
+  light folded into the batch base colour plus up to four infinite or point
+  lights with GX distance attenuation, the batch's colour/alpha source mode
+  and its two UV rows (`src/skin_uniforms.c`).
+- On the CPU path still: specular batches, normal-generated (reflection)
+  UVs, spotlights, batches with more than 10 bones, and any model the caller
+  does not request. The battle requests its six actor slots
+  (`c3_stage_renderer_request_gpu_skin` before init); each costs 48 bytes of
+  linear memory per vertex, and the battle has about 4 MB to spare before
+  audio. Requesting every model also streamed the arena packs and battle
+  audio then failed to allocate.
+
+`src/skin_uniforms.c` also mirrors the shader in C. Against the five battle
+actor packs, 126,162 sampled vertices (three clips, three times, placed as a
+battle actor) match the CPU path exactly in position and UV and within
+0.001/255 in colour (`C3_SKIN_PACKS=<dir> build/test_skin_uniforms`).
+
+On a New 3DS, Willie preview probe, same route (Bite, Confusion, two
+Tackles), CPU path at 5cbb260 against GPU skinning at 926fddc:
+
+| phase | fps CPU | fps GPU | CPU ms per frame CPU / GPU |
+| --- | ---: | ---: | --- |
+| idle | 21.8 | 29.4 | 39.5 / 9.0 |
+| Confusion | 17.5 | 28.7 | 55.8 / 25.1 |
+| Tackle | 16.6 | 28.9 | 57.1 / 27.9 |
+| damage | 16.8 | 28.9 | 56.9 / 28.4 |
+
+Vertices skinned on the CPU fell from 17,499 to 1,050 per frame (the
+specular batches), animate from 13.6 to 2.7 ms, prepare from 21.0 to
+2.6 ms and uploads from 982 to 59 KB per frame. The GPU's own frame time
+fell too (19.0 to 16.7 ms median). Native-size captures of the battle and
+of Confusion's hit show the same models, shading and textures. Effect
+phases now spend most of their remaining CPU time in the 13 ms bottom-screen
+redraw.
 
 ## Not done
 
@@ -321,11 +369,8 @@ That needs GPU skinning or a much cheaper CPU loop; see Not done.
 - Wes and the people in the story field are still animated, placed in a
   second pass and staged in full every frame (`src/field_story.c`).
 - No culling, no state deduplication, no index buffers, no smaller vertex.
-- GPU skinning. The pieces it needs are in place or isolated: per-batch bone
-  sets (`batch_bones`), placement as a matrix composed with the bones, a
-  persistent arena with per-batch dirty keys, and lighting separated from the
-  position/UV copy (`stage_batch`). It still needs bind-space positions and a
-  bone index in the GPU vertex (so a second vertex layout or stream), a bone
-  palette of at most about 28 matrices per draw with batches split by bone
-  set, a normal palette or a uniform-scale restriction, and either a colour
-  stream that stays CPU-lit or lighting in the shader.
+- GPU skinning covers battle actors only. Field actors (Wes, people) rewrite
+  sampled vertices after animation (passengers, developer floor) and need
+  that moved into placement first. The CPU arena still reserves 56 bytes for
+  every GPU-skinned vertex, and the battle sits at 29.4 rather than 29.9 fps
+  idle; neither is investigated yet.
