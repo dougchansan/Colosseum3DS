@@ -32,8 +32,9 @@ A model whose sampled vertices are written only by `c3_title_animate` sets
 
 A model that is not retained keeps the old contract exactly: every call
 rewrites every vertex, and the caller may modify `draw_vertices` afterwards.
-`src/field_story.c` still does that for Wes and the people, so they remain on
-this path until its `transform` pass is replaced by the placement fields.
+In `src/field_story.c` free actors (Wes and the people) are retained and
+placed through `placement`; only passengers, whose vertices their vehicle's
+`transform` pass rewrites, stay on this path.
 
 UV scroll is baked into the sampled vertices, so a UV-animated batch is
 dynamic; its neighbours on the same static bones are not.
@@ -313,8 +314,8 @@ GPU skinning below removed it.
 
 ## GPU skinning
 
-Batches a caller opts into (`C3Title.gpu_batches`, retained titles only)
-are skinned, lit and UV-mapped by a second vertex program, DVLE 1 of
+Batches a caller opts into (`C3Title.gpu_batches`, on frames the title is
+retained; otherwise they are staged on the CPU as before) are skinned, lit and UV-mapped by a second vertex program, DVLE 1 of
 `title_shader.shbin` (`platform/3ds/title_skin_shader.pica`, built together
 with `title_shader.v.pica` so switching programs uploads no shader code).
 
@@ -358,6 +359,30 @@ fell too (19.0 to 16.7 ms median). Native-size captures of the battle and
 of Confusion's hit show the same models, shading and textures. Effect
 phases now spend most of their remaining CPU time in the 13 ms bottom-screen
 redraw.
+
+### Field actors
+
+The field requests Wes and the area's people at every stage renderer init
+(area load, return from the battle, PDA close; `field_renderer_init` in
+`platform/3ds/field_scene.c`). Map packs are static and already cached; the
+TV and the arrival cutscene parts stay on the CPU. Outskirt Stand on a New
+3DS, the texture measurement's route (10 s idle, then walking), per frame,
+before (the perf-3fb3 run with GPU-native textures) against 4560997:
+
+| | before | after |
+| --- | ---: | ---: |
+| vertices skinned on the CPU | 6,222 | 1,824 |
+| animate | 4.97 ms | 2.05 ms |
+| prepare | 3.78 ms | 0.82 ms |
+| submit | 1.72 ms | 1.95 ms |
+| upload | 340 KB | 100 KB |
+| GPU frame, idle / walking (median) | 12.2 / 15.0 ms | 10.6 / 11.3 ms |
+| fps | 30 frames per interval | 29.92 (min 29.89) |
+
+The remaining CPU vertices are batches the skin program does not cover.
+Linear memory free after the area loaded: 18.6 MB. Wes and Willie render as
+before in native-size captures, idle and walking. Only Outskirt was
+measured; Phenac City's 26 people should gain more.
 
 ## Bottom-screen redraw
 
@@ -423,10 +448,7 @@ Trace bytes still in the ring when the application crashes are lost.
   ms (Confusion's draw is about 5 ms above idle), far less than the actor
   skinning below.
 - A battle UI redraw is 6.3 ms; HP events still redraw every frame.
-- Wes and the people in the story field are still animated, placed in a
-  second pass and staged in full every frame (`src/field_story.c`).
 - No culling, no state deduplication, no index buffers, no smaller vertex.
-- GPU skinning covers battle actors only. Field actors (Wes, people) rewrite
-  sampled vertices after animation (passengers, developer floor) and need
-  that moved into placement first. The CPU arena still reserves 56 bytes for
-  every GPU-skinned vertex.
+- Field passengers and the developer floor rewrite sampled vertices after
+  animation and stay on the CPU path. The CPU arena still reserves 56 bytes
+  for every GPU-skinned vertex.
