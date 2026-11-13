@@ -542,11 +542,22 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                         c3_first_person_look(&first_person,input.cstick_x,input.cstick_y,delta);
                         c3_first_person_touch(&first_person,input.touch_held,input.touch_x,input.touch_y);
                     }
-                    if(input.pressed&(C3_PAD_START|C3_PAD_X)){
+                    /* Home screen: a tapped button opens the in-game menu at
+                     * that page (SAVE at its confirmation). In first person
+                     * the stylus looks around instead. */
+                    int home=!first_person.enabled&&input.touch_pressed?c3_field_home_hit(input.touch_x,input.touch_y):-1;
+                    if(home>=0||(input.pressed&(C3_PAD_START|C3_PAD_X))){
                         c3_ingame_init(ingame,state);
                         int original=c3_ingame_load(ingame,BOOT_ROOT "pda.c3pd");
-                        if(trace){fprintf(trace,"ingame_open original_assets=%d\n",original);fflush(trace);}
+                        if(trace){fprintf(trace,"ingame_open original_assets=%d home_button=%d\n",original,home);fflush(trace);}
                         page=PAUSE_MAIN;selection=0;dirty=1;
+                        if(home==5){page=PAUSE_SAVE;yes=0;}
+                        else if(home>=0){
+                            C3N3dsInput open={0};open.pressed=C3_PAD_A;
+                            ingame->selection=ingame->hub_selection=(unsigned)home;
+                            (void)c3_ingame_update(ingame,state,&open,0);
+                        }
+                        input.pressed=0;input.touch_pressed=false;
                     }
                     else if(input.pressed&C3_PAD_A){if(!c3_field_story_interact(&story,story_error))goto story_failed;dirty=1;}
                     else{

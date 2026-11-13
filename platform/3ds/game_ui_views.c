@@ -28,6 +28,44 @@ uint32_t c3_field_ui_identity(PausePage page,const C3FieldStoryView *story)
     return id;
 }
 
+/* Home buttons: two columns of three large tiles under the header. */
+#define HOME_X0 9
+#define HOME_Y0 60
+#define HOME_W 148
+#define HOME_H 44
+#define HOME_GAP_X 6
+#define HOME_GAP_Y 6
+int c3_field_home_hit(int x,int y)
+{
+    for(int i=0;i<C3_FIELD_HOME_BUTTONS;++i){
+        int bx=HOME_X0+(i%2)*(HOME_W+HOME_GAP_X),by=HOME_Y0+(i/2)*(HOME_H+HOME_GAP_Y);
+        if(x>=bx&&x<bx+HOME_W&&y>=by&&y<by+HOME_H)return i;
+    }
+    return -1;
+}
+static void draw_home(C3BottomUi *ui,const C3GameSummary *summary)
+{
+    static const uint32_t fill[C3_FIELD_HOME_BUTTONS]={0x1d3f6bu,0x5a3a17u,0x14503au,0x4a2457u,0x3a3f45u,0x6b1d2au};
+    static const uint32_t edge[C3_FIELD_HOME_BUTTONS]={0x5aa0ffu,0xf0a040u,0x66ff99u,0xd77bffu,0xb8c2ccu,0xff6680u};
+    char sub[C3_FIELD_HOME_BUTTONS][48];unsigned members=0,healthy=0;
+    for(unsigned i=0;i<6;++i)if(summary->party[i].species){++members;if(summary->party[i].hp)++healthy;}
+    snprintf(sub[0],sizeof sub[0],"%u in party, %u able",members,healthy);
+    snprintf(sub[1],sizeof sub[1],"Items and Key Items");
+    snprintf(sub[2],sizeof sub[2],"Mail, Memo, Snag List");
+    snprintf(sub[3],sizeof sub[3],"$%lu",(unsigned long)summary->money);
+    snprintf(sub[4],sizeof sub[4],"Sound and rumble");
+    snprintf(sub[5],sizeof sub[5],"Save here");
+    const char *labels[C3_FIELD_HOME_BUTTONS]={"POKEMON","BAG","P*DA",summary->name,"OPTIONS","SAVE"};
+    for(int i=0;i<C3_FIELD_HOME_BUTTONS;++i){
+        int x=HOME_X0+(i%2)*(HOME_W+HOME_GAP_X),y=HOME_Y0+(i/2)*(HOME_H+HOME_GAP_Y);
+        c3_ui_rect(ui,x,y,HOME_W,HOME_H,fill[i]);
+        c3_ui_rect(ui,x,y,HOME_W,3,edge[i]);
+        c3_ui_rect(ui,x,y+HOME_H-2,HOME_W,2,0x000000u);
+        c3_ui_text(ui,x+10,y+9,HOME_W-16,1,labels[i],C3_UI_WHITE);
+        c3_ui_text(ui,x+10,y+26,HOME_W-16,1,sub[i],0xc8d6d4u);
+    }
+}
+
 void c3_field_ui_draw_to(C3BottomUi *ui,const C3GameSummary *summary,FieldPhase phase,PausePage page,
                          unsigned selection,int yes,const char *message,const C3FieldStoryView *story,
                          C3UiPager *pager)
@@ -46,6 +84,9 @@ void c3_field_ui_draw_to(C3BottomUi *ui,const C3GameSummary *summary,FieldPhase 
             story->battle_id?"A: skip as a win (temporary)   X: menu":"X / START: main menu");
     }else if(page==PAUSE_CLOSED&&story&&story->dialogue){
         c3_ui_dialogue(ui,pager,story->message,story->choice,!story->choice_no);
+    }else if(page==PAUSE_CLOSED&&story&&story->control){
+        draw_home(ui,summary);
+        c3_ui_footer(ui,"Tap a button   A: talk   X / START: menu");
     }else if(page==PAUSE_CLOSED){
         for(unsigned i=0;i<2;++i){
             snprintf(text,sizeof text,"%s  Lv.%u",pokemon_name(summary->party[i].species),summary->party[i].level);
