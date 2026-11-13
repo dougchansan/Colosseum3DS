@@ -9,11 +9,6 @@ typedef enum { FIELD_SETUP, FIELD_ARRIVAL, FIELD_ARRIVAL_OUT, FIELD_FADE_IN, FIE
 typedef enum { PAUSE_CLOSED, PAUSE_MAIN, PAUSE_PARTY, PAUSE_SAVE, PAUSE_LEAVE, PAUSE_MESSAGE } PausePage;
 
 uint32_t c3_field_ui_identity(PausePage page,const C3FieldStoryView *story);
-/* Field home screen (bottom screen while the hero walks): touch buttons in
- * the in-game hub's order, 0 POKEMON, 1 BAG, 2 P*DA, 3 trainer, 4 OPTIONS,
- * 5 SAVE. Returns the button under a tap, or -1. */
-#define C3_FIELD_HOME_BUTTONS 6
-int c3_field_home_hit(int x,int y);
 void c3_field_ui_draw_to(C3BottomUi *ui,const C3GameSummary *summary,FieldPhase phase,PausePage page,
     unsigned selection,int yes,const char *message,const C3FieldStoryView *story,C3UiPager *pager);
 void c3_battle_ui_draw_to(C3BottomUi *ui,const C3BattlePreview *battle,const C3BattlePreviewTables *tables,

@@ -95,6 +95,15 @@ static int restore_party(void *context)
     free(data);return restored;
 }
 /* Destinations the original doorway script may request from a field. */
+/* The in-game menu stays loaded while the hero walks: its hub is the
+ * bottom screen, and X / START or a tap open it at once. Returns whether
+ * the original P*DA art loaded (0 keeps the plain-panel hub). */
+static int hub_menu_ready(C3IngameMenu *menu,const C3GameState *state)
+{
+    static int original;
+    if(!menu->active){c3_ingame_init(menu,state);original=c3_ingame_load(menu,BOOT_ROOT "pda.c3pd");}
+    return original;
+}
 static int floor_reachable(uint32_t floor)
 {
     return floor==C3_FLOOR_WORLD_MAP_ID?c3_world_map_scene_available():c3_field_scene_supports(floor);
@@ -764,6 +773,9 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                     c3_n3ds_log_memory(trace,"field_battle_before_drain");
                     if(c3_render_recover(trace,"field-to-battle",frames,C3_RECOVER_DRAIN)==C3_RECOVERY_EXIT){result=1;break;}
                     release_field_models(storage,count);
+                    /* The bottom-screen hub keeps the P*DA art loaded; free it
+                     * for the battle (it reloads on the next field frame). */
+                    if(ingame->active)c3_ingame_close(ingame);
                     c3_n3ds_log_memory(trace,"field_battle_payloads_released");
                     int battle_outcome=0;
                     int preview_result=c3_battle_preview_from_game_state(state,trace,&battle_outcome);
@@ -810,16 +822,17 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                     /* Home screen: a tapped button opens the in-game menu at
                      * that page (SAVE at its confirmation). In first person
                      * the stylus looks around instead. */
-                    int home=!first_person.enabled&&input.touch_pressed?c3_field_home_hit(input.touch_x,input.touch_y):-1;
+                    int home=!first_person.enabled&&input.touch_pressed?c3_ingame_hub_hit(input.touch_x,input.touch_y):-1;
+                    if(home==7)home=-1; /* RESUME: already walking */
                     if(home>=0||(input.pressed&(C3_PAD_START|C3_PAD_X))){
-                        c3_ingame_init(ingame,state);
-                        int original=c3_ingame_load(ingame,BOOT_ROOT "pda.c3pd");
-                        if(trace){fprintf(trace,"ingame_open original_assets=%d home_button=%d\n",original,home);fflush(trace);}
+                        int original=hub_menu_ready(ingame,state);
+                        if(trace){fprintf(trace,"ingame_open original_assets=%d hub_item=%d\n",original,home);fflush(trace);}
+                        ingame->idle=0;ingame->page=C3_GAME_HUB;ingame->selection=ingame->hub_selection=home>=0?(unsigned)home:0u;
                         page=PAUSE_MAIN;selection=0;dirty=1;
                         if(home==5){page=PAUSE_SAVE;yes=0;}
+                        else if(home==6){page=PAUSE_LEAVE;yes=0;}
                         else if(home>=0){
                             C3N3dsInput open={0};open.pressed=C3_PAD_A;
-                            ingame->selection=ingame->hub_selection=(unsigned)home;
                             (void)c3_ingame_update(ingame,state,&open,0);
                         }
                         input.pressed=0;input.touch_pressed=false;
@@ -903,7 +916,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                     c3_pda_audio_trace(trace,"preview");dirty=1;
                 }
                 else if(event.kind==C3_INGAME_STOP_TONE){c3_pda_audio_stop();dirty=1;}
-                else if(event.kind==C3_INGAME_RESUME){c3_pda_audio_close();pda_audio_ready=0;c3_ingame_close(ingame);page=PAUSE_CLOSED;dirty=1;}
+                else if(event.kind==C3_INGAME_RESUME){c3_pda_audio_close();pda_audio_ready=0;page=PAUSE_CLOSED;dirty=1;}
                 else if(event.kind==C3_INGAME_SAVE){page=PAUSE_SAVE;yes=0;dirty=1;}
                 else if(event.kind==C3_INGAME_LEAVE){page=PAUSE_LEAVE;yes=0;dirty=1;}
                 else if(event.kind==C3_INGAME_OPTIONS){c3_movie_player_set_mono(ingame->option_mono);dirty=1;}
@@ -914,7 +927,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                         ready=0;snprintf(story_error,sizeof story_error,"The mail read changes could not be applied.");
                     }
                     if(!ready)c3_ingame_error(ingame,story_error);
-                    else if(event.mail.script){c3_pda_audio_close();pda_audio_ready=0;c3_ingame_close(ingame);page=PAUSE_CLOSED;}
+                    else if(event.mail.script){c3_pda_audio_close();pda_audio_ready=0;page=PAUSE_CLOSED;}
                     if(trace){fprintf(trace,"ingame_mail id=%u committed=%d callback=%08lx disk_write=0\n",event.mail.save.id,ready,(unsigned long)event.mail.script);fflush(trace);}
                     dirty=1;
                 }
@@ -976,6 +989,11 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
             if(naming)c3_name_entry_draw(&name_entry,bottom,"PARTNER'S NAME");
             else if(shopping)c3_shop_menu_draw(&shop_menu,state,bottom,profile->label);
             else if(page==PAUSE_MAIN&&ingame->active)c3_ingame_draw_to(ingame,state,bottom);
+            else if(page==PAUSE_CLOSED&&phase==FIELD_CONTROL&&view->control&&!view->dialogue&&!view->blocked[0]&&
+                    hub_menu_ready(ingame,state)>=0){
+                /* The P*DA in-game menu hub is the field bottom screen. */
+                ingame->idle=1;ingame->page=C3_GAME_HUB;c3_ingame_draw_to(ingame,state,bottom);
+            }
             else c3_field_ui_draw_to(bottom,&summary,phase,page,selection,yes,message,view,&ui_pager);
             c3_bottom_screen_present();dirty=0;next_console=now+UINT64_C(100000);
         }

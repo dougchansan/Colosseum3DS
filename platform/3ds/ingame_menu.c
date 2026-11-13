@@ -337,6 +337,12 @@ static void decoded_name(const uint8_t *p,char *out,size_t cap)
     unsigned i=0;for(;i<10&&i+1<cap;++i){unsigned c=c3_pda_be16(p+i*2);if(!c)break;
     out[i]=(c>=32&&c<=126)?(char)c:'?';}out[i]=0;
 }
+int c3_ingame_hub_hit(int x,int y)
+{
+    for(int i=0;i<8;++i){int bx=32+(i%2)*135,by=65+(i/2)*36;
+        if(x>=bx&&x<bx+121&&y>=by&&y<by+29)return i;}
+    return -1;
+}
 void c3_ingame_draw_to(C3IngameMenu *m,const C3GameState *state,C3BottomUi *ui)
 {
     if(!m||!state||!ui)return;
@@ -348,12 +354,13 @@ void c3_ingame_draw_to(C3IngameMenu *m,const C3GameState *state,C3BottomUi *ui)
     switch(m->page){
     case C3_GAME_HUB:{
         const char *labels[]={"POKEMON","ITEMS","P*DA",s.name,"OPTIONS","SAVE","MAIN MENU","RESUME"};
+        unsigned chosen=m->idle?8u:m->selection;
         for(unsigned i=0;i<8;++i){int x=32+(int)(i%2u)*135,y=65+(int)(i/2u)*36;
-            c3_ui_rect(ui,x,y,121,29,i==m->selection?0x175134u:0x072819u);
-            c3_ui_rect(ui,x,y,2,29,i==m->selection?0x66ff55u:0x235d35u);
-            if(i==m->selection)c3_ui_sprite(ui,C3_UI_HAND,x+3,y+5,21,16);
-            c3_ui_text(ui,x+(i==m->selection?26:10),y+6,i==m->selection?89:105,1,labels[i],i==m->selection?C3_UI_WHITE:0x8dcbaau);
-        }c3_ui_footer(ui,"D-pad: choose   A: open   B: resume");break;
+            c3_ui_rect(ui,x,y,121,29,i==chosen?0x175134u:0x072819u);
+            c3_ui_rect(ui,x,y,2,29,i==chosen?0x66ff55u:0x235d35u);
+            if(i==chosen)c3_ui_sprite(ui,C3_UI_HAND,x+3,y+5,21,16);
+            c3_ui_text(ui,x+(i==chosen?26:10),y+6,i==chosen?89:105,1,labels[i],i==chosen?C3_UI_WHITE:0x8dcbaau);
+        }c3_ui_footer(ui,m->idle?"Tap an item   X / START: menu":"D-pad: choose   A: open   B: resume");break;
     }
     case C3_GAME_PDA:{
         static const char *const labels[]={"SNAG LIST","STRATEGY MEMO","MAIL","CANCEL"};uint32_t unlocked=0;c3_game_state_get_flag(state,0x3f0,&unlocked);
