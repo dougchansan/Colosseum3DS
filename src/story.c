@@ -473,7 +473,7 @@ int c3_story_message(const C3Story *story,uint32_t id,const char*hero,const char
 }
 int c3_story_message_with(const C3Story *story,uint32_t id,C3StoryTextSource source,void *context,
                     char*out,size_t capacity,char*error){
-    Impl*p=story?story->impl:NULL;const uint8_t*data=NULL;uint32_t length=0,i,j;size_t used=0;int ruby=0;
+    Impl*p=story?story->impl:NULL;const uint8_t*data=NULL;uint32_t length=0,i,j;size_t used=0;int ruby=0,drop_prefix=0;
     if(!p||!id||!out||!capacity)return fail(error,"Invalid story message request");
     out[0]=0;
     for(i=0;i<p->group_count&&!data;++i){
@@ -488,6 +488,10 @@ int c3_story_message_with(const C3Story *story,uint32_t id,C3StoryTextSource sou
     for(i=0;i+2<=length;){
         uint16_t glyph=be16(data+i);char encoded[5]={0};const char*text=encoded;i+=2;
         if(!glyph){if(error)error[0]=0;return 1;}
+        /* After an unnamed speaker slot, drop its ": " separator too. */
+        if(drop_prefix==2&&glyph==':'){drop_prefix=1;continue;}
+        if(drop_prefix==1&&glyph==' '){drop_prefix=0;continue;}
+        drop_prefix=0;
         if(glyph==0xffff){
             uint8_t control;if(i>=length)return fail(error,"Truncated message control");control=data[i++];
             switch(control){
@@ -505,7 +509,14 @@ int c3_story_message_with(const C3Story *story,uint32_t id,C3StoryTextSource sou
                 break;
             }
         }else if(!ruby){
-            if(glyph==0x2031)text="???"; /* original unknown-name glyph */
+            if(glyph==0x2031){
+                /* The speaker slot that opens a field line ("<name>: text").
+                 * It takes the talking person's name when the scene supplies
+                 * one (control 59); a person or Pokemon without a name gets
+                 * no label rather than "???". */
+                const char *speaker=source?source(context,0x59):NULL;
+                if(speaker&&*speaker)text=speaker;else{text="";drop_prefix=2;}
+            }
             else if(glyph==0xe9)text="e"; /* libctru console font */
             /* The field text is drawn with an ASCII font, which prints any
              * other byte as '?'. Full-width spaces pad some original

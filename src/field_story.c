@@ -305,8 +305,11 @@ static int set_motion(Impl *s,Person *p,uint32_t source_clip,uint32_t frame,uint
         clip=source_clip==0?3:source_clip==1?s->map->idle_clip:source_clip==2?s->map->walk_clip:s->map->run_clip;
     }
     if(!p->public.model||clip>=p->public.model->clip_count){
-        /* A clip this actor's prepared pack lacks (or a stand-in model): the
-         * actor keeps its current motion, and the gap is recorded. */
+        /* Wes's prepared motions are reviewed and stay strict. */
+        if(p==&s->hero_actor)
+            return fail(error,"Actor %lu source motion %lu is not prepared",(unsigned long)p->public.index,(unsigned long)source_clip);
+        /* A clip another actor's prepared pack lacks (or a stand-in model):
+         * the actor keeps its current motion, and the gap is recorded. */
         note_presentation(s,0x33,"actor_motion_missing_kept_current");return 1;
     }
     C3FieldPlayer *q=pose(s,p);
