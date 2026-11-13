@@ -392,15 +392,20 @@ static int run_native(Impl *s,RunTask *t,char *error)
         s->camera_rotation[0]=x;s->camera_rotation[1]=y;s->rotation_time=s->rotation_duration=0;
         aim_camera(s,x,y);break;
     }
-    case 0x2a:
+    case 0x2a:{
         /* A floor with several event cameras plays the one named. */
+        const C3AreaCamera *kept=s->camera_track;
         for(uint32_t i=0;i<s->camera_count;++i)
             if(s->cameras[i].frames&&s->cameras[i].resource==a[1]){s->camera_track=s->cameras+i;break;}
         if(a[0]!=s->area->group||!s->camera_track||!s->camera_track->frames||
            a[1]!=(s->camera_track->resource?s->camera_track->resource:0x00e51800u))
-            return fail(error,"Original camera %08lx is not prepared",(unsigned long)a[1]);
+        {
+            /* An event camera that was not converted for this floor: the
+             * current camera stays and nothing plays (waits see no camera). */
+            s->camera_track=kept;note_presentation(s,0x2a,"event_camera_missing_kept_current");break;
+        }
         s->view.camera_seconds=(float)a[2]/30.0f;s->camera_playing=1;s->camera_rate=1;
-        s->view.camera_active=1;s->camera_mode=4;break;
+        s->view.camera_active=1;s->camera_mode=4;break;}
     case 0x2b:s->view.camera_active=0;s->camera_playing=0;break;
     case 0x2c:s->camera_playing=0;break;
     case 0x2d:s->camera_playing=1;break;
