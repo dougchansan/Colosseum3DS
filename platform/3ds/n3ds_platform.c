@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <malloc.h>
 #include <string.h>
+#include <math.h>
 
 static bool graphics_started;
 static bool console_is_new;
@@ -243,6 +244,47 @@ int c3_n3ds_capture_bottom(const char *path)
     }
     if (fclose(file) != 0) ok = 0;
     return ok ? 0 : -1;
+}
+
+static void top_dot(u8 *fb, int cx, int cy, int radius, u8 level)
+{
+    for (int dy = -radius; dy <= radius; ++dy)
+        for (int dx = -radius; dx <= radius; ++dx) {
+            if (dx * dx + dy * dy > radius * radius) continue;
+            int x = cx + dx, y = cy + dy;
+            if (x < 0 || x >= 400 || y < 0 || y >= 240) continue;
+            u8 *p = fb + ((size_t)x * 240u + (239u - (unsigned)y)) * 3u;
+            p[0] = level; p[1] = level; p[2] = level;
+        }
+}
+void c3_n3ds_top_loading(float fraction)
+{
+    u16 width = 0, height = 0;
+    if (gfxGetScreenFormat(GFX_TOP) != GSP_BGR8_OES) return;
+    u8 *fb = gfxGetFramebuffer(GFX_TOP, GFX_LEFT, &width, &height);
+    if (!fb || width != 240 || height < 400) return;
+    if (!(fraction >= 0.0f)) fraction = 0.0f;
+    if (fraction > 1.0f) fraction = 1.0f;
+    memset(fb, 0, 400u * 240u * 3u);
+    /* Ring of eight dots; the bright one advances with time. */
+    unsigned lead = (unsigned)(svcGetSystemTick() / (SYSCLOCK_ARM11 / 10u)) % 8u;
+    for (unsigned i = 0; i < 8; ++i) {
+        float angle = (float)i * 0.785398163f;
+        int x = 200 + (int)lroundf(sinf(angle) * 26.0f), y = 104 - (int)lroundf(cosf(angle) * 26.0f);
+        unsigned age = (lead + 8u - i) % 8u;
+        top_dot(fb, x, y, 6, (u8)(age == 0 ? 255 : age < 3 ? 160 - 40 * age : 50));
+    }
+    /* Progress bar. */
+    for (int x = 100; x < 300; ++x)
+        for (int y = 164; y < 172; ++y) {
+            int edge = y == 164 || y == 171 || x == 100 || x == 299;
+            int filled = x - 101 < (int)(fraction * 198.0f);
+            u8 *p = fb + ((size_t)x * 240u + (239u - (unsigned)y)) * 3u;
+            u8 level = edge ? 110 : filled ? 230 : 0;
+            p[0] = level; p[1] = level; p[2] = level;
+        }
+    gfxFlushBuffers();
+    gfxScreenSwapBuffers(GFX_TOP, false);
 }
 
 void c3_n3ds_log_memory(FILE *trace, const char *stage)

@@ -363,13 +363,17 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     storage=calloc(count,sizeof(*storage));
     if(!storage){snprintf(error,capacity,"Field model allocation failed.");goto done;}
     c3_bottom_screen_notice(profile->label,"Loading the area...","Please wait...");
+    unsigned load_total=map.map_pack_count+1u+arrival_count,load_done=0;
+    for(uint32_t i=0;i<area.actor_count;++i)load_total+=area.actors[i].file[0]!=0;
+    for(uint32_t i=0;i<doors.count;++i)load_total+=doors.rows[i].file[0]!=0;
+    c3_n3ds_top_loading(0.0f);
     for(uint32_t i=0;i<map.map_pack_count+1u+arrival_count;++i){
         if(i<map.map_pack_count)snprintf(path,sizeof path,BOOT_ROOT "%s_map%lu.c3t",prefix,(unsigned long)i);
         else if(i==wes_index)snprintf(path,sizeof path,BOOT_ROOT "%s_wes.c3t",prefix);
         else snprintf(path,sizeof path,BOOT_ROOT "%s_arrival%lu.c3t",prefix,(unsigned long)(i-arrival_index));
         if(!c3_title_load(storage+i,path,error,capacity))goto done;
         snprintf(model_paths[i],sizeof model_paths[i],"%s",path);
-        ++opened;models[i]=storage+i;
+        ++opened;models[i]=storage+i;c3_n3ds_top_loading((float)++load_done/(float)load_total);
         if(!c3_title_animate(storage+i,0,0)){snprintf(error,capacity,"Initial field animation failed.");goto done;}
     }
     for(uint32_t i=0;i<area.actor_count;++i)if(area.actors[i].file[0]){
@@ -377,7 +381,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         C3Title *model=storage+opened;
         if(!c3_title_load(model,path,error,capacity))goto done;
         snprintf(model_paths[opened],sizeof model_paths[opened],"%s",path);
-        models[opened++]=model;actor_models[i]=model;
+        models[opened++]=model;actor_models[i]=model;c3_n3ds_top_loading((float)++load_done/(float)load_total);
         if(!c3_title_animate(model,area.actors[i].motions[0],0)){snprintf(error,capacity,"Original NPC idle motion is missing.");goto done;}
     }
     for(uint32_t i=0;i<doors.count;++i)if(doors.rows[i].file[0]){
@@ -385,10 +389,13 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         C3Title *model=storage+opened;
         if(!c3_title_load(model,path,error,capacity))goto done;
         snprintf(model_paths[opened],sizeof model_paths[opened],"%s",path);
-        models[opened++]=model;door_models[i]=model;
+        models[opened++]=model;door_models[i]=model;c3_n3ds_top_loading((float)++load_done/(float)load_total);
         int rest=doors.rows[i].open_anim>=0?doors.rows[i].open_anim:0;
         if(!c3_title_animate(model,(uint32_t)rest,0)){snprintf(error,capacity,"Original door clip is missing.");goto done;}
     }
+#ifdef C3_CAMPAIGN
+    {static int loading_shot;if(!loading_shot){loading_shot=1;(void)c3_n3ds_capture_top("sdmc:/3ds/Colosseum3DS/campaign/loading.bmp");}}
+#endif
     C3Title *wes=storage+wes_index,*arrival=arrival_count?storage+arrival_index:NULL;
     if(wes->vertex_count!=map.actor_vertex_count||wes->clip_count<4u){
         snprintf(error,capacity,"The prepared Wes motions have an unsupported layout.");goto done;
@@ -518,6 +525,9 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                 snprintf(shot,sizeof shot,"sdmc:/3ds/Colosseum3DS/campaign/talk_%03lx_%02u_L%lu.bmp",(unsigned long)map.floor,
                          campaign.talk_shot_id,(unsigned long)c3_campaign_launch);
                 campaign_line("floor=%03lx talk_shot=%d id=%u",(unsigned long)map.floor,c3_n3ds_capture_top(shot)==0,campaign.talk_shot_id);
+                snprintf(shot,sizeof shot,"sdmc:/3ds/Colosseum3DS/campaign/talk_%03lx_%02u_L%lu_bottom.bmp",(unsigned long)map.floor,
+                         campaign.talk_shot_id,(unsigned long)c3_campaign_launch);
+                (void)c3_n3ds_capture_bottom(shot);
                 campaign.talk_shot_frame=0;++campaign.talk_shots;
             }
             if(phase==FIELD_CONTROL&&page==PAUSE_CLOSED){

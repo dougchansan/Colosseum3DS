@@ -457,7 +457,11 @@ static int run_native(Impl *s,RunTask *t,char *error)
         if(p&&p->source){
             uint32_t known=1,msg=p->source->name_message;
             if(p->source->hear_flag&&!flag(s,p->source->hear_flag,&known,error))return 0;
-            if(!known)msg=0x0fa3;
+            /* Retail shows "???" (0fa3) until the hear flag is set. No script
+             * bank sets those flags (the engine does, outside the script VM),
+             * so every named person stayed "???" here: the port shows the
+             * person's own name, and the gap is recorded. */
+            if(!known&&msg)note_presentation(s,0x36,"speaker_name_shown_before_heard");
             if(msg&&!c3_story_message(&s->vm,msg,s->hero_name,"","",s->speaker,sizeof s->speaker,error))return 0;
             if(!p->talking){p->old_yaw=p->public.pose.yaw;p->talking=1;}
             if(p->source->talk_start==2)p->public.pose.yaw=atan2f(s->hero->position[0]-p->public.pose.position[0],s->hero->position[2]-p->public.pose.position[2]);
