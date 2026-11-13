@@ -418,7 +418,11 @@ static int run_native(Impl *s,RunTask *t,char *error)
         }break;
     case 0x30:
         p=person(s,a[1],a[2]);
-        if(!p||s->camera_mode!=3)return fail(error,"Original target interpolation outside the prepared free-camera scene is not ported");
+        if(!p||s->camera_mode!=3){
+            /* Outside the free-camera scene (or toward an absent person) the
+             * current camera stays; the gap is recorded. */
+            note_presentation(s,0x30,"camera_target_interpolation_kept_current");break;
+        }
         s->camera_person=p;s->target_time=0;s->target_duration=as_float(a[3]);s->target_moving=1;
         memcpy(s->target_from,s->view.camera.target,sizeof s->target_from);
         memcpy(s->target_to,pose(s,p)->position,sizeof s->target_to);break;
