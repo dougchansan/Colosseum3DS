@@ -118,7 +118,8 @@ static int group_valid(const uint8_t *b, uint32_t size) {
     uint32_t i, count, previous = 0, start;
     if (size < 16) return 0;
     count = be16(b + 4); start = 16 + count*8;
-    if (!count || count > 8192 || start > size) return 0;
+    /* Some floors' message member is empty (M2_windmill_2F 019E0A00). */
+    if (count > 8192 || start > size) return 0;
     for (i = 0; i < count; ++i) {
         uint32_t key = be32(b + 16 + i*8), off = be32(b + 20 + i*8);
         if ((i && key <= previous) || key > 0xfffff || off < start || !inside(off, 2, size)) return 0;

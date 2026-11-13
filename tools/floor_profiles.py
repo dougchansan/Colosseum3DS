@@ -565,6 +565,7 @@ def auto_profiles(survey_path):
             "module": entry["module"], "entrance_table": entry["entrance_table"],
             "entrance_count": entry["entrance_count"], "people_table": entry["people_table"],
             "people_count": entry["people_count"], "script": entry["script"], "messages": entry["messages"],
+            "extra_messages": entry.get("extra_messages", []),
             "prefix": prefix, "story_pack": prefix + ".c3s", "auto": True}
     return rows
 

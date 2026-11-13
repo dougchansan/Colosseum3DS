@@ -83,6 +83,10 @@ int c3_game_state_pokemon(const C3GameState *state,unsigned slot,uint8_t record[
 /* Native mail read transaction follows mailMain fn_801D228C; original flag
  * metadata comes from the admitted private PDA pack. No disk I/O. */
 int c3_game_state_mail_read(C3GameState *state,const C3GameMailRead *action,int commit);
+/* mailAddMailbox (mail.c) as mailMainSendByScrpt calls it: a mail not yet
+ * in the mailbox is appended (at most 512) and marked unread. Returns 1 when
+ * added, 0 when it was already received, -1 for an invalid ID or full box. */
+int c3_game_state_mail_add(C3GameState *state,unsigned id);
 int c3_game_state_mail_preferences(C3GameState *state,int sort,int tone);
 int c3_game_state_mail_settings(const C3GameState *state,unsigned *sort,unsigned *tone);
 /* Inventory-only optimistic transaction. Region-wise conflicts reject stale

@@ -77,6 +77,7 @@ typedef struct {
     size_t page_start, page_end;
     char full_message[C3_STORY_MESSAGE], hero_name[32], partner_name[32], speaker[128];
     uint32_t cosmetic_logged[8];
+    uint32_t mail_sent; /* native AD calls that added mail */
 } Impl;
 
 static int fail(char *error,const char *format,...)
@@ -113,7 +114,9 @@ static int validate_native(const Impl *s,const C3StoryCall *c,char *error)
         /* Phenac City exterior bank 013E0E00 (native table lbl_802E1CF0). */
         {0x02,1,0},{0x16,2,0},{0x23,1,0},{0x31,0,0},{0x66,1,0},{0x7e,2,0},
         {0x82,3,0},{0x83,3,0},{0x89,3,0},{0xa1,3,0},{0xa4,6,0x3c},{0xa5,5,0x10},
-        {0x77,2,0},{0x84,2,0},{0x60,3,0},{0x73,4,0},{0x75,2,0},{0x8d,5,0x1e},{0x9a,5,0},{0xa0,1,0},{0xb5,4,0},{0xa9,2,0},{0xb1,6,0x10},{0xb4,0,0},{0xd8,1,0},{0xda,1,0},{0xe8,2,0}
+        {0x77,2,0},{0x84,2,0},{0x60,3,0},{0x73,4,0},{0x75,2,0},{0x8d,5,0x1e},{0x9a,5,0},{0xa0,1,0},{0xb5,4,0},{0xa9,2,0},{0xb1,6,0x10},{0xb4,0,0},{0xd8,1,0},{0xda,1,0},{0xe8,2,0},
+        /* Whole-game survey (tests/test_world_story.c), table lbl_802E1CF0. */
+        {0x97,3,0},{0xaa,7,0x3c},{0xab,1,0},{0xad,1,0},{0xe1,0,0}
     };
     for(unsigned i=0;i<sizeof signature/sizeof signature[0];++i){
         if(signature[i].id!=c->native)continue;
@@ -482,6 +485,43 @@ static int run_native(Impl *s,RunTask *t,char *error)
      * flag's whole stored value. Phenac Stadium's receptionist (function 7)
      * reads flag 0x9A0 with it. */
     case 0x52:if(!flag(s,a[0],&value,error))return 0;break;
+    /* fn_8018CA20: show or hide one person. A person without a model
+     * (animId 0) stays hidden, as in retail. */
+    case 0x97:
+        p=person(s,a[0],a[1]);if(p)p->public.visible=a[2]&&p->public.model;break;
+    /* fn_80186620: does the person touch the vertical wall over segment
+     * (x0,z0)-(x1,z1) within its PeopleInfo radius? The script passes
+     * group, index, the segment, a float the original ignores and an
+     * optional push word (PowerPC passes ints and floats in separate
+     * registers, hence the source prototype's order). Pushed people are
+     * set back to just outside the radius. A person standing still has no
+     * step to sweep, so the test is the end point alone. */
+    case 0xaa:{
+        p=person(s,a[0],a[1]);if(!p)break;
+        C3FieldPlayer *q=pose(s,p);float sc=s->map->scale;
+        float x0=as_float(a[2])*sc,z0=as_float(a[3])*sc,x1=as_float(a[4])*sc,z1=as_float(a[5])*sc;
+        float reach=p==&s->hero_actor?s->map->radius:p->source->radius;if(reach<=0)reach=4.0f*sc;
+        float lx=x1-x0,lz=z1-z0,length=hypotf(lx,lz);if(length<0.0001f*sc)break;
+        lx/=length;lz/=length;
+        float px=q->position[0],pz=q->position[2],along=(px-x0)*lx+(pz-z0)*lz;
+        float cx=x0+lx*along,cz=z0+lz*along; /* projection on the line */
+        float sx=along<0?x0:along>length?x1:cx,sz=along<0?z0:along>length?z1:cz;
+        if(hypotf(px-sx,pz-sz)>reach)break;
+        value=1;
+        if(c->argc>7&&a[7]){float dx=px-cx,dz=pz-cz,d=hypotf(dx,dz);
+            if(d>0){q->position[0]=cx+dx/d*(reach+0.0001f);q->position[2]=cz+dz/d*(reach+0.0001f);}}
+    }break;
+    /* fn_80117AE4: texture-change animation of the floor's screens. */
+    case 0xab:note_presentation(s,0xab,"texture_change_animation");value=1;break;
+    /* mailMainSendByScrpt: deliver mail once; the new-mail sound is not played. */
+    case 0xad:{
+        int added=c3_game_state_mail_add(s->game,a[0]);
+        if(added<0)return fail(error,"Original mail %lu cannot be delivered",(unsigned long)a[0]);
+        if(added){++s->mail_sent;log_line(s,"story_mail id=%lu status=delivered",(unsigned long)a[0]);}
+    }break;
+    /* scriptStoreTemochiPokemon copies the party's cries and personality
+     * values into lbl_804670B4 for later presentation natives. */
+    case 0xe1:note_presentation(s,0xe1,"party_cry_table");break;
     case 0x5c:value=s->area->floor;break;
     case 0x5d:value=s->area->group;break;
     case 0x5e:value=s->previous_floor;break;

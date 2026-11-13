@@ -47,6 +47,12 @@ def area_table(names):
             for name in names}
 
 
+def extra_message_table(names):
+    """floor -> further message members of the same archive (surveyed floors)."""
+    floors = story_floors()
+    return {floors[name]["floor"]: tuple(floors[name].get("extra_messages", ())) for name in names}
+
+
 def actor_table(names):
     """floor -> (archive, REL member, module, people offset, people count).
 
@@ -376,6 +382,7 @@ def main():
     try:
         names = tuple(dict.fromkeys(args.floor or DEFAULT_FLOORS))
         profiles, areas, actor_tables = source_profiles(names), area_table(names), actor_table(names)
+        extra_messages = extra_message_table(names)
         disc, output = verify_disc(args.disc), check_output(args.output)
         if args.doors_only:
             doors = extract_doors(admit_common_rel(disc / "files"), set(areas))
@@ -434,7 +441,8 @@ def main():
             info = inspect_bank(bank, allow_null_entries=True)
             if be16(bank, 0) != 0x100:
                 raise ValueError("Unexpected original field script bank")
-            packed = encode_pack(floor, [bank, common], [messages, common_messages, common_names])
+            extra = [member(originals[filename], ident) for ident in extra_messages.get(floor, ())]
+            packed = encode_pack(floor, [bank, common], [messages, *extra, common_messages, common_names])
             (output / outname).write_bytes(packed)
             report["areas"].append({"floor": floor, "file": outname, "bytes": len(packed),
                 "sha256": hashlib.sha256(packed).hexdigest(), "bank": info,

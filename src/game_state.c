@@ -586,6 +586,16 @@ int c3_game_state_mail_settings(const C3GameState *state,unsigned *sort,unsigned
     const GameStateImpl *s=state?state->impl:NULL;if(!s||!sort||!tone)return 0;
     *sort=s->body[0x7d20+0x442];*tone=s->body[0x7d20+0x443];return *sort<4&&*tone<10;
 }
+int c3_game_state_mail_add(C3GameState *state,unsigned id)
+{
+    GameStateImpl *s=state?state->impl:NULL;unsigned count;C3GameMail mail;
+    if(!s||id>=512||!c3_game_state_mail_count(state,&count))return -1;
+    for(unsigned i=0;i<count;++i)if(c3_game_state_mail(state,i,&mail)&&mail.id==id)return 0;
+    if(count>=512)return -1;
+    put16(s->body+0x7d20+count*2,(uint16_t)id);put16(s->body+0x7d20+0x400,(uint16_t)(count+1));
+    s->body[0x7d20+0x402+id/8]&=(uint8_t)~(0x80u>>(id%8));
+    return 1;
+}
 int c3_game_state_mail_preferences(C3GameState *state,int sort,int tone)
 {
     GameStateImpl *s=state?state->impl:NULL;if(!s||sort < -1||sort>3||tone < -1||tone>9)return 0;
