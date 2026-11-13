@@ -72,6 +72,7 @@ typedef struct {
     int name_entry_enabled;
     int shop_enabled;
     uint16_t (*random16)(void *context);void *random_context;
+    int (*species_name)(void *context,unsigned species,char *out,size_t capacity);void *species_context;
     C3FieldStoryReceive receive;void *receive_context;
     const C3AreaDoor *door_rows;C3StoryDoor doors[C3_AREA_MAX_DOORS];uint32_t door_count;
     C3FieldStoryRestore restore;void *restore_context;
@@ -466,6 +467,9 @@ static int run_native(Impl *s,RunTask *t,char *error)
              * person's own name, and the gap is recorded. */
             if(!known&&msg)note_presentation(s,0x36,"speaker_name_shown_before_heard");
             if(msg&&!c3_story_message(&s->vm,msg,s->hero_name,"","",s->speaker,sizeof s->speaker,error))return 0;
+            /* A Pokemon has no PeopleInfo name: its species names it. */
+            if(!msg&&s->species_name){unsigned species=c3_field_story_model_species(p->source->resource);
+                if(species&&!s->species_name(s->species_context,species,s->speaker,sizeof s->speaker))s->speaker[0]=0;}
             if(!p->talking){p->old_yaw=p->public.pose.yaw;p->talking=1;}
             if(p->source->talk_start==2)p->public.pose.yaw=atan2f(s->hero->position[0]-p->public.pose.position[0],s->hero->position[2]-p->public.pose.position[2]);
         }
@@ -1210,6 +1214,26 @@ void c3_field_story_describe_waits(const C3FieldStory *story,char *out,size_t ca
         if(n<0)break;
         used+=(size_t)n<capacity-used?(size_t)n:capacity-used-1;
     }
+}
+unsigned c3_field_story_model_species(uint32_t resource)
+{
+    /* Field Pokemon models (global FSYS IDs, named after their species in
+     * the archives' file tables) -> internal species index. Every index was
+     * checked against the original species names in pda.c3pd. */
+    static const struct {uint32_t resource;uint16_t species;} models[]={
+        {0x010e0400u,280},{0x0c530400u,382},{0x0ff80400u,316},{0x011b0400u,287},
+        {0x10ba0400u,295},{0x10d20400u,250},{0x01240400u,277},{0x11060400u,306},
+        {0x0c460400u,129},{0x10870400u,335},{0x0f890400u,183},{0x0c4c0400u,43},
+        {0x012b0400u,25},{0x01030400u,385},{0x06f90400u,353},{0x0c520400u,39},
+        {0x012e0400u,297},{0x0ffa0400u,202},{0x01310400u,304},{0x0c510400u,288},
+    };
+    for(unsigned i=0;i<sizeof models/sizeof models[0];++i)if(models[i].resource==resource)return models[i].species;
+    return 0;
+}
+void c3_field_story_set_species_namer(C3FieldStory *story,
+    int (*name)(void *context,unsigned species,char *out,size_t capacity),void *context)
+{
+    Impl *s=story?story->impl:NULL;if(s){s->species_name=name;s->species_context=context;}
 }
 void c3_field_story_set_random(C3FieldStory *story,uint16_t (*next16)(void *context),void *context)
 {

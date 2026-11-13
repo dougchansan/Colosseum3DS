@@ -104,6 +104,14 @@ static int hub_menu_ready(C3IngameMenu *menu,const C3GameState *state)
     if(!menu->active){c3_ingame_init(menu,state);original=c3_ingame_load(menu,BOOT_ROOT "pda.c3pd");}
     return original;
 }
+/* Original species names from the P*DA data the bottom-screen hub keeps
+ * loaded (none while it is not loaded). */
+static int field_species_name(void *context,unsigned species,char *out,size_t capacity)
+{
+    C3IngameMenu *menu=context;C3PdaSpecies entry;
+    if(!menu||!menu->active||!menu->assets.data||!c3_pda_species(&menu->assets,species,&entry))return 0;
+    return c3_pda_text(&menu->assets,entry.name,"","",out,capacity);
+}
 static int floor_reachable(uint32_t floor)
 {
     return floor==C3_FLOOR_WORLD_MAP_ID?c3_world_map_scene_available():c3_field_scene_supports(floor);
@@ -462,6 +470,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     c3_field_story_bind_cameras(&story,event_cameras,event_camera_count);
     c3_field_story_enable_name_entry(&story,1);
     c3_field_story_set_random(&story,c3_game_state_random16,state);
+    c3_field_story_set_species_namer(&story,field_species_name,ingame);
     c3_field_story_enable_shop(&story,1);
     c3_field_story_set_item_service(&story,receive_item,state);
     c3_field_story_set_party_service(&story,restore_party,state);

@@ -82,6 +82,12 @@ void c3_field_story_set_floor_support(C3FieldStory *story,int (*supported)(uint3
 /* The shared 16-bit game RNG (fn_801ADCD8) for native 02. Unbound, that
  * native fails instead of inventing a value. */
 void c3_field_story_set_random(C3FieldStory *story,uint16_t (*next16)(void *context),void *context);
+/* Speaker names for Pokemon people: the scene turns an internal species
+ * index into its original name (returns 0 when it cannot). */
+void c3_field_story_set_species_namer(C3FieldStory *story,
+    int (*name)(void *context,unsigned species,char *out,size_t capacity),void *context);
+/* Internal species index of a field Pokemon model resource, or 0. */
+unsigned c3_field_story_model_species(uint32_t resource);
 /* Diagnostics: one "task:wait:script@pc:native" entry per waiting script. */
 void c3_field_story_describe_waits(const C3FieldStory *story,char *out,size_t capacity);
 /* Prepare runs the original audio/init/pre functions sequentially. Once the
