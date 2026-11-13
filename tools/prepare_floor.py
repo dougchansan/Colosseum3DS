@@ -211,6 +211,56 @@ def interior_manifest(manifest, profile, extras):
     return manifest
 
 
+_WES_VERTICES = None
+
+
+def wes_vertex_count(field_common):
+    """Expanded vertices of the field Wes model (field_common 00F70400), which
+    the C3F records as the actor bound; the same for every floor."""
+    global _WES_VERTICES
+    if _WES_VERTICES is None:
+        from prepare_field_geometry import load_scene, Model, build_mesh
+        _data, raw, scene = load_scene(field_common, 0x00F70400)
+        model = Model(scene.models[0], raw.models[0])
+        _WES_VERTICES = sum(len(build_mesh(model, i)["vertices"]) for i in range(len(model.meshes)))
+    return _WES_VERTICES
+
+
+def prepare_field_only(disc, output, parser, floor):
+    """The C3F of one floor without map, object or Wes packs: original
+    collision, entrances and REL field data plus the map scene's fixed camera,
+    for the headless whole-game story test. map_pack_count is 1 by contract
+    of the C3F reader; no map pack is written."""
+    from floor_profiles import FLOORS
+    from prepare_field_geometry import import_parser, load_scene
+    profile = FLOORS[floor]
+    disc = verify_disc(disc)
+    output = check_output(output)
+    if output.exists():
+        raise ValueError("Choose a new private output directory")
+    import_parser(title.verify_parser(parser))
+    archive = admit_floor(disc, profile)
+    commons = {name: admit_archive(disc / "files" / name) for name in ("field_common.fsys", "common.fsys")}
+    _data, _raw, scene = load_scene(archive, profile["map"])
+    if not scene.cameras:
+        raise ValueError("Original floor scene has no camera")
+    camera = scene.cameras[0]
+    fixed = (*camera.position, *camera.target_position, camera.roll, camera.field_of_view,
+             camera.near, camera.far, camera.aspect, 0.)
+    rel_id = common_rel(commons["common.fsys"])
+    field, metadata = field_metadata(
+        member(archive, profile["rel"]), member(commons["common.fsys"], rel_id),
+        member(archive, profile["collision"]), fixed[:11], wes_vertex_count(commons["field_common.fsys"]),
+        module=profile["module"], spawn_table=profile["entrance_table"],
+        spawn_count=profile["entrance_count"], floor=profile["floor"],
+        map_resource=profile["map"], map_pack_count=1, arrival_pack_count=0)
+    output.mkdir(parents=True, exist_ok=True)
+    name = profile["prefix"] + ".c3f"
+    (output / name).write_bytes(field)
+    return {"floor_profile": floor, "floor": profile["floor"], "file": name, "bytes": len(field),
+            "sha256": hashlib.sha256(field).hexdigest(), "scene_cameras": len(scene.cameras)}
+
+
 def prepare(disc, output, parser, floor="phenac"):
     from prepare_field_geometry import import_parser
     profile = FLOORS[floor]

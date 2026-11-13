@@ -14,6 +14,7 @@ any disagreement is reported. Writes a private JSON survey; no original
 bytes beyond counts and offsets.
 """
 import argparse
+import hashlib
 import json
 from pathlib import Path
 import struct
@@ -92,6 +93,8 @@ def survey(disc, index_path):
         if not path.is_file():
             entry["status"] = "archive missing"; continue
         archive = path.read_bytes()
+        entry["bytes"] = len(archive)
+        entry["sha256"] = hashlib.sha256(archive).hexdigest()
         ids = members(archive)
         kinds = {}
         for ident in ids:

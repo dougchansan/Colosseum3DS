@@ -567,8 +567,12 @@ def prepare_partner(field_common, common, output, prefix, camera, lights, format
     return summary
 
 
-def prepare_floor_actors(disc, output, parser, floor):
-    """Profile-driven actors, CCD event surfaces and NPC packs of one floor."""
+def prepare_floor_actors(disc, output, parser, floor, models=True):
+    """Profile-driven actors, CCD event surfaces and NPC packs of one floor.
+
+    models=False (the headless whole-game story test) writes the same actor
+    records and event surfaces with no NPC, partner or camera packs; each
+    actor's file is empty."""
     profile = profile_floors()[floor]
     disc, output = verify_disc(disc), check_output(output)
     if output.exists():
@@ -587,13 +591,16 @@ def prepare_floor_actors(disc, output, parser, floor):
     camera = scene.cameras[0]
     fixed = (*camera.position,*camera.target_position,camera.roll,camera.field_of_view,
              camera.near,camera.far,camera.aspect,0.)
-    lights = geometry.fixed_lights(raw,data)
+    lights = geometry.fixed_lights(raw,data) if models else None  # only NPC packs carry lights
     output.parent.mkdir(parents=True,exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=".floor-actors-",dir=output.parent) as temporary:
         stage = Path(temporary)/"stage"
         stage.mkdir()
         reports,shared = [],[]
-        for owner,sharers in share_models(actors):
+        if not models:
+            for actor in actors:
+                actor["file"] = None
+        for owner,sharers in (share_models(actors) if models else ()):
             try:
                 field.member(archive,owner["model_resource"])
             except ValueError as error:
@@ -607,9 +614,9 @@ def prepare_floor_actors(disc, output, parser, floor):
                 shared.append({"resource_id":"%08x" % owner["model_resource"],"file":owner["file"],
                                "actors":[owner["index"],*(actor["index"] for actor in sharers)]})
         partner = prepare_partner(field_common,common,stage,profile["prefix"]+"_partner",fixed,lights,
-                                  profile.get("pack_format",2))
+                                  profile.get("pack_format",2)) if models else None
         camera_reports = []
-        for index,identity in enumerate(profile.get("event_cameras",())):
+        for index,identity in enumerate(profile.get("event_cameras",()) if models else ()):
             # Type-0x18 camera members played by the field bank (native 2A).
             _data,_raw,camera_scene = geometry.load_scene(archive,identity)
             if len(camera_scene.cameras)!=1:
@@ -669,10 +676,12 @@ def main():
                       help="Prepare selected initial exterior actors and area metadata (default all four)")
     mode.add_argument("--floor",choices=sorted(profile_floors()),
                       help="Prepare one profile floor's actors, event surfaces and NPC packs")
+    parser.add_argument("--no-models",action="store_true",
+                        help="With --floor: actor records and event surfaces only (headless story test)")
     args = parser.parse_args()
     try:
         if args.floor:
-            result=prepare_floor_actors(args.disc,args.output,args.parser,args.floor)
+            result=prepare_floor_actors(args.disc,args.output,args.parser,args.floor,models=not args.no_models)
             result={key:value for key,value in result.items() if key!="packs"}
         elif args.exterior_actors_only is not None:
             result=prepare_exterior_actors(args.disc,args.output,args.parser,args.exterior_actors_only or None)

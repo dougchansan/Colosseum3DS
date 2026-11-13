@@ -89,7 +89,7 @@ def encode(area, links, lifecycle, names):
     floor = _uint(_field(area, "floor"), "floor", 65535, 1)
     if floor not in GROUPS:
         raise ValueError("Unsupported original floor")
-    actor_rows = _list(_field(area, "actors"), "actors", maximum=32)
+    actor_rows = _list(_field(area, "actors"), "actors", maximum=48)
     surface_rows = [_list(_field(area, key), key, maximum=1024)
                     for key in ("transition_surfaces", "interaction_surfaces")]
     selected_links = []

@@ -40,6 +40,7 @@ frozen_instance_targets) are consumed by prepare_floor.py. Outskirt Stand's
 two floors keep their dedicated geometry converters (prepare_outskirt.py and
 prepare_area.py); their rows carry the story/area keys only.
 """
+import os
 
 FLOORS = {
     "outskirt": {
@@ -495,7 +496,7 @@ def validate(profiles=None):
         if any(present):
             if not all(present):
                 raise ValueError("Incomplete story keys in floor profile: " + name)
-            if not 0 <= row["people_count"] <= 32 or row["people_table"] < 0:
+            if not 0 <= row["people_count"] <= 48 or row["people_table"] < 0:
                 raise ValueError("Floor people table exceeds the area actor bound: " + name)
             story = row["story_pack"]
             if (not isinstance(story, str) or not story.endswith(".c3s") or
@@ -539,3 +540,37 @@ def validate_partner(partner=None):
 
 validate()
 validate_partner()
+
+def auto_profiles(survey_path):
+    """Story rows derived by tools/floor_survey.py for floors without a reviewed
+    row: archive identity, script and message banks, collision, REL module,
+    entrance and people tables. They are for the headless whole-game story
+    test (no map groups, objects or door models); reviewed rows win."""
+    import json
+    survey = json.loads(open(survey_path, encoding="utf-8").read())
+    known = {row["floor"] for row in FLOORS.values()}
+    rows = {}
+    for entry in survey["floors"]:
+        floor = entry["floor"]
+        if floor in known or entry.get("status") != "ok" or not entry.get("maps"):
+            continue
+        if not all(entry.get(k) is not None for k in ("script", "messages", "collision", "rel", "module",
+                                                      "entrance_table", "people_table")):
+            continue
+        prefix = "f%03x" % floor
+        rows["auto_%03x" % floor] = {
+            "floor": floor, "lifecycle_row": entry["lifecycle_row"], "resource_group": entry["resource_group"],
+            "archive": entry["archive"], "bytes": entry["bytes"], "sha256": entry["sha256"],
+            "map": entry["maps"][0], "collision": entry["collision"], "rel": entry["rel"],
+            "module": entry["module"], "entrance_table": entry["entrance_table"],
+            "entrance_count": entry["entrance_count"], "people_table": entry["people_table"],
+            "people_count": entry["people_count"], "script": entry["script"], "messages": entry["messages"],
+            "prefix": prefix, "story_pack": prefix + ".c3s", "auto": True}
+    return rows
+
+
+# Opt-in for the whole-game story test only: C3_FLOOR_SURVEY names a private
+# survey (tools/floor_survey.py) whose derived rows are added for floors that
+# have no reviewed row. Without it, FLOORS holds reviewed rows only.
+if os.environ.get("C3_FLOOR_SURVEY"):
+    FLOORS.update(auto_profiles(os.environ["C3_FLOOR_SURVEY"]))

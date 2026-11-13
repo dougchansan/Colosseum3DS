@@ -5,7 +5,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define C3_AREA_MAX_ACTORS 32u
+#define C3_AREA_MAX_ACTORS 48u
 #define C3_AREA_MAX_SURFACES 1024u
 #define C3_AREA_MAX_LINKS 128u
 

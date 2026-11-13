@@ -138,7 +138,7 @@ class FloorProfileTableTests(unittest.TestCase):
             lambda r: r["phenac"].update(prefix="phenac/../x"),
             lambda r: r["phenac"].update(prefix=""),
             lambda r: r["phenac"].update(story_pack="phenac.c3a"),
-            lambda r: r["phenac"].update(people_count=33),            # C3_AREA_MAX_ACTORS
+            lambda r: r["phenac"].update(people_count=49),            # C3_AREA_MAX_ACTORS
             lambda r: r["phenac"].pop("messages"),                    # partial story keys
             lambda r: r["phenac"].pop("lifecycle_row"),
             lambda r: r["phenac_stadium1f"].update(objects=(0, 1, 2)),   # model 2 is also grouped
