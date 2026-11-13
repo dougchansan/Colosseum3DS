@@ -146,6 +146,9 @@ def npc_pack(archive, record, fixed, lights, archive_hash, output, format_versio
     if not 1 <= len(model.ends) <= title.LIMITS[4]:
         raise ValueError("NPC motion count exceeds native bound")
     meshes = [geometry.build_mesh(model,i) for i in range(len(model.meshes))]
+    if geometry.APPROXIMATE["enabled"]:
+        # Largest first, so a bone-limited single pack keeps the body.
+        meshes.sort(key=lambda mesh: -len(mesh["vertices"]))
     retained_parts=npc_retained_parts(model,record["model_resource"])
     # Source clip IDs remain exact. peoplePlayMotion selects loop at runtime;
     # a one-shot motion therefore cannot wrap merely because it is in a pack.
@@ -154,7 +157,8 @@ def npc_pack(archive, record, fixed, lights, archive_hash, output, format_versio
     samples = sum(len(sequence) for _,sequence,_ in schedules)
     reports = geometry.prepare_pack_set(meshes,schedules,60,[fixed]*samples,lights,
                 archive_hash,output,Path(record["file"]).stem,expected_count=1,format_version=format_version,
-                retained_parts=retained_parts,gpu_textures=True)
+                retained_parts=retained_parts,gpu_textures=True,
+                fit_first_chunk=geometry.APPROXIMATE["enabled"])
     record["source_clip_ends"] = model.ends
     record["default_idle_clip"] = record["motion_indices"][0]
     record["particle_callbacks_unrendered"] = model.particle_events

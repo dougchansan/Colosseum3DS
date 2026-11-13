@@ -22,7 +22,7 @@ def tour_floors():
     return sorted(name for name, row in FLOORS.items() if row.get("auto") and row.get("map") and row.get("script"))
 
 
-def prepare_tour(disc, boot, parser, names=None):
+def prepare_tour(disc, boot, parser, names=None, approximate_all=False):
     import prepare_field_geometry as geometry
     from prepare_area import prepare_floor_actors
     from prepare_floor import prepare as prepare_floor
@@ -37,9 +37,9 @@ def prepare_tour(disc, boot, parser, names=None):
         row = {"floor_profile": name, "floor": profile["floor"]}
         # Surveyed floors only: recorded approximations instead of stopping
         # on unreviewed materials and lights (prepare_field_geometry).
-        geometry.APPROXIMATE["enabled"] = bool(profile.get("auto"))
+        geometry.APPROXIMATE["enabled"] = bool(profile.get("auto")) or approximate_all
         geometry.APPROXIMATIONS.clear()
-        title.APPROXIMATE_HOOK = geometry.approximate if profile.get("auto") else None
+        title.APPROXIMATE_HOOK = geometry.approximate if profile.get("auto") or approximate_all else None
         with tempfile.TemporaryDirectory(prefix=".tour-", dir=boot.parent) as temporary:
             stage = Path(temporary)
             try:
@@ -83,8 +83,10 @@ def main():
     parser.add_argument("--boot", required=True, type=Path, help="directory holding prepare_story.py output")
     parser.add_argument("--parser", type=Path, default=title.ROOT / "vendor/hsd-importer")
     parser.add_argument("--floor", action="append", help="Floor profile (repeatable; default every surveyed floor)")
+    parser.add_argument("--approximate", action="store_true",
+                        help="Also record approximations on reviewed floors (emulator campaign packs)")
     args = parser.parse_args()
-    report = prepare_tour(args.disc, args.boot, args.parser, args.floor)
+    report = prepare_tour(args.disc, args.boot, args.parser, args.floor, args.approximate)
     (args.boot / ("tour-manifest.json" if not args.floor else "tour-manifest-partial.json")).write_text(json.dumps(report, indent=1) + "\n")
     print(json.dumps({"floors": len(report["floors"]),
                       "without_npc_models": [r["floor_profile"] for r in report["floors"] if not r["npc_models"]],

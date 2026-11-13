@@ -1123,7 +1123,8 @@ def crop_textures_to_use(meshes, material_tracks):
 
 def prepare_pack_set(meshes, schedules, fps, camera_frames, lights, archive_hash, output, prefix,
                      attachment=None, expected_count=None, format_version=2, retained_parts=(),
-                     gpu_textures=False, steady_shimmer=None, crop_textures=False):
+                     gpu_textures=False, steady_shimmer=None, crop_textures=False,
+                     fit_first_chunk=False):
     """Sample once, compact equal affine tracks, then partition at native bounds.
 
     gpu_textures stores the textures as exact PICA images (tools/pack_textures.py:
@@ -1209,6 +1210,12 @@ def prepare_pack_set(meshes, schedules, fps, camera_frames, lights, archive_hash
         count += len(mesh["vertices"])
     if current:
         chunks.append(current)
+    if (fit_first_chunk and expected_count==1 and len(chunks)>1 and
+            approximate("pack_meshes_beyond_bone_limit_dropped")):
+        # Surveyed floors: one pack per person at runtime. The caller orders
+        # meshes largest first, so the kept chunk holds the main body.
+        APPROXIMATIONS["pack_meshes_dropped"] += sum(len(c) for c in chunks[1:])
+        chunks = chunks[:1]
     if expected_count is not None and len(chunks)!=expected_count:
         raise ValueError("Reviewed field pack partition changed: %d != %d" % (len(chunks),expected_count))
     reports=[]
