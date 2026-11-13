@@ -27,7 +27,7 @@ typedef struct Person {
     const C3AreaActor *source;
     float target[3], look[3], old_yaw, speed, turn_target, turn_speed;
     double turn_fraction;
-    int moving, turning, talking, looking;
+    int moving, turning, talking, looking, talk_lock;
     float waypoints[MAX_WAYPOINTS][3];
     uint32_t waypoint_capacity, waypoint_count, waypoint_cursor;
     int waypoint_active, waypoint_loop;
@@ -78,6 +78,9 @@ typedef struct {
     char full_message[C3_STORY_MESSAGE], hero_name[32], partner_name[32], speaker[128];
     uint32_t cosmetic_logged[8];
     uint32_t mail_sent; /* native AD calls that added mail */
+    struct { uint16_t species; uint32_t personality; } temochi[6]; /* lbl_804670B4 (E1/E2) */
+    uint32_t fade_begin, fade_poll; /* floorSetFadeScript (native 90) */
+    uint32_t auto_event[5];         /* heroMoveAddAutoEvent (native 22) */
 } Impl;
 
 static int fail(char *error,const char *format,...)
@@ -116,7 +119,9 @@ static int validate_native(const Impl *s,const C3StoryCall *c,char *error)
         {0x82,3,0},{0x83,3,0},{0x89,3,0},{0xa1,3,0},{0xa4,6,0x3c},{0xa5,5,0x10},
         {0x77,2,0},{0x84,2,0},{0x60,3,0},{0x73,4,0},{0x75,2,0},{0x8d,5,0x1e},{0x9a,5,0},{0xa0,1,0},{0xb5,4,0},{0xa9,2,0},{0xb1,6,0x10},{0xb4,0,0},{0xd8,1,0},{0xda,1,0},{0xe8,2,0},
         /* Whole-game survey (tests/test_world_story.c), table lbl_802E1CF0. */
-        {0x97,3,0},{0xaa,7,0x3c},{0xab,1,0},{0xad,1,0},{0xe1,0,0}
+        {0x97,3,0},{0xaa,7,0x3c},{0xab,1,0},{0xad,1,0},{0xe1,0,0},
+        {0xa2,0,0},{0xac,3,0},{0xcb,3,0},{0xd4,0,0},{0x61,5,0},{0xe2,0,0},{0x90,2,0},{0x7b,0,0},{0xc5,4,0},
+        {0xe7,3,0},{0x22,5,0}
     };
     for(unsigned i=0;i<sizeof signature/sizeof signature[0];++i){
         if(signature[i].id!=c->native)continue;
@@ -127,6 +132,8 @@ static int validate_native(const Impl *s,const C3StoryCall *c,char *error)
          * The dispatcher (fn_800F10E8) zero-fills its register image, so the
          * missing words are zero: person (group,0) or (0,0). */
         if((c->native==0x4c||c->native==0x4d)&&c->argc<2)return 1;
+        /* Some banks call 32 with (group,index) only: visible reads zero. */
+        if(c->native==0x32&&c->argc==2)return 1;
         /* Extra script words are legal: the dispatcher reads only the table
          * row's typed arguments and the call pops the rest (the mayor's-house
          * bank passes five words to the three-argument native 36). Missing
@@ -138,7 +145,7 @@ static int validate_native(const Impl *s,const C3StoryCall *c,char *error)
             float value=as_float(c->args[j]),minimum=-100000,maximum=100000,scale=s->map->scale;
             switch(c->native){
             case 0x1c:case 0x30:case 0xb3:minimum=0;maximum=60;scale=1;break;
-            case 0x9d: minimum=0;maximum=3600;scale=1;break;
+            case 0x9d: minimum=-3600;maximum=3600;scale=1;break; /* negative: no wait */
             case 0x29: minimum=-100;maximum=100;scale=1;break;
             case 0x3c:case 0x44:minimum=-100;maximum=100;scale=PI/180.0f;break;
             case 0x45:minimum=0;maximum=100;scale=1;break;
@@ -152,7 +159,7 @@ static int validate_native(const Impl *s,const C3StoryCall *c,char *error)
             }
             float converted=value*scale;
             if(!isfinite(value)||!isfinite(converted)||converted<minimum||converted>maximum)
-                return fail(error,"Native %02lx argument %u is outside its finite range",(unsigned long)c->native,j);
+                return fail(error,"Native %02lx argument %u is outside its finite range (%g)",(unsigned long)c->native,j,(double)value);
         }
         return 1;
     }
@@ -521,7 +528,62 @@ static int run_native(Impl *s,RunTask *t,char *error)
     }break;
     /* scriptStoreTemochiPokemon copies the party's cries and personality
      * values into lbl_804670B4 for later presentation natives. */
-    case 0xe1:note_presentation(s,0xe1,"party_cry_table");break;
+    case 0xe1:{
+        C3GameSummary party;if(!c3_game_state_summary(s->game,&party))return fail(error,"Native E1 needs the party");
+        for(unsigned i=0;i<6;++i){s->temochi[i].species=i<party.party_count?party.party[i].species:0;
+            s->temochi[i].personality=i<party.party_count?party.party[i].personality:0;}
+    }break;
+    /* scriptCheckTemochiPokemon: 1 when a stored member is missing or a
+     * party member was not stored (the party changed since native E1). */
+    case 0xe2:{
+        C3GameSummary party;uint8_t used[6]={0};
+        if(!c3_game_state_summary(s->game,&party))return fail(error,"Native E2 needs the party");
+        value=0;
+        for(unsigned i=0;i<6&&!value;++i){if(!s->temochi[i].species)continue;unsigned j;
+            for(j=0;j<party.party_count&&j<6;++j)if(!used[j]&&party.party[j].species==s->temochi[i].species&&
+                party.party[j].personality==s->temochi[i].personality)break;
+            if(j>=party.party_count||j>=6)value=1;else used[j]=1;}
+        for(unsigned j=0;j<party.party_count&&j<6&&!value;++j)if(!used[j])value=1;
+    }break;
+    /* scriptGetPokemonNum: valid party members. */
+    case 0x7b:{C3GameSummary party;if(!c3_game_state_summary(s->game,&party))return fail(error,"Native 7B needs the party");
+        value=party.party_count;}break;
+    /* fn_801140C8 clears the floor state's pending-resume override
+     * (usePendingMaterial); the port keeps no such override. */
+    case 0xa2:break;
+    /* GbaMisc_HasActiveContextState: no Game Boy Advance is connected. */
+    case 0xd4:value=0;break;
+    /* fn_8018BDF4: the person's position into a script GSvec. */
+    case 0xac:{
+        p=person(s,a[0],a[1]);if(!p||!a[2])break;
+        const float *at=pose(s,p)->position;
+        for(unsigned i=0;i<3;++i){float v=at[i]/s->map->scale;uint32_t w;memcpy(&w,&v,4);
+            if(!c3_story_write_value(&s->vm,a[2]+i,w))return fail(error,"Native AC position target %08lx is invalid",(unsigned long)a[2]);}
+    }break;
+    /* floorEventChangeTresure rewrites a treasure-table row; treasure
+     * pickups are not ported, so the row change is recorded only. */
+    case 0xcb:
+        log_line(s,"story_treasure index=%lu item=%lu state=%lu status=unported_table",(unsigned long)a[0],(unsigned long)a[1],(unsigned long)a[2]);
+        value=0;break;
+    /* floorEventCtrlElevator / fn_801C9B6C: elevator animations and
+     * riding the platform. The animation is not rendered and its duration
+     * (percent of a second) is zero; the floor change that follows is the
+     * script's own native. */
+    case 0x61:case 0xc5:note_presentation(s,c->native,"elevator_animation");value=0;break;
+    /* fn_80181478: lock a person for a conversation (motion 1) or release
+     * it; 1 while locked. Floor people here are always active. */
+    case 0xe7:
+        p=person(s,a[0],a[1]);if(!p){value=0;break;}
+        if(a[2]){if(!p->talk_lock){p->talk_lock=1;if(!set_motion(s,p,1,0,1,error))return 0;}value=1;}
+        else{p->talk_lock=0;value=0;}break;
+    /* heroMoveAddAutoEvent: the event the hero's movement starts next
+     * (script, then four arguments). Recorded; hero_move does not run it yet. */
+    case 0x22:memcpy(s->auto_event,a,sizeof s->auto_event);
+        log_line(s,"story_auto_event script=%08lx args=%lu,%lu,%lu,%lu",(unsigned long)a[0],(unsigned long)a[1],
+                 (unsigned long)a[2],(unsigned long)a[3],(unsigned long)a[4]);break;
+    /* floorSetFadeScript: the scripts run around the next floor fade. */
+    case 0x90:s->fade_begin=a[0];s->fade_poll=a[1];
+        log_line(s,"story_fade_scripts begin=%08lx poll=%08lx",(unsigned long)a[0],(unsigned long)a[1]);break;
     case 0x5c:value=s->area->floor;break;
     case 0x5d:value=s->area->group;break;
     case 0x5e:value=s->previous_floor;break;
@@ -790,7 +852,10 @@ static int run_native(Impl *s,RunTask *t,char *error)
          * arrival it still names the current floor. */
         value=s->pending_floor?s->pending_floor:s->area->floor;break;
     case 0x9d:
-        t->remaining=as_float(a[0]);if(!isfinite(t->remaining)||t->remaining<0||t->remaining>3600)return fail(error,"Invalid story wait duration");
+        /* fn_801CA4F8 loops while elapsed < duration: a negative duration
+         * (common bank 05960006 computes -0.5) returns at once. */
+        t->remaining=as_float(a[0]);if(!isfinite(t->remaining)||t->remaining>3600)return fail(error,"Invalid story wait duration");
+        if(t->remaining<0)t->remaining=0;
         t->wait=W_SECONDS;return 1;
     case 0xb3:
         s->camera_mode=0;s->camera_playing=0;s->camera_person=&s->hero_actor;
