@@ -560,11 +560,40 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                         kind==3?"talk":kind==2?"touch":kind==1?"door":"none",(unsigned long)id,(unsigned long)set);
                     if(kind==3){
                         C3StoryActor *actor=c3_field_story_actor(&story,id);
-                        float yaw=actor->pose.yaw,reach=12.0f*map.scale;
-                        player.position[0]=actor->pose.position[0]+sinf(yaw)*reach;
-                        player.position[1]=actor->pose.position[1];
-                        player.position[2]=actor->pose.position[2]+cosf(yaw)*reach;
-                        player.yaw=yaw+3.14159265f;memcpy(player.proposed,player.position,sizeof player.position);
+                        const C3AreaActor *source=NULL;
+                        for(uint32_t i=0;i<area.actor_count;++i)if(area.actors[i].index==id){source=area.actors+i;break;}
+                        /* Stand where a player could: on ground, with no wall
+                         * between the person and the spot and no other person
+                         * on it. Front first, then around (45 degree steps). */
+                        float yaw=actor->pose.yaw,reach=map.radius+(source?source->radius:4.0f*map.scale)+3.0f*map.scale;
+                        float spot[3]={0},best[3];int found=0;
+                        best[0]=actor->pose.position[0]+sinf(yaw)*reach;best[1]=actor->pose.position[1];
+                        best[2]=actor->pose.position[2]+cosf(yaw)*reach;
+                        for(int k=0;k<8&&!found;++k){
+                            static const int order[8]={0,1,-1,2,-2,3,-3,4};
+                            float angle=yaw+(float)order[k]*0.785398163f;
+                            C3FieldPlayer probe=player;probe.collision_count=0;
+                            probe.position[0]=actor->pose.position[0]+sinf(angle)*reach;
+                            probe.position[1]=actor->pose.position[1];
+                            probe.position[2]=actor->pose.position[2]+cosf(angle)*reach;
+                            memcpy(spot,probe.position,sizeof spot);
+                            if(!c3_field_resolve_position(&map,&probe,actor->pose.position)||probe.collision_count)continue;
+                            if(fabsf(probe.position[1]-actor->pose.position[1])>6.0f*map.scale)continue;
+                            int crowded=0;
+                            for(uint32_t j=0;j<area.actor_count&&!crowded;++j){
+                                if(area.actors[j].index==id)continue;
+                                C3StoryActor *other=c3_field_story_actor(&story,area.actors[j].index);
+                                if(!other||!other->visible)continue;
+                                float dx=other->pose.position[0]-spot[0],dz=other->pose.position[2]-spot[2];
+                                crowded=hypotf(dx,dz)<map.radius+area.actors[j].radius;
+                            }
+                            if(crowded)continue;
+                            memcpy(best,probe.position,sizeof best);found=1;
+                        }
+                        memcpy(player.position,best,sizeof best);
+                        player.yaw=atan2f(actor->pose.position[0]-best[0],actor->pose.position[2]-best[2]);
+                        memcpy(player.proposed,player.position,sizeof player.position);
+                        if(!found)campaign_line("floor=%03lx talk=%lu spot=fallback",(unsigned long)map.floor,(unsigned long)id);
                         if(!c3_field_story_interact(&story,story_error))goto story_failed;
                     }else if(kind==2){if(c3_field_story_touch(&story,id,story_error)<0)goto story_failed;}
                     else if(kind==1){if(!c3_field_story_transition(&story,id,story_error))goto story_failed;}
