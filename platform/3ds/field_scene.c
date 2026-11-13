@@ -1124,9 +1124,11 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
             if(naming)c3_name_entry_draw(&name_entry,bottom,"PARTNER'S NAME");
             else if(shopping)c3_shop_menu_draw(&shop_menu,state,bottom,profile->label);
             else if(page==PAUSE_MAIN&&ingame->active)c3_ingame_draw_to(ingame,state,bottom);
-            else if(page==PAUSE_CLOSED&&phase==FIELD_CONTROL&&view->control&&!view->dialogue&&!view->blocked[0]&&
+            else if(page==PAUSE_CLOSED&&(phase==FIELD_CONTROL||phase==FIELD_FADE_IN)&&!view->dialogue&&!view->blocked[0]&&
                     hub_menu_ready(ingame,state)>=0){
-                /* The P*DA in-game menu hub is the field bottom screen. */
+                /* The P*DA in-game menu hub is the field bottom screen, also
+                 * while an event runs without a message (taps open it only
+                 * when the hero has control). */
                 ingame->idle=1;ingame->page=C3_GAME_HUB;c3_ingame_draw_to(ingame,state,bottom);
             }
             else c3_field_ui_draw_to(bottom,&summary,phase,page,selection,yes,message,view,&ui_pager);

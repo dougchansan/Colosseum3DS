@@ -47,12 +47,9 @@ void c3_field_ui_draw_to(C3BottomUi *ui,const C3GameSummary *summary,FieldPhase 
     }else if(page==PAUSE_CLOSED&&story&&story->dialogue){
         c3_ui_dialogue(ui,pager,story->message,story->choice,!story->choice_no);
     }else if(page==PAUSE_CLOSED){
-        for(unsigned i=0;i<2;++i){
-            snprintf(text,sizeof text,"%s  Lv.%u",pokemon_name(summary->party[i].species),summary->party[i].level);
-            c3_ui_hp(ui,9,65+(int)i*58,302,text,summary->party[i].hp,summary->party[i].max_hp);
-            experience(ui,&summary->party[i],19,113+(int)i*58,282,1);
-        }
-        c3_ui_text(ui,18,184,284,1,story&&!story->control?"An event is running...":"Circle Pad / D-pad: move",C3_UI_MUTED);
+        /* Only when the P*DA hub cannot be shown (the field scene draws it
+         * in its place): a short status, no party panel. */
+        c3_ui_text(ui,18,80,284,1,story&&!story->control?"An event is running...":"Circle Pad / D-pad: move",C3_UI_MUTED);
         c3_ui_footer(ui,"A: talk / inspect   X / START: menu");
     }else if(page==PAUSE_MAIN){
         static const char *const labels[]={"RESUME","POKEMON","SAVE","MAIN MENU"};
