@@ -151,6 +151,17 @@ static int campaign_try(uint64_t key)
     if(campaign.tried_count<CAMPAIGN_TRIED)campaign.tried[campaign.tried_count++]=key;
     return 1;
 }
+#define CAMPAIGN_TRIED_PATH "sdmc:/3ds/Colosseum3DS/campaign/tried.bin"
+static void campaign_load_tried(void)
+{
+    FILE *f=fopen(CAMPAIGN_TRIED_PATH,"rb");
+    if(f){campaign.tried_count=(unsigned)fread(campaign.tried,sizeof campaign.tried[0],CAMPAIGN_TRIED,f);fclose(f);}
+}
+static void campaign_store_tried(void)
+{
+    FILE *f=fopen(CAMPAIGN_TRIED_PATH,"wb");
+    if(f){fwrite(campaign.tried,sizeof campaign.tried[0],campaign.tried_count,f);fclose(f);}
+}
 static void campaign_line(const char *format,...)
 {
     if(!campaign.log){campaign.log=fopen("sdmc:/3ds/Colosseum3DS/campaign/campaign-log.txt","a");
@@ -449,9 +460,14 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                 }else if(view->blocked[0]){
                     /* An unprepared destination: reload this floor (the
                      * flags the script already wrote are kept). */
-                    campaign_line("floor=%03lx blocked reason=\"%s\" action=reload",(unsigned long)map.floor,view->blocked);
-                    if(!c3_game_state_set_floor(state,map.floor,summary.previous_floor,0)){result=-1;break;}
-                    result=2;break;
+                    /* Save and exit: the host watcher restarts the campaign
+                     * with fresh memory (an in-process reload of a full floor
+                     * can fragment the heap). The flags the script wrote stay. */
+                    int saved=c3_game_state_set_floor(state,map.floor,summary.previous_floor,0)&&
+                              save_game(state,save_path,trace,message,sizeof message);
+                    campaign_store_tried();
+                    campaign_line("floor=%03lx blocked reason=\"%s\" action=restart saved=%d",(unsigned long)map.floor,view->blocked,saved);
+                    result=1;break;
                 }
             }
             if(phase==FIELD_CONTROL&&page==PAUSE_CLOSED){
@@ -461,14 +477,17 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                     snprintf(shot,sizeof shot,"sdmc:/3ds/Colosseum3DS/campaign/%s.bmp",prefix);
                     int captured=frames>2&&c3_n3ds_capture_top(shot)==0;
                     int saved=save_game(state,save_path,trace,message,sizeof message);
+                    campaign_store_tried();
                     campaign_line("floor=%03lx first_arrival flags=%lu shot=%d saved=%d",(unsigned long)map.floor,(unsigned long)set,captured,saved);
                 }
                 if(view->control&&!view->dialogue&&!view->blocked[0]){busy=0;idle+=delta;}
                 else{idle=0;busy+=delta;}
                 if(busy>CAMPAIGN_STUCK_SECONDS){
-                    campaign_line("floor=%03lx stuck seconds=%.0f message=%05lx action=reload",(unsigned long)map.floor,(double)busy,(unsigned long)view->message_id);
-                    busy=0;if(!c3_game_state_set_floor(state,map.floor,summary.previous_floor,0)){result=-1;break;}
-                    result=2;break;
+                    int saved=c3_game_state_set_floor(state,map.floor,summary.previous_floor,0)&&
+                              save_game(state,save_path,trace,message,sizeof message);
+                    campaign_store_tried();
+                    campaign_line("floor=%03lx stuck seconds=%.0f message=%05lx action=restart saved=%d",(unsigned long)map.floor,(double)busy,(unsigned long)view->message_id,saved);
+                    busy=0;result=1;break;
                 }
                 if(idle>0.75f){
                     /* Choose the next event: untried at this flag state first. */
@@ -947,6 +966,12 @@ int c3_field_scene_tour(C3GameState *state,FILE *trace,char *error,size_t capaci
 int c3_field_scene_run(C3GameState *state,int new_game,const char *save_path,
                        FILE *trace,char *error,size_t capacity)
 {
+#ifdef C3_CAMPAIGN
+    /* Before any floor allocation: the log's buffers and the tried set must
+     * not sit between floor allocations. */
+    campaign.start_us=c3_n3ds_time_us();campaign_load_tried();
+    campaign_line("campaign_start new_game=%d tried=%u",new_game,campaign.tried_count);
+#endif
     if(new_game&&!c3_game_state_set_floor(state,1,0x03a0,0)){
         snprintf(error,capacity,"The original first-area checkpoint could not be prepared.");return -1;
     }
