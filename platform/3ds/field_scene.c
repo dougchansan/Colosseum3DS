@@ -418,6 +418,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     c3_field_story_set_floor_support(&story,floor_reachable);
     c3_field_story_bind_cameras(&story,event_cameras,event_camera_count);
     c3_field_story_enable_name_entry(&story,1);
+    c3_field_story_set_random(&story,c3_game_state_random16,state);
     c3_field_story_enable_shop(&story,1);
     c3_field_story_set_item_service(&story,receive_item,state);
     c3_field_story_set_party_service(&story,restore_party,state);
@@ -911,6 +912,12 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     goto done;
 story_failed:
     snprintf(error,capacity,"%s",story_error);result=-1;
+#ifdef C3_CAMPAIGN
+    /* The event that failed is already in the tried set: keep it there, so
+     * the restarted campaign (from the last save) moves on to other events. */
+    campaign_store_tried();
+    campaign_line("floor=%03lx script_error=\"%s\" action=restart",(unsigned long)map.floor,story_error);
+#endif
 done:
     c3_pda_audio_close();
     c3_ingame_close(ingame);

@@ -123,6 +123,9 @@ int c3_game_state_add_money(C3GameState *state, int64_t delta);
 int c3_game_state_get_flag(const C3GameState *state, uint32_t id,
                            uint32_t *value);
 int c3_game_state_set_flag(C3GameState *state, uint32_t id, uint32_t value);
+/* One draw of the state's shared 16-bit game RNG (HSD_Rand). The context is
+ * the C3GameState, so it can be handed to c3_field_story_set_random. */
+uint16_t c3_game_state_random16(void *state);
 
 /* Explicit user save: increment the original inner/outer save counters,
  * encode the full preserved payload, and retain the previous verified card

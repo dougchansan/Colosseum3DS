@@ -227,6 +227,12 @@ int c3_game_state_load(C3GameState *state, const char *path,
  * original global pointer. Unsigned wrap and its full 16-bit result matter. */
 static uint32_t random16(uint32_t *seed)
 { *seed=*seed*214013u+2531011u; return *seed>>16; }
+uint16_t c3_game_state_random16(void *state)
+{
+    C3GameState *game=state;
+    if (!game || !game->impl) return 0;
+    return (uint16_t)random16(&((GameStateImpl*)game->impl)->random);
+}
 
 static uint32_t random_low_first(uint32_t *seed)
 {
