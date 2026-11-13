@@ -82,6 +82,8 @@ void c3_field_story_set_floor_support(C3FieldStory *story,int (*supported)(uint3
 /* The shared 16-bit game RNG (fn_801ADCD8) for native 02. Unbound, that
  * native fails instead of inventing a value. */
 void c3_field_story_set_random(C3FieldStory *story,uint16_t (*next16)(void *context),void *context);
+/* Diagnostics: one "task:wait:script@pc:native" entry per waiting script. */
+void c3_field_story_describe_waits(const C3FieldStory *story,char *out,size_t capacity);
 /* Prepare runs the original audio/init/pre functions sequentially. Once the
  * arrival movie is done, enter starts the original main/movement tasks. */
 int c3_field_story_prepare(C3FieldStory *story, char *error);

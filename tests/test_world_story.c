@@ -150,6 +150,11 @@ static void event(const char *prefix, uint32_t floor, int kind, uint32_t id, uin
             if (!c3_field_story_interact(&s->story, error)) goto done;
         }
         if (!run(s, 3600, &frames, &next)) goto done;
+        if (frames >= 3600) {
+            char waits[512]; c3_field_story_describe_waits(&s->story, waits, sizeof waits);
+            fprintf(report, "world_wait prefix=%s floor=%03lx event=%s id=%lu waits=%s\n",
+                    prefix, (unsigned long)floor, KIND[kind], (unsigned long)id, waits);
+        }
     }
     status = c3_field_story_view(&s->story)->blocked[0] ? "blocked" : "ok";
     if (!strcmp(status, "blocked")) snprintf(error, sizeof error, "%s", c3_field_story_view(&s->story)->blocked);

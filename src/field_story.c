@@ -56,6 +56,7 @@ typedef struct {
     FILE *trace;
     uint16_t setup_key, talk_key, event_key, post_key, main_key, exit_fade_key;
     int setup_stage, preparing, entered, hero_ready, event_depth, departure_started;
+    int event_depth_base; /* event_depth when the current talk/event script started */
     int camera_mode, camera_playing;
     float fade_elapsed, fade_duration, fade_from, fade_to, camera_rate;
     float camera_from[3],camera_to[3],camera_direction[3],camera_move_time,camera_move_duration;
@@ -207,6 +208,7 @@ static void note_presentation(Impl *s,uint32_t native,const char *reason)
 static int start(Impl *s,uint32_t script,const uint32_t *args,uint32_t argc,uint16_t *key,char *error)
 {
     if(!script){*key=0;return 1;}
+    if(key==&s->talk_key||key==&s->event_key)s->event_depth_base=s->event_depth;
     RunTask *t=NULL;
     for(unsigned i=0;i<C3_STORY_TASKS;++i)
         if(!s->tasks[i].key||!c3_story_active(&s->vm,s->tasks[i].key)){t=s->tasks+i;break;}
@@ -1156,6 +1158,26 @@ void c3_field_story_close(C3FieldStory *story)
     if(!story||!story->impl)return;
     Impl *s=story->impl;c3_story_free(&s->vm);free(s);story->impl=NULL;
 }
+void c3_field_story_describe_waits(const C3FieldStory *story,char *out,size_t capacity)
+{
+    static const char *const names[]={"none","seconds","task","motion","move","camera","camera_move",
+        "fade","message","choice","tv","battle","name","item","door","shop","dialog"};
+    const Impl *s=story?story->impl:NULL;size_t used=0;
+    if(!out||!capacity)return;
+    out[0]=0;if(!s)return;
+    {int n=snprintf(out,capacity,"depth=%d ready=%d event=%u/%d talk=%u ",s->event_depth,s->hero_ready,
+        (unsigned)s->event_key,s->event_key?c3_story_active(&((Impl*)s)->vm,s->event_key):0,(unsigned)s->talk_key);
+     if(n>0)used=(size_t)n<capacity?(size_t)n:capacity-1;}
+    for(unsigned i=0;i<C3_STORY_TASKS&&used+1<capacity;++i){
+        const RunTask *t=s->tasks+i;
+        if(!t->key||t->wait==W_NONE)continue;
+        int n=snprintf(out+used,capacity-used,"%s%u:%s:%08lx@%lx:%02lx(%lx,%lx)",used?" ":"",(unsigned)t->key,
+            (unsigned)t->wait<sizeof names/sizeof names[0]?names[t->wait]:"?",(unsigned long)t->call.script_id,
+            (unsigned long)t->call.pc,(unsigned long)t->call.native,(unsigned long)t->call.args[0],(unsigned long)t->call.args[1]);
+        if(n<0)break;
+        used+=(size_t)n<capacity-used?(size_t)n:capacity-used-1;
+    }
+}
 void c3_field_story_set_random(C3FieldStory *story,uint16_t (*next16)(void *context),void *context)
 {
     Impl *s=story?story->impl:NULL;if(s){s->random16=next16;s->random_context=context;}
@@ -1503,8 +1525,15 @@ int c3_field_story_tick(C3FieldStory *story,float seconds,uint16_t pressed,char 
     if(s->talk_key&&!c3_story_active(&s->vm,s->talk_key)){
         log_line(s,"story_talk_complete task=%u",s->talk_key);
         s->talk_key=0;close_message(s);restore_speakers(s);
+        /* heroMoveInitEvent (native 20) without its heroMoveTermEvent:
+         * an event branch may return early (Phenac fn 27 when flag 9a2 is
+         * set). The hero move lock belongs to the event, so it ends with it. */
+        if(!s->event_key&&s->event_depth>s->event_depth_base)s->event_depth=s->event_depth_base;
     }
-    if(s->event_key&&!c3_story_active(&s->vm,s->event_key))s->event_key=0;
+    if(s->event_key&&!c3_story_active(&s->vm,s->event_key)){
+        s->event_key=0;
+        if(!s->talk_key&&s->event_depth>s->event_depth_base)s->event_depth=s->event_depth_base;
+    }
     if(s->pending_floor&&!s->departure_started){
         /* The original scene runs its post callback on departure. Suspend
          * other floor tasks before it so no more input or event can race it. */
