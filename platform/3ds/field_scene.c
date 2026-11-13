@@ -335,8 +335,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         /* A checkpoint whose entrance this floor's table lacks (a door that
          * leads to an entrance the prepared pack does not list): enter by
          * the first entrance and record it, rather than refusing the save. */
-        if(trace){fprintf(trace,"field_spawn_fallback floor=%lu spawn=%u used=0
-",(unsigned long)map.floor,summary.spawn);fflush(trace);}
+        if(trace){fprintf(trace,"field_spawn_fallback floor=%lu spawn=%u used=0\n",(unsigned long)map.floor,summary.spawn);fflush(trace);}
         if(!c3_field_spawn(&map,0,&player)){snprintf(error,capacity,"The saved area entrance is unavailable.");goto done;}
     }
     arrival_count=(profile->features&C3_FLOOR_ARRIVAL)&&opening_done&&!arrival_done?map.arrival_pack_count:0;
