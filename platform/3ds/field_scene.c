@@ -3,6 +3,7 @@
 #include "game_ui_views.h"
 #include "ingame_menu.h"
 #include "pack_cache.h"
+#include "pack_loader.h"
 #include "pda_preview.h"
 #include "pda_audio.h"
 #include "movie_player.h"
@@ -113,15 +114,10 @@ static int field_species_name(void *context,unsigned species,char *out,size_t ca
     if(!menu||!menu->active||!menu->assets.data||!c3_pda_species(&menu->assets,species,&entry))return 0;
     return c3_pda_text(&menu->assets,entry.name,"","",out,capacity);
 }
-/* Trace one pack load: size, wall time, and the title loader's split into
- * stream decompression and decoding. */
-static void pack_trace(FILE *trace,const char *path,size_t bytes,uint64_t start)
+/* Top-screen progress while the pack jobs run (main thread). */
+static void load_progress(size_t done,size_t total)
 {
-    uint64_t unpack=0,decode=0;
-    if(!trace)return;
-    c3_title_last_load(&unpack,&decode);
-    fprintf(trace,"field_pack_load file=%s bytes=%lu us=%llu unpack_us=%llu decode_us=%llu\n",path,(unsigned long)bytes,
-            (unsigned long long)(c3_n3ds_time_us()-start),(unsigned long long)unpack,(unsigned long long)decode);
+    c3_n3ds_top_loading(total?(float)done/(float)total:1.0f);
 }
 static int floor_reachable(uint32_t floor)
 {
@@ -393,42 +389,57 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     storage=calloc(count,sizeof(*storage));
     if(!storage){snprintf(error,capacity,"Field model allocation failed.");goto done;}
     c3_bottom_screen_notice(profile->label,"Loading the area...","Please wait...");
-    unsigned load_total=map.map_pack_count+1u+arrival_count,load_done=0;
+    unsigned load_total=map.map_pack_count+1u+arrival_count;
     for(uint32_t i=0;i<area.actor_count;++i)load_total+=area.actors[i].file[0]!=0;
     for(uint32_t i=0;i<doors.count;++i)load_total+=doors.rows[i].file[0]!=0;
     c3_n3ds_top_loading(0.0f);
-    for(uint32_t i=0;i<map.map_pack_count+1u+arrival_count;++i){
-        if(i<map.map_pack_count)snprintf(path,sizeof path,BOOT_ROOT "%s_map%lu.c3t",prefix,(unsigned long)i);
-        else if(i==wes_index)snprintf(path,sizeof path,BOOT_ROOT "%s_wes.c3t",prefix);
-        else snprintf(path,sizeof path,BOOT_ROOT "%s_arrival%lu.c3t",prefix,(unsigned long)(i-arrival_index));
-        pack_us=c3_n3ds_time_us();
-        if(!c3_pack_cache_load(storage+i,path,error,capacity))goto done;
-        pack_trace(trace,path,storage[i].file_bytes,pack_us);
-        snprintf(model_paths[i],sizeof model_paths[i],"%s",path);
-        ++opened;models[i]=storage+i;c3_n3ds_top_loading((float)++load_done/(float)load_total);
-        if(!c3_title_animate(storage+i,0,0)){snprintf(error,capacity,"Initial field animation failed.");goto done;}
+    /* Every pack is a job with a fixed slot (the same order as before):
+     * the main core and the New 3DS's second core load them in parallel,
+     * then the slots are bound and posed in order on this thread. */
+    C3PackJob *jobs=calloc(load_total?load_total:1u,sizeof *jobs);
+    if(!jobs){snprintf(error,capacity,"Not enough memory for the load list.");goto done;}
+    {
+        unsigned job=0,slot=0;
+        for(uint32_t i=0;i<map.map_pack_count+1u+arrival_count;++i,++job,++slot){
+            if(i<map.map_pack_count)snprintf(jobs[job].path,sizeof jobs[job].path,BOOT_ROOT "%s_map%lu.c3t",prefix,(unsigned long)i);
+            else if(i==wes_index)snprintf(jobs[job].path,sizeof jobs[job].path,BOOT_ROOT "%s_wes.c3t",prefix);
+            else snprintf(jobs[job].path,sizeof jobs[job].path,BOOT_ROOT "%s_arrival%lu.c3t",prefix,(unsigned long)(i-arrival_index));
+            jobs[job].title=storage+slot;
+        }
+        for(uint32_t i=0;i<area.actor_count;++i)if(area.actors[i].file[0]){
+            snprintf(jobs[job].path,sizeof jobs[job].path,BOOT_ROOT "%s",area.actors[i].file);jobs[job++].title=storage+slot++;}
+        for(uint32_t i=0;i<doors.count;++i)if(doors.rows[i].file[0]){
+            snprintf(jobs[job].path,sizeof jobs[job].path,BOOT_ROOT "%s",doors.rows[i].file);jobs[job++].title=storage+slot++;}
     }
-    for(uint32_t i=0;i<area.actor_count;++i)if(area.actors[i].file[0]){
-        snprintf(path,sizeof path,BOOT_ROOT "%s",area.actors[i].file);
-        C3Title *model=storage+opened;
-        pack_us=c3_n3ds_time_us();
-        if(!c3_pack_cache_load(model,path,error,capacity))goto done;
-        pack_trace(trace,path,model->file_bytes,pack_us);
-        snprintf(model_paths[opened],sizeof model_paths[opened],"%s",path);
-        models[opened++]=model;actor_models[i]=model;c3_n3ds_top_loading((float)++load_done/(float)load_total);
-        if(!c3_title_animate(model,area.actors[i].motions[0],0)){snprintf(error,capacity,"Original NPC idle motion is missing.");goto done;}
+    pack_us=c3_n3ds_time_us();
+    size_t failed=c3_pack_load_all(jobs,load_total,load_progress);
+    if(trace){fprintf(trace,"field_pack_jobs count=%u us=%llu\n",load_total,(unsigned long long)(c3_n3ds_time_us()-pack_us));}
+    for(unsigned j=0;j<load_total;++j){
+        if(trace)fprintf(trace,"field_pack_load file=%s bytes=%lu us=%llu ok=%d\n",jobs[j].path,
+                         (unsigned long)jobs[j].title->file_bytes,(unsigned long long)jobs[j].microseconds,jobs[j].ok);
     }
-    for(uint32_t i=0;i<doors.count;++i)if(doors.rows[i].file[0]){
-        snprintf(path,sizeof path,BOOT_ROOT "%s",doors.rows[i].file);
-        C3Title *model=storage+opened;
-        pack_us=c3_n3ds_time_us();
-        if(!c3_pack_cache_load(model,path,error,capacity))goto done;
-        pack_trace(trace,path,model->file_bytes,pack_us);
-        snprintf(model_paths[opened],sizeof model_paths[opened],"%s",path);
-        models[opened++]=model;door_models[i]=model;c3_n3ds_top_loading((float)++load_done/(float)load_total);
-        int rest=doors.rows[i].open_anim>=0?doors.rows[i].open_anim:0;
-        if(!c3_title_animate(model,(uint32_t)rest,0)){snprintf(error,capacity,"Original door clip is missing.");goto done;}
+    opened=load_total; /* every slot; `done` closes them, loaded or not */
+    if(failed){snprintf(error,capacity,"%s",jobs[failed-1].error);free(jobs);goto done;}
+    {
+        unsigned job=0;
+        for(uint32_t i=0;i<map.map_pack_count+1u+arrival_count;++i,++job){
+            snprintf(model_paths[i],sizeof model_paths[i],"%s",jobs[job].path);models[i]=storage+i;
+            if(!c3_title_animate(storage+i,0,0)){snprintf(error,capacity,"Initial field animation failed.");free(jobs);goto done;}
+        }
+        uint32_t slot=map.map_pack_count+1u+arrival_count;
+        for(uint32_t i=0;i<area.actor_count;++i)if(area.actors[i].file[0]){
+            C3Title *model=storage+slot;snprintf(model_paths[slot],sizeof model_paths[slot],"%s",jobs[job++].path);
+            models[slot++]=model;actor_models[i]=model;
+            if(!c3_title_animate(model,area.actors[i].motions[0],0)){snprintf(error,capacity,"Original NPC idle motion is missing.");free(jobs);goto done;}
+        }
+        for(uint32_t i=0;i<doors.count;++i)if(doors.rows[i].file[0]){
+            C3Title *model=storage+slot;snprintf(model_paths[slot],sizeof model_paths[slot],"%s",jobs[job++].path);
+            models[slot++]=model;door_models[i]=model;
+            int rest=doors.rows[i].open_anim>=0?doors.rows[i].open_anim:0;
+            if(!c3_title_animate(model,(uint32_t)rest,0)){snprintf(error,capacity,"Original door clip is missing.");free(jobs);goto done;}
+        }
     }
+    free(jobs);
 #ifdef C3_CAMPAIGN
     {static int loading_shot;if(!loading_shot){loading_shot=1;(void)c3_n3ds_capture_top("sdmc:/3ds/Colosseum3DS/campaign/loading.bmp");}}
 #endif
