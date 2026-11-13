@@ -577,15 +577,32 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                         float spot[3]={0},best[3];int found=0;
                         best[0]=actor->pose.position[0]+sinf(yaw)*reach;best[1]=actor->pose.position[1];
                         best[2]=actor->pose.position[2]+cosf(yaw)*reach;
-                        for(int k=0;k<8&&!found;++k){
+                        /* Pass 0: a clear line to the person. Passes 1-2: across
+                         * a counter or table, a spot clear of walls all around,
+                         * at this reach and then at the edge of talk range. */
+                        float limit=12.0f*map.scale+map.radius+(source?source->radius:4.0f*map.scale)-0.5f*map.scale;
+                        for(int k=0;k<24&&!found;++k){
                             static const int order[8]={0,1,-1,2,-2,3,-3,4};
-                            float angle=yaw+(float)order[k]*0.785398163f;
+                            int pass=k/8;float r=pass==2?limit:reach;
+                            float angle=yaw+(float)order[k%8]*0.785398163f;
                             C3FieldPlayer probe=player;probe.collision_count=0;
-                            probe.position[0]=actor->pose.position[0]+sinf(angle)*reach;
+                            probe.position[0]=actor->pose.position[0]+sinf(angle)*r;
                             probe.position[1]=actor->pose.position[1];
-                            probe.position[2]=actor->pose.position[2]+cosf(angle)*reach;
+                            probe.position[2]=actor->pose.position[2]+cosf(angle)*r;
                             memcpy(spot,probe.position,sizeof spot);
-                            if(!c3_field_resolve_position(&map,&probe,actor->pose.position)||probe.collision_count)continue;
+                            if(pass==0){
+                                if(!c3_field_resolve_position(&map,&probe,actor->pose.position)||probe.collision_count)continue;
+                            }else{
+                                float ground;if(!c3_field_ground(&map,spot,&ground))continue;
+                                spot[1]=probe.position[1]=ground;int blocked=0;
+                                for(int side=0;side<4&&!blocked;++side){
+                                    float from[3]={spot[0]+(side==0?3.0f:side==1?-3.0f:0)*map.scale,ground,
+                                                   spot[2]+(side==2?3.0f:side==3?-3.0f:0)*map.scale};
+                                    C3FieldPlayer edge=probe;edge.collision_count=0;memcpy(edge.position,spot,sizeof spot);
+                                    blocked=!c3_field_resolve_position(&map,&edge,from)||edge.collision_count;
+                                }
+                                if(blocked)continue;
+                            }
                             if(fabsf(probe.position[1]-actor->pose.position[1])>6.0f*map.scale)continue;
                             int crowded=0;
                             for(uint32_t j=0;j<area.actor_count&&!crowded;++j){
