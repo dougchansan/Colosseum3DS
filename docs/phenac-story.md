@@ -77,10 +77,31 @@ private packs. 7,230 checks pass.
 
 The stadium is reached through Phenac surface 5 (no door) at the top of the
 north ramp; surface 4 (door 5) leads to floor 7, a house; surface 1 (door 2)
-leads to the Poke Mart. The Mart clerk (function 6) opens the shop with
-native `19(3)`, which is not lowered; the story does not need it here. Next
-stop in the original: back to the Outskirt Stand through the world map,
-where buying Poke Balls likely needs that shop native.
+leads to the Poke Mart. The Mart clerk (function 6) opens shop 3 with native `19`.
+
+## Shops (native 19)
+
+`menuShopOpen` stores the shop number and links to menu floor `0x38F`
+(`pocket_menu.fsys`). That archive's REL module 2 publishes, from its
+_prolog, the 4-byte shop entries (`lbl_80478E54`: u8, u8 kind, u16 offset)
+and the 0-terminated u16 item lists (`lbl_80478E44`) the shop menu reads.
+`tools/prepare_shop.py` writes them to a private `shops.c3h`; prices are the
+item records' bytes 6-7 (Poke Ball 200, Potion 300). Shop 3, the Phenac
+Mart, sells Potion, Super Potion and the status cures, and no Poke Balls,
+which is what its shopper says. Shops 1 and 2 include Poke Balls.
+
+The field story waits on native 19 with `view.shop`; the field scene shows
+the port's own bottom-screen menu (the original floor `0x38F` is not
+ported): the stock with prices and money, a quantity up to what the money
+covers, and a result. A purchase checks money, then bag space, and a
+refusal changes nothing. On a New 3DS (2026-11-12) the clerk opened the
+menu with the original stock; three Potions cost 900 (10000 to 9100), the
+bag showed Potion x8 (5 from the new game plus 3) and the clerk's script
+resumed when the shop was left. Selling and the prize-coupon counters
+(kinds 1-4) are not ported.
+
+Next stop in the original: back to the Outskirt Stand through the world
+map, to buy Poke Balls.
 
 Memory: with six door object packs each carrying the 1024x1024 town atlas,
 Phenac needed 90.6 MB of the 94.8 MB heap and a second load in one session
