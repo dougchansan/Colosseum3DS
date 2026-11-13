@@ -304,8 +304,11 @@ static int set_motion(Impl *s,Person *p,uint32_t source_clip,uint32_t frame,uint
          * distinct source0 at bundle3. Never alias that animation to idle. */
         clip=source_clip==0?3:source_clip==1?s->map->idle_clip:source_clip==2?s->map->walk_clip:s->map->run_clip;
     }
-    if(!p->public.model||clip>=p->public.model->clip_count)
-        return fail(error,"Actor %lu source motion %lu is not prepared",(unsigned long)p->public.index,(unsigned long)source_clip);
+    if(!p->public.model||clip>=p->public.model->clip_count){
+        /* A clip this actor's prepared pack lacks (or a stand-in model): the
+         * actor keeps its current motion, and the gap is recorded. */
+        note_presentation(s,0x33,"actor_motion_missing_kept_current");return 1;
+    }
     C3FieldPlayer *q=pose(s,p);
     int restart=p->public.clip!=clip||!p->public.playing||(!p->public.loop&&q->animation_seconds>=clip_seconds(&p->public));
     p->public.clip=clip;p->public.loop=!!loop;p->public.playing=1;
