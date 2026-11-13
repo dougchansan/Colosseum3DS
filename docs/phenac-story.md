@@ -1,10 +1,9 @@
 # Phenac City (floor 0x03) as a story floor
 
 Phenac City's original field bank `013E0E00` now runs on the native story
-adapter from the world-map arrival. This page records what the original
-script does there, what the port executes, and every shortcut. It is host
-evidence only: Phenac has not been drawn by the 3DS field scene yet (see
-"Not done").
+adapter from the world-map arrival, on the host and on a New 3DS. This page
+records what the original script does there, what the port executes, and
+every shortcut. The console run is under "Hardware run, 2026-11-12".
 
 ## What runs (host, original script and packs)
 
@@ -48,19 +47,42 @@ private packs. 7,230 checks pass.
 | Jingle wait | Native `82` blocks for the jingle length, which lives in the sound data; the port waits two seconds | trace `jingle_backend_pending_wait_2s` |
 | Presentation natives | `7E` head tracking, `83` "!" emote, `89`/`DA` audio are recorded as unrendered | trace `story_presentation` |
 | Gaze test | Native `A9` omits the original wall query between the person and the hero | comment at the native |
-| Doors | Kind-2 links to `05960005` are skipped: native `60` and the door table are not ported | trace `door_open_event_unported` |
-| Touch position | The touch query uses the position after wall correction; the original samples the uncorrected step | `platform/3ds/field_scene.c` |
+| Door sounds | Native `60` plays the door's clip and changes its flag and collision; the door sound is recorded as unrendered | trace `door_sound_backend_pending` |
+
+## Doors and fences
+
+- Each floor's door-table rows (`floor_event.c` FloorDoorEntry) are written
+  by `prepare_story.py --doors-only` as `<prefix>.c3d` (C3D1) with the object
+  pack of each door. Phenac's six doors are map models 0-5 (open clip 0,
+  close clip 1), now object packs that rest until native `60` plays a clip;
+  as looping map geometry they swung open and shut.
+- The arrival is boxed in by CCD object 40 until the partner event sets flag
+  `0x3E4` (function 2 and the partner event disable it with native `76`).
+  The mayor's door is boxed by object 41, whose own touch surfaces (source
+  11) run function 27; it sets flag `0x9A2` and removes the box.
+- Touches use the step before wall correction, as `people.c` passes it to
+  `GScolsys2ThruGetEventID`; with the corrected position the fence's touch
+  surface was unreachable and the story stopped at the mayor's door.
 
 ## Not done
 
-- The 3DS field scene cannot load Phenac yet: it needs 35 model packs and
-  the stage renderer is bounded at 16 models.
-- Natives `60` (doors), `77` (item gift), `B1` (walk up to a person), `D8`
-  (party heal) and `E8` (follower step-aside) are unported; they belong to
-  later Phenac events.
-- Phenac's interiors (floors 4-13, `0x77`) have no packs or profiles, so
-  every doorway except the three world-map exits leads nowhere yet.
-- No audio, no partner follower, no physical New 3DS run of any of this.
+- No audio, no partner follower, no door sounds.
+- Battle 14 is still skipped as a win (above).
+- "Rui became a partner!" is followed by question marks: a message control
+  code the field text does not interpret yet.
+- The saved partner name defaults to "N/A" on the naming keyboard.
+- Most Phenac interiors have not been entered on hardware yet; the mayor's
+  house has.
+
+## Hardware run, 2026-11-12 (build 57d11bd, New 3DS)
+
+From a save moved to floor 3: the arrival event and the skipped battle 14,
+talking to the sack, naming the partner on the keyboard ("Rui"), the
+partner joining, then a planned walk (stick legs searched on the host with
+`c3_field_move` and the touch query against the prepared collision) to the
+fence at the mayor's door. Its event played, the door opened and the
+mayor's house (floor 5) loaded with the mayor's welcome. Phenac ran at about
+28 fps with GPU-skinned people and GPU-native textures.
 
 ## Regenerating the private packs
 
