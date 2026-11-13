@@ -174,6 +174,9 @@ typedef struct {
     uint32_t vertices_gpu;      /* visible gpu_batches vertices, skinned by the GPU */
 } C3TitlePerf;
 void c3_title_perf_clock(uint64_t (*now_us)(void));
+/* Time split of the most recent pack load (needs the perf clock): stream
+ * decompression and decoding, in microseconds. */
+void c3_title_last_load(uint64_t *unpack_us, uint64_t *decode_us);
 void c3_title_perf_take(C3TitlePerf *out);
 /* Running animate_us of the current interval, for callers that time a pass
  * which also samples animation and want the remainder. */

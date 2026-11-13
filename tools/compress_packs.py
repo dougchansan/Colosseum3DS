@@ -14,6 +14,8 @@ import struct
 import subprocess
 import zlib
 
+import pack_textures
+
 MAGICS = {b"C3Z1": "zlib", b"C3Z2": "zstd"}
 
 
@@ -40,16 +42,28 @@ def decompress_pack(data):
     return raw
 
 
-def compress_directory(directory, codec="zstd", level=None, pattern="*.c3t"):
+def compress_directory(directory, codec="zstd", level=None, pattern="*.c3t", max_texture=None):
     wanted = b"C3Z2" if codec == "zstd" else b"C3Z1"
     before = after = changed = 0
     for path in sorted(Path(directory).glob(pattern)):
         data = path.read_bytes()
-        if data[:4] == wanted:
+        if data[:4] == wanted and not max_texture:
             before += struct.unpack_from("<I", data, 4)[0]
             after += len(data)
             continue
         raw = decompress_pack(data)
+        if max_texture and len(raw) > 112 and raw[112] == 0:
+            # Screen-sized GPU textures (tools/pack_textures.py): opaque
+            # images become RGB565 with mips, capped at max_texture texels.
+            try:
+                repacked = pack_textures.repack(raw, max_texture)
+                raw = repacked[0] if isinstance(repacked, tuple) else repacked
+            except ValueError:
+                pass
+        elif data[:4] == wanted:
+            before += len(raw)
+            after += len(data)
+            continue
         packed = compress_pack(raw, codec, level)
         if decompress_pack(packed) != raw:
             raise ValueError("Compressed pack round trip failed: %s" % path)
@@ -67,8 +81,10 @@ def main():
     parser.add_argument("directory", type=Path)
     parser.add_argument("--codec", choices=("zstd", "zlib"), default="zstd")
     parser.add_argument("--level", type=int)
+    parser.add_argument("--max-texture", type=int, choices=(128, 256, 512, 1024),
+                        help="Also re-encode textures for the GPU, capped at this size")
     args = parser.parse_args()
-    report = compress_directory(args.directory, args.codec, args.level)
+    report = compress_directory(args.directory, args.codec, args.level, max_texture=args.max_texture)
     ratio = report["raw_bytes"] / max(report["stored_bytes"], 1)
     print("compressed %d packs: %.1f MB -> %.1f MB (%.2fx)" % (
         report["compressed"], report["raw_bytes"] / 1e6, report["stored_bytes"] / 1e6, ratio))

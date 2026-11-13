@@ -441,9 +441,20 @@ static size_t feed_memory(void *context, const uint8_t **chunk)
     MemoryFeed *m=(MemoryFeed *)context; size_t n=m->left; *chunk=m->data; m->data+=n; m->left=0; return n;
 }
 
+static uint64_t (*perf_clock)(void);
+static uint64_t last_unpack_us, last_decode_us;
+static uint64_t load_now(void) { return perf_clock ? perf_clock() : 0; }
+void c3_title_last_load(uint64_t *unpack_us, uint64_t *decode_us)
+{
+    if (unpack_us) *unpack_us=last_unpack_us;
+    if (decode_us) *decode_us=last_decode_us;
+}
 static int adopt(C3Title *title, C3Title *temporary, char *error, size_t capacity)
 {
-    if (!decode_owned(temporary,error,capacity)) { c3_title_close(temporary); free(temporary); return 0; }
+    uint64_t started=load_now();
+    int decoded=decode_owned(temporary,error,capacity);
+    last_decode_us=load_now()-started;
+    if (!decoded) { c3_title_close(temporary); free(temporary); return 0; }
     c3_title_close(title); *title=*temporary; free(temporary);
     return 1;
 }
@@ -460,7 +471,10 @@ int c3_title_load_memory(C3Title *title, const void *data, size_t bytes, char *e
     if (!temporary->file_data) { free(temporary); return fail(error,capacity,"Not enough memory for title file"); }
     if (packed) {
         MemoryFeed feed={(const uint8_t *)data+8,bytes-8u};
-        if (!unpack_exact(((const uint8_t *)data)[3]=='2',temporary->file_data,raw,feed_memory,&feed)) {
+        uint64_t started=load_now();
+        int unpacked=unpack_exact(((const uint8_t *)data)[3]=='2',temporary->file_data,raw,feed_memory,&feed);
+        last_unpack_us=load_now()-started;
+        if (!unpacked) {
             c3_title_close(temporary); free(temporary); return fail(error,capacity,"Compressed title data is invalid");
         }
     } else memcpy(temporary->file_data,data,raw);
@@ -487,7 +501,9 @@ int c3_title_load(C3Title *title, const char *path, char *error, size_t capacity
             temporary->file_data=(uint8_t *)malloc(raw); temporary->file_bytes=raw;
             if (!temporary->file_data) { fclose(file); free(temporary); free(feed); return fail(error,capacity,"Not enough memory for title file"); }
             feed->file=file;
+            uint64_t started=load_now();
             int ok=unpack_exact(head[3]=='2',temporary->file_data,raw,feed_file,feed);
+            last_unpack_us=load_now()-started;
             free(feed);
             if (fclose(file)!=0) ok=0;
             if (!ok) { c3_title_close(temporary); free(temporary); return fail(error,capacity,"Compressed title read failed"); }
