@@ -312,6 +312,8 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     C3TitleCamera camera;C3TitleRenderStats stats={0};C3N3dsInput input={0};
     uint32_t opened=0,count=0,arrival_done=0,opening_done=0,arrival_count=0;
     unsigned wes_index=0,arrival_index=0,tv_index=UINT32_MAX,selection=0,frames=0;
+    /* Load timing for the trace: area start, each pack, first control. */
+    uint64_t load_start_us=c3_n3ds_time_us(),pack_us=0;int load_reported=0;
     int result=-1,yes=0,dirty=1,arrival_end_sampled=0,entered=0,lights_loaded=0;
     FieldPhase phase=FIELD_SETUP;PausePage page=PAUSE_CLOSED;
     float elapsed=0,phase_seconds=0,arrival_seconds=0;
@@ -379,7 +381,10 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         if(i<map.map_pack_count)snprintf(path,sizeof path,BOOT_ROOT "%s_map%lu.c3t",prefix,(unsigned long)i);
         else if(i==wes_index)snprintf(path,sizeof path,BOOT_ROOT "%s_wes.c3t",prefix);
         else snprintf(path,sizeof path,BOOT_ROOT "%s_arrival%lu.c3t",prefix,(unsigned long)(i-arrival_index));
+        pack_us=c3_n3ds_time_us();
         if(!c3_title_load(storage+i,path,error,capacity))goto done;
+        if(trace){fprintf(trace,"field_pack_load file=%s bytes=%lu us=%llu\n",path,(unsigned long)storage[i].file_bytes,
+            (unsigned long long)(c3_n3ds_time_us()-pack_us));}
         snprintf(model_paths[i],sizeof model_paths[i],"%s",path);
         ++opened;models[i]=storage+i;c3_n3ds_top_loading((float)++load_done/(float)load_total);
         if(!c3_title_animate(storage+i,0,0)){snprintf(error,capacity,"Initial field animation failed.");goto done;}
@@ -387,7 +392,10 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     for(uint32_t i=0;i<area.actor_count;++i)if(area.actors[i].file[0]){
         snprintf(path,sizeof path,BOOT_ROOT "%s",area.actors[i].file);
         C3Title *model=storage+opened;
+        pack_us=c3_n3ds_time_us();
         if(!c3_title_load(model,path,error,capacity))goto done;
+        if(trace){fprintf(trace,"field_pack_load file=%s bytes=%lu us=%llu\n",path,(unsigned long)model->file_bytes,
+            (unsigned long long)(c3_n3ds_time_us()-pack_us));}
         snprintf(model_paths[opened],sizeof model_paths[opened],"%s",path);
         models[opened++]=model;actor_models[i]=model;c3_n3ds_top_loading((float)++load_done/(float)load_total);
         if(!c3_title_animate(model,area.actors[i].motions[0],0)){snprintf(error,capacity,"Original NPC idle motion is missing.");goto done;}
@@ -395,7 +403,10 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     for(uint32_t i=0;i<doors.count;++i)if(doors.rows[i].file[0]){
         snprintf(path,sizeof path,BOOT_ROOT "%s",doors.rows[i].file);
         C3Title *model=storage+opened;
+        pack_us=c3_n3ds_time_us();
         if(!c3_title_load(model,path,error,capacity))goto done;
+        if(trace){fprintf(trace,"field_pack_load file=%s bytes=%lu us=%llu\n",path,(unsigned long)model->file_bytes,
+            (unsigned long long)(c3_n3ds_time_us()-pack_us));}
         snprintf(model_paths[opened],sizeof model_paths[opened],"%s",path);
         models[opened++]=model;door_models[i]=model;c3_n3ds_top_loading((float)++load_done/(float)load_total);
         int rest=doors.rows[i].open_anim>=0?doors.rows[i].open_anim:0;
@@ -780,6 +791,9 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         }
         if(phase==FIELD_FADE_IN&&phase_seconds>=(arrival?1.0f:.5f)){
             phase=FIELD_CONTROL;phase_seconds=0;dirty=1;
+            if(!load_reported&&trace){load_reported=1;
+                fprintf(trace,"field_load_to_control floor=%lu us=%llu\n",(unsigned long)map.floor,
+                        (unsigned long long)(c3_n3ds_time_us()-load_start_us));fflush(trace);}
         }
         if(phase==FIELD_CONTROL){
             if(page==PAUSE_CLOSED){
