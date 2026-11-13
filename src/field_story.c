@@ -13,7 +13,7 @@
 #define MAX_WAYPOINTS 64u /* Phenac actor 24 allocates 36 points (bank 013E0E00 fn 34). */
 
 typedef enum { W_NONE, W_SECONDS, W_TASK, W_MOTION, W_MOVE, W_CAMERA,
-               W_CAMERA_MOVE, W_FADE, W_MESSAGE, W_CHOICE, W_TV, W_BATTLE, W_NAME, W_ITEM, W_DOOR } Wait;
+               W_CAMERA_MOVE, W_FADE, W_MESSAGE, W_CHOICE, W_TV, W_BATTLE, W_NAME, W_ITEM, W_DOOR, W_SHOP } Wait;
 typedef struct {
     uint16_t key, child;
     C3StoryCall call;
@@ -64,6 +64,7 @@ typedef struct {
     uint32_t fight_result; /* fn_801EF634: last original fight result ID */
     uint32_t whiteout_floor,whiteout_previous,whiteout_spawn;int whiteout_valid;
     int name_entry_enabled;
+    int shop_enabled;
     uint16_t (*random16)(void *context);void *random_context;
     C3FieldStoryReceive receive;void *receive_context;
     const C3AreaDoor *door_rows;C3StoryDoor doors[C3_AREA_MAX_DOORS];uint32_t door_count;
@@ -104,7 +105,7 @@ static int validate_native(const Impl *s,const C3StoryCall *c,char *error)
         {0x3a,6,60},{0x3b,5,28},{0x3c,5,28},{0x3d,6,56},{0x3e,3,0},
         {0x3f,3,0},{0x40,3,0},{0x41,2,0},{0x42,5,0},{0x43,2,0},{0x44,3,4},{0x45,3,4},
         {0x46,5,0},{0x47,2,0},{0x48,3,0},{0x49,5,28},{0x4a,3,0},
-        {0x4c,2,0},{0x4d,2,0},{0x4e,1,0},{0x4f,1,0},{0x50,2,0},{0x51,1,0},{0x52,1,0},
+        {0x19,1,0},{0x4c,2,0},{0x4d,2,0},{0x4e,1,0},{0x4f,1,0},{0x50,2,0},{0x51,1,0},{0x52,1,0},
         {0x5c,0,0},{0x5d,0,0},{0x5e,0,0},{0x5f,2,0},{0x64,2,0},{0x65,4,14},
         {0x67,0,0},{0x68,3,0},{0x69,3,0},{0x6a,2,0},{0x6d,2,0},{0x72,2,0},{0x76,2,0},
         {0x7d,3,0},{0x7f,3,7},{0x88,0,0},{0x8a,4,0},{0x8c,5,30},{0x98,3,0},
@@ -514,6 +515,19 @@ static int run_native(Impl *s,RunTask *t,char *error)
         log_line(s,"story_name_entry mode=%lu index=%lu status=default_name_kept menu_ported=0",
                  (unsigned long)a[0],(unsigned long)a[1]);
         value=1;break;
+    case 0x19:
+        /* menuShopOpen (native table entry 0x19) stores the shop number and
+         * links to menu floor 0x38F, which runs the shop and returns. That
+         * floor is not ported; the scene shows the port's shop menu for the
+         * same shop and stock (colosseum3ds/shop.h) and reports when it is
+         * left. Without a scene the shop opens and closes at once. */
+        if(s->shop_enabled){
+            s->view.shop=a[0]+1u;
+            log_line(s,"story_shop shop=%lu status=waiting_scene",(unsigned long)a[0]);
+            t->wait=W_SHOP;return 1;
+        }
+        log_line(s,"story_shop shop=%lu status=closed menu_ported=0",(unsigned long)a[0]);
+        break;
     case 0x23:
         /* fn_801C9F00: heroSetStatus(0,0x18,active) and the follower state. */
         if(!c3_game_state_set_partner(s->game,a[0]!=0))return fail(error,"The partner state cannot be written");
@@ -814,7 +828,7 @@ static int wait_task(Impl *s,RunTask *t,float seconds,uint16_t *pressed,char *er
         {uint32_t answer=(uint32_t)s->view.choice_no;
          log_line(s,"story_choice answer=%lu",(unsigned long)answer);
          close_message(s);return resume(s,t,answer,error);}
-    case W_BATTLE:case W_NAME:return 1;
+    case W_BATTLE:case W_NAME:case W_SHOP:return 1;
     case W_DOOR:
         if(t->stage<s->door_count&&s->doors[t->stage].playing)return 1;
         if(s->event_depth)--s->event_depth;
@@ -861,6 +875,22 @@ int c3_field_story_name_result(C3FieldStory *story,const char *name,char *error)
         return resume(s,t,1,error);
     }
     return fail(error,"No name entry is waiting");
+}
+void c3_field_story_enable_shop(C3FieldStory *story,int enabled)
+{
+    Impl *s=story?story->impl:NULL;if(s)s->shop_enabled=enabled!=0;
+}
+int c3_field_story_shop_done(C3FieldStory *story,char *error)
+{
+    Impl *s=story?story->impl:NULL;
+    if(!s)return fail(error,"Invalid shop result");
+    for(unsigned i=0;i<C3_STORY_TASKS;++i){RunTask *t=s->tasks+i;
+        if(!t->key||t->wait!=W_SHOP)continue;
+        log_line(s,"story_shop shop=%lu status=closed",(unsigned long)(s->view.shop-1u));
+        s->view.shop=0;
+        return resume(s,t,0,error);
+    }
+    return fail(error,"No shop is waiting");
 }
 void c3_field_story_set_item_service(C3FieldStory *story,C3FieldStoryReceive receive,void *context)
 {

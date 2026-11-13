@@ -24,6 +24,7 @@ typedef struct C3FieldStoryView {
     int prepared, control, dialogue, choice, choice_no, tv_enabled;
     int camera_active;
     uint32_t name_entry; /* native 16 mode + 1 while the scene must collect a name */
+    uint32_t shop;       /* native 19 shop number + 1 while the scene shows the shop */
     float fade, camera_seconds;
     C3TitleCamera camera;
 } C3FieldStoryView;
@@ -47,6 +48,11 @@ int c3_field_story_battle_result(C3FieldStory *story,uint32_t result,char *error
  * ASCII characters; otherwise the saved default name is kept. */
 void c3_field_story_enable_name_entry(C3FieldStory *story,int enabled);
 int c3_field_story_name_result(C3FieldStory *story,const char *name,char *error);
+/* Native 19 (menuShopOpen). Enabled, it waits with view.shop set until the
+ * scene reports that the player left the shop; disabled, the shop closes at
+ * once. The scene performs the purchases itself (colosseum3ds/shop.h). */
+void c3_field_story_enable_shop(C3FieldStory *story,int enabled);
+int c3_field_story_shop_done(C3FieldStory *story,char *error);
 /* Item gifts (script native 77). receive adds `count` of `item` to the bag
  * as heroItemAddItemDataId does and writes the item's display name: 0 when
  * everything was added, a positive amount that did not fit, negative when

@@ -19,6 +19,7 @@
 #include "world_map_scene.h"
 #include "colosseum3ds/area_lights.h"
 #include "colosseum3ds/title.h"
+#include "colosseum3ds/shop.h"
 
 #include <3ds.h>
 #include <errno.h>
@@ -61,6 +62,16 @@ static uint8_t *open_pda(C3PdaAssets *assets)
        (data=malloc((size_t)length))&&(fread(data,1,(size_t)length,file)!=(size_t)length||
        !c3_pda_assets_open(assets,data,(size_t)length))){free(data);data=NULL;}
     if(file)fclose(file);
+    return data;
+}
+/* A whole prepared file from the boot directory (at most 1 MiB), or NULL. */
+static uint8_t *read_boot_file(const char *path,size_t *size)
+{
+    FILE *file=fopen(path,"rb");long length=0;uint8_t *data=NULL;
+    if(file&&!fseek(file,0,SEEK_END)&&(length=ftell(file))>0&&length<=1024*1024&&!fseek(file,0,SEEK_SET)&&
+       (data=malloc((size_t)length))&&fread(data,1,(size_t)length,file)!=(size_t)length){free(data);data=NULL;}
+    if(file)fclose(file);
+    if(data)*size=(size_t)length;
     return data;
 }
 /* Item service for script native 77. */
@@ -205,6 +216,8 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     uint64_t previous=0,next_console=0,next_trace=0,skin_actors=0;
     C3UiPager ui_pager={0};
     C3NameEntry name_entry;int naming=0;
+    C3ShopMenu shop_menu;C3ShopTable shop_table={0};C3PdaAssets shop_assets={0};
+    uint8_t *shop_pda=NULL,*shop_pack=NULL;size_t shop_pack_size=0;int shopping=0;
     C3IngameMenu *ingame=calloc(1,sizeof *ingame);
     C3PdaPreview *pda_preview=NULL;
     float pda_seconds=0;
@@ -333,6 +346,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     }
     c3_field_story_set_floor_support(&story,floor_reachable);
     c3_field_story_enable_name_entry(&story,1);
+    c3_field_story_enable_shop(&story,1);
     c3_field_story_set_item_service(&story,receive_item,state);
     c3_field_story_set_party_service(&story,restore_party,state);
     if(!c3_field_story_prepare(&story,story_error))goto story_failed;
@@ -363,6 +377,32 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                 if(!c3_field_story_name_result(&story,name_entry.text,story_error))goto story_failed;
                 if(trace){fprintf(trace,"name_entry_done length=%u\n",name_entry.length);fflush(trace);}
                 naming=0;
+            }
+            input.pressed=0;input.touch_pressed=false;
+        }
+        /* Script native 19 (menuShopOpen): the port's shop menu for the
+         * original stock while the event waits. It owns all input. A shop
+         * that cannot open (missing packs, nothing for sale) closes at once. */
+        if(view->shop&&!shopping&&page==PAUSE_CLOSED){
+            unsigned shop_number=view->shop-1u;
+            shop_pda=open_pda(&shop_assets);
+            shop_pack=read_boot_file(BOOT_ROOT "shops.c3h",&shop_pack_size);
+            if(shop_pda&&shop_pack&&c3_shop_table_open(&shop_table,shop_pack,shop_pack_size)&&
+               c3_shop_menu_open(&shop_menu,&shop_table,&shop_assets,shop_number)){shopping=1;dirty=1;}
+            else{free(shop_pda);free(shop_pack);shop_pda=shop_pack=NULL;
+                if(!c3_field_story_shop_done(&story,story_error))goto story_failed;}
+            if(trace){fprintf(trace,"shop_open shop=%u items=%u opened=%d\n",shop_number,shopping?shop_menu.count:0u,shopping);fflush(trace);}
+        }
+        if(shopping){
+            uint32_t money_before=summary.money;
+            C3ShopEvent shop_event=c3_shop_menu_update(&shop_menu,state,&shop_assets,input.pressed);
+            if(shop_event!=C3_SHOP_EVENT_NONE)dirty=1;
+            if(trace&&shop_menu.stage==C3_SHOP_MENU_MESSAGE&&shop_event==C3_SHOP_EVENT_CHANGED&&c3_game_state_summary(state,&summary)){
+                fprintf(trace,"shop_result item=%u quantity=%u money=%lu->%lu message=%s\n",shop_menu.items[shop_menu.cursor],
+                        shop_menu.quantity,(unsigned long)money_before,(unsigned long)summary.money,shop_menu.message);fflush(trace);}
+            if(shop_event==C3_SHOP_EVENT_CLOSE){
+                free(shop_pda);free(shop_pack);shop_pda=shop_pack=NULL;shopping=0;
+                if(!c3_field_story_shop_done(&story,story_error))goto story_failed;
             }
             input.pressed=0;input.touch_pressed=false;
         }
@@ -623,6 +663,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         if(dirty||input.pressed||now>=next_console){
             C3BottomUi *bottom=c3_bottom_screen_begin();
             if(naming)c3_name_entry_draw(&name_entry,bottom,"PARTNER'S NAME");
+            else if(shopping)c3_shop_menu_draw(&shop_menu,state,bottom,profile->label);
             else if(page==PAUSE_MAIN&&ingame->active)c3_ingame_draw_to(ingame,state,bottom);
             else c3_field_ui_draw_to(bottom,&summary,phase,page,selection,yes,message,view,&ui_pager);
             c3_bottom_screen_present();dirty=0;next_console=now+UINT64_C(100000);
@@ -665,6 +706,7 @@ done:
     c3_pda_audio_close();
     c3_ingame_close(ingame);
     free(ingame);
+    free(shop_pda);free(shop_pack);
     if(result<0)c3_n3ds_log_memory(trace,"field_failed");
     if(c3_render_recover(trace,"field",frames,result==1?C3_RECOVER_EXIT:C3_RECOVER_DRAIN)==C3_RECOVERY_EXIT)result=1;
     c3_pda_preview_close(&pda_preview);

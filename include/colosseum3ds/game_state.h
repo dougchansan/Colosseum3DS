@@ -104,6 +104,9 @@ int c3_game_state_set_partner_name(C3GameState *state, const char *name);
 int c3_game_state_set_options(C3GameState *state, uint8_t sound_mono,
                               uint8_t rumble_disabled);
 int c3_game_state_add_play_time(C3GameState *state, double seconds);
+/* Hero money (hero +0xA84). Adds a signed amount; refuses a result below 0
+ * or above 9,999,999 (the save's bound) and then changes nothing. */
+int c3_game_state_add_money(C3GameState *state, int64_t delta);
 
 /* Source-defined packed flag access. Writes are clipped to the definition's
  * bit width, like the original value setter. Script/event dispatch remains

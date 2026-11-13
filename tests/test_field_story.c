@@ -451,6 +451,19 @@ static void synthetic_regressions(void)
      memset(code,0,sizeof code);args[0]=0x9a0;native(code+3,0x52,1,args,1);args[0]=3;args[1]=0;native(code+3,0x64,2,args,1);
      synthetic_load(s,&game,file,code,0,0,0x1000003);CHECK(c3_field_story_enter(&s->story,error));
      error[0]=0;c3_field_story_tick(&s->story,0,0,error);CHECK(!strstr(error,"Unported native 52"));close_scene(s);
+     /* Native 19 (menuShopOpen): without a scene shop the shop closes at
+      * once; enabled, the script waits with view.shop = shop + 1 until the
+      * scene reports that the player left. */
+     memset(code,0,sizeof code);args[0]=3;native(code+3,0x19,1,args,1);args[0]=3;args[1]=0;native(code+3,0x64,2,args,1);
+     synthetic_load(s,&game,file,code,0,0,0x1000003);CHECK(c3_field_story_enter(&s->story,error));
+     CHECK(c3_field_story_tick(&s->story,0,0,error)&&!c3_field_story_view(&s->story)->shop);close_scene(s);
+     synthetic_load(s,&game,file,code,0,0,0x1000003);c3_field_story_enable_shop(&s->story,1);
+     CHECK(!c3_field_story_shop_done(&s->story,error));                         /* nothing waits yet */
+     CHECK(c3_field_story_enter(&s->story,error)&&c3_field_story_tick(&s->story,0,0,error));
+     CHECK(c3_field_story_view(&s->story)->shop==4);
+     for(unsigned i=0;i<3;++i)CHECK(c3_field_story_tick(&s->story,.1f,0,error)&&c3_field_story_view(&s->story)->shop==4);
+     CHECK(c3_field_story_shop_done(&s->story,error)&&!c3_field_story_view(&s->story)->shop);
+     CHECK(c3_field_story_tick(&s->story,0,0,error)&&!c3_field_story_shop_done(&s->story,error));close_scene(s);
      /* A door without a model takes its collision from its open state at
       * binding, like one with a model: here closed, so its object is on. */
      {C3AreaDoor closed_row={.index=7,.open_anim=0,.close_anim=1,.open_end_anim=-1,.close_end_anim=-1,.collision_id=1,

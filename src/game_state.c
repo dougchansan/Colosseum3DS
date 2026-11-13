@@ -482,6 +482,18 @@ int c3_game_state_add_play_time(C3GameState *state, double seconds)
     return 1;
 }
 
+int c3_game_state_add_money(C3GameState *state, int64_t delta)
+{
+    GameStateImpl *s=state?state->impl:NULL;
+    int64_t next;
+    if (!s) return 0;
+    next=(int64_t)be32(s->body+HERO+0xa84)+delta;
+    /* The save's validation bound (summary/decode reject more than this). */
+    if (next<0 || next>9999999) return 0;
+    put32(s->body+HERO+0xa84,(uint32_t)next);
+    return 1;
+}
+
 static int flag_range(const GameStateImpl *s, uint32_t id,
                        size_t *offset, unsigned *shift, unsigned *width)
 {

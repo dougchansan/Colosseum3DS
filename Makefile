@@ -313,6 +313,14 @@ inventory-check: build/test_inventory
 	./build/test_inventory
 test: inventory-check
 
+build/test_shop: tests/test_shop.c tests/test_game_state.c src/shop.c src/inventory.c src/pda.c src/bottom_ui.c src/game_state.c src/save.c src/decomp_pokemon.c build/save_codec.c include/colosseum3ds/shop.h $(HEADERS)
+	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_shop.c src/shop.c src/inventory.c src/pda.c src/bottom_ui.c src/game_state.c src/save.c src/decomp_pokemon.c build/save_codec.c $(LDFLAGS) -lm -o $@
+all: build/test_shop
+.PHONY: shop-check
+shop-check: build/test_shop
+	./build/test_shop
+test: shop-check
+
 build/test_pda_audio: tests/test_pda_audio.c platform/3ds/pda_audio.c platform/3ds/pda_audio.h platform/3ds/battle_audio_player.h | build
 	$(CC) $(CPPFLAGS) -Iplatform/3ds $(CFLAGS) tests/test_pda_audio.c platform/3ds/pda_audio.c $(LDFLAGS) -o $@
 
