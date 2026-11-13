@@ -359,6 +359,12 @@ static int run_native(Impl *s,RunTask *t,char *error)
     case 0x07:
         if(c->argc<3||a[1]!=1)return fail(error,"Only blocking original field messages are supported");
         return message_when_free(s,t,a[0],s->speaker,error);
+    case 0xe0:
+        /* winMsgOpenFieldWithSE(message, wait, 0, sound): the blocking field
+         * message of native 07 with a sound effect that is not yet played. */
+        if(c->argc<2||a[1]!=1)return fail(error,"Only blocking original field messages are supported");
+        note_presentation(s,0xe0,"message_sound_effect_silent");
+        return message_when_free(s,t,a[0],s->speaker,error);
     case 0x08: close_message(s);break;
     case 0x0b:
         s->dialog_owner=t->key;s->view.dialogue=1;s->view.choice=1;s->view.choice_no=0;
