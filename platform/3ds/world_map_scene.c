@@ -78,6 +78,11 @@ int c3_world_map_scene_run(C3GameState *state, FILE *trace, char *error, size_t 
             if ((input.pressed & C3_PAD_UP) && map.cursor) { --map.cursor; dirty = 1; note = NULL; }
             if ((input.pressed & C3_PAD_DOWN) && map.cursor + 1u < map.visible_count) { ++map.cursor; dirty = 1; note = NULL; }
             if (input.pressed & C3_PAD_A) choice = (int)map.cursor;
+#ifdef C3_CAMPAIGN
+            /* Campaign: visit the destinations in turn, one per world-map stop. */
+            { static uint32_t rotation; if (map.visible_count && choice < 0 && !(input.pressed & C3_PAD_B)) {
+                choice = (int)(rotation++ % map.visible_count); } }
+#endif
             if (input.pressed & C3_PAD_B) choice = -1;
             /* A tap selects a row; lifting the stylus on the same row goes. */
             if (input.touch_held || input.touch_released) {

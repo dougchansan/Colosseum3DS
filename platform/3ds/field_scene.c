@@ -23,6 +23,7 @@
 
 #include <3ds.h>
 #include <errno.h>
+#include <stdarg.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -118,6 +119,48 @@ int c3_field_scene_available(void)
 
 /* Optional first-person view; kept across floor loads like the recomp mod. */
 static C3FirstPerson first_person;
+#ifdef C3_CAMPAIGN
+/* Campaign build: an autopilot plays the story unattended. When the hero
+ * has control it starts the next event of the floor that was not yet tried
+ * at the current story-flag state (NPC talks first, then touch events, then
+ * doors; when all were tried, the least used door). Dialogue is advanced,
+ * choices take their default, name entry keeps a default name, shops close,
+ * encounter 10 is played in the battle scene with automatic A presses and
+ * other encounters are reported as wins until their battles are ported.
+ * Every step is logged to campaign/campaign-log.txt; the first arrival on a
+ * floor is captured and saved to the campaign's own save. */
+#define CAMPAIGN_HOURS 9.0
+#define CAMPAIGN_STUCK_SECONDS 150.0f
+#define CAMPAIGN_TRIED 32768u
+static struct {
+    FILE *log; uint64_t start_us; unsigned steps, floors_seen;
+    uint64_t tried[CAMPAIGN_TRIED]; unsigned tried_count;
+    uint16_t visits[0x400], uses[0x400][64];
+    uint8_t seen[0x400];
+} campaign;
+static uint32_t campaign_flags(C3GameState *state,uint32_t *set)
+{
+    uint32_t hash=2166136261u,value;*set=0;
+    for(uint32_t id=1;id<3593;++id)if(c3_game_state_get_flag(state,id,&value)&&value){
+        ++*set;hash=(hash^id)*16777619u;hash=(hash^value)*16777619u;}
+    return hash;
+}
+static int campaign_try(uint64_t key)
+{
+    for(unsigned i=0;i<campaign.tried_count;++i)if(campaign.tried[i]==key)return 0;
+    if(campaign.tried_count<CAMPAIGN_TRIED)campaign.tried[campaign.tried_count++]=key;
+    return 1;
+}
+static void campaign_line(const char *format,...)
+{
+    if(!campaign.log){campaign.log=fopen("sdmc:/3ds/Colosseum3DS/campaign/campaign-log.txt","a");
+        if(campaign.log)fprintf(campaign.log,"campaign_begin build=%s\n",C3_BUILD_ID);}
+    if(!campaign.log)return;
+    va_list args;va_start(args,format);
+    fprintf(campaign.log,"t=%.0f ",(double)(c3_n3ds_time_us()-campaign.start_us)/1e6);
+    vfprintf(campaign.log,format,args);va_end(args);fputc('\n',campaign.log);fflush(campaign.log);
+}
+#endif
 #ifdef C3_WARP_TOUR
 /* Warp tour (tour build only): each floor runs for a fixed time with
  * dialogue advanced by A, battles reported as wins and script floor
@@ -385,9 +428,97 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         }
         if(elapsed>=TOUR_SECONDS&&!tour.captured)tour.captured=-1; /* capture after this frame */
 #endif
+#ifdef C3_CAMPAIGN
+        {
+            static float idle,busy;
+            if(!campaign.start_us)campaign.start_us=c3_n3ds_time_us();
+            if((double)(c3_n3ds_time_us()-campaign.start_us)/3.6e9>=CAMPAIGN_HOURS){
+                uint32_t set;campaign_flags(state,&set);
+                campaign_line("campaign_end hours=%.1f steps=%u floors=%u flags=%lu",CAMPAIGN_HOURS,campaign.steps,campaign.floors_seen,(unsigned long)set);
+                result=1;break;
+            }
+            if(page==PAUSE_CLOSED){
+                if((view->dialogue||view->choice)&&frames%20==0)input.pressed|=C3_PAD_A;
+                if(view->shop&&!shopping&&!c3_field_story_shop_done(&story,story_error))goto story_failed;
+                if(view->blocked[0]&&view->battle_id==10&&phase==FIELD_CONTROL){
+                    campaign_line("floor=%03lx battle=10 mode=scene",(unsigned long)map.floor);
+                    c3_n3ds_autopress(1,1.6f);input.pressed|=C3_PAD_A;
+                }else if(view->blocked[0]&&view->battle_id){
+                    campaign_line("floor=%03lx battle=%lu mode=reported_win",(unsigned long)map.floor,(unsigned long)view->battle_id);
+                    if(!c3_field_story_battle_result(&story,2,story_error))goto story_failed;
+                }else if(view->blocked[0]){
+                    /* An unprepared destination: reload this floor (the
+                     * flags the script already wrote are kept). */
+                    campaign_line("floor=%03lx blocked reason=\"%s\" action=reload",(unsigned long)map.floor,view->blocked);
+                    if(!c3_game_state_set_floor(state,map.floor,summary.previous_floor,0)){result=-1;break;}
+                    result=2;break;
+                }
+            }
+            if(phase==FIELD_CONTROL&&page==PAUSE_CLOSED){
+                if(!campaign.seen[map.floor&0x3ffu]){
+                    char shot[96];uint32_t set;campaign_flags(state,&set);
+                    campaign.seen[map.floor&0x3ffu]=1;++campaign.floors_seen;
+                    snprintf(shot,sizeof shot,"sdmc:/3ds/Colosseum3DS/campaign/%s.bmp",prefix);
+                    int captured=frames>2&&c3_n3ds_capture_top(shot)==0;
+                    int saved=save_game(state,save_path,trace,message,sizeof message);
+                    campaign_line("floor=%03lx first_arrival flags=%lu shot=%d saved=%d",(unsigned long)map.floor,(unsigned long)set,captured,saved);
+                }
+                if(view->control&&!view->dialogue&&!view->blocked[0]){busy=0;idle+=delta;}
+                else{idle=0;busy+=delta;}
+                if(busy>CAMPAIGN_STUCK_SECONDS){
+                    campaign_line("floor=%03lx stuck seconds=%.0f message=%05lx action=reload",(unsigned long)map.floor,(double)busy,(unsigned long)view->message_id);
+                    busy=0;if(!c3_game_state_set_floor(state,map.floor,summary.previous_floor,0)){result=-1;break;}
+                    result=2;break;
+                }
+                if(idle>0.75f){
+                    /* Choose the next event: untried at this flag state first. */
+                    uint32_t set,digest=campaign_flags(state,&set);
+                    int kind=-1;uint32_t id=0,best_uses=UINT32_MAX,slot=0;
+                    for(int pass=0;pass<3&&kind<0;++pass){
+                        if(pass==0)for(uint32_t i=0;i<area.actor_count&&kind<0;++i){
+                            C3StoryActor *actor=c3_field_story_actor(&story,area.actors[i].index);
+                            if(!area.actors[i].talk_script||!actor||!actor->visible)continue;
+                            uint64_t key=((uint64_t)map.floor<<48)|((uint64_t)3<<44)|((uint64_t)area.actors[i].index<<32)|digest;
+                            if(campaign_try(key)){kind=3;id=area.actors[i].index;}
+                        }
+                        else for(uint32_t i=0;i<area.link_count&&kind<0;++i){
+                            const C3AreaLink *link=area.links+i;
+                            if(link->kind!=(pass==1?2u:1u))continue;
+                            uint64_t key=((uint64_t)map.floor<<48)|((uint64_t)link->kind<<44)|((uint64_t)link->source_id<<32)|digest;
+                            if(campaign_try(key)){kind=(int)link->kind;id=link->source_id;}
+                        }
+                    }
+                    if(kind<0)for(uint32_t i=0;i<area.link_count&&i<64;++i)if(area.links[i].kind==1u&&
+                        campaign.uses[map.floor&0x3ffu][i]<best_uses){best_uses=campaign.uses[map.floor&0x3ffu][i];slot=i;kind=1;id=area.links[i].source_id;}
+                    if(kind==1)for(uint32_t i=0;i<area.link_count&&i<64;++i)if(area.links[i].kind==1u&&area.links[i].source_id==id){slot=i;break;}
+                    if(kind==1&&slot<64)++campaign.uses[map.floor&0x3ffu][slot];
+                    ++campaign.steps;idle=0;
+                    campaign_line("floor=%03lx step=%u action=%s id=%lu flags=%lu",(unsigned long)map.floor,campaign.steps,
+                        kind==3?"talk":kind==2?"touch":kind==1?"door":"none",(unsigned long)id,(unsigned long)set);
+                    if(kind==3){
+                        C3StoryActor *actor=c3_field_story_actor(&story,id);
+                        float yaw=actor->pose.yaw,reach=12.0f*map.scale;
+                        player.position[0]=actor->pose.position[0]+sinf(yaw)*reach;
+                        player.position[1]=actor->pose.position[1];
+                        player.position[2]=actor->pose.position[2]+cosf(yaw)*reach;
+                        player.yaw=yaw+3.14159265f;memcpy(player.proposed,player.position,sizeof player.position);
+                        if(!c3_field_story_interact(&story,story_error))goto story_failed;
+                    }else if(kind==2){if(c3_field_story_touch(&story,id,story_error)<0)goto story_failed;}
+                    else if(kind==1){if(!c3_field_story_transition(&story,id,story_error))goto story_failed;}
+                    input.pressed=0;input.touch_pressed=false;dirty=1;
+                }
+            }
+        }
+#endif
         int story_consumed_input=view->dialogue||!view->control;
         /* Script native 16: the partner is named on the bottom-screen
          * keyboard while the event waits. The keyboard owns all input. */
+#ifdef C3_CAMPAIGN
+        if(view->name_entry&&!naming&&page==PAUSE_CLOSED){
+            if(!c3_field_story_name_result(&story,"RUI",story_error))goto story_failed;
+            campaign_line("floor=%03lx name_entry default=RUI",(unsigned long)map.floor);
+        }
+#endif
         if(view->name_entry&&!naming&&page==PAUSE_CLOSED&&c3_game_state_summary(state,&summary)){
             /* An unnamed partner holds the original placeholder (message
              * 0xFA2, "N/A"; docs/game-state.md): start empty, with no
@@ -525,6 +656,10 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                         if(!c3_field_story_battle_result(&story,2,story_error))goto story_failed;
                         reported=1;
                     }
+#ifdef C3_CAMPAIGN
+                    c3_n3ds_autopress(0,0);
+                    campaign_line("floor=%03lx battle=10 returned preview=%d outcome=%d reported=%d",(unsigned long)map.floor,preview_result,battle_outcome,reported);
+#endif
                     if(trace){fprintf(trace,"field_battle_return preview=%d outcome=%d result_reported=%d pending=%lu vm_preserved=1 models=%lu\n",
                         preview_result,battle_outcome,reported,(unsigned long)view->battle_id,(unsigned long)count);fflush(trace);}
                     /* Modal preview time must not advance paused field scripts. */

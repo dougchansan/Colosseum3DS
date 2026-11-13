@@ -312,6 +312,25 @@ int c3_boot_scene_run(int core_status)
     FILE *trace = c3_trace_open("sdmc:/3ds/Colosseum3DS/boot-trace.log");
     if (trace) { fprintf(trace, "boot_build %s core=%d\n", C3_BUILD_ID, core_status); fflush(trace); }
     c3_n3ds_log_memory(trace, "boot_start");
+#ifdef C3_CAMPAIGN
+    /* Campaign build: play the story unattended from the campaign's own
+     * save (resumed when present) or from a new game, never the player's
+     * save path; progress is saved there at each newly reached floor. */
+    {
+        const char *campaign_save = "sdmc:/3ds/Colosseum3DS/campaign/save.gci";
+        const char *prepared = file_exists(GAME_DATA) ? GAME_DATA : NULL;
+        int new_game = !file_exists(campaign_save);
+        int campaign_result = -1;
+        mkdir("sdmc:/3ds/Colosseum3DS/campaign", 0777);
+        if (new_game ? (prepared && c3_game_state_new(&state, "WES", 0x12345678u, prepared, error) &&
+                        c3_game_state_set_flag(&state, 0x08D0, 1))
+                     : c3_game_state_load(&state, campaign_save, prepared, error))
+            campaign_result = c3_field_scene_run(&state, new_game, campaign_save, trace, error, sizeof(error));
+        if (trace) { fprintf(trace, "campaign_exit result=%d new_game=%d error=%s\n", campaign_result, new_game, error); fclose(trace); }
+        c3_game_state_free(&state);
+        return campaign_result < 0 ? 1 : 0;
+    }
+#endif
 #ifdef C3_WARP_TOUR
     /* Tour build: the tour's own copy of a save (never the player's save
      * path), no movies or title, every floor in boot/tour.txt, then exit. */

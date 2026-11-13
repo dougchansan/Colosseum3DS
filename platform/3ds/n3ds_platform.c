@@ -96,6 +96,16 @@ int c3_n3ds_init(char *error, size_t capacity)
 static uint16_t previous_touch_x, previous_touch_y, stick_armed_direction;
 static bool previous_touch;
 
+#ifdef C3_CAMPAIGN
+static int autopress_enabled;
+static uint64_t autopress_interval_us, autopress_next_us;
+void c3_n3ds_autopress(int enabled, float interval)
+{
+    autopress_enabled = enabled;
+    autopress_interval_us = (uint64_t)(interval > 0.1f ? interval * 1000000.0f : 1600000.0f);
+    autopress_next_us = c3_n3ds_time_us() + autopress_interval_us;
+}
+#endif
 bool c3_n3ds_poll(C3N3dsInput *input)
 {
     uint32_t keys;
@@ -139,6 +149,12 @@ bool c3_n3ds_poll(C3N3dsInput *input)
     input->touch_released = !input->touch_held && previous_touch;
     previous_touch = input->touch_held;
     input->exit_requested = (keys & (KEY_START | KEY_SELECT)) == (KEY_START | KEY_SELECT);
+#ifdef C3_CAMPAIGN
+    if (autopress_enabled && c3_n3ds_time_us() >= autopress_next_us) {
+        input->pressed |= C3_PAD_A;
+        autopress_next_us = c3_n3ds_time_us() + autopress_interval_us;
+    }
+#endif
     return !input->exit_requested;
 }
 

@@ -44,6 +44,11 @@ void c3_n3ds_log_memory(FILE *trace, const char *stage);
  * one libctru hands out for drawing, so it holds a frame from just before the
  * call. Returns 0 on success. */
 int c3_n3ds_capture_top(const char *path);
+#ifdef C3_CAMPAIGN
+/* Campaign build: while enabled, every poll adds an A press each
+ * `interval` seconds (menus and battles play their default choices). */
+void c3_n3ds_autopress(int enabled, float interval);
+#endif
 const char *c3_n3ds_data_root(void);
 void c3_n3ds_wait_for_exit(void);
 void c3_n3ds_shutdown(void);
