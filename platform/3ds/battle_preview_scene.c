@@ -20,6 +20,9 @@
 #define C3_BUILD_ID "unknown"
 #endif
 
+/* Sound callbacks without a DSP: every cue is accepted and already done. */
+static int silent_sound(uint32_t cue,uint32_t sound,char *error,size_t capacity)
+{(void)cue;(void)sound;(void)error;(void)capacity;return 1;}
 static void trace_turn(FILE *f,const C3BattlePreview *b)
 {
     if(!f)return;
@@ -71,6 +74,14 @@ int c3_battle_preview_scene_run(const C3BattleRequest *request,const uint8_t *en
             stage->sound_status=c3_battle_audio_player_status;
             stage->sound_stop=c3_battle_audio_player_stop;
             c3_render_recovery_set_pause_callback(c3_battle_audio_player_pause);
+        }else{
+            /* No DSP (missing dspfirm.cdc, or an emulator without it): the
+             * battle plays silently instead of stopping. */
+            if(trace){fprintf(trace,"battle_audio_unavailable error=%s playing_silently=1\n",error);fflush(trace);}
+            error[0]=0;
+            /* Effects wait on their sound cues; silent cues finish at once. */
+            stage->sound_cue=silent_sound;stage->sound_done=silent_sound;
+            stage->sound_status=silent_sound;stage->sound_stop=silent_sound;
         }
     }
     previous_time=c3_n3ds_active_time_us(); /* Loading time is not battle time. */

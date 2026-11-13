@@ -1094,6 +1094,8 @@ static int wait_task(Impl *s,RunTask *t,float seconds,uint16_t *pressed,char *er
         return message(s,t,t->pending_message,t->pending_speaker,error);
     case W_TV:
         if(!t->stage){
+            /* The shared window is busy with another script's message: wait. */
+            if(s->dialog_owner&&s->dialog_owner!=t->key)return 1;
             t->remaining-=seconds;if(t->remaining>0)return 1;
             if(!message(s,t,0x426e,"",error))return 0;
             t->wait=W_TV;t->stage=1;return 1;
@@ -1125,6 +1127,9 @@ static int wait_task(Impl *s,RunTask *t,float seconds,uint16_t *pressed,char *er
         if(s->event_depth)--s->event_depth;
         return resume(s,t,0,error);
     case W_ITEM:{
+        /* Wait for the shared window before adding the item, so a retry
+         * never adds it twice. */
+        if(s->dialog_owner&&s->dialog_owner!=t->key)return 1;
         t->remaining-=seconds;if(t->remaining>0)return 1;
         uint32_t item=t->call.args[0];int32_t count=(int32_t)t->call.args[1];
         if(count<=0)return resume(s,t,0,error); /* the original returns without a message */
