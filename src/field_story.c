@@ -32,6 +32,9 @@ typedef struct Person {
     float target[3], look[3], old_yaw, speed, turn_target, turn_speed;
     double turn_fraction;
     int moving, turning, talking, looking, talk_lock;
+    /* Streamed models (field_scene loads people after the room): what the
+     * scripts asked for while the model was absent, applied on attach. */
+    int want_visible, pending_motion;uint32_t pending_clip,pending_frame,pending_loop;
     float waypoints[MAX_WAYPOINTS][3];
     uint32_t waypoint_capacity, waypoint_count, waypoint_cursor;
     int waypoint_active, waypoint_loop;
@@ -305,6 +308,9 @@ static int set_motion(Impl *s,Person *p,uint32_t source_clip,uint32_t frame,uint
          * distinct source0 at bundle3. Never alias that animation to idle. */
         clip=source_clip==0?3:source_clip==1?s->map->idle_clip:source_clip==2?s->map->walk_clip:s->map->run_clip;
     }
+    if(!p->public.model&&p!=&s->hero_actor){
+        p->pending_motion=1;p->pending_clip=source_clip;p->pending_frame=frame;p->pending_loop=loop;return 1;
+    }
     if(!p->public.model||clip>=p->public.model->clip_count){
         /* Wes's prepared motions are reviewed and stay strict. */
         if(p==&s->hero_actor)
@@ -448,7 +454,7 @@ static int run_native(Impl *s,RunTask *t,char *error)
     case 0x32:
         /* A person whose pack could not be prepared stays hidden (as a
          * person without a model does in retail) and the gap is recorded. */
-        p=person(s,a[0],a[1]);if(p){p->public.visible=a[2]&&p->public.model;
+        p=person(s,a[0],a[1]);if(p){p->want_visible=!!a[2];p->public.visible=a[2]&&p->public.model;
             if(a[2]&&!p->public.model)note_presentation(s,0x32,"actor_pack_missing_hidden");}break;
     case 0x33:
         p=person(s,a[0],a[1]);if(!set_motion(s,p,a[2],a[3],a[4],error))return 0;value=p!=NULL;break;
@@ -563,7 +569,7 @@ static int run_native(Impl *s,RunTask *t,char *error)
     /* fn_8018CA20: show or hide one person. A person without a model
      * (animId 0) stays hidden, as in retail. */
     case 0x97:
-        p=person(s,a[0],a[1]);if(p)p->public.visible=a[2]&&p->public.model;break;
+        p=person(s,a[0],a[1]);if(p){p->want_visible=!!a[2];p->public.visible=a[2]&&p->public.model;}break;
     /* fn_80186620: does the person touch the vertical wall over segment
      * (x0,z0)-(x1,z1) within its PeopleInfo radius? The script passes
      * group, index, the segment, a float the original ignores and an
@@ -731,7 +737,7 @@ static int run_native(Impl *s,RunTask *t,char *error)
         if(s->floor_supported?!s->floor_supported(a[0]):(a[0]!=1&&a[0]!=2)){snprintf(s->view.blocked,sizeof s->view.blocked,"Area %lu is not prepared in this build.",(unsigned long)a[0]);t->wait=W_BATTLE;return 1;}
         s->pending_floor=a[0];s->pending_spawn=a[1];break;
     case 0x64:
-        p=person(s,s->area->group,a[0]);if(p){p->public.visible=a[1]&&p->public.model;
+        p=person(s,s->area->group,a[0]);if(p){p->want_visible=!!a[1];p->public.visible=a[1]&&p->public.model;
             if(a[1]&&!p->public.model)note_presentation(s,0x64,"actor_pack_missing_hidden");}break;
     case 0x65:
         p=person(s,s->area->group,a[0]);if(p){for(unsigned i=0;i<3;++i)
@@ -833,7 +839,7 @@ static int run_native(Impl *s,RunTask *t,char *error)
          * Map-model visibility is recorded; the floor renderer draws every
          * map group (hidden groups are a renderer follow-up). */
         p=person(s,s->area->group,a[0]);
-        if(p){p->public.visible=a[1]&&p->public.model;break;}
+        if(p){p->want_visible=!!a[1];p->public.visible=a[1]&&p->public.model;break;}
         if(!a[1])note_presentation(s,0x72,"map_resource_hide");
         log_line(s,"story_map_visibility resource=%lu visible=%lu",(unsigned long)a[0],(unsigned long)a[1]);
         break;
@@ -873,7 +879,7 @@ static int run_native(Impl *s,RunTask *t,char *error)
         uint32_t shift=c->native==0x9a;
         p=c->native==0x9a?person(s,a[0],a[1]):person(s,s->area->group,a[0]);
         if((int32_t)a[shift+1]<0)break;
-        if(p){if(!p->public.model)break;if(!set_motion(s,p,a[shift+1],a[shift+2],a[shift+3],error))return 0;}
+        if(p){if(!set_motion(s,p,a[shift+1],a[shift+2],a[shift+3],error))return 0;}
         else if(c->native==0x73)note_presentation(s,c->native,"map_object_animation_unrendered");
         }break;
     case 0x75:
@@ -1219,6 +1225,21 @@ void c3_field_story_describe_waits(const C3FieldStory *story,char *out,size_t ca
         used+=(size_t)n<capacity-used?(size_t)n:capacity-used-1;
     }
 }
+int c3_field_story_attach_actor(C3FieldStory *story,uint32_t area_index,C3Title *model,char *error)
+{
+    Impl *s=story?story->impl:NULL;
+    if(!s||area_index>=s->area->actor_count)return fail(error,"Invalid streamed actor");
+    Person *p=s->actors+area_index;
+    if(p->public.model||!model)return 1;
+    p->public.model=model;
+    if(p->public.clip>=model->clip_count)p->public.clip=0;
+    p->public.visible=p->want_visible;
+    if(p->pending_motion){
+        p->pending_motion=0;
+        if(!set_motion(s,p,p->pending_clip,p->pending_frame,p->pending_loop,error))return 0;
+    }
+    return 1;
+}
 unsigned c3_field_story_model_species(uint32_t resource)
 {
     /* Field Pokemon models (global FSYS IDs, named after their species in
@@ -1374,7 +1395,7 @@ int c3_field_story_load(C3FieldStory *story,const char *path,C3GameState *game,
         Person *p=s->actors+i;const C3AreaActor *a=area->actors+i;p->source=a;
         p->public.model=actor_models[i];p->public.index=a->index;
         memcpy(p->public.pose.position,a->position,sizeof a->position);p->public.pose.yaw=a->yaw;
-        p->public.visible=(a->flags>>31)&1;p->public.clip=a->motions[0];
+        p->want_visible=(a->flags>>31)&1;p->public.visible=p->want_visible;p->public.clip=a->motions[0];
         p->public.flags=0x0cu|(a->talk_start==1?0x10u:a->talk_start==2?0x20u:0u)|(a->talk_end==1?0x40u:0u);
         p->public.loop=1;p->public.playing=1;p->speed=1;
         if(p->public.model&&p->public.clip>=p->public.model->clip_count){

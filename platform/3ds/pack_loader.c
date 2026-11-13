@@ -1,6 +1,58 @@
 #include "pack_loader.h"
 #include "pack_cache.h"
 #include <3ds.h>
+#include <stdlib.h>
+
+struct C3PackStream {
+    C3PackJob *jobs;
+    size_t count;
+    volatile size_t done;
+    Thread thread;
+};
+
+static void load_direct(C3PackJob *job)
+{
+    uint64_t started = svcGetSystemTick();
+    job->error[0] = 0;
+    job->ok = c3_title_load(job->title, job->path, job->error, sizeof job->error);
+    job->microseconds = (svcGetSystemTick() - started) / (SYSCLOCK_ARM11 / 1000000u);
+}
+
+static void stream_worker(void *argument)
+{
+    C3PackStream *stream = (C3PackStream *)argument;
+    for (size_t i = 0; i < stream->count; ++i) {
+        load_direct(stream->jobs + i);
+        __atomic_store_n(&stream->done, i + 1, __ATOMIC_SEQ_CST);
+    }
+}
+
+C3PackStream *c3_pack_stream_start(C3PackJob *jobs, size_t count)
+{
+    C3PackStream *stream = calloc(1, sizeof *stream);
+    if (!stream) return NULL;
+    stream->jobs = jobs; stream->count = count;
+    if (count) {
+        s32 priority = 0x30;
+        svcGetThreadPriority(&priority, CUR_THREAD_HANDLE);
+        /* Slightly lower priority than the scene, so frames keep their pace. */
+        stream->thread = threadCreate(stream_worker, stream, 128 * 1024, priority < 0x3f ? priority + 1 : priority, 2, false);
+    }
+    if (!stream->thread) stream_worker(stream);
+    return stream;
+}
+
+size_t c3_pack_stream_done(const C3PackStream *stream)
+{
+    return stream ? __atomic_load_n(&stream->done, __ATOMIC_SEQ_CST) : 0;
+}
+
+void c3_pack_stream_finish(C3PackStream *stream)
+{
+    if (!stream) return;
+    if (stream->thread) { threadJoin(stream->thread, U64_MAX); threadFree(stream->thread); }
+    free(stream);
+}
 
 typedef struct {
     C3PackJob *jobs;

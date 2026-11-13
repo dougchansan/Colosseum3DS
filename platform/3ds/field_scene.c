@@ -119,6 +119,43 @@ static void load_progress(size_t done,size_t total)
 {
     c3_n3ds_top_loading(total?(float)done/(float)total:1.0f);
 }
+static int field_renderer_init(C3Title *storage,const C3Title *const *models,uint32_t count,
+                               uint64_t actors,char *error,size_t capacity);
+typedef struct {
+    C3PackJob *jobs; C3PackStream *stream;
+    uint32_t first,count,area_index[C3_AREA_MAX_ACTORS];
+    int attached; uint64_t start_us;
+} NpcStream;
+/* Bind streamed people once every pack has arrived (wait: block for them):
+ * pose each on its idle clip, attach it to the story, and restart the
+ * renderer with the full model list (drained first, as after a battle). */
+static int npc_stream_attach(NpcStream *npc,int wait,C3Title *storage,const C3Title **models,C3Title **actor_models,
+                             char paths[][160],C3FieldStory *story,uint32_t count,uint64_t skin,uint32_t tv_index,
+                             int tv_enabled,unsigned frames,FILE *trace,char *error,size_t capacity)
+{
+    if(npc->attached)return 1;
+    if(!wait&&c3_pack_stream_done(npc->stream)<npc->count)return 1;
+    c3_pack_stream_finish(npc->stream);npc->stream=NULL;
+    char story_error[C3_STORY_ERROR];
+    for(uint32_t j=0;j<npc->count;++j){
+        C3PackJob *job=npc->jobs+j;uint32_t slot=npc->first+j,i=npc->area_index[j];
+        if(trace)fprintf(trace,"field_pack_load file=%s bytes=%lu us=%llu ok=%d streamed=1\n",job->path,
+                         (unsigned long)job->title->file_bytes,(unsigned long long)job->microseconds,job->ok);
+        if(!job->ok){snprintf(error,capacity,"%s",job->error);return 0;}
+        snprintf(paths[slot],sizeof paths[slot],"%s",job->path);
+        models[slot]=storage+slot;actor_models[i]=storage+slot;
+        if(!c3_title_animate(storage+slot,0,0)){snprintf(error,capacity,"Original NPC idle motion is missing.");return 0;}
+        if(!c3_field_story_attach_actor(story,i,storage+slot,story_error)){snprintf(error,capacity,"%s",story_error);return 0;}
+    }
+    free(npc->jobs);npc->jobs=NULL;
+    if(c3_render_recover(trace,"people-stream",frames,C3_RECOVER_DRAIN)==C3_RECOVERY_EXIT){snprintf(error,capacity,"Renderer recovery requested an exit.");return 0;}
+    if(field_renderer_init(storage,models,count,skin,error,capacity))return 0;
+    if(tv_index!=UINT32_MAX&&!c3_stage_renderer_set_tv(tv_index,1,1,tv_enabled,error,capacity))return 0;
+    npc->attached=1;
+    if(trace){fprintf(trace,"field_people_stream count=%lu us=%llu\n",(unsigned long)npc->count,
+                      (unsigned long long)(c3_n3ds_time_us()-npc->start_us));fflush(trace);}
+    return 1;
+}
 static int floor_reachable(uint32_t floor)
 {
     return floor==C3_FLOOR_WORLD_MAP_ID?c3_world_map_scene_available():c3_field_scene_supports(floor);
@@ -328,6 +365,9 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     unsigned wes_index=0,arrival_index=0,tv_index=UINT32_MAX,selection=0,frames=0;
     /* Load timing for the trace: area start, each pack, first control. */
     uint64_t load_start_us=c3_n3ds_time_us(),pack_us=0;int load_reported=0;
+    /* People stream in after the room: their packs load on the second core
+     * while the scene runs, and join the renderer when all have arrived. */
+    NpcStream npc={0};uint64_t skin_core=0;
     c3_title_perf_clock(c3_n3ds_time_us);
     int result=-1,yes=0,dirty=1,arrival_end_sampled=0,entered=0,lights_loaded=0;
     FieldPhase phase=FIELD_SETUP;PausePage page=PAUSE_CLOSED;
@@ -376,7 +416,6 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     }
     arrival_count=(profile->features&C3_FLOOR_ARRIVAL)&&opening_done&&!arrival_done?map.arrival_pack_count:0;
     count=map.map_pack_count+1u+arrival_count;wes_index=map.map_pack_count;arrival_index=wes_index+1u;
-    for(uint32_t i=0;i<area.actor_count;++i)if(area.actors[i].file[0])++count;
     /* The floor's door table (native 60) and the object pack of each door
      * that has one; those rest on their first frame until a script plays a
      * clip. A door without a pack changes only its open flag and collision,
@@ -385,12 +424,13 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     if(exists(path)&&!c3_area_doors_load(&doors,path,error,capacity))goto done;
     for(uint32_t i=0;i<doors.count;++i)if(doors.rows[i].file[0])++count;
     if(profile->features&C3_FLOOR_TV)tv_index=count++;
+    npc.first=count;
+    for(uint32_t i=0;i<area.actor_count;++i)if(area.actors[i].file[0]){++count;++npc.count;}
     if(count>C3_STAGE_MAX_MODELS){snprintf(error,capacity,"The area exceeds the model bound.");goto done;}
     storage=calloc(count,sizeof(*storage));
     if(!storage){snprintf(error,capacity,"Field model allocation failed.");goto done;}
     c3_bottom_screen_notice(profile->label,"Loading the area...","Please wait...");
     unsigned load_total=map.map_pack_count+1u+arrival_count;
-    for(uint32_t i=0;i<area.actor_count;++i)load_total+=area.actors[i].file[0]!=0;
     for(uint32_t i=0;i<doors.count;++i)load_total+=doors.rows[i].file[0]!=0;
     c3_n3ds_top_loading(0.0f);
     /* Every pack is a job with a fixed slot (the same order as before):
@@ -406,10 +446,16 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
             else snprintf(jobs[job].path,sizeof jobs[job].path,BOOT_ROOT "%s_arrival%lu.c3t",prefix,(unsigned long)(i-arrival_index));
             jobs[job].title=storage+slot;
         }
-        for(uint32_t i=0;i<area.actor_count;++i)if(area.actors[i].file[0]){
-            snprintf(jobs[job].path,sizeof jobs[job].path,BOOT_ROOT "%s",area.actors[i].file);jobs[job++].title=storage+slot++;}
         for(uint32_t i=0;i<doors.count;++i)if(doors.rows[i].file[0]){
             snprintf(jobs[job].path,sizeof jobs[job].path,BOOT_ROOT "%s",doors.rows[i].file);jobs[job++].title=storage+slot++;}
+    }
+    if(npc.count){
+        npc.jobs=calloc(npc.count,sizeof *npc.jobs);
+        if(!npc.jobs){snprintf(error,capacity,"Not enough memory for the people list.");free(jobs);goto done;}
+        unsigned job=0;uint32_t slot=npc.first;
+        for(uint32_t i=0;i<area.actor_count;++i)if(area.actors[i].file[0]){
+            snprintf(npc.jobs[job].path,sizeof npc.jobs[job].path,BOOT_ROOT "%s",area.actors[i].file);
+            npc.jobs[job].title=storage+slot;npc.area_index[job]=i;++job;++slot;}
     }
     pack_us=c3_n3ds_time_us();
     size_t failed=c3_pack_load_all(jobs,load_total,load_progress);
@@ -418,7 +464,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         if(trace)fprintf(trace,"field_pack_load file=%s bytes=%lu us=%llu ok=%d\n",jobs[j].path,
                          (unsigned long)jobs[j].title->file_bytes,(unsigned long long)jobs[j].microseconds,jobs[j].ok);
     }
-    opened=load_total; /* every slot; `done` closes them, loaded or not */
+    opened=load_total; /* every room slot; `done` closes them, loaded or not */
     if(failed){snprintf(error,capacity,"%s",jobs[failed-1].error);free(jobs);goto done;}
     {
         unsigned job=0;
@@ -427,11 +473,6 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
             if(!c3_title_animate(storage+i,0,0)){snprintf(error,capacity,"Initial field animation failed.");free(jobs);goto done;}
         }
         uint32_t slot=map.map_pack_count+1u+arrival_count;
-        for(uint32_t i=0;i<area.actor_count;++i)if(area.actors[i].file[0]){
-            C3Title *model=storage+slot;snprintf(model_paths[slot],sizeof model_paths[slot],"%s",jobs[job++].path);
-            models[slot++]=model;actor_models[i]=model;
-            if(!c3_title_animate(model,area.actors[i].motions[0],0)){snprintf(error,capacity,"Original NPC idle motion is missing.");free(jobs);goto done;}
-        }
         for(uint32_t i=0;i<doors.count;++i)if(doors.rows[i].file[0]){
             C3Title *model=storage+slot;snprintf(model_paths[slot],sizeof model_paths[slot],"%s",jobs[job++].path);
             models[slot++]=model;door_models[i]=model;
@@ -484,7 +525,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         if(!c3_area_lights_load(&lights,path,error,capacity))goto done;
         lights_loaded=1;
     }
-    if(opened!=count){snprintf(error,capacity,"Area model identity mismatch.");goto done;}
+    if(opened!=npc.first){snprintf(error,capacity,"Area model identity mismatch.");goto done;}
     if(trace){
         size_t cpu_models=0;
         for(uint32_t i=0;i<count;++i)cpu_models+=storage[i].resident_bytes;
@@ -494,8 +535,10 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     }
     skin_actors=UINT64_C(1)<<wes_index;
     for(uint32_t i=arrival_index+arrival_count;i<count&&i<64u;++i)if(i!=tv_index)skin_actors|=UINT64_C(1)<<i;
+    skin_core=skin_actors&(npc.first>=64u?~UINT64_C(0):(UINT64_C(1)<<npc.first)-1u);
     if(trace){fprintf(trace,"field_load_stage name=%s us=%llu\n","cameras_lights",(unsigned long long)(c3_n3ds_time_us()-load_start_us));}
-    if(field_renderer_init(storage,models,count,skin_actors,error,capacity))goto done;
+    /* The room first; people join the renderer when their packs arrive. */
+    if(field_renderer_init(storage,models,npc.first,skin_core,error,capacity))goto done;
     if(trace){fprintf(trace,"field_load_stage name=%s us=%llu\n","renderer",(unsigned long long)(c3_n3ds_time_us()-load_start_us));}
     if(tv_index!=UINT32_MAX&&!c3_stage_renderer_set_tv(tv_index,1,1,true,error,capacity))goto done;
     snprintf(path,sizeof path,"%s_ready",prefix);
@@ -504,6 +547,9 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     if(!c3_field_story_load(&story,path,state,&map,&area,&player,wes,actor_models,&room_camera,trace,story_error)||
        !c3_field_story_bind_battle(&story,BOOT_ROOT "willie.c3b",story_error))goto story_failed;
     if(trace){fprintf(trace,"field_load_stage name=%s us=%llu\n","story",(unsigned long long)(c3_n3ds_time_us()-load_start_us));}
+    if(npc.count){npc.stream=c3_pack_stream_start(npc.jobs,npc.count);npc.start_us=c3_n3ds_time_us();
+        if(!npc.stream){snprintf(error,capacity,"The people loader could not start.");goto done;}}
+    else npc.attached=1;
     if(doors.count){
         uint32_t with_model=0;for(uint32_t i=0;i<doors.count;++i)with_model+=door_models[i]!=NULL;
         if(!c3_field_story_bind_doors(&story,doors.rows,doors.count,door_models,story_error))goto story_failed;
@@ -524,6 +570,8 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         (unsigned long)area.actor_count,(unsigned long)count,arrival!=NULL,(double)arrival_seconds);fflush(trace);}
     previous=c3_n3ds_active_time_us();result=1;
     while(c3_n3ds_poll(&input)){
+        if(!npc.attached&&!npc_stream_attach(&npc,0,storage,models,actor_models,model_paths,&story,count,skin_actors,
+                                             tv_index,view?view->tv_enabled:1,frames,trace,error,capacity)){result=-1;break;}
         uint64_t now=c3_n3ds_active_time_us();float delta=(float)(now-previous)/1000000.0f;
         previous=now;elapsed+=delta;phase_seconds+=delta;
         c3_game_state_add_play_time(state,delta);
@@ -849,6 +897,8 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                 if(view->blocked[0]&&view->battle_id==10&&(input.pressed&C3_PAD_A)){
                     c3_n3ds_log_memory(trace,"field_battle_before_drain");
                     if(c3_render_recover(trace,"field-to-battle",frames,C3_RECOVER_DRAIN)==C3_RECOVERY_EXIT){result=1;break;}
+                    if(!npc.attached&&!npc_stream_attach(&npc,1,storage,models,actor_models,model_paths,&story,count,skin_actors,
+                                                         tv_index,view?view->tv_enabled:1,frames,trace,error,capacity)){result=-1;break;}
                     release_field_models(storage,count);
                     /* The bottom-screen hub keeps the P*DA art loaded; free it
                      * for the battle (it reloads on the next field frame). */
@@ -1081,7 +1131,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                                    abs(input.cstick_y)>20?input.cstick_y/128.f:0,delta);
         }
         int draw_result=pda_preview?c3_pda_preview_draw(pda_preview,pda_seconds,&stats,error,capacity):
-            c3_stage_renderer_draw(models,count,&camera,fade,&stats,error,capacity);
+            c3_stage_renderer_draw(models,npc.attached?count:npc.first,&camera,fade,&stats,error,capacity);
         if(draw_result==C3_RENDER_BUSY){
             C3RenderRecoveryResult recovery=c3_render_recover(trace,"field",frames,C3_RECOVER_WAIT);
             if(recovery==C3_RECOVERY_EXIT){result=1;break;}
@@ -1125,6 +1175,8 @@ story_failed:
     campaign_line("floor=%03lx script_error=\"%s\" action=restart",(unsigned long)map.floor,story_error);
 #endif
 done:
+    if(npc.stream){c3_pack_stream_finish(npc.stream);npc.stream=NULL;opened=count;}
+    free(npc.jobs);npc.jobs=NULL;
     c3_pda_audio_close();
     c3_ingame_close(ingame);
     free(ingame);

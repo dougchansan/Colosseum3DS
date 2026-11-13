@@ -19,4 +19,16 @@ typedef struct {
  * jobs. Returns the number of the first failed job + 1, or 0 when all
  * loaded. Uses c3_pack_cache_load, which is safe across the two threads. */
 size_t c3_pack_load_all(C3PackJob *jobs, size_t count, void (*progress)(size_t done, size_t total));
+
+/* Background loading while the scene runs (people streamed in after the
+ * room): jobs load in order on the second application core straight from
+ * their files (c3_title_load: heap only, so no linear-memory traffic races
+ * the renderer). Without that core the jobs load inside start. Jobs must stay
+ * alive until finish. */
+typedef struct C3PackStream C3PackStream;
+C3PackStream *c3_pack_stream_start(C3PackJob *jobs, size_t count);
+/* Number of jobs finished so far (0..count). */
+size_t c3_pack_stream_done(const C3PackStream *stream);
+/* Wait for every job and free the stream. */
+void c3_pack_stream_finish(C3PackStream *stream);
 #endif

@@ -86,6 +86,11 @@ void c3_field_story_set_random(C3FieldStory *story,uint16_t (*next16)(void *cont
  * index into its original name (returns 0 when it cannot). */
 void c3_field_story_set_species_namer(C3FieldStory *story,
     int (*name)(void *context,unsigned species,char *out,size_t capacity),void *context);
+/* A person's model that was loaded after the story (field_scene streams
+ * people in after the room): binds it and applies the visibility and the
+ * last motion the scripts asked for meanwhile. area_index is the person's
+ * row in the area. */
+int c3_field_story_attach_actor(C3FieldStory *story,uint32_t area_index,C3Title *model,char *error);
 /* Internal species index of a field Pokemon model resource, or 0. */
 unsigned c3_field_story_model_species(uint32_t resource);
 /* Diagnostics: one "task:wait:script@pc:native" entry per waiting script. */
