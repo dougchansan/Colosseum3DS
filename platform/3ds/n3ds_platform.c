@@ -209,6 +209,42 @@ int c3_n3ds_capture_top(const char *path)
     return ok ? 0 : -1;
 }
 
+int c3_n3ds_capture_bottom(const char *path)
+{
+    /* Bottom screen: 240 x 320 columns, rotated like the top screen, in
+     * BGR8 or RGB565 (bottom_screen.c chooses). Written as a 24-bit BMP. */
+    u16 width = 0, height = 0;
+    const u8 *fb = gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, &width, &height);
+    int format = gfxGetScreenFormat(GFX_BOTTOM);
+    if (!fb || width != 240 || height < 320 || (format != GSP_BGR8_OES && format != GSP_RGB565_OES)) return -1;
+    FILE *file = fopen(path, "wb");
+    if (!file) return -1;
+    static u8 row[320 * 3];
+    u8 header[54] = {'B', 'M'};
+    u32 image = 320u * 240u * 3u, total = 54u + image;
+    memcpy(header + 2, &total, 4);
+    header[10] = 54; header[14] = 40;
+    u32 w = 320, h = 240; memcpy(header + 18, &w, 4); memcpy(header + 22, &h, 4);
+    header[26] = 1; header[28] = 24;
+    memcpy(header + 34, &image, 4);
+    int ok = fwrite(header, 1, sizeof header, file) == sizeof header;
+    for (int y = 239; ok && y >= 0; --y) {
+        for (int x = 0; x < 320; ++x) {
+            size_t at = (size_t)x * 240u + (239u - (unsigned)y);
+            if (format == GSP_BGR8_OES) memcpy(row + x * 3, fb + at * 3u, 3);
+            else {
+                u16 p = (u16)(fb[at * 2u] | fb[at * 2u + 1u] << 8);
+                row[x * 3] = (u8)((p & 31u) << 3);
+                row[x * 3 + 1] = (u8)(((p >> 5) & 63u) << 2);
+                row[x * 3 + 2] = (u8)((p >> 11) << 3);
+            }
+        }
+        ok = fwrite(row, 1, sizeof row, file) == sizeof row;
+    }
+    if (fclose(file) != 0) ok = 0;
+    return ok ? 0 : -1;
+}
+
 void c3_n3ds_log_memory(FILE *trace, const char *stage)
 {
     if (!trace) return;

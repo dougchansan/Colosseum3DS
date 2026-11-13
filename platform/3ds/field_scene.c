@@ -146,7 +146,7 @@ static struct {
     uint64_t tried[CAMPAIGN_TRIED]; unsigned tried_count;
     uint16_t visits[0x400], uses[0x400][64];
     uint8_t seen[0x400];
-    unsigned talk_shots, talk_shot_frame, talk_shot_id;
+    unsigned talk_shots, talk_shot_frame, talk_shot_id, bottom_shot_frame;
 } campaign;
 static uint32_t campaign_flags(C3GameState *state,uint32_t *set)
 {
@@ -507,6 +507,12 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                     result=1;break;
                 }
             }
+            if(campaign.bottom_shot_frame&&frames>=campaign.bottom_shot_frame&&page==PAUSE_CLOSED&&view->control){
+                char shot[112];
+                snprintf(shot,sizeof shot,"sdmc:/3ds/Colosseum3DS/campaign/%s_bottom.bmp",prefix);
+                campaign_line("floor=%03lx bottom_shot=%d",(unsigned long)map.floor,c3_n3ds_capture_bottom(shot)==0);
+                campaign.bottom_shot_frame=0;
+            }
             if(campaign.talk_shot_frame&&frames>=campaign.talk_shot_frame){
                 char shot[112];
                 snprintf(shot,sizeof shot,"sdmc:/3ds/Colosseum3DS/campaign/talk_%03lx_%02u_L%lu.bmp",(unsigned long)map.floor,
@@ -520,6 +526,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                     campaign.seen[map.floor&0x3ffu]=1;++campaign.floors_seen;
                     snprintf(shot,sizeof shot,"sdmc:/3ds/Colosseum3DS/campaign/%s.bmp",prefix);
                     int captured=frames>2&&c3_n3ds_capture_top(shot)==0;
+                    campaign.bottom_shot_frame=frames+30;
                     int saved=save_game(state,save_path,trace,message,sizeof message);
                     campaign_store_tried();
                     campaign_line("floor=%03lx first_arrival flags=%lu shot=%d saved=%d",(unsigned long)map.floor,(unsigned long)set,captured,saved);
