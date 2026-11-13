@@ -137,6 +137,7 @@ static struct {
     uint64_t tried[CAMPAIGN_TRIED]; unsigned tried_count;
     uint16_t visits[0x400], uses[0x400][64];
     uint8_t seen[0x400];
+    unsigned talk_shots, talk_shot_frame, talk_shot_id;
 } campaign;
 static uint32_t campaign_flags(C3GameState *state,uint32_t *set)
 {
@@ -497,6 +498,13 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                     result=1;break;
                 }
             }
+            if(campaign.talk_shot_frame&&frames>=campaign.talk_shot_frame){
+                char shot[112];
+                snprintf(shot,sizeof shot,"sdmc:/3ds/Colosseum3DS/campaign/talk_%03lx_%02u_L%lu.bmp",(unsigned long)map.floor,
+                         campaign.talk_shot_id,(unsigned long)c3_campaign_launch);
+                campaign_line("floor=%03lx talk_shot=%d id=%u",(unsigned long)map.floor,c3_n3ds_capture_top(shot)==0,campaign.talk_shot_id);
+                campaign.talk_shot_frame=0;++campaign.talk_shots;
+            }
             if(phase==FIELD_CONTROL&&page==PAUSE_CLOSED){
                 if(!campaign.seen[map.floor&0x3ffu]){
                     char shot[96];uint32_t set;campaign_flags(state,&set);
@@ -594,6 +602,9 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                         player.yaw=atan2f(actor->pose.position[0]-best[0],actor->pose.position[2]-best[2]);
                         memcpy(player.proposed,player.position,sizeof player.position);
                         if(!found)campaign_line("floor=%03lx talk=%lu spot=fallback",(unsigned long)map.floor,(unsigned long)id);
+                        /* Review aid: the top screen a moment after the warp,
+                         * for the first talks of each launch. */
+                        if(campaign.talk_shots<30){campaign.talk_shot_frame=frames+12;campaign.talk_shot_id=id;}
                         if(!c3_field_story_interact(&story,story_error))goto story_failed;
                     }else if(kind==2){if(c3_field_story_touch(&story,id,story_error)<0)goto story_failed;}
                     else if(kind==1){if(!c3_field_story_transition(&story,id,story_error))goto story_failed;}
