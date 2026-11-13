@@ -7,6 +7,8 @@ typedef struct { C3InventoryAction action; unsigned pocket,slot,party,quantity,d
 typedef struct { C3InventoryCode code; uint16_t item,choices[20]; unsigned choice_count,learning_index; uint16_t learned_move,evolved_species; uint8_t pokemon[312]; } C3InventoryResult;
 typedef struct { uint16_t id; uint8_t kind,important,param; uint32_t name,description,field_function; } C3InventoryItem;
 unsigned c3_inventory_capacity(unsigned pocket);
+/* The item and count in one bag slot; 0 for an empty or invalid slot. */
+int c3_inventory_slot(const C3GameState *state,unsigned pocket,unsigned slot,unsigned *item,unsigned *count);
 int c3_inventory_item(const C3PdaAssets *assets,unsigned id,C3InventoryItem *item);
 /* Choices never change the save. Set move/replacement/evolution to -1 before
  * initial use. An OK result changes owned memory only; explicit Save persists. */

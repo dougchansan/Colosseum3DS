@@ -16,7 +16,7 @@ static uint8_t *entry(unsigned kind, unsigned key, unsigned size)
     uint8_t *d = assets_memory + asset_end; asset_end += size; return d;
 }
 /* Items 1 (price 300) and 2 (price 200), both medicine (kind 2, pocket 0);
- * item 3 has no price. */
+ * item 3 has no price; item 4 is a key item (kind 5, pocket 1). */
 static C3PdaAssets shop_assets(void)
 {
     memset(assets_memory, 0, sizeof assets_memory); entries = 0; asset_end = 64 + 8 * 16;
@@ -24,6 +24,7 @@ static C3PdaAssets shop_assets(void)
     d = entry(7, 1, 40); d[0] = 2; d[6] = 0x01; d[7] = 0x2c;
     d = entry(7, 2, 40); d[0] = 2; d[7] = 200;
     d = entry(7, 3, 40); d[0] = 2;
+    d = entry(7, 4, 40); d[0] = 5; d[1] = 1; d[7] = 100;   /* a key item with a price */
     return (C3PdaAssets){assets_memory, asset_end, entries};
 }
 /* C3H1: shop 0 (kind 0) sells 1, 2, 3; shop 1 is a coupon counter. */
@@ -91,15 +92,19 @@ int main(void)
         memset(b + 0x7f0, 0, c3_inventory_capacity(0) * 4);
     }
 
-    /* Menu: list, quantity within what the money covers, buy, message, leave. */
+    /* Menu: BUY / SELL / QUIT first; buying with a quantity within what the
+     * money covers, a message, and B stepping back a level each time. */
     C3ShopMenu menu;
-    CHECK(c3_shop_menu_open(&menu, &table, &assets, 0) && menu.count == 2);   /* item 3 has no price */
-    CHECK(menu.items[0] == 1 && menu.prices[0] == 300 && menu.items[1] == 2 && menu.cursor == 0);
+    CHECK(c3_shop_menu_open(&menu, &table, &assets, 0) && menu.count == 2 && menu.stage == C3_SHOP_MENU_CHOICE);
+    CHECK(menu.items[0] == 1 && menu.prices[0] == 300 && menu.items[1] == 2);   /* item 3 has no price */
     CHECK(!c3_shop_menu_open(&menu, &table, &assets, 1));
     CHECK(c3_shop_menu_open(&menu, &table, &assets, 0));
-    CHECK(c3_shop_menu_update(&menu, &state, &assets, 8) == C3_SHOP_EVENT_CHANGED && menu.cursor == 1); /* Up wraps */
-    CHECK(c3_shop_menu_update(&menu, &state, &assets, 4) == C3_SHOP_EVENT_CHANGED && menu.cursor == 0); /* Down wraps */
-    unsigned cash = money(&state);                                 /* 5100: 17 of item 1 at 300 */
+    CHECK(c3_shop_menu_update(&menu, &state, &assets, 8) == C3_SHOP_EVENT_CHANGED && menu.choice == 2);   /* Up wraps to QUIT */
+    CHECK(c3_shop_menu_update(&menu, &state, &assets, 4) == C3_SHOP_EVENT_CHANGED && menu.choice == 0);   /* Down wraps to BUY */
+    CHECK(c3_shop_menu_update(&menu, &state, &assets, 0x100) == C3_SHOP_EVENT_CHANGED && menu.stage == C3_SHOP_MENU_LIST);
+    CHECK(c3_shop_menu_update(&menu, &state, &assets, 8) == C3_SHOP_EVENT_CHANGED && menu.cursor == 1);   /* Up wraps */
+    CHECK(c3_shop_menu_update(&menu, &state, &assets, 4) == C3_SHOP_EVENT_CHANGED && menu.cursor == 0);   /* Down wraps */
+    unsigned cash = money(&state);                                    /* 5100: 17 of item 1 at 300 */
     CHECK(c3_shop_menu_update(&menu, &state, &assets, 0x100) == C3_SHOP_EVENT_CHANGED && menu.stage == C3_SHOP_MENU_QUANTITY && menu.quantity == 1);
     CHECK(c3_shop_menu_update(&menu, &state, &assets, 4) == C3_SHOP_EVENT_CHANGED && menu.quantity == cash / 300); /* 1 - 1 wraps to the most */
     CHECK(c3_shop_menu_update(&menu, &state, &assets, 8) == C3_SHOP_EVENT_CHANGED && menu.quantity == 1);          /* most + 1 wraps to 1 */
@@ -111,11 +116,58 @@ int main(void)
     CHECK(c3_shop_menu_update(&menu, &state, &assets, 0x100) == C3_SHOP_EVENT_CHANGED && menu.stage == C3_SHOP_MENU_MESSAGE);
     CHECK(money(&state) == cash - 600 && held(&state, 1) == 2 && strstr(menu.message, "bought 2"));
     CHECK(c3_shop_menu_update(&menu, &state, &assets, 0x100) == C3_SHOP_EVENT_CHANGED && menu.stage == C3_SHOP_MENU_LIST);
-    CHECK(c3_game_state_add_money(&state, -(int64_t)money(&state)));
-    CHECK(c3_shop_menu_update(&menu, &state, &assets, 0x100) == C3_SHOP_EVENT_CHANGED && menu.stage == C3_SHOP_MENU_MESSAGE && strstr(menu.message, "enough money"));
-    CHECK(c3_shop_menu_update(&menu, &state, &assets, 0x200) == C3_SHOP_EVENT_CHANGED);
+    {   unsigned all = money(&state);
+        CHECK(c3_game_state_add_money(&state, -(int64_t)all));
+        CHECK(c3_shop_menu_update(&menu, &state, &assets, 0x100) == C3_SHOP_EVENT_CHANGED && menu.stage == C3_SHOP_MENU_MESSAGE && strstr(menu.message, "enough money"));
+        CHECK(c3_shop_menu_update(&menu, &state, &assets, 0x200) == C3_SHOP_EVENT_CHANGED && menu.stage == C3_SHOP_MENU_LIST);
+        CHECK(c3_game_state_add_money(&state, (int64_t)all)); }
+    CHECK(c3_shop_menu_update(&menu, &state, &assets, 0x200) == C3_SHOP_EVENT_CHANGED && menu.stage == C3_SHOP_MENU_CHOICE);
     CHECK(c3_shop_menu_update(&menu, &state, &assets, 0x200) == C3_SHOP_EVENT_CLOSE);
 
+    /* Selling (fn_800181C4): price / 2 each; price 0 and key items refuse;
+     * the money limit refuses; a refusal changes nothing. */
+    CHECK(c3_shop_sell_price(&assets, 1) == 150 && c3_shop_sell_price(&assets, 2) == 100 && !c3_shop_sell_price(&assets, 3));
+    {
+        uint8_t *b = (uint8_t *)c3_game_state_body(&state, NULL);
+        memset(b + 0x7f0, 0, c3_inventory_capacity(0) * 4);
+        w16(b + 0x7f0, 1); w16(b + 0x7f2, 5);        /* 5 x item 1 */
+        w16(b + 0x7f4, 3); w16(b + 0x7f6, 2);        /* 2 x item 3 (no price) */
+        w16(b + 0x840, 4); w16(b + 0x842, 1);        /* key item 4 in pocket 1 */
+        unsigned before = money(&state);
+        CHECK(c3_shop_sell(&state, &assets, 0, 0, 2) == C3_SHOP_SOLD && money(&state) == before + 300 && held(&state, 1) == 3);
+        CHECK(c3_shop_sell(&state, &assets, 0, 0, 4) == C3_SHOP_INVALID && held(&state, 1) == 3);   /* more than held */
+        CHECK(c3_shop_sell(&state, &assets, 0, 1, 1) == C3_SHOP_CANNOT_SELL && held(&state, 3) == 2);
+        CHECK(c3_shop_sell(&state, &assets, 1, 0, 1) == C3_SHOP_CANNOT_SELL && money(&state) == before + 300);
+        CHECK(c3_game_state_add_money(&state, (int64_t)(9999999u - money(&state)) - 100));
+        unsigned full = money(&state);
+        CHECK(c3_shop_sell(&state, &assets, 0, 0, 1) == C3_SHOP_MONEY_FULL && money(&state) == full && held(&state, 1) == 3);
+        CHECK(c3_game_state_add_money(&state, -(int64_t)full + 1000));
+
+        /* Through the menu: SELL lists the bag (not the key pocket), marks
+         * the unsellable item, sells up to the stack and updates the list. */
+        CHECK(c3_shop_menu_open(&menu, &table, &assets, 0));
+        CHECK(c3_shop_menu_update(&menu, &state, &assets, 4) == C3_SHOP_EVENT_CHANGED && menu.choice == 1);
+        CHECK(c3_shop_menu_update(&menu, &state, &assets, 0x100) == C3_SHOP_EVENT_CHANGED && menu.stage == C3_SHOP_MENU_SELL_LIST);
+        CHECK(menu.sell_count == 2 && menu.sell[0].item == 1 && menu.sell[0].count == 3 && menu.sell[0].price == 150);
+        CHECK(menu.sell[1].item == 3 && menu.sell[1].price == 0);
+        CHECK(c3_shop_menu_update(&menu, &state, &assets, 4) == C3_SHOP_EVENT_CHANGED && menu.sell_cursor == 1);
+        CHECK(c3_shop_menu_update(&menu, &state, &assets, 0x100) == C3_SHOP_EVENT_CHANGED && menu.stage == C3_SHOP_MENU_MESSAGE && strstr(menu.message, "cannot be sold"));
+        CHECK(c3_shop_menu_update(&menu, &state, &assets, 0x100) == C3_SHOP_EVENT_CHANGED && menu.stage == C3_SHOP_MENU_SELL_LIST);
+        CHECK(c3_shop_menu_update(&menu, &state, &assets, 8) == C3_SHOP_EVENT_CHANGED && menu.sell_cursor == 0);
+        CHECK(c3_shop_menu_update(&menu, &state, &assets, 0x100) == C3_SHOP_EVENT_CHANGED && menu.stage == C3_SHOP_MENU_SELL_QUANTITY);
+        CHECK(c3_shop_menu_update(&menu, &state, &assets, 4) == C3_SHOP_EVENT_CHANGED && menu.quantity == 3);   /* wraps to the stack */
+        unsigned cash2 = money(&state);
+        CHECK(c3_shop_menu_update(&menu, &state, &assets, 0x100) == C3_SHOP_EVENT_CHANGED && menu.stage == C3_SHOP_MENU_MESSAGE);
+        CHECK(strstr(menu.message, "sold 3") && money(&state) == cash2 + 450 && held(&state, 1) == 0);
+        CHECK(menu.sell_count == 1 && menu.sell[0].item == 3);                     /* the sold stack is gone */
+        CHECK(c3_shop_menu_update(&menu, &state, &assets, 0x100) == C3_SHOP_EVENT_CHANGED && menu.stage == C3_SHOP_MENU_SELL_LIST);
+        CHECK(c3_shop_menu_update(&menu, &state, &assets, 0x200) == C3_SHOP_EVENT_CHANGED && menu.stage == C3_SHOP_MENU_CHOICE);
+        memset(b + 0x7f0, 0, c3_inventory_capacity(0) * 4);                         /* an empty sellable bag */
+        CHECK(c3_shop_menu_update(&menu, &state, &assets, 0x100) == C3_SHOP_EVENT_CHANGED && strstr(menu.message, "nothing to sell"));
+        CHECK(c3_shop_menu_update(&menu, &state, &assets, 0x200) == C3_SHOP_EVENT_CHANGED && menu.stage == C3_SHOP_MENU_CHOICE);
+        CHECK(c3_shop_menu_update(&menu, &state, &assets, 4) == C3_SHOP_EVENT_CHANGED && menu.choice == 2);
+        CHECK(c3_shop_menu_update(&menu, &state, &assets, 0x100) == C3_SHOP_EVENT_CLOSE);   /* QUIT */
+    }
     c3_game_state_free(&state); free(game);
     printf("shop: %u checks passed\n", checks);
     return 0;
