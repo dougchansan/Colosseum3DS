@@ -154,7 +154,7 @@ def npc_pack(archive, record, fixed, lights, archive_hash, output, format_versio
     samples = sum(len(sequence) for _,sequence,_ in schedules)
     reports = geometry.prepare_pack_set(meshes,schedules,60,[fixed]*samples,lights,
                 archive_hash,output,Path(record["file"]).stem,expected_count=1,format_version=format_version,
-                retained_parts=retained_parts)
+                retained_parts=retained_parts,gpu_textures=True)
     record["source_clip_ends"] = model.ends
     record["default_idle_clip"] = record["motion_indices"][0]
     record["particle_callbacks_unrendered"] = model.particle_events
@@ -552,7 +552,7 @@ def prepare_partner(field_common, common, output, prefix, camera, lights, format
     samples = sum(len(sequence) for _,sequence,_ in schedules)
     reports = geometry.prepare_pack_set(meshes,schedules,60,[camera]*samples,lights,
                 PROFILES["field_common.fsys"][1],output,prefix,expected_count=1,
-                format_version=format_version)
+                format_version=format_version,gpu_textures=True)
     member = field.member(field_common,partner["resource"])
     summary = {"file":reports[0]["file"],"archive":partner["archive"],
                "resource_id":"%08x" % partner["resource"],"member_id":partner["member_id"],

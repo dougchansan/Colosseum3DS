@@ -253,8 +253,17 @@ finished C3T pack's texture section into the exact PICA image (header byte
 - `--max-dimension` drops leading mip levels (not used yet).
 
 The renderer copies these bytes and enables trilinear filtering
-(`C3D_TexSetFilterMipmap`). Legacy packs load unchanged. Run it on the field
-packs after preparation:
+(`C3D_TexSetFilterMipmap`). Legacy packs load unchanged.
+
+The field preparation tools write GPU-native packs directly:
+`prepare_pack_set(..., gpu_textures=True)` in `tools/prepare_field_geometry.py`
+applies the same `repack` before a pack is written, so the manifests' hashes
+and sizes describe the converted file. It is on for Outskirt's maps, sky and
+arrival, every floor's map and object packs (`prepare_floor.py`), the area
+people and the partner (`prepare_area.py`) and Wes. It is off for the shop's
+map and television packs (the television replaces a screen texture at run
+time, not tested with converted packs) and for everything outside the field
+(battle, PDA, effects). Older prepared packs can still be converted by hand:
 
     python tools/pack_textures.py <boot>/outskirt_map0.c3t <out>/outskirt_map0.c3t --report <out>/outskirt_map0.json
 
@@ -417,9 +426,8 @@ Outskirt), same build 0453902 and route:
 | waiting for the GPU per frame | 11.4 ms | 7.7 ms |
 
 Native-size captures at the same spot show no visible difference. Phenac
-is still GPU-bound in about one frame in seven. The converted packs live on
-the console and in `private/phenac-story/gpu-native/`; the prepare pipeline
-does not run `pack_textures.py` yet. Before this work no Phenac pack had run on hardware: person npc11
+is still GPU-bound in about one frame in seven. The field preparation tools
+now write these packs directly (above). Before this work no Phenac pack had run on hardware: person npc11
 pairs alpha tests GREATER 127 and GREATER 0, which `valid_batch` refused,
 and the whole area failed to load.
 

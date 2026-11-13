@@ -135,7 +135,7 @@ def prepare_floor_geometry(archive, field_common, profile, output):
             group = prepare_pack_set(items, [(0, sampled, True)], rate, [fixed] * len(sampled), lights,
                                      profile["sha256"], output,
                                      "%s_group%d%s_" % (profile["prefix"], number, label[0]),
-                                     format_version=version)
+                                     format_version=version, gpu_textures=True)
             for report in group:
                 name = "%s_map%d.c3t" % (profile["prefix"], packs)
                 (output / report["file"]).rename(output / name)
@@ -159,7 +159,7 @@ def prepare_floor_geometry(archive, field_common, profile, output):
         samples = sum(len(sequence) for _, sequence, _ in schedules)
         group = prepare_pack_set(own, schedules, 60, [fixed] * samples, lights, profile["sha256"], output,
                                  "%s_obj%d" % (profile["prefix"], index), expected_count=1,
-                                 format_version=version)
+                                 format_version=version, gpu_textures=True)
         group[0].update(source_models=[index], sampling="object", source_clip_ends=list(model.ends))
         object_reports += group
     wes_reports, actor_vertices = prepare_wes(field_common, output, profile["prefix"] + "_wes", fixed, lights,

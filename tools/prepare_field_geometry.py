@@ -12,6 +12,7 @@ import struct
 
 import numpy as np
 
+import pack_textures
 import prepare_title as title
 
 DUAL_MODULATE, SUBTRACT, ADDITIVE_ONE, REFLECTION_BLEND = 1024, 2048, 4096, 8192
@@ -983,8 +984,13 @@ def _sample_descriptor(model, descriptor, states, attachment=None):
 
 
 def prepare_pack_set(meshes, schedules, fps, camera_frames, lights, archive_hash, output, prefix,
-                     attachment=None, expected_count=None, format_version=2, retained_parts=()):
+                     attachment=None, expected_count=None, format_version=2, retained_parts=(),
+                     gpu_textures=False):
     """Sample once, compact equal affine tracks, then partition at native bounds.
+
+    gpu_textures stores the textures as exact PICA images (tools/pack_textures.py:
+    RGB565 with mips when opaque, RGBA8 otherwise). The field packs use it; the
+    reports describe the written bytes either way.
 
     schedules is a list of (source_clip, authored_frame_sequence, loop). Every
     model in a map group uses the same clock; independent clocks get a new set.
@@ -1099,6 +1105,8 @@ def prepare_pack_set(meshes, schedules, fps, camera_frames, lights, archive_hash
             first+=len(sequence)
         pack=title.encode_pack(len(bone_tracks),vertices,batches,textures,clips,lights,sampled,
                                fps=fps,format_version=format_version,archive_sha256=archive_hash)
+        if gpu_textures:
+            pack,_texture_report=pack_textures.repack(pack)
         name=prefix + (str(number) if expected_count != 1 else "") + ".c3t"
         (output/name).write_bytes(pack)
         report={"file":name,"bytes":len(pack),"sha256":hashlib.sha256(pack).hexdigest(),
@@ -1148,7 +1156,7 @@ def prepare_wes(archive, output, prefix, camera, lights, format_version=2):
     samples=sum(len(sequence) for _,sequence,_ in schedules)
     reports=prepare_pack_set(meshes,schedules,60,[camera]*samples,lights,
         PROFILES["field_common.fsys"][1],output,prefix,expected_count=1,
-        format_version=format_version)
+        format_version=format_version,gpu_textures=True)
     return reports,sum(len(mesh["vertices"]) for mesh in meshes)
 
 
@@ -1181,13 +1189,13 @@ def prepare_geometry(archives, output):
     meshes=[build_mesh(model,i) for model in models[:4] for i in range(len(model.meshes))]
     short=sample_sequence(179)
     reports=prepare_pack_set(meshes,[(0,short,True)],60,[fixed]*len(short),lights,source_hash,
-                             output,"outskirt_map",expected_count=3)
+                             output,"outskirt_map",expected_count=3,gpu_textures=True)
     sky=[build_mesh(models[4],i) for i in range(len(models[4].meshes))]
     # Sparse sampling of the slow linear sky rotation; its exact loop is 29999
     # source frames, not GSmodelGetFrameCount's inclusive query of 30000.
     sky_frames=[i*29999/1000 for i in range(1001)]
     sky_reports=prepare_pack_set(sky,[(0,sky_frames,True)],30000/29999,[fixed]*1001,lights,
-                                 source_hash,output,"outskirt_map3",expected_count=1)
+                                 source_hash,output,"outskirt_map3",expected_count=1,gpu_textures=True)
     reports+=sky_reports
     wes_reports,actor_vertices=prepare_wes(archives["field_common.fsys"],output,
                                          "outskirt_wes",fixed,lights)
@@ -1213,7 +1221,7 @@ def prepare_arrival(archives,output,lights,source_hash):
     bike_meshes=[build_mesh(bike,i) for i in range(len(bike.meshes))]
     reports=prepare_pack_set(bike_meshes,[(1,bike_frames,False)],60,camera_frames,lights,
                                source_hash,output,"outskirt_arrival",attachment=attachment,expected_count=2,
-                               format_version=3)
+                               format_version=3,gpu_textures=True)
     for report in reports:
         if report["file"].startswith("outskirt_arrival"):
             report["clips"][0]["authored_end"]=150
