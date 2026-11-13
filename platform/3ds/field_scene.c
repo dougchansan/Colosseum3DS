@@ -615,6 +615,16 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                 if(view->next_spawn>255||!c3_game_state_set_floor(state,view->next_floor,map.floor,(uint8_t)view->next_spawn)){
                     snprintf(error,capacity,"Original doorway checkpoint is invalid.");result=-1;break;
                 }
+#ifdef C3_CAMPAIGN
+                /* Successive floor loads fragment the heap (a full exterior
+                 * needs almost all of it): after two in-process loads the
+                 * campaign saves at the doorway and the watcher relaunches. */
+                {static unsigned loads;if(++loads>=3){
+                    int saved=save_game(state,save_path,trace,message,sizeof message);
+                    campaign_store_tried();
+                    campaign_line("floor=%03lx door_to=%03lx action=restart_for_memory saved=%d",(unsigned long)map.floor,(unsigned long)view->next_floor,saved);
+                    result=1;break;}}
+#endif
                 result=2;break;
             }
         }
