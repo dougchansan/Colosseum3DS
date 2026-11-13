@@ -143,6 +143,9 @@ static int validate_native(const Impl *s,const C3StoryCall *c,char *error)
         if((c->native==0x4c||c->native==0x4d)&&c->argc<2)return 1;
         /* Some banks call 32 with (group,index) only: visible reads zero. */
         if(c->native==0x32&&c->argc==2)return 1;
+        /* Floor 022 starts a battle with the encounter alone (98 with one
+         * word); the zero-filled register image gives the other two zero. */
+        if(c->native==0x98&&c->argc>=1)return 1;
         /* Extra script words are legal: the dispatcher reads only the table
          * row's typed arguments and the call pops the rest (the mayor's-house
          * bank passes five words to the three-argument native 36). Missing
@@ -780,7 +783,7 @@ static int run_native(Impl *s,RunTask *t,char *error)
         note_presentation(s,c->native,"door_sound_backend_pending");
         ++s->event_depth;s->hero_ready=0;t->stage=position;t->wait=W_DOOR;return 1;}
     case 0x66:case 0x98:
-        if(c->native==0x66){a[1]=0;a[2]=0;}
+        if(c->native==0x66||c->argc<3){a[1]=c->argc>1?a[1]:0;a[2]=0;if(c->native==0x66)a[1]=0;}
         s->view.battle_id=a[0];
         if(s->battle_loaded&&a[0]==10){
             size_t bytes=0;const uint8_t *body=c3_game_state_body(s->game,&bytes);
