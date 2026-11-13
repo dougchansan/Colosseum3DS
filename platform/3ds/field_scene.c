@@ -572,6 +572,13 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     while(c3_n3ds_poll(&input)){
         if(!npc.attached&&!npc_stream_attach(&npc,0,storage,models,actor_models,model_paths,&story,count,skin_actors,
                                              tv_index,view?view->tv_enabled:1,frames,trace,error,capacity)){result=-1;break;}
+#ifdef C3_CAMPAIGN
+        /* Review aid: the top screen half a second after the people joined. */
+        {static unsigned people_frame;static int people_done;
+         if(npc.count&&npc.attached&&!people_done&&!people_frame)people_frame=frames+4u;
+         if(people_frame&&frames>=people_frame){char shot[112];people_done=1;people_frame=0;
+             snprintf(shot,sizeof shot,"sdmc:/3ds/Colosseum3DS/campaign/people_%s.bmp",prefix);(void)c3_n3ds_capture_top(shot);}}
+#endif
         uint64_t now=c3_n3ds_active_time_us();float delta=(float)(now-previous)/1000000.0f;
         previous=now;elapsed+=delta;phase_seconds+=delta;
         c3_game_state_add_play_time(state,delta);
@@ -650,7 +657,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                     campaign_line("floor=%03lx stuck seconds=%.0f message=%05lx action=restart saved=%d",(unsigned long)map.floor,(double)busy,(unsigned long)view->message_id,saved);
                     busy=0;result=1;break;
                 }
-                if(idle>0.75f){
+                if(idle>0.75f&&npc.attached){
                     /* Choose the next event: untried at this flag state first. */
                     uint32_t set,digest=campaign_flags(state,&set);
                     int kind=-1;uint32_t id=0,best_uses=UINT32_MAX,slot=0;
