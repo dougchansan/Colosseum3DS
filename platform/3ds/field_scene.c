@@ -342,7 +342,10 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         /* Script native 16: the partner is named on the bottom-screen
          * keyboard while the event waits. The keyboard owns all input. */
         if(view->name_entry&&!naming&&page==PAUSE_CLOSED&&c3_game_state_summary(state,&summary)){
-            c3_name_entry_init(&name_entry,summary.partner);naming=1;dirty=1;
+            /* An unnamed partner holds the original placeholder (message
+             * 0xFA2, "N/A"; docs/game-state.md): start empty, with no
+             * fallback, rather than offering the placeholder as her name. */
+            c3_name_entry_init(&name_entry,strcmp(summary.partner,"N/A")?summary.partner:NULL);naming=1;dirty=1;
             if(trace){fprintf(trace,"name_entry_open mode=%lu\n",(unsigned long)(view->name_entry-1u));fflush(trace);}
         }
         if(naming){

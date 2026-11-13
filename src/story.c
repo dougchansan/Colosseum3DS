@@ -506,6 +506,15 @@ int c3_story_message_with(const C3Story *story,uint32_t id,C3StoryTextSource sou
         }else if(!ruby){
             if(glyph==0x2031)text="???"; /* original unknown-name glyph */
             else if(glyph==0xe9)text="e"; /* libctru console font */
+            /* The field text is drawn with an ASCII font, which prints any
+             * other byte as '?'. Full-width spaces pad some original
+             * messages (three after "became a partner!"); typographic
+             * punctuation gets its ASCII form. */
+            else if(glyph==0x3000)text=" ";
+            else if(glyph==0x2026)text="...";
+            else if(glyph==0x2018||glyph==0x2019)text="'";
+            else if(glyph==0x201c||glyph==0x201d)text="\"";
+            else if(glyph==0x2013||glyph==0x2014)text="-";
             else if(glyph<0x80){if(glyph<32)return fail(error,"Unexpected text control glyph");encoded[0]=(char)glyph;}
             else if(glyph<0x800){encoded[0]=(char)(0xc0|(glyph>>6));encoded[1]=(char)(0x80|(glyph&63));}
             else if(glyph<0xd800||glyph>0xdfff){encoded[0]=(char)(0xe0|(glyph>>12));encoded[1]=(char)(0x80|((glyph>>6)&63));encoded[2]=(char)(0x80|(glyph&63));}

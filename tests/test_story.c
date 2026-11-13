@@ -124,7 +124,9 @@ static void pack_and_messages(void) {
     Fixture b=fixture();byte(&b,5);extra_function(&b);
     unsigned char pack[4096]={0},msg[128]={0};char output[128],error[C3_STORY_ERROR];C3Story story={0};
     unsigned m=32;be16(msg+4,2);be32(msg+16,1);be32(msg+20,m);
-    const unsigned char text[]={0,84,0,69,0,83,0,84,0,32,255,255,0x2b,255,255,0,255,255,0x59,255,255,3,0,33,255,255,2,0,0};
+    /* ... then U+3000 (full-width space padding, as after Phenac's
+     * "became a partner!") and U+2026, which the ASCII field font lacks. */
+    const unsigned char text[]={0,84,0,69,0,83,0,84,0,32,255,255,0x2b,255,255,0,255,255,0x59,255,255,3,0,33,0x30,0,0x20,0x26,255,255,2,0,0};
     memcpy(msg+m,text,sizeof text);m+=sizeof text;be32(msg+24,2);be32(msg+28,m);
     msg[m++]=255;msg[m++]=255;msg[m++]=0x7f;msg[m++]=0;msg[m++]=0;
     unsigned total=96+b.size+m;
@@ -132,7 +134,7 @@ static void pack_and_messages(void) {
     le32(pack+24,64);le32(pack+28,80);le32(pack+64,0x123);le32(pack+68,96);le32(pack+72,b.size);
     le32(pack+84,96+b.size);le32(pack+88,m);memcpy(pack+96,b.data,b.size);memcpy(pack+96+b.size,msg,m);
     CHECK(c3_story_decode(&story,pack,total,error)&&c3_story_floor(&story)==2);
-    CHECK(c3_story_message(&story,1,"ALPHA",NULL,"BETA",output,sizeof output,error)&&!strcmp(output,"TEST ALPHA\nBETA\f!"));
+    CHECK(c3_story_message(&story,1,"ALPHA",NULL,"BETA",output,sizeof output,error)&&!strcmp(output,"TEST ALPHA\nBETA\f! ..."));
     CHECK(!c3_story_message(&story,1,"ALPHA",NULL,"BETA",output,5,error));
     CHECK(!c3_story_message(&story,2,NULL,NULL,NULL,output,sizeof output,error)&&strstr(error,"control 7f"));
     CHECK(!c3_story_message(&story,999,NULL,NULL,NULL,output,sizeof output,error));
