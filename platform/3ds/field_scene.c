@@ -773,7 +773,11 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                 /* Successive floor loads fragment the heap (a full exterior
                  * needs almost all of it): after one in-process load the
                  * campaign saves at the doorway and the watcher relaunches. */
-                {static unsigned loads;if(view->next_floor!=C3_FLOOR_WORLD_MAP_ID&&++loads>=2){
+                /* campaign/cache-test on the SD card: allow more in-process
+                 * floor changes, so round trips can hit the pack cache. */
+                static int cache_test=-1;
+                if(cache_test<0)cache_test=exists("sdmc:/3ds/Colosseum3DS/campaign/cache-test");
+                {static unsigned loads;if(view->next_floor!=C3_FLOOR_WORLD_MAP_ID&&++loads>=(cache_test?8u:2u)){
                     int saved=save_game(state,save_path,trace,message,sizeof message);
                     campaign_store_tried();
                     campaign_line("floor=%03lx door_to=%03lx action=restart_for_memory saved=%d",(unsigned long)map.floor,(unsigned long)view->next_floor,saved);

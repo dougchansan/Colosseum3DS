@@ -396,8 +396,11 @@ static int run_native(Impl *s,RunTask *t,char *error)
         value=(uint32_t)s->camera_mode;s->camera_mode=(int)a[0];
         s->view.camera_active=s->camera_mode!=0;break;
     case 0x25:
-        if(a[0]||a[1]!=100)return fail(error,"Camera target %lu:%lu is not prepared",(unsigned long)a[0],(unsigned long)a[1]);
-        s->camera_person=&s->hero_actor;
+        if(!a[0]&&a[1]==100){s->camera_person=&s->hero_actor;break;}
+        /* Another person (group, index): follow them; one that is not on
+         * this floor keeps the current target, and the gap is recorded. */
+        p=person(s,a[0],a[1]);
+        if(p)s->camera_person=p;else note_presentation(s,0x25,"camera_target_person_missing_kept_current");
         break;
     case 0x26: for(unsigned i=0;i<3;++i)s->view.camera.target[i]=as_float(a[i])*s->map->scale;break;
     case 0x27:
