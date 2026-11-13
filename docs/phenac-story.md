@@ -64,6 +64,25 @@ private packs. 7,230 checks pass.
   `GScolsys2ThruGetEventID`; with the corrected position the fence's touch
   surface was unreachable and the story stopped at the mayor's door.
 
+## After the mayor (hardware, 2026-11-12)
+
+| Step | Original behaviour | Port |
+| --- | --- | --- |
+| Mayor's welcome | mayor's-house bank `014E0E00` sets flag `0x9A4` | runs to the end on a New 3DS |
+| Leaving the mayor's house | exit surfaces sit on CCD object 3 of a three-object walk/wall set | `c3_field_cover_objects` enables event-only objects; fixed |
+| Stadium receptionist | stadium function 7 reads `0x9A0` with native `52` (GSflagGet), then sets `0x3E6` once `0x9A4` is set | native `52` lowered; `0x3E6` set on hardware |
+| Back in town | Phenac main (function 7) runs function 4 once `0x3E6` is set: grunts confront Wes, a battle, then `0x3E7`; Rui suggests buying Poke Balls | plays on hardware; the battle is skipped as a win (shortcut above) |
+
+The stadium is reached through Phenac surface 5 (no door) at the top of the
+north ramp; surface 4 (door 5) leads to floor 7, a house. Next stop in the
+original: the Poke Mart (floor 9, `M1_shop_1F.fsys`).
+
+Memory: with six door object packs each carrying the 1024x1024 town atlas,
+Phenac needed 90.6 MB of the 94.8 MB heap and a second load in one session
+failed on fragmentation. Object packs now crop each mesh's texture to the
+region it samples (`crop_textures_to_use`); two loads in one session then
+succeed on hardware.
+
 ## Not done
 
 - No audio, no partner follower, no door sounds.
@@ -72,7 +91,10 @@ private packs. 7,230 checks pass.
   code the field text does not interpret yet.
 - The saved partner name defaults to "N/A" on the naming keyboard.
 - Most Phenac interiors have not been entered on hardware yet; the mayor's
-  house has.
+  house and the stadium have. A doorway into an area that is not prepared
+  leaves only the main menu as a way out.
+- Phenac door 3's object pack is not cropped (its coordinates leave the
+  image); the Pre Gym (floor 0x0B) stops on unported native 61.
 
 ## Hardware run, 2026-11-12 (build 57d11bd, New 3DS)
 
