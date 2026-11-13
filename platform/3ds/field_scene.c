@@ -660,9 +660,9 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                 }
 #ifdef C3_CAMPAIGN
                 /* Successive floor loads fragment the heap (a full exterior
-                 * needs almost all of it): after two in-process loads the
+                 * needs almost all of it): after one in-process load the
                  * campaign saves at the doorway and the watcher relaunches. */
-                {static unsigned loads;if(view->next_floor!=C3_FLOOR_WORLD_MAP_ID&&++loads>=3){
+                {static unsigned loads;if(view->next_floor!=C3_FLOOR_WORLD_MAP_ID&&++loads>=2){
                     int saved=save_game(state,save_path,trace,message,sizeof message);
                     campaign_store_tried();
                     campaign_line("floor=%03lx door_to=%03lx action=restart_for_memory saved=%d",(unsigned long)map.floor,(unsigned long)view->next_floor,saved);
