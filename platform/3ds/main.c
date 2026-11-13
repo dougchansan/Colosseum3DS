@@ -11,6 +11,11 @@
 #include <3ds.h>
 #include <stdio.h>
 
+/* libctru's default main-thread stack is 32 KiB. A battle entered from
+ * the field loop nests deep frames (field, battle preview, runtime trainer
+ * staging); give the main thread room. */
+u32 __stacksize__ = 256 * 1024;
+
 int main(void)
 {
     char error[160];
