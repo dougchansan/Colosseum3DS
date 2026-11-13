@@ -73,9 +73,14 @@ private packs. 7,230 checks pass.
 | Stadium receptionist | stadium function 7 reads `0x9A0` with native `52` (GSflagGet), then sets `0x3E6` once `0x9A4` is set | native `52` lowered; `0x3E6` set on hardware |
 | Back in town | Phenac main (function 7) runs function 4 once `0x3E6` is set: grunts confront Wes, a battle, then `0x3E7`; Rui suggests buying Poke Balls | plays on hardware; the battle is skipped as a win (shortcut above) |
 
+| Poke Mart | shop bank `01610E00` function 8 (a shopper at (-1.6, -5.0)) checks `0x413` and `0x3E7`, then sets `0x99E` and says Poke Balls are sold at the Outskirt Stand | plays on hardware (save 8) |
+
 The stadium is reached through Phenac surface 5 (no door) at the top of the
-north ramp; surface 4 (door 5) leads to floor 7, a house. Next stop in the
-original: the Poke Mart (floor 9, `M1_shop_1F.fsys`).
+north ramp; surface 4 (door 5) leads to floor 7, a house; surface 1 (door 2)
+leads to the Poke Mart. The Mart clerk (function 6) opens the shop with
+native `19(3)`, which is not lowered; the story does not need it here. Next
+stop in the original: back to the Outskirt Stand through the world map,
+where buying Poke Balls likely needs that shop native.
 
 Memory: with six door object packs each carrying the 1024x1024 town atlas,
 Phenac needed 90.6 MB of the 94.8 MB heap and a second load in one session
