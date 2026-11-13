@@ -97,7 +97,15 @@ covers, and a result. A purchase checks money, then bag space, and a
 refusal changes nothing. On a New 3DS (2026-11-12) the clerk opened the
 menu with the original stock; three Potions cost 900 (10000 to 9100), the
 bag showed Potion x8 (5 from the new game plus 3) and the clerk's script
-resumed when the shop was left. Selling and the prize-coupon counters
+resumed when the shop was left.
+
+Selling follows the original sell path (`fn_800181C4`): an item whose price
+is 0 cannot be sold; otherwise each brings price / 2, credited with
+`heroAddPokedoru`. The menu opens on BUY / SELL / QUIT; SELL lists the bag
+(not the key-item pocket) with what each item brings, and key or important
+items are refused by the bag's toss rules. The port stops the quantity where
+the money would pass 9,999,999. On the console two Potions sold for 300
+(10000 to 10300) and the stack went from 5 to 3. The prize-coupon counters
 (kinds 1-4) are not ported.
 
 Next stop in the original: back to the Outskirt Stand through the world
