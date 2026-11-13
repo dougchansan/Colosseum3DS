@@ -565,7 +565,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                         /* Stand where a player could: on ground, with no wall
                          * between the person and the spot and no other person
                          * on it. Front first, then around (45 degree steps). */
-                        float yaw=actor->pose.yaw,reach=map.radius+(source?source->radius:4.0f*map.scale)+3.0f*map.scale;
+                        float yaw=actor->pose.yaw,reach=map.radius+(source?source->radius:4.0f*map.scale)+9.0f*map.scale;
                         float spot[3]={0},best[3];int found=0;
                         best[0]=actor->pose.position[0]+sinf(yaw)*reach;best[1]=actor->pose.position[1];
                         best[2]=actor->pose.position[2]+cosf(yaw)*reach;
