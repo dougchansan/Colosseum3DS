@@ -15,6 +15,7 @@
 #include "colosseum3ds/field.h"
 #include "colosseum3ds/field_story.h"
 #include "colosseum3ds/first_person.h"
+#include "colosseum3ds/orbit_camera.h"
 #include "colosseum3ds/floor_profile.h"
 #include "colosseum3ds/inventory.h"
 #include "colosseum3ds/name_entry.h"
@@ -180,6 +181,8 @@ int c3_field_scene_available(void)
 
 /* Optional first-person view; kept across floor loads like the recomp mod. */
 static C3FirstPerson first_person;
+/* Third-person orbit / free camera (orbit_camera.h); kept across floors. */
+static C3OrbitCamera orbit={.zoom=1.0f};
 #ifdef C3_CAMPAIGN
 /* Campaign build: an autopilot plays the story unattended. When the hero
  * has control it starts the next event of the floor that was not yet tried
@@ -950,10 +953,27 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                         input.pressed&=(uint16_t)~(C3_PAD_X|C3_PAD_Z|C3_PAD_R);
                         if(trace){fprintf(trace,"first_person enabled=%d yaw=%.4f\n",first_person.enabled,(double)first_person.yaw);fflush(trace);}
                     }
+                    if(c3_orbit_free_chord(input.held,input.pressed)){
+                        /* Hold ZL/ZR (or R) and press Y: detached free flight from the current view. */
+                        if(orbit.free)orbit.free=0;
+                        else{if(first_person.enabled)c3_first_person_toggle(&first_person,&player,map.floor);
+                             c3_orbit_free_enter(&orbit,&camera);}
+                        input.pressed&=(uint16_t)~(C3_PAD_Y|C3_PAD_Z|C3_PAD_R);
+                        if(trace){fprintf(trace,"free_camera enabled=%d\n",orbit.free);fflush(trace);}
+                    }
+                    if(c3_orbit_recenter_chord(input.held,input.pressed)){
+                        /* ZL/ZR (or R) + Down: leave free flight, authored view again. */
+                        c3_orbit_reset(&orbit);
+                        input.pressed&=(uint16_t)~(C3_PAD_DOWN|C3_PAD_Z|C3_PAD_R);
+                        if(trace){fprintf(trace,"camera_recenter\n");fflush(trace);}
+                    }
                     if(first_person.enabled){
                         c3_first_person_look(&first_person,input.cstick_x,input.cstick_y,delta);
                         c3_first_person_touch(&first_person,input.touch_held,input.touch_x,input.touch_y);
-                    }
+                    }else if(orbit.free){
+                        c3_orbit_free_update(&orbit,input.stick_x,input.stick_y,input.cstick_x,input.cstick_y,
+                                             input.held,map.scale,delta);
+                    }else (void)c3_orbit_input(&orbit,input.cstick_x,input.cstick_y,input.held,delta);
                     /* Home screen: a tapped button opens the in-game menu at
                      * that page (SAVE at its confirmation). In first person
                      * the stylus looks around instead. */
@@ -975,8 +995,13 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                     else if(input.pressed&C3_PAD_A){if(!c3_field_story_interact(&story,story_error))goto story_failed;dirty=1;}
                     else{
                         float before[3];memcpy(before,player.position,sizeof before);
-                        float move_yaw=first_person.enabled?c3_first_person_move_yaw(&first_person):map.camera_yaw;
-                        if(!c3_field_move(&map,&player,input.stick_x,input.stick_y,input.held,move_yaw,delta)){
+                        float move_yaw=first_person.enabled?c3_first_person_move_yaw(&first_person):
+                                       orbit.active?c3_orbit_move_yaw(&camera):map.camera_yaw;
+                        /* D-pad Up/Down zoom the view; free flight moves the camera, not the hero. */
+                        uint16_t walk_buttons=(uint16_t)(input.held&~(C3_PAD_UP|C3_PAD_DOWN));
+                        int walk_x=orbit.free?0:input.stick_x,walk_y=orbit.free?0:input.stick_y;
+                        if(orbit.free)walk_buttons=0;
+                        if(!c3_field_move(&map,&player,walk_x,walk_y,walk_buttons,move_yaw,delta)){
                             snprintf(error,capacity,"Field movement failed.");result=-1;break;
                         }
                         c3_field_story_collide(&story,before);
@@ -1115,7 +1140,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                 /* Scripted cameras above suspend the view; arrivals start it level. */
                 c3_first_person_arrive(&first_person,&player,map.floor);
                 c3_first_person_camera(&first_person,&map,&player,&camera);hide(wes);
-            }else c3_field_camera(&map,&player,&camera);
+            }else{c3_field_camera(&map,&player,&camera);c3_orbit_apply(&orbit,&map,&player,&camera);}
             if(phase==FIELD_FADE_IN)fade=fminf(fade,phase_seconds/(arrival?1.0f:.5f));
         }
         if(!c3_game_state_summary(state,&summary)){snprintf(error,capacity,"Game state became unavailable.");result=-1;break;}
