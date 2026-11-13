@@ -202,6 +202,12 @@ static inline void c3_title_place_yaw(C3Title *title, const float position[3],
  * space scaled by the pinned importer's factor 0.10. The renderer reads
  * draw_vertices, batches, textures, pose and lights. */
 int c3_title_load(C3Title *title, const char *path, char *error, size_t capacity);
+/* A pack file may be stored compressed: "C3Z1" (zlib) or "C3Z2" (zstd), the
+ * raw byte count (u32 LE), then one stream of the raw pack. c3_title_load
+ * accepts any form;
+ * c3_title_load_memory loads the same bytes from memory (data is not kept). */
+int c3_title_load_memory(C3Title *title, const void *data, size_t bytes, char *error, size_t capacity);
+int c3_title_is_compressed(const void *data, size_t bytes, size_t *raw_bytes);
 int c3_title_parse(C3Title *title, const void *data, size_t bytes, char *error, size_t capacity);
 void c3_title_close(C3Title *title);
 /* Shares immutable source/geometry with owner; owns pose and sampled vertices.

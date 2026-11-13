@@ -2,6 +2,7 @@
 #include "bottom_screen.h"
 #include "game_ui_views.h"
 #include "ingame_menu.h"
+#include "pack_cache.h"
 #include "pda_preview.h"
 #include "pda_audio.h"
 #include "movie_player.h"
@@ -289,7 +290,14 @@ static int field_renderer_init(C3Title *storage,const C3Title *const *models,uin
 #else
     (void)actors;
 #endif
-    if(c3_stage_renderer_init(models,count,error,capacity))return 1;
+    /* The pack cache shares linear memory with the renderer: if the scene
+     * cannot start, empty it and try once more; once it runs, keep a margin
+     * free for buffers allocated later (HUD, particles, audio). */
+    if(c3_stage_renderer_init(models,count,error,capacity)){
+        c3_pack_cache_clear();
+        if(c3_stage_renderer_init(models,count,error,capacity))return 1;
+    }
+    c3_pack_cache_trim(6u*1024u*1024u);
 #ifndef C3_NO_GPU_SKIN
     for(uint32_t i=0;i<count;++i)storage[i].gpu_batches=c3_stage_renderer_gpu_skin_mask(i);
 #else
@@ -382,7 +390,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         else if(i==wes_index)snprintf(path,sizeof path,BOOT_ROOT "%s_wes.c3t",prefix);
         else snprintf(path,sizeof path,BOOT_ROOT "%s_arrival%lu.c3t",prefix,(unsigned long)(i-arrival_index));
         pack_us=c3_n3ds_time_us();
-        if(!c3_title_load(storage+i,path,error,capacity))goto done;
+        if(!c3_pack_cache_load(storage+i,path,error,capacity))goto done;
         if(trace){fprintf(trace,"field_pack_load file=%s bytes=%lu us=%llu\n",path,(unsigned long)storage[i].file_bytes,
             (unsigned long long)(c3_n3ds_time_us()-pack_us));}
         snprintf(model_paths[i],sizeof model_paths[i],"%s",path);
@@ -393,7 +401,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         snprintf(path,sizeof path,BOOT_ROOT "%s",area.actors[i].file);
         C3Title *model=storage+opened;
         pack_us=c3_n3ds_time_us();
-        if(!c3_title_load(model,path,error,capacity))goto done;
+        if(!c3_pack_cache_load(model,path,error,capacity))goto done;
         if(trace){fprintf(trace,"field_pack_load file=%s bytes=%lu us=%llu\n",path,(unsigned long)model->file_bytes,
             (unsigned long long)(c3_n3ds_time_us()-pack_us));}
         snprintf(model_paths[opened],sizeof model_paths[opened],"%s",path);
@@ -404,7 +412,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         snprintf(path,sizeof path,BOOT_ROOT "%s",doors.rows[i].file);
         C3Title *model=storage+opened;
         pack_us=c3_n3ds_time_us();
-        if(!c3_title_load(model,path,error,capacity))goto done;
+        if(!c3_pack_cache_load(model,path,error,capacity))goto done;
         if(trace){fprintf(trace,"field_pack_load file=%s bytes=%lu us=%llu\n",path,(unsigned long)model->file_bytes,
             (unsigned long long)(c3_n3ds_time_us()-pack_us));}
         snprintf(model_paths[opened],sizeof model_paths[opened],"%s",path);
@@ -791,7 +799,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         }
         if(phase==FIELD_FADE_IN&&phase_seconds>=(arrival?1.0f:.5f)){
             phase=FIELD_CONTROL;phase_seconds=0;dirty=1;
-            if(!load_reported&&trace){load_reported=1;
+            if(!load_reported&&trace){c3_pack_cache_trace(trace,"control");load_reported=1;
                 fprintf(trace,"field_load_to_control floor=%lu us=%llu\n",(unsigned long)map.floor,
                         (unsigned long long)(c3_n3ds_time_us()-load_start_us));fflush(trace);}
         }
@@ -816,6 +824,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                     /* The bottom-screen hub keeps the P*DA art loaded; free it
                      * for the battle (it reloads on the next field frame). */
                     if(ingame->active)c3_ingame_close(ingame);
+                    c3_pack_cache_clear(); /* the battle needs the linear memory */
                     c3_n3ds_log_memory(trace,"field_battle_payloads_released");
                     int battle_outcome=0;
                     int preview_result=c3_battle_preview_from_game_state(state,trace,&battle_outcome);

@@ -42,8 +42,8 @@ CFLAGS += -DC3_DEV_FLOOR
 endif
 ASFLAGS := -g $(ARCH)
 LDFLAGS = -specs=3dsx.specs -g $(ARCH) -Wl,--gc-sections,-Map,$(notdir $*.map)
-LIBS := -lcitro3d -lctru -lm
-LIBDIRS := $(CTRULIB)
+LIBS := -lcitro3d -lctru -lzstd -lz -lm
+LIBDIRS := $(CTRULIB) $(PORTLIBS)
 
 export APP_TITLE := Colosseum3DS
 ifeq ($(C3_DEV_FLOOR),1)

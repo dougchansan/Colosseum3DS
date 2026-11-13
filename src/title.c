@@ -1,4 +1,7 @@
 #include "colosseum3ds/title.h"
+#include <zlib.h>
+#define ZSTD_STATIC_LINKING_ONLY /* ZSTD_d_stableOutBuffer: no window buffer */
+#include <zstd.h>
 
 #include <math.h>
 #include <stdio.h>
@@ -377,6 +380,93 @@ int c3_title_parse(C3Title *title, const void *data, size_t bytes, char *error, 
     return 1;
 }
 
+int c3_title_is_compressed(const void *data, size_t bytes, size_t *raw_bytes)
+{
+    const uint8_t *p=(const uint8_t *)data;
+    if (!p || bytes<8u || (memcmp(p,"C3Z1",4)!=0 && memcmp(p,"C3Z2",4)!=0)) return 0;
+    if (raw_bytes) *raw_bytes=(size_t)p[4]|(size_t)p[5]<<8|(size_t)p[6]<<16|(size_t)p[7]<<24;
+    return 1;
+}
+
+/* Inflate one zlib stream (fed by `more`) into exactly `raw` bytes. */
+typedef size_t (*InflateFeed)(void *context, const uint8_t **chunk);
+static int inflate_exact(uint8_t *out, size_t raw, InflateFeed more, void *context)
+{
+    z_stream z; memset(&z,0,sizeof z);
+    if (inflateInit(&z)!=Z_OK) return 0;
+    z.next_out=out; z.avail_out=(uInt)raw;
+    int status=Z_OK;
+    while (status==Z_OK) {
+        if (!z.avail_in) {
+            const uint8_t *chunk=NULL; size_t n=more(context,&chunk);
+            if (!n) break;
+            z.next_in=(Bytef *)chunk; z.avail_in=(uInt)n;
+        }
+        status=inflate(&z,Z_NO_FLUSH);
+    }
+    int ok=status==Z_STREAM_END && z.total_out==raw;
+    inflateEnd(&z);
+    return ok;
+}
+/* Decompress one zstd frame (fed by `more`) into exactly `raw` bytes. The
+ * whole output buffer is stable, so zstd keeps no separate window. */
+static int unzstd_exact(uint8_t *out, size_t raw, InflateFeed more, void *context)
+{
+    ZSTD_DCtx *z=ZSTD_createDCtx(); if (!z) return 0;
+    int ok=!ZSTD_isError(ZSTD_DCtx_setParameter(z,ZSTD_d_stableOutBuffer,1));
+    ZSTD_outBuffer o={out,raw,0}; size_t status=1;
+    while (ok && status) {
+        const uint8_t *chunk=NULL; size_t n=more(context,&chunk);
+        if (!n) break;
+        ZSTD_inBuffer in={chunk,n,0};
+        while (in.pos<in.size && status) {
+            status=ZSTD_decompressStream(z,&o,&in);
+            if (ZSTD_isError(status)) { ok=0; break; }
+        }
+    }
+    ZSTD_freeDCtx(z);
+    return ok && !status && o.pos==raw;
+}
+static int unpack_exact(int zstd, uint8_t *out, size_t raw, InflateFeed more, void *context)
+{ return zstd ? unzstd_exact(out,raw,more,context) : inflate_exact(out,raw,more,context); }
+typedef struct { FILE *file; uint8_t buffer[65536]; } FileFeed;
+static size_t feed_file(void *context, const uint8_t **chunk)
+{
+    FileFeed *f=(FileFeed *)context; size_t n=fread(f->buffer,1,sizeof f->buffer,f->file);
+    *chunk=f->buffer; return n;
+}
+typedef struct { const uint8_t *data; size_t left; } MemoryFeed;
+static size_t feed_memory(void *context, const uint8_t **chunk)
+{
+    MemoryFeed *m=(MemoryFeed *)context; size_t n=m->left; *chunk=m->data; m->data+=n; m->left=0; return n;
+}
+
+static int adopt(C3Title *title, C3Title *temporary, char *error, size_t capacity)
+{
+    if (!decode_owned(temporary,error,capacity)) { c3_title_close(temporary); free(temporary); return 0; }
+    c3_title_close(title); *title=*temporary; free(temporary);
+    return 1;
+}
+
+int c3_title_load_memory(C3Title *title, const void *data, size_t bytes, char *error, size_t capacity)
+{
+    size_t raw=bytes; int packed;
+    if (!title || !data) return fail(error,capacity,"Invalid title load arguments");
+    packed=c3_title_is_compressed(data,bytes,&raw);
+    if (raw<HEADER_BYTES || raw>C3_TITLE_MAX_FILE_BYTES) return fail(error,capacity,"Invalid title file size");
+    C3Title *temporary=(C3Title *)calloc(1,sizeof *temporary);
+    if (!temporary) return fail(error,capacity,"Not enough memory for title state");
+    temporary->file_data=(uint8_t *)malloc(raw); temporary->file_bytes=raw;
+    if (!temporary->file_data) { free(temporary); return fail(error,capacity,"Not enough memory for title file"); }
+    if (packed) {
+        MemoryFeed feed={(const uint8_t *)data+8,bytes-8u};
+        if (!unpack_exact(((const uint8_t *)data)[3]=='2',temporary->file_data,raw,feed_memory,&feed)) {
+            c3_title_close(temporary); free(temporary); return fail(error,capacity,"Compressed title data is invalid");
+        }
+    } else memcpy(temporary->file_data,data,raw);
+    return adopt(title,temporary,error,capacity);
+}
+
 int c3_title_load(C3Title *title, const char *path, char *error, size_t capacity)
 {
     C3Title *temporary;
@@ -385,6 +475,26 @@ int c3_title_load(C3Title *title, const char *path, char *error, size_t capacity
     if (!title || !path) return fail(error,capacity,"Invalid title load arguments");
     file=fopen(path,"rb");
     if (!file) return fail(error,capacity,"Cannot open title.c3t");
+    {
+        /* Compressed pack: inflate straight from the file in 64 KiB reads,
+         * so the compressed bytes are never held whole. */
+        uint8_t head[8]; size_t raw=0;
+        if (fread(head,1,sizeof head,file)==sizeof head && c3_title_is_compressed(head,sizeof head,&raw)) {
+            if (raw<HEADER_BYTES || raw>C3_TITLE_MAX_FILE_BYTES) { fclose(file); return fail(error,capacity,"Invalid title file size"); }
+            temporary=(C3Title *)calloc(1,sizeof *temporary);
+            FileFeed *feed=(FileFeed *)malloc(sizeof *feed);
+            if (!temporary || !feed) { fclose(file); free(temporary); free(feed); return fail(error,capacity,"Not enough memory for title state"); }
+            temporary->file_data=(uint8_t *)malloc(raw); temporary->file_bytes=raw;
+            if (!temporary->file_data) { fclose(file); free(temporary); free(feed); return fail(error,capacity,"Not enough memory for title file"); }
+            feed->file=file;
+            int ok=unpack_exact(head[3]=='2',temporary->file_data,raw,feed_file,feed);
+            free(feed);
+            if (fclose(file)!=0) ok=0;
+            if (!ok) { c3_title_close(temporary); free(temporary); return fail(error,capacity,"Compressed title read failed"); }
+            return adopt(title,temporary,error,capacity);
+        }
+        if (fseek(file,0,SEEK_SET)!=0) { fclose(file); return fail(error,capacity,"Invalid title file size"); }
+    }
     if (fseek(file,0,SEEK_END)!=0 || (bytes=ftell(file))<(long)HEADER_BYTES ||
         bytes>(long)C3_TITLE_MAX_FILE_BYTES || fseek(file,0,SEEK_SET)!=0) {
         fclose(file); return fail(error,capacity,"Invalid title file size");

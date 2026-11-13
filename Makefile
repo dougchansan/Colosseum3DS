@@ -1,6 +1,8 @@
 CC ?= cc
 CPPFLAGS += -Iinclude -Icompat/include -Ivendor/colosseum/include
 CFLAGS ?= -std=c11 -O2 -g -Wall -Wextra -Wpedantic -Werror
+# Compressed packs (src/title.c): C3Z1 zlib, C3Z2 zstd.
+LDFLAGS += -lzstd -lz
 CORE = src/core.c src/data.c src/decomp_rng.c src/decomp_collision.c src/decomp_pokemon.c
 HEADERS = $(wildcard include/colosseum3ds/*.h) compat/include/dolphin/types.h
 HEADERS += vendor/colosseum/include/game/gs_colsys.h vendor/colosseum/include/game/pokemon_evolution.h
