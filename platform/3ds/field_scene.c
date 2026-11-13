@@ -525,6 +525,19 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                     if(kind<0){uint32_t doors=0;for(uint32_t i=0;i<area.link_count;++i)doors+=area.links[i].kind==1u;
                         if(doors){uint32_t pick=(c3_campaign_launch*2654435761u+campaign.steps*40503u)%doors;
                             for(uint32_t i=0;i<area.link_count;++i)if(area.links[i].kind==1u&&!pick--){kind=1;id=area.links[i].source_id;break;}}}
+                    /* No door (an exit made of touch events such as stairs):
+                     * a random touch event; with none, back to the floor we
+                     * came from through a save and relaunch. */
+                    if(kind<0){uint32_t touches=0;for(uint32_t i=0;i<area.link_count;++i)touches+=area.links[i].kind==2u;
+                        if(touches){uint32_t pick=(c3_campaign_launch*2654435761u+campaign.steps*40503u)%touches;
+                            for(uint32_t i=0;i<area.link_count;++i)if(area.links[i].kind==2u&&!pick--){kind=2;id=area.links[i].source_id;break;}}}
+                    if(kind<0&&summary.previous_floor&&summary.previous_floor!=map.floor){
+                        int saved=c3_game_state_set_floor(state,summary.previous_floor,map.floor,0)&&
+                                  save_game(state,save_path,trace,message,sizeof message);
+                        campaign_store_tried();
+                        campaign_line("floor=%03lx no_event action=return_to=%03lx saved=%d",(unsigned long)map.floor,(unsigned long)summary.previous_floor,saved);
+                        result=1;break;
+                    }
                     (void)best_uses;
                     if(kind==1)for(uint32_t i=0;i<area.link_count&&i<64;++i)if(area.links[i].kind==1u&&area.links[i].source_id==id){slot=i;break;}
                     if(kind==1&&slot<64)++campaign.uses[map.floor&0x3ffu][slot];
