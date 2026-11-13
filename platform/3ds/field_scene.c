@@ -118,6 +118,13 @@ int c3_field_scene_available(void)
 
 /* Optional first-person view; kept across floor loads like the recomp mod. */
 static C3FirstPerson first_person;
+#ifdef C3_WARP_TOUR
+/* Warp tour (tour build only): each floor runs for a fixed time with
+ * dialogue advanced by A, battles reported as wins and script floor
+ * changes recorded instead of followed; then the top screen is captured. */
+#define TOUR_SECONDS 12.0f
+static struct { uint32_t next_floor, frames, draws, control, message; float seconds; int captured; char shot[96]; } tour;
+#endif
 
 static void hide(C3Title *model)
 {
@@ -359,6 +366,14 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         uint64_t now=c3_n3ds_active_time_us();float delta=(float)(now-previous)/1000000.0f;
         previous=now;elapsed+=delta;phase_seconds+=delta;
         c3_game_state_add_play_time(state,delta);
+#ifdef C3_WARP_TOUR
+        if(page==PAUSE_CLOSED){
+            if((view->dialogue||view->choice)&&frames%20==0)input.pressed|=C3_PAD_A;
+            if(view->shop&&!shopping&&!c3_field_story_shop_done(&story,story_error))goto story_failed;
+            if(view->blocked[0]&&view->battle_id&&!c3_field_story_battle_result(&story,2,story_error))goto story_failed;
+        }
+        if(elapsed>=TOUR_SECONDS&&!tour.captured)tour.captured=-1; /* capture after this frame */
+#endif
         int story_consumed_input=view->dialogue||!view->control;
         /* Script native 16: the partner is named on the bottom-screen
          * keyboard while the event waits. The keyboard owns all input. */
@@ -426,6 +441,15 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         if(page==PAUSE_CLOSED){
             if(!c3_field_story_tick(&story,delta,phase==FIELD_CONTROL?input.pressed:0,story_error))goto story_failed;
             if(view->next_floor){
+#ifdef C3_WARP_TOUR
+                /* The last drawn frame is still in the framebuffer. */
+                tour.next_floor=view->next_floor;
+                snprintf(tour.shot,sizeof tour.shot,"sdmc:/3ds/Colosseum3DS/tour/%s.bmp",prefix);
+                tour.captured=frames>2&&c3_n3ds_capture_top(tour.shot)==0?1:2;
+                tour.frames=frames;tour.draws=stats.draw_calls;tour.seconds=elapsed;
+                tour.control=view->control;tour.message=view->message_id;
+                result=3;break;
+#endif
                 if(view->next_spawn>255||!c3_game_state_set_floor(state,view->next_floor,map.floor,(uint8_t)view->next_spawn)){
                     snprintf(error,capacity,"Original doorway checkpoint is invalid.");result=-1;break;
                 }
@@ -683,6 +707,15 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         }
         if(draw_result){result=-1;break;}
         ++frames;
+#ifdef C3_WARP_TOUR
+        if(tour.captured==-1&&frames>2){
+            snprintf(tour.shot,sizeof tour.shot,"sdmc:/3ds/Colosseum3DS/tour/%s.bmp",prefix);
+            tour.captured=c3_n3ds_capture_top(tour.shot)==0?1:2;
+            tour.frames=frames;tour.draws=stats.draw_calls;tour.seconds=elapsed;
+            tour.control=view->control;tour.message=view->message_id;
+            result=3;break;
+        }
+#endif
         if(trace&&(now>=next_trace||input.pressed)){
             C3TitleRenderSnapshot snapshot;c3_stage_renderer_snapshot(&snapshot);
             char perf[1024];c3_stage_renderer_perf_format(perf,sizeof perf);
@@ -716,6 +749,41 @@ done:
     if(trace){fprintf(trace,"field_end result=%d error=%s\n",result,result<0?error:"");fflush(trace);}
     return result;
 }
+
+#ifdef C3_WARP_TOUR
+/* Visit every floor listed (hex, one per line) in boot/tour.txt from the
+ * loaded save, entrance 0, and log one line per floor to tour/tour-log.txt.
+ * The save is never written: run_area saves only from the in-game menu,
+ * which the tour does not open. */
+int c3_field_scene_tour(C3GameState *state,FILE *trace,char *error,size_t capacity)
+{
+    FILE *list=fopen(BOOT_ROOT "tour.txt","r"),*log;char line[32];unsigned visited=0,ok=0;
+    mkdir("sdmc:/3ds/Colosseum3DS/tour",0777);
+    log=fopen("sdmc:/3ds/Colosseum3DS/tour/tour-log.txt","w");
+    if(!list||!log){if(list)fclose(list);if(log)fclose(log);snprintf(error,capacity,"tour.txt or the tour log is unavailable.");return -1;}
+    fprintf(log,"tour_begin build=%s seconds=%.1f\n",C3_BUILD_ID,(double)TOUR_SECONDS);fflush(log);
+    while(fgets(line,sizeof line,list)){
+        unsigned long floor=strtoul(line,NULL,16);
+        if(!floor||floor>0xffff)continue;
+        memset(&tour,0,sizeof tour);error[0]=0;
+        int result;
+        if(!c3_field_scene_supports((uint32_t)floor)){result=-2;snprintf(error,capacity,"packs missing");}
+        else if(!c3_game_state_set_floor(state,(uint32_t)floor,0,0)){result=-1;snprintf(error,capacity,"floor checkpoint rejected");}
+        else result=run_area(state,0,"sdmc:/3ds/Colosseum3DS/tour/unused.gci",trace,error,capacity);
+        ++visited;if(result==3&&tour.captured==1)++ok;
+        fprintf(log,"floor=%03lx result=%d frames=%lu seconds=%.1f fps=%.1f draws=%lu control=%lu message=%05lx next=%03lx shot=%s error=%s\n",
+                floor,result,(unsigned long)tour.frames,(double)tour.seconds,
+                tour.seconds>0?(double)tour.frames/(double)tour.seconds:0.0,(unsigned long)tour.draws,
+                (unsigned long)tour.control,(unsigned long)tour.message,(unsigned long)tour.next_floor,
+                tour.captured==1?tour.shot:"-",result==3?"":error);
+        fflush(log);
+        if(result==1)break; /* the player asked to exit */
+    }
+    fprintf(log,"tour_end visited=%u captured=%u\n",visited,ok);
+    fclose(log);fclose(list);
+    return 0;
+}
+#endif
 
 int c3_field_scene_run(C3GameState *state,int new_game,const char *save_path,
                        FILE *trace,char *error,size_t capacity)

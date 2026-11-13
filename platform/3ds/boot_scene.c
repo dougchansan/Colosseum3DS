@@ -312,6 +312,20 @@ int c3_boot_scene_run(int core_status)
     FILE *trace = c3_trace_open("sdmc:/3ds/Colosseum3DS/boot-trace.log");
     if (trace) { fprintf(trace, "boot_build %s core=%d\n", C3_BUILD_ID, core_status); fflush(trace); }
     c3_n3ds_log_memory(trace, "boot_start");
+#ifdef C3_WARP_TOUR
+    /* Tour build: the tour's own copy of a save (never the player's save
+     * path), no movies or title, every floor in boot/tour.txt, then exit. */
+    {
+        int tour_result = -1;
+        if (!c3_game_state_load(&state, "sdmc:/3ds/Colosseum3DS/tour/save.gci",
+                                file_exists(GAME_DATA) ? GAME_DATA : NULL, error))
+            fprintf(trace ? trace : stderr, "tour_save status=invalid reason=%s\n", error);
+        else tour_result = c3_field_scene_tour(&state, trace, error, sizeof(error));
+        if (trace) { fprintf(trace, "tour_exit result=%d error=%s\n", tour_result, error); fclose(trace); }
+        c3_game_state_free(&state);
+        return tour_result < 0 ? 1 : 0;
+    }
+#endif
     int result = c3_movie_player_run(BOOT_ROOT "tpc.c3v", "tpc", trace, error, sizeof(error));
     if (!result) result = c3_movie_player_run(BOOT_ROOT "gs_logo.c3v", "gs_logo", trace, error, sizeof(error));
     int from_game = 0;

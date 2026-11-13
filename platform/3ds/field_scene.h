@@ -9,6 +9,10 @@
 int c3_field_scene_supports(uint32_t floor);
 int c3_field_scene_available(void);
 /* Return 0 to the main menu, 1 on application exit, -1 on failure. */
+#ifdef C3_WARP_TOUR
+/* Tour build: visit each floor in boot/tour.txt from the loaded save. */
+int c3_field_scene_tour(C3GameState *state, FILE *trace, char *error, size_t capacity);
+#endif
 int c3_field_scene_run(C3GameState *state, int new_game, const char *save_path,
                        FILE *trace, char *error, size_t capacity);
 

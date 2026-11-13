@@ -1,6 +1,7 @@
 #include "colosseum3ds/floor_profile.h"
 
 #include <stddef.h>
+#include <stdio.h>
 
 static const C3FloorProfile profiles[] = {
     /* Lifecycle row 0: S1_out.fsys, group 0x1D. */
@@ -26,9 +27,25 @@ static const C3FloorProfile profiles[] = {
     {C3_FLOOR_WORLD_MAP_ID, "worldmap", NULL, "WORLD MAP", C3_FLOOR_WORLD_MAP},
 };
 
+/* Surveyed floors without a reviewed row (tools/floor_survey.py, prepared by
+ * tools/prepare_tour.py) use the generic names f%03x.c3f/.c3a/.c3s. Whether
+ * such a floor loads is still decided by its packs being on the SD card. */
+#define C3_FLOOR_AUTO_LIMIT 0x380u
+static C3FloorProfile auto_rows[C3_FLOOR_AUTO_LIMIT];
+static char auto_text[C3_FLOOR_AUTO_LIMIT][3][16];
+
 const C3FloorProfile *c3_floor_profile(uint32_t floor)
 {
     for (size_t i = 0; i < sizeof profiles / sizeof profiles[0]; ++i)
         if (profiles[i].floor == floor) return profiles + i;
-    return NULL;
+    if (!floor || floor >= C3_FLOOR_AUTO_LIMIT) return NULL;
+    C3FloorProfile *row = auto_rows + floor;
+    if (!row->floor) {
+        char (*text)[16] = auto_text[floor];
+        snprintf(text[0], sizeof text[0], "f%03lx", (unsigned long)floor);
+        snprintf(text[1], sizeof text[1], "f%03lx.c3s", (unsigned long)floor);
+        snprintf(text[2], sizeof text[2], "AREA %03lX", (unsigned long)floor);
+        *row = (C3FloorProfile){floor, text[0], text[1], text[2], 0u};
+    }
+    return row;
 }

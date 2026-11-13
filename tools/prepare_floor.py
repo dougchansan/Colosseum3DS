@@ -26,7 +26,11 @@ from prepare_outskirt import PROFILES as COMMON_PROFILES, admit_archive, field_m
 
 # Exact admitted profiles live in floor_profiles.py, one row per floor. This
 # converter takes the rows that carry the map geometry keys.
-FLOORS = geometry_floors()
+import floor_profiles as _profiles
+# Reviewed geometry profiles, plus surveyed floors (C3_FLOOR_SURVEY) that
+# get auto_geometry for the warp tour.
+FLOORS = {**{name: row for name, row in _profiles.FLOORS.items() if row.get("auto") and row.get("map")},
+          **geometry_floors()}
 MAX_MAP_PACKS = 15  # C3_STAGE_MAX_MODELS (16) minus Wes.
 
 
@@ -76,13 +80,39 @@ def schedule_frames(kind, end):
     return [i * end / 1000 for i in range(1001)], 30000 / end
 
 
+# Clocks above this many source frames are sampled as a slow loop (sky).
+AUTO_SHORT_END = 300
+
+
+def auto_geometry(scene, raw, Model):
+    """Default geometry for a surveyed floor without a reviewed profile
+    (the warp tour): multi-clip models are object packs (doors, machines)
+    whose clip the scripts choose; every other model shares one group whose
+    clock is the longest first clip. Unsupported texture modes are omitted
+    and material colour animation is frozen, as on reviewed interiors. The
+    first scene camera is the fixed camera; fog is not rendered."""
+    options = {"allow_instances": True, "allow_paths": True, "frozen_material_colors": True}
+    models = [Model(model, raw_model, **options) for model, raw_model in zip(scene.models, raw.models)]
+    objects = tuple(i for i, model in enumerate(models) if len(model.ends) > 1)
+    grouped = tuple(i for i in range(len(models)) if i not in objects)
+    end = max([model.ends[0] for i, model in enumerate(models) if i in grouped and model.tracks and model.ends] or [0])
+    kind = "static" if not end else "short" if end <= AUTO_SHORT_END else "sky"
+    return {"models": len(models), "objects": objects, "groups": ((grouped, (kind, end)),) if grouped else (),
+            "scene": "interior", "pack_format": 3, "path_joints": True, "material_colors": "frozen",
+            "omit_unsupported_texture_modes": True}
+
+
 def prepare_floor_geometry(archive, field_common, profile, output):
     from prepare_field_geometry import (load_scene, Model, build_mesh, instance_meshes,
                                         prepare_pack_set, prepare_wes, fixed_lights, split_static,
                                         bake_mesh, sample_sequence)
     data, raw, scene = load_scene(archive, profile["map"])
-    if len(scene.models) != profile["models"] or len(scene.cameras) != 1 or scene.fogs:
+    if profile.get("auto") and "groups" not in profile:
+        profile = dict(profile, **auto_geometry(scene, raw, Model))
+    elif len(scene.models) != profile["models"] or len(scene.cameras) != 1 or scene.fogs:
         raise ValueError("Original floor scene topology changed")
+    if not scene.cameras:
+        raise ValueError("Original floor scene has no camera")
     colors = profile.get("material_colors")
     options = {"allow_instances": True}
     if profile.get("path_joints"):

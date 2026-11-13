@@ -166,6 +166,33 @@ uint64_t c3_n3ds_active_time_us(void)
     return now - paused;
 }
 
+int c3_n3ds_capture_top(const char *path)
+{
+    u16 width = 0, height = 0;
+    const u8 *fb = gfxGetFramebuffer(GFX_TOP, GFX_LEFT, &width, &height);
+    /* Top screen memory is 240 (width) x 400 (height) columns, BGR8,
+     * rotated: screen pixel (x, y) is at ((x * 240) + (239 - y)) * 3. */
+    if (!fb || width != 240 || height < 400 || gfxGetScreenFormat(GFX_TOP) != GSP_BGR8_OES) return -1;
+    FILE *file = fopen(path, "wb");
+    if (!file) return -1;
+    static u8 row[400 * 3];
+    u8 header[54] = {'B', 'M'};
+    u32 image = 400u * 240u * 3u, total = 54u + image;
+    memcpy(header + 2, &total, 4);
+    header[10] = 54; header[14] = 40;
+    u32 w = 400, h = 240; memcpy(header + 18, &w, 4); memcpy(header + 22, &h, 4);
+    header[26] = 1; header[28] = 24;
+    memcpy(header + 34, &image, 4);
+    int ok = fwrite(header, 1, sizeof header, file) == sizeof header;
+    /* BMP rows run bottom to top; the BGR byte order matches. */
+    for (int y = 239; ok && y >= 0; --y) {
+        for (int x = 0; x < 400; ++x) memcpy(row + x * 3, fb + ((size_t)x * 240u + (239u - (unsigned)y)) * 3u, 3);
+        ok = fwrite(row, 1, sizeof row, file) == sizeof row;
+    }
+    if (fclose(file) != 0) ok = 0;
+    return ok ? 0 : -1;
+}
+
 void c3_n3ds_log_memory(FILE *trace, const char *stage)
 {
     if (!trace) return;
