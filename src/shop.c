@@ -5,6 +5,9 @@
 
 enum { PAD_LEFT = 1, PAD_RIGHT = 2, PAD_DOWN = 4, PAD_UP = 8, PAD_A = 0x100, PAD_B = 0x200 };
 enum { LIST_Y = 52, ROW_H = 21, ROWS = 7, MAX_QUANTITY = 99 };
+/* The quantity and message panel sits below the fifth row; while it is open
+ * only rows that end above it are drawn, so no row shows through. */
+enum { PANEL_Y = 160, PANEL_H = 36, PANEL_ROWS = 5 };
 
 static uint32_t le32(const uint8_t *p) { return (uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24; }
 static unsigned le16(const uint8_t *p) { return (unsigned)p[0] | (unsigned)p[1] << 8; }
@@ -153,21 +156,22 @@ void c3_shop_menu_draw(const C3ShopMenu *menu, const C3GameState *state, C3Botto
     if (!state || !c3_game_state_summary(state, &summary)) summary.money = 0;
     snprintf(money, sizeof money, "Money P%lu", (unsigned long)summary.money);
     c3_ui_header(ui, title ? title : "SHOP", money);
-    for (unsigned row = 0; row < ROWS && menu->top + row < menu->count; ++row) {
+    unsigned rows = menu->stage == C3_SHOP_MENU_LIST ? ROWS : PANEL_ROWS;
+    for (unsigned row = 0; row < rows && menu->top + row < menu->count; ++row) {
         unsigned i = menu->top + row;
         snprintf(value, sizeof value, "P%u", menu->prices[i]);
         c3_ui_row_value(ui, LIST_Y + (int)row * ROW_H, menu->names[i], value, i == menu->cursor, 0);
     }
     if (menu->stage == C3_SHOP_MENU_QUANTITY) {
         char line[64];
-        c3_ui_panel(ui, 40, 200 - 46, 240, 40);
+        c3_ui_panel(ui, 40, PANEL_Y, 240, PANEL_H);
         snprintf(line, sizeof line, "x%u   P%lu", menu->quantity,
                  (unsigned long)menu->prices[menu->cursor] * menu->quantity);
-        c3_ui_text(ui, 56, 200 - 38, 210, 1, line, C3_UI_GOLD);
+        c3_ui_text(ui, 56, PANEL_Y + 8, 210, 1, line, C3_UI_GOLD);
         c3_ui_footer(ui, "Up/Down: 1   Left/Right: 10   A: buy   B: back");
     } else if (menu->stage == C3_SHOP_MENU_MESSAGE) {
-        c3_ui_panel(ui, 20, 200 - 46, 280, 40);
-        c3_ui_text(ui, 32, 200 - 38, 256, 1, menu->message, C3_UI_WHITE);
+        c3_ui_panel(ui, 20, PANEL_Y, 280, PANEL_H);
+        c3_ui_text(ui, 32, PANEL_Y + 8, 256, 1, menu->message, C3_UI_WHITE);
         c3_ui_footer(ui, "A / B: continue");
     } else {
         c3_ui_footer(ui, "A: buy   B: leave");
