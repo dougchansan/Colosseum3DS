@@ -66,7 +66,7 @@ typedef struct {
     float return_time,return_duration;
     Person *camera_person;
     int target_moving,camera_returning;
-    uint32_t sound_id, previous_floor, pending_floor, pending_spawn;
+    uint32_t sound_id, previous_floor, pending_floor, pending_spawn, arrival_spawn;
     uint32_t fight_result; /* fn_801EF634: last original fight result ID */
     uint32_t whiteout_floor,whiteout_previous,whiteout_spawn;int whiteout_valid;
     int name_entry_enabled;
@@ -119,7 +119,7 @@ static int validate_native(const Impl *s,const C3StoryCall *c,char *error)
         {0x19,1,0},{0x4c,2,0},{0x4d,2,0},{0x4e,1,0},{0x4f,1,0},{0x50,2,0},{0x51,1,0},{0x52,1,0},
         {0x5c,0,0},{0x5d,0,0},{0x5e,0,0},{0x5f,2,0},{0x64,2,0},{0x65,4,14},
         {0x67,0,0},{0x68,3,0},{0x69,3,0},{0x6a,2,0},{0x6d,2,0},{0x72,2,0},{0x76,2,0},
-        {0x7d,3,0},{0x7f,3,7},{0x88,0,0},{0x8a,4,0},{0x8c,5,30},{0x98,3,0},{0xd9,1,0},{0xe0,2,0},
+        {0x7d,3,0},{0x7f,3,7},{0x88,0,0},{0x8a,4,0},{0x8c,5,30},{0x98,3,0},{0xd9,1,0},{0xe0,2,0},{0xc3,0,0},
         {0x99,1,0},{0x9d,1,1},{0xb3,2,1},{0xb6,1,0},{0xd1,5,0},{0xd3,0,0},{0xe4,0,0},
         /* Phenac City exterior bank 013E0E00 (native table lbl_802E1CF0). */
         {0x02,1,0},{0x16,2,0},{0x23,1,0},{0x31,0,0},{0x66,1,0},{0x7e,2,0},
@@ -621,6 +621,7 @@ static int run_native(Impl *s,RunTask *t,char *error)
     case 0xa2:break;
     /* GbaMisc_HasActiveContextState: no Game Boy Advance is connected. */
     case 0xd4:value=0;break;
+    case 0xc3:value=s->arrival_spawn;break; /* floorGetNextPosIndex: the entrance used */
     case 0xd9:
         /* fn_801CADA8(kind): the hero receives a gift Pokemon (1..6; 3 at
          * floor 014). Building its party record is not ported yet: the call
@@ -1363,7 +1364,7 @@ int c3_field_story_load(C3FieldStory *story,const char *path,C3GameState *game,
     if(!c3_story_load(&s->vm,path,error)){free(s);return 0;}
     if(c3_story_floor(&s->vm)!=area->floor){c3_story_free(&s->vm);free(s);return fail(error,"Story and field pack floors disagree");}
     s->game=game;s->map=map;s->area=area;s->hero=hero;s->hero_model=hero_model;
-    s->camera_track=camera;s->trace=trace;s->previous_floor=summary.previous_floor;
+    s->camera_track=camera;s->trace=trace;s->previous_floor=summary.previous_floor;s->arrival_spawn=summary.spawn;
     s->view.fade=1;s->view.camera=map->camera;s->camera_rate=1;
     snprintf(s->hero_name,sizeof s->hero_name,"%s",summary.name);
     s->hero_actor.public.model=hero_model;s->hero_actor.public.index=100;
