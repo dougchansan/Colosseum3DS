@@ -1034,9 +1034,64 @@ def steady_shimmer_layers(meshes, material_tracks):
     return result, report
 
 
+CROP_PAD = 2  # texels kept around a cropped region for bilinear filtering
+CROP_UNSAFE_FLAGS = 1024 | 8192 | 16384  # second UV stage, reflection, second-UV blend
+
+
+def crop_textures_to_use(meshes, material_tracks):
+    """Give each mesh only the part of its texture it samples.
+
+    A door or machine object is a few dozen vertices that sample a small
+    region of its floor's shared 1024x1024 atlas, and each object pack used to
+    carry the whole atlas (2.8 MB as GPU-native RGB565 with mips; Phenac's six
+    doors held 16.8 MB of copies in a 95 MB heap). A mesh whose texture
+    transform never changes, whose coordinates stay inside the image and that
+    uses no second texture stage gets the smallest power-of-two rectangle
+    covering its coordinates plus CROP_PAD texels, with its coordinates
+    remapped into it: the same texels at the same place. Returns the new mesh
+    list and a report of each crop.
+    """
+    result, report = [], []
+    for mesh in meshes:
+        track = material_tracks[id(mesh)]
+        textures = mesh["textures"]
+        flags = mesh["batch"][3]
+        uvs = [(v[6], v[7]) for v in mesh["vertices"]]
+        static = all(abs(m[0] - 1) < 1e-6 and abs(m[1] - 1) < 1e-6 and abs(m[2]) < 1e-6 and abs(m[3]) < 1e-6
+                     for m in track) and all(abs(m[16]) < 1e-6 and abs(m[17]) < 1e-6 for m in track if len(m) > 17)
+        if (len(textures) != 1 or flags & CROP_UNSAFE_FLAGS or not static or not uvs
+                or not all(0.0 <= u <= 1.0 and 0.0 <= v <= 1.0 for u, v in uvs)):
+            result.append(mesh)
+            continue
+        w, h, pixels, s, t = textures[0]
+
+        def span(lo, hi, size):
+            first = max(0, int(math.floor(lo * size)) - CROP_PAD)
+            last = min(size, int(math.ceil(hi * size)) + CROP_PAD)
+            extent = 8
+            while extent < last - first:
+                extent *= 2
+            extent = min(extent, size)
+            return min(first, size - extent), extent
+
+        x0, cw = span(min(u for u, _ in uvs), max(u for u, _ in uvs), w)
+        y0, ch = span(min(v for _, v in uvs), max(v for _, v in uvs), h)
+        if cw * ch * 2 > w * h:
+            result.append(mesh)
+            continue
+        rows = [pixels[(y0 + y) * w * 4 + x0 * 4:(y0 + y) * w * 4 + (x0 + cw) * 4] for y in range(ch)]
+        cropped = dict(mesh)
+        cropped["textures"] = [(cw, ch, b"".join(rows), s, t)]
+        cropped["vertices"] = [(*v[:6], (v[6] * w - x0) / cw, (v[7] * h - y0) / ch, *v[8:]) for v in mesh["vertices"]]
+        material_tracks[id(cropped)] = track
+        result.append(cropped)
+        report.append({"mesh_index": mesh["index"], "source": [w, h], "region": [x0, y0, cw, ch]})
+    return result, report
+
+
 def prepare_pack_set(meshes, schedules, fps, camera_frames, lights, archive_hash, output, prefix,
                      attachment=None, expected_count=None, format_version=2, retained_parts=(),
-                     gpu_textures=False, steady_shimmer=None):
+                     gpu_textures=False, steady_shimmer=None, crop_textures=False):
     """Sample once, compact equal affine tracks, then partition at native bounds.
 
     gpu_textures stores the textures as exact PICA images (tools/pack_textures.py:
@@ -1087,6 +1142,9 @@ def prepare_pack_set(meshes, schedules, fps, camera_frames, lights, archive_hash
     shimmer = []
     if gpu_textures if steady_shimmer is None else steady_shimmer:
         meshes, shimmer = steady_shimmer_layers(meshes, material_tracks)
+    crops = []
+    if crop_textures:
+        meshes, crops = crop_textures_to_use(meshes, material_tracks)
     chunks, current, keys, count, images = [], [], set(), 0, set()
     for mesh in meshes:
         used = {signatures[(mesh["model"],d)] for d in mesh["descriptors"]}
@@ -1182,6 +1240,8 @@ def prepare_pack_set(meshes, schedules, fps, camera_frames, lights, archive_hash
         own = {mesh["index"] for mesh in chunk if "steady_shimmer" in mesh}
         if own:
             report["steady_shimmer"] = [entry for entry in shimmer if entry["mesh_index"] in own]
+        if crops:
+            report["texture_crops"] = crops
         reports.append(report)
         print("Prepared %s: %d vertices, %d batches, %d sampled bones, %d bytes" %
               (name,len(vertices),len(batches),len(bone_tracks),len(pack)),flush=True)
