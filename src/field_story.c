@@ -874,15 +874,16 @@ int c3_field_story_bind_doors(C3FieldStory *story,const C3AreaDoor *rows,uint32_
     memset(s->doors,0,sizeof s->doors);s->door_rows=rows;s->door_count=count;
     for(uint32_t i=0;i<count;++i){
         C3StoryDoor *door=s->doors+i;uint32_t open=0;door->model=models[i];
+        /* A door whose open flag is already set stands open, with or without
+         * a model: its collision is off; a model shows the end of its open
+         * animation, otherwise its first frame. */
+        if(rows[i].open_flag&&!flag(s,rows[i].open_flag,&open,error))return 0;
+        if(rows[i].collision_id>=0)c3_field_set_object_enabled(s->map,(uint32_t)rows[i].collision_id,!open);
         if(!door->model)continue;
         if(door->model->fps<=0||rows[i].open_anim<0||(uint32_t)rows[i].open_anim>=door->model->clip_count)
             return fail(error,"Door %lu model lacks its open animation",(unsigned long)rows[i].index);
-        /* A door whose open flag is already set stands open: the end of
-         * its open animation; otherwise its first frame. */
-        if(rows[i].open_flag&&!flag(s,rows[i].open_flag,&open,error))return 0;
         door->clip=(uint32_t)rows[i].open_anim;
         door->seconds=open?(float)(door->model->clips[door->clip].frame_count-1u)/door->model->fps:0;
-        if(rows[i].collision_id>=0)c3_field_set_object_enabled(s->map,(uint32_t)rows[i].collision_id,!open);
     }
     return 1;
 }

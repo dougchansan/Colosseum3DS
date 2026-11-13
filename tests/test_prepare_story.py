@@ -299,5 +299,38 @@ class CommonRelAdmissionTests(unittest.TestCase):
                         story.admit_common_rel(files)
 
 
+class DoorPackTests(unittest.TestCase):
+    """C3D1 as src/area.c c3_area_doors_parse reads it. Synthetic rows only."""
+
+    def row(self, index, floor=3, **changes):
+        values = {"index": index, "floor": floor, "open_anim": 0, "close_anim": 1, "open_end_anim": -1,
+                  "close_end_anim": -1, "alternate_anim_a": -1, "alternate_anim_b": -1, "door_type": 1,
+                  "part_index": 0, "collision_id": index, "open_flag": 2 + index, "close_flag": 0,
+                  "resource_id": "%08x" % (0x00621000 + index)}
+        values.update(changes)
+        return values
+
+    def test_layout(self):
+        pack = story.encode_door_pack(3, [self.row(1, collision_id=-1, close_flag=0x987), self.row(0)])
+        self.assertEqual(struct.unpack_from("<4s5I", pack), (b"C3D1", 1, 32 + 2 * 64, 3, 2, 64))
+        self.assertEqual(pack[24:32], bytes(8))
+        first, second = pack[32:96], pack[96:160]
+        self.assertEqual(struct.unpack_from("<I6b2BhHHHI", first), (0, 0, 1, -1, -1, -1, -1, 1, 0, 0, 2, 0, 0, 0x00621000))
+        self.assertEqual(struct.unpack_from("<I6b2BhHHHI", second), (1, 0, 1, -1, -1, -1, -1, 1, 0, -1, 3, 0x987, 0, 0x00621001))
+        self.assertEqual(first[24:] + second[24:], bytes(80))  # no prepared door model names yet
+
+    def test_rejects_rows_the_runtime_cannot_hold(self):
+        with self.assertRaises(ValueError):
+            story.encode_door_pack(3, [])
+        with self.assertRaises(ValueError):
+            story.encode_door_pack(3, [self.row(0, floor=13)])
+        with self.assertRaises(ValueError):
+            story.encode_door_pack(3, [self.row(i) for i in range(17)])
+        with self.assertRaises(ValueError):
+            story.encode_door_pack(3, [self.row(0, open_anim=64)])
+        with self.assertRaises(ValueError):
+            story.encode_door_pack(3, [self.row(0, collision_id=-2)])
+
+
 if __name__ == "__main__":
     unittest.main()

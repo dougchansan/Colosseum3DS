@@ -445,6 +445,16 @@ static void synthetic_regressions(void)
      CHECK(!door->playing&&door->clip==1&&door->seconds==1.0f&&c3_field_object_enabled(&s->map,1));
      CHECK(!c3_field_object_enabled(&s->map,0)&&!c3_field_story_actor(&s->story,3)->visible); /* row 6 opened, no model, no wait */
      close_scene(s);
+     /* A door without a model takes its collision from its open state at
+      * binding, like one with a model: here closed, so its object is on. */
+     {C3AreaDoor closed_row={.index=7,.open_anim=0,.close_anim=1,.open_end_anim=-1,.close_end_anim=-1,.collision_id=1,
+                             .resource=3};C3Title *no_model[1]={NULL};
+      memset(code,0,sizeof code);args[0]=3;args[1]=0;native(code+3,0x64,2,args,1);
+      synthetic_load(s,&game,file,code,0,0,0x1000003);s->map.object_count=2;
+      CHECK(c3_field_set_object_enabled(&s->map,1,0));
+      CHECK(c3_field_story_bind_doors(&s->story,&closed_row,1,no_model,error));
+      CHECK(c3_field_object_enabled(&s->map,1)&&c3_field_object_enabled(&s->map,0));
+      close_scene(s);}
      CHECK(!c3_field_story_bind_doors(NULL,rows,2,door_models,error));
      free(door_model.file_data);free(door_model.vertices);free(door_model.draw_vertices);free(door_model.batches);}
     /* Native 23 writes the partner-present byte; 4C/4D without arguments,

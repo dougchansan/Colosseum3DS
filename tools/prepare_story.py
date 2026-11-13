@@ -9,7 +9,8 @@ one before the original script can continue.
 Without --floor this prepares Outskirt Stand's two floors exactly as before.
 --floor NAME (repeatable) prepares the named floor_profiles.py rows instead.
 --doors-only writes just area-doors.json: the common door/elevator records of
-the named floors (floor_event.c FloorDoorEntry), for porting the door natives.
+the named floors (floor_event.c FloorDoorEntry), plus one C3D1 door pack
+(<floor prefix>.c3d) per floor that has door rows, for native 60.
 """
 import argparse
 import hashlib
@@ -337,6 +338,27 @@ def extract_doors(rel, floors):
     return doors
 
 
+def encode_door_pack(floor, rows):
+    """C3D1, read by c3_area_doors_parse (src/area.c): a 32-byte header and one
+    64-byte little-endian row per door of the floor, in table order. No door
+    model is prepared yet, so the pack names and part bones stay empty and
+    native 60 changes only the flags and collision, as for a missing model."""
+    rows = sorted(rows, key=lambda row: row["index"])
+    if not rows or len(rows) > 16 or any(row["floor"] != floor for row in rows):
+        raise ValueError("Door pack rows must belong to one floor and fit its bound")
+    body = bytearray()
+    for row in rows:
+        anims = [row[key] for key in ("open_anim", "close_anim", "open_end_anim", "close_end_anim",
+                                      "alternate_anim_a", "alternate_anim_b")]
+        if any(not -1 <= value < 64 for value in anims) or row["collision_id"] < -1:
+            raise ValueError("Door row %d exceeds the runtime pack" % row["index"])
+        body += struct.pack("<I6b2BhHHHI40s", row["index"], *anims, row["door_type"], row["part_index"],
+                            row["collision_id"], row["open_flag"], row["close_flag"], 0,
+                            int(row["resource_id"], 16), b"")
+    header = struct.pack("<4s5I8x", b"C3D1", 1, 32 + len(body), floor, len(rows), 64)
+    return header + bytes(body)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--disc", type=Path, required=True)
@@ -355,8 +377,17 @@ def main():
             encoded = (json.dumps(doors, indent=2)+"\n").encode("utf-8")
             output.mkdir(parents=True, exist_ok=True)
             (output / "area-doors.json").write_bytes(encoded)
+            packs = {}
+            for floor, (_archive, _script, _messages, story_pack) in areas.items():
+                own = [row for row in doors if row["floor"] == floor]
+                if own:
+                    name = story_pack[:-len(".c3s")] + ".c3d"
+                    pack = encode_door_pack(floor, own)
+                    (output / name).write_bytes(pack)
+                    packs[name] = {"rows": len(own), "sha256": hashlib.sha256(pack).hexdigest()}
             print(json.dumps({"output": str(output), "file": "area-doors.json", "records": len(doors),
-                              "bytes": len(encoded), "sha256": hashlib.sha256(encoded).hexdigest()}, indent=2))
+                              "bytes": len(encoded), "sha256": hashlib.sha256(encoded).hexdigest(),
+                              "door_packs": packs}, indent=2))
             return
         originals = {name: (admit_common_rel(disc / "files") if name == COMMON_REL
                             else admit(disc / "files" / name, profiles)) for name in profiles}

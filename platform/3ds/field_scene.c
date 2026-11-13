@@ -194,6 +194,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     C3FieldStory story={0};C3AreaLights lights={0};C3AreaCamera room_camera={0};
     C3Title *storage=NULL;const C3Title *models[C3_STAGE_MAX_MODELS]={0};
     C3Title *actor_models[C3_AREA_MAX_ACTORS]={0};
+    C3AreaDoors doors={0};C3Title *door_models[C3_AREA_MAX_DOORS]={0};
     char model_paths[C3_STAGE_MAX_MODELS][160]={{0}};
     C3TitleCamera camera;C3TitleRenderStats stats={0};C3N3dsInput input={0};
     uint32_t opened=0,count=0,arrival_done=0,opening_done=0,arrival_count=0;
@@ -302,6 +303,15 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     snprintf(path,sizeof path,BOOT_ROOT "%s",profile->story);
     if(!c3_field_story_load(&story,path,state,&map,&area,&player,wes,actor_models,&room_camera,trace,story_error)||
        !c3_field_story_bind_battle(&story,BOOT_ROOT "willie.c3b",story_error))goto story_failed;
+    /* The floor's door table (native 60). No door models are prepared yet:
+     * a door then changes only its open flag and collision, as the original
+     * does for a door without a model. Floors without a table skip doors. */
+    snprintf(path,sizeof path,BOOT_ROOT "%s.c3d",prefix);
+    if(exists(path)){
+        if(!c3_area_doors_load(&doors,path,error,capacity))goto done;
+        if(!c3_field_story_bind_doors(&story,doors.rows,doors.count,door_models,story_error))goto story_failed;
+        if(trace){fprintf(trace,"field_doors floor=%lu rows=%lu models=0\n",(unsigned long)map.floor,(unsigned long)doors.count);fflush(trace);}
+    }
     c3_field_story_set_floor_support(&story,floor_reachable);
     c3_field_story_enable_name_entry(&story,1);
     c3_field_story_set_item_service(&story,receive_item,state);
