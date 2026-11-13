@@ -80,7 +80,9 @@ int c3_world_map_scene_run(C3GameState *state, FILE *trace, char *error, size_t 
             if (input.pressed & C3_PAD_A) choice = (int)map.cursor;
 #ifdef C3_CAMPAIGN
             /* Campaign: visit the destinations in turn, one per world-map stop. */
-            { static uint32_t rotation; if (map.visible_count && choice < 0 && !(input.pressed & C3_PAD_B)) {
+            { extern uint32_t c3_campaign_launch; static uint32_t rotation; static int seeded;
+              if (!seeded) { rotation = c3_campaign_launch; seeded = 1; }
+              if (map.visible_count && choice < 0 && !(input.pressed & C3_PAD_B)) {
                 choice = (int)(rotation++ % map.visible_count); } }
 #endif
             if (input.pressed & C3_PAD_B) choice = -1;

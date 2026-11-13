@@ -152,6 +152,18 @@ static int campaign_try(uint64_t key)
     return 1;
 }
 #define CAMPAIGN_TRIED_PATH "sdmc:/3ds/Colosseum3DS/campaign/tried.bin"
+#define CAMPAIGN_LAUNCH_PATH "sdmc:/3ds/Colosseum3DS/campaign/launches.bin"
+/* Launch count, kept on the SD card: emulated time repeats from boot to
+ * boot, so choices that must differ between relaunches mix this in. */
+uint32_t c3_campaign_launch;
+static void campaign_count_launch(void)
+{
+    FILE *f=fopen(CAMPAIGN_LAUNCH_PATH,"rb");
+    if(f){if(fread(&c3_campaign_launch,sizeof c3_campaign_launch,1,f)!=1)c3_campaign_launch=0;fclose(f);}
+    ++c3_campaign_launch;
+    f=fopen(CAMPAIGN_LAUNCH_PATH,"wb");
+    if(f){fwrite(&c3_campaign_launch,sizeof c3_campaign_launch,1,f);fclose(f);}
+}
 static void campaign_load_tried(void)
 {
     FILE *f=fopen(CAMPAIGN_TRIED_PATH,"rb");
@@ -511,7 +523,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                     /* Every event tried: a random door, so relaunches (which
                      * reset the in-memory use counts) do not replay one route. */
                     if(kind<0){uint32_t doors=0;for(uint32_t i=0;i<area.link_count;++i)doors+=area.links[i].kind==1u;
-                        if(doors){uint32_t pick=(uint32_t)(c3_n3ds_time_us()/1000u)%doors;
+                        if(doors){uint32_t pick=(c3_campaign_launch*2654435761u+campaign.steps*40503u)%doors;
                             for(uint32_t i=0;i<area.link_count;++i)if(area.links[i].kind==1u&&!pick--){kind=1;id=area.links[i].source_id;break;}}}
                     (void)best_uses;
                     if(kind==1)for(uint32_t i=0;i<area.link_count&&i<64;++i)if(area.links[i].kind==1u&&area.links[i].source_id==id){slot=i;break;}
@@ -990,8 +1002,8 @@ int c3_field_scene_run(C3GameState *state,int new_game,const char *save_path,
 #ifdef C3_CAMPAIGN
     /* Before any floor allocation: the log's buffers and the tried set must
      * not sit between floor allocations. */
-    campaign.start_us=c3_n3ds_time_us();campaign_load_tried();
-    campaign_line("campaign_start new_game=%d tried=%u",new_game,campaign.tried_count);
+    campaign.start_us=c3_n3ds_time_us();campaign_load_tried();campaign_count_launch();
+    campaign_line("campaign_start new_game=%d tried=%u launch=%lu",new_game,campaign.tried_count,(unsigned long)c3_campaign_launch);
 #endif
     if(new_game&&!c3_game_state_set_floor(state,1,0x03a0,0)){
         snprintf(error,capacity,"The original first-area checkpoint could not be prepared.");return -1;
