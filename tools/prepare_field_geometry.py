@@ -983,14 +983,67 @@ def _sample_descriptor(model, descriptor, states, attachment=None):
     return result[:,:3,:].astype("<f4")
 
 
+SHIMMER_CHANGE_SHARE = 0.25  # of consecutive samples whose texture offset changes
+SHIMMER_MAX_VALUES = 4       # distinct offsets of a flip-book overlay
+SHIMMER_MIN_SHARE = 0.10     # offsets shown less often than this are dropped
+
+
+def steady_shimmer_layers(meshes, material_tracks):
+    """Screen-tuned cheat for the 3DS LCD (docs/render-performance.md).
+
+    Some translucent overlays switch their texture offset between a few atlas
+    rows on almost every source frame (Phenac's sign glows: rows 0 and 0.25,
+    briefly 0.5 and 0.75). On a television that read as a soft shimmer; on
+    the 3DS's sharp screen at 30 fps it is a hard flicker. Each such mesh is
+    replaced by one steady copy per common offset, drawn at the original
+    alpha times the share of samples that showed it: the time average of the
+    flip-book. Visibility, colour and the other material values keep their
+    tracks. Returns the new mesh list and a report of every replacement.
+    """
+    result, report = [], []
+    for mesh in meshes:
+        track = material_tracks[id(mesh)]
+        # Flip-book rows sit on 1/16 steps of the atlas; the sampled offsets
+        # wander a little around them (0.243-0.251 for the 0.25 row). A smooth
+        # scroll (water) still yields many values and is left alone.
+        offsets = [(round(m[2] * 16) / 16, round(m[3] * 16) / 16) for m in track]
+        changes = sum(a != b for a, b in zip(offsets, offsets[1:]))
+        counts = {}
+        for value in offsets:
+            counts[value] = counts.get(value, 0) + 1
+        translucent = all(m[4] < 1.0 for m in track)
+        if (len(track) < 8 or not translucent or changes < SHIMMER_CHANGE_SHARE * (len(track) - 1)
+                or not 2 <= len(counts) <= SHIMMER_MAX_VALUES):
+            result.append(mesh)
+            continue
+        # Layers in atlas order, so their draw order does not depend on the
+        # exact sample counts.
+        kept = sorted(value for value, n in counts.items() if n / len(track) >= SHIMMER_MIN_SHARE)
+        layers = []
+        for value in kept:
+            share = counts[value] / len(track)
+            layer = dict(mesh)
+            layer["steady_shimmer"] = value
+            material_tracks[id(layer)] = [(*m[:2], value[0], value[1], m[4] * share, *m[5:]) for m in track]
+            result.append(layer)
+            layers.append({"offset": list(value), "share": round(share, 4)})
+        report.append({"mesh_index": mesh["index"], "source_samples": len(track), "offset_changes": changes,
+                       "dropped": [{"offset": list(v), "share": round(n / len(track), 4)}
+                                   for v, n in counts.items() if v not in kept],
+                       "layers": layers})
+    return result, report
+
+
 def prepare_pack_set(meshes, schedules, fps, camera_frames, lights, archive_hash, output, prefix,
                      attachment=None, expected_count=None, format_version=2, retained_parts=(),
-                     gpu_textures=False):
+                     gpu_textures=False, steady_shimmer=None):
     """Sample once, compact equal affine tracks, then partition at native bounds.
 
     gpu_textures stores the textures as exact PICA images (tools/pack_textures.py:
     RGB565 with mips when opaque, RGBA8 otherwise). The field packs use it; the
-    reports describe the written bytes either way.
+    reports describe the written bytes either way. steady_shimmer (default:
+    the gpu_textures value) replaces flickering translucent overlays with
+    steady layers (steady_shimmer_layers); reports list each one.
 
     schedules is a list of (source_clip, authored_frame_sequence, loop). Every
     model in a map group uses the same clock; independent clocks get a new set.
@@ -1031,6 +1084,9 @@ def prepare_pack_set(meshes, schedules, fps, camera_frames, lights, archive_hash
                     raise ValueError("Full UV affine rotation requires C3T3")
                 material=material[:16]
             material_tracks[id(mesh)].append(material)
+    shimmer = []
+    if gpu_textures if steady_shimmer is None else steady_shimmer:
+        meshes, shimmer = steady_shimmer_layers(meshes, material_tracks)
     chunks, current, keys, count, images = [], [], set(), 0, set()
     for mesh in meshes:
         used = {signatures[(mesh["model"],d)] for d in mesh["descriptors"]}
@@ -1123,6 +1179,9 @@ def prepare_pack_set(meshes, schedules, fps, camera_frames, lights, archive_hash
                                  for i,mesh in enumerate(chunk)],
                 "clips":[{"source_clip":c,"samples":len(s),"authored_end":s[-1],"loop":l}
                          for c,s,l in schedules]}
+        own = {mesh["index"] for mesh in chunk if "steady_shimmer" in mesh}
+        if own:
+            report["steady_shimmer"] = [entry for entry in shimmer if entry["mesh_index"] in own]
         reports.append(report)
         print("Prepared %s: %d vertices, %d batches, %d sampled bones, %d bytes" %
               (name,len(vertices),len(batches),len(bone_tracks),len(pack)),flush=True)

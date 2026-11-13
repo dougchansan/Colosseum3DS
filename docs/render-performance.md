@@ -290,6 +290,32 @@ every new button press, and the walk was D-pad taps a median 0.96 s apart
 windows hold 28.3-30.2 frames, matching what was reported. Intervals now
 carry `perf_interval_us` and `perf_fps`.
 
+## Steady sign glows (screen-tuned)
+
+Phenac City's Pokémon Center and Mart signs carry a translucent glow
+overlay (alpha 0.5, no depth write) whose texture offset switches between
+two atlas rows (0 and 0.25) on every source frame, briefly showing rows 0.5
+and 0.75 twice per loop. The port plays it at the original rate, but on the
+3DS's LCD a translucent layer that changes every displayed frame reads as a
+hard white flicker.
+
+`steady_shimmer_layers` (`tools/prepare_field_geometry.py`, on wherever
+`gpu_textures` is) finds translucent batches whose offset changes on at
+least a quarter of samples and takes at most four values (on 1/16 atlas
+steps), and replaces each with one steady copy per row shown at least 10%
+of the time, at the original alpha times that share: the time average of
+the flip-book. Phenac's two sign overlays become rows 0 (49.6%) and 0.25
+(46.4%); the 2% rows are dropped and listed in the pack report
+(`steady_shimmer`). Water scrolls (many offsets), opaque batches and
+Outskirt's packs are unchanged (all seven Outskirt packs byte-identical).
+
+On a New 3DS (build 57d11bd, same route to the Pokémon Center, six captures
+each, per-pixel standard deviation across them): the Poké Ball patch went
+from 18.4 to 8.4, the capture's own noise level elsewhere on screen (about
+8); pixels varying by more than 20 went from 890 to 323. The native-size
+frames show the same sign and glow. Evidence in
+`private/hardware/shimmer/`.
+
 ## Battle on hardware (Willie preview)
 
 Measured on a New 3DS with a probe build that boots straight into the
