@@ -87,6 +87,11 @@ int c3_game_state_mail_read(C3GameState *state,const C3GameMailRead *action,int 
  * in the mailbox is appended (at most 512) and marked unread. Returns 1 when
  * added, 0 when it was already received, -1 for an invalid ID or full box. */
 int c3_game_state_mail_add(C3GameState *state,unsigned id);
+/* memoDataSetMemoFlag(0): clear the new/seen bits (0xC000) of every Strategy
+ * Memo entry; 1 when an entry was new (bit 0x8000), 0 when none, -1 on error. */
+int c3_game_state_memo_mark_seen(C3GameState *state);
+/* Day Care occupancy (save status 0xB byte 0, body 0x8168; fn_801ED218). */
+int c3_game_state_daycare_occupied(const C3GameState *state);
 int c3_game_state_mail_preferences(C3GameState *state,int sort,int tone);
 int c3_game_state_mail_settings(const C3GameState *state,unsigned *sort,unsigned *tone);
 /* Inventory-only optimistic transaction. Region-wise conflicts reject stale

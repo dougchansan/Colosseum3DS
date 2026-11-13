@@ -596,6 +596,19 @@ int c3_game_state_mail_add(C3GameState *state,unsigned id)
     s->body[0x7d20+0x402+id/8]&=(uint8_t)~(0x80u>>(id%8));
     return 1;
 }
+int c3_game_state_memo_mark_seen(C3GameState *state)
+{
+    GameStateImpl *s=state?state->impl:NULL;unsigned count;int was_new=0;
+    if(!s||!c3_game_state_memo_count(state,&count))return -1;
+    for(unsigned i=0;i<count;++i){uint8_t *p=s->body+MEMO+4+i*12;uint16_t raw=be16(p);
+        if(raw&0x8000u)was_new=1;
+        put16(p,(uint16_t)(raw&0x3fffu));}
+    return was_new;
+}
+int c3_game_state_daycare_occupied(const C3GameState *state)
+{
+    const GameStateImpl *s=state?state->impl:NULL;return s?s->body[0x8168]!=0:0;
+}
 int c3_game_state_mail_preferences(C3GameState *state,int sort,int tone)
 {
     GameStateImpl *s=state?state->impl:NULL;if(!s||sort < -1||sort>3||tone < -1||tone>9)return 0;

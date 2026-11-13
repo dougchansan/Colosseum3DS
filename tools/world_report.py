@@ -31,17 +31,18 @@ def summary(rows):
     lines = []
     kinds = Counter((r["event"], r["status"]) for r in rows)
     floors = {r["floor"] for r in rows}
-    lines.append("floors %d, events %d, ok %d, failed %d, skipped %d" % (
+    lines.append("floors %d, events %d, ok %d, failed %d, partial %d, skipped %d" % (
         len(floors), len(rows), sum(r["status"] == "ok" for r in rows),
-        sum(r["status"] == "failed" for r in rows), sum(r["status"] == "skipped" for r in rows)))
+        sum(r["status"] == "failed" for r in rows), sum(r["status"] == "partial" for r in rows),
+        sum(r["status"] == "skipped" for r in rows)))
     for event in ("arrival", "door", "touch", "talk"):
         lines.append("  %-8s ok %4d  failed %4d  skipped %4d" % (
             event, kinds[(event, "ok")], kinds[(event, "failed")], kinds[(event, "skipped")]))
     groups = defaultdict(list)
     for r in rows:
-        if r["status"] == "failed":
+        if r["status"] in ("failed", "partial", "blocked"):
             groups[cause(r["reason"])].append(r)
-    lines.append("failures by cause (events, floors):")
+    lines.append("not ok by cause (events, floors):")
     for reason, items in sorted(groups.items(), key=lambda kv: -len(kv[1])):
         lines.append("  %4d %3d  %s" % (len(items), len({r["floor"] for r in items}), reason))
     arrivals = [r for r in rows if r["event"] == "arrival" and r["status"] != "ok"]

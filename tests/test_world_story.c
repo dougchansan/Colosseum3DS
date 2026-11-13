@@ -40,7 +40,7 @@ typedef struct Scene {
 } Scene;
 
 static const char *newgame, *root, *save;
-static unsigned totals[3]; /* ok, failed, blocked */
+static unsigned totals[4]; /* ok, failed, blocked, partial */
 
 static void path(char out[1024], const char *dir, const char *name)
 { CHECK(snprintf(out, 1024, "%s/%s", dir, name) > 0 && strlen(out) < 1023); }
@@ -123,7 +123,14 @@ static void event(const char *prefix, uint32_t floor, int kind, uint32_t id, uin
     if (!c3_field_story_enter(&s->story, error)) goto done;
     if (!run(s, 1800, &frames, &next)) goto done;
     if (kind != ARRIVAL) {
-        if (!c3_field_story_view(&s->story)->control) { snprintf(error, sizeof error, "arrival kept control"); status = "blocked"; goto done; }
+        if (!c3_field_story_view(&s->story)->control) {
+            /* An arrival that moves straight on to another floor never
+             * hands control back here: the floor's other events are not
+             * reachable from this entrance. */
+            if (next) { status = "skipped"; snprintf(error, sizeof error, "arrival leaves for floor %03lx", (unsigned long)next); }
+            else { status = "blocked"; snprintf(error, sizeof error, "arrival kept control"); }
+            goto done;
+        }
         next = 0;
         if (kind == DOOR) {
             if (!c3_field_story_transition(&s->story, id, error)) goto done;
@@ -146,10 +153,18 @@ static void event(const char *prefix, uint32_t floor, int kind, uint32_t id, uin
     }
     status = c3_field_story_view(&s->story)->blocked[0] ? "blocked" : "ok";
     if (!strcmp(status, "blocked")) snprintf(error, sizeof error, "%s", c3_field_story_view(&s->story)->blocked);
+    /* A native menu program that needed an unported menu took the
+     * original cancel branch: the event ran, but not every branch. */
+    else if (c3_field_story_view(&s->story)->unported_menu) {
+        status = "partial";
+        snprintf(error, sizeof error, "menu step of native %02lx is not ported (cancel branch taken)",
+                 (unsigned long)c3_field_story_view(&s->story)->unported_menu);
+    }
 done:
     if (!strcmp(status, "ok")) ++totals[0];
     else if (!strcmp(status, "failed")) ++totals[1];
     else if (!strcmp(status, "blocked")) ++totals[2];
+    else if (!strcmp(status, "partial")) ++totals[3];
     fprintf(report, "world prefix=%s floor=%03lx event=%s id=%lu script=%08lx status=%s frames=%u next=%03lx reason=%s\n",
             prefix, (unsigned long)floor, KIND[kind], (unsigned long)id, (unsigned long)script, status, frames,
             (unsigned long)next, strcmp(status, "ok") ? error : "");
@@ -205,7 +220,7 @@ int main(int argc, char **argv)
         fclose(trace); trace = tmpfile(); CHECK(trace);
         floor_events(names[i]);
     }
-    printf("world-story: floors=%u ok=%u failed=%u blocked=%u\n", floors, totals[0], totals[1], totals[2]);
+    printf("world-story: floors=%u ok=%u failed=%u blocked=%u partial=%u\n", floors, totals[0], totals[1], totals[2], totals[3]);
     if (report != stdout) fclose(report);
     return 0;
 }

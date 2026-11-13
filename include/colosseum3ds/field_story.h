@@ -25,6 +25,7 @@ typedef struct C3FieldStoryView {
     int camera_active;
     uint32_t name_entry; /* native 16 mode + 1 while the scene must collect a name */
     uint32_t shop;       /* native 19 shop number + 1 while the scene shows the shop */
+    uint32_t unported_menu; /* last native whose menu step is not ported (took the decline branch) */
     float fade, camera_seconds;
     C3TitleCamera camera;
 } C3FieldStoryView;

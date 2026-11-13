@@ -23,7 +23,7 @@ class WorldReportTest(unittest.TestCase):
         self.assertEqual(len(rows), 4)
         self.assertEqual(rows[1]["next"], "010")
         text = world_report.summary(rows)
-        self.assertIn("floors 2, events 4, ok 1, failed 2, skipped 1", text)
+        self.assertIn("floors 2, events 4, ok 1, failed 2, partial 0, skipped 1", text)
         self.assertIn("     2   2  Unported native 97 in GSVM X at X", text)
         self.assertIn("arrival not ok (1):", text)
         self.assertIn("connectors requested by scripts (1): 00f>010", text)

@@ -22,6 +22,9 @@ typedef struct {
     uint32_t value, stage;
     int child_finished;
     uint32_t pending_message; const char *pending_speaker; /* W_DIALOG */
+    /* Native menu programs (etctool.c 54-57): their state machine runs in
+     * this task; each message or yes/no choice resumes the program. */
+    uint32_t program; int prog_state, prog_yes, prog_no, prog_asking;
 } RunTask;
 typedef struct Person {
     C3StoryActor public;
@@ -123,7 +126,9 @@ static int validate_native(const Impl *s,const C3StoryCall *c,char *error)
         {0x97,3,0},{0xaa,7,0x3c},{0xab,1,0},{0xad,1,0},{0xe1,0,0},
         {0xa2,0,0},{0xac,3,0},{0xcb,3,0},{0xd4,0,0},{0x61,5,0},{0xe2,0,0},{0x90,2,0},{0x7b,0,0},{0xc5,4,0},
         {0xe7,3,0},{0x22,5,0},
-        {0x78,1,0},{0x7c,0,0},{0xf2,0,0},{0xa8,2,0},{0xd6,2,0},{0x53,3,0},{0x9b,3,0},{0xc7,5,0}
+        {0x78,1,0},{0x7c,0,0},{0xf2,0,0},{0xa8,2,0},{0xd6,2,0},{0x53,3,0},{0x9b,3,0},{0xc7,5,0},
+        {0xc4,0,0},{0xdc,0,0},{0xc8,2,0},{0x80,3,0},{0xbd,0,0},{0x9e,1,0},{0x54,0,0},{0x55,0,0},{0x56,0,0},{0x57,0,0},
+        {0x86,0,0},{0xbc,1,0},{0xca,0,0},{0xeb,0,0},{0x85,1,0}
     };
     for(unsigned i=0;i<sizeof signature/sizeof signature[0];++i){
         if(signature[i].id!=c->native)continue;
@@ -210,9 +215,11 @@ static int start(Impl *s,uint32_t script,const uint32_t *args,uint32_t argc,uint
     memset(t,0,sizeof(*t));t->key=next;*key=next;
     log_line(s,"story_start key=%u script=%08lx argc=%lu",next,(unsigned long)script,(unsigned long)argc);return 1;
 }
+static int program_step(Impl *s,RunTask *t,uint32_t answer,char *error);
 static int resume(Impl *s,RunTask *t,uint32_t value,char *error)
 {
     t->wait=W_NONE;
+    if(t->program)return program_step(s,t,value,error);
     return c3_story_resume(&s->vm,t->key,value)||fail(error,"Cannot resume original story task %u",t->key);
 }
 /* gs_floor.c starts each registered floor script (init, pre, main, post)
@@ -243,6 +250,8 @@ static const char *message_source(void *context,uint8_t control)
     case 0x59:return s->message_speaker?s->message_speaker:"";
     case 0x2d:return s->item_name[0]?s->item_name:NULL;
     case 0x2f:snprintf(s->number_text,sizeof s->number_text,"%lu",(unsigned long)s->message_values[0x2f]);return s->number_text;
+    /* msgctrl 4B: the number msgctrlSetValue(0x4B) stored (_msgctrlMakeDigit). */
+    case 0x4b:snprintf(s->number_text,sizeof s->number_text,"%lu",(unsigned long)s->message_values[0x4b]);return s->number_text;
     default:return NULL;
     }
 }
@@ -622,6 +631,42 @@ static int run_native(Impl *s,RunTask *t,char *error)
     /* fn_801C8DD0 (menuSubOpenSelect): the selection menu returns the
      * chosen row. The menu is not ported; the first row is taken. */
     case 0xc7:note_presentation(s,0xc7,"select_menu_first_row");value=0;break;
+    /* fn_801C9C9C clears the blocked-path state (heroMoveChkHinderClear). */
+    case 0xc4:break;
+    /* fn_80089C54: a GBA is linked. None is. */
+    case 0xdc:value=0;break;
+    /* fn_801C89F8: the GBA link conversation. Without a GBA it ends with
+     * message 3B83 and returns 0. */
+    case 0xc8:return message_when_free(s,t,0x3b83,s->speaker,error);
+    /* fn_801141D8: floor texture override (pending material). Not rendered. */
+    case 0x80:note_presentation(s,0x80,"floor_texture_override");break;
+    /* scriptSetMemoFlag: memoDataSetMemoFlag(0) marks every memo seen. */
+    case 0xbd:if(c3_game_state_memo_mark_seen(s->game)<0)return fail(error,"Strategy Memo is unavailable");break;
+    /* fn_8001E00C: custom menu 0x43; the first row (0) is taken. */
+    case 0x9e:note_presentation(s,0x9e,"custom_menu_43_first_row");value=0;break;
+    /* scriptGetPokedoru: the hero's money. */
+    case 0x86:{C3GameSummary hero;if(!c3_game_state_summary(s->game,&hero))return fail(error,"Native 86 needs the hero");
+        value=hero.money;}break;
+    /* scriptAddPokedoru: add (or, negative, take) money, then the total.
+     * heroSetStatus keeps the save's 0..9,999,999 range. */
+    case 0x85:{C3GameSummary hero;if(!c3_game_state_summary(s->game,&hero))return fail(error,"Native 85 needs the hero");
+        int64_t money=(int64_t)hero.money+(int32_t)a[0];if(money<0)money=0;if(money>9999999)money=9999999;
+        if(!c3_game_state_add_money(s->game,money-(int64_t)hero.money))return fail(error,"Money cannot be changed");
+        log_line(s,"story_money delta=%ld total=%ld",(long)(int32_t)a[0],(long)money);value=(uint32_t)money;}break;
+    /* scriptSetPremium: flag 0A9E. */
+    case 0xbc:if(!set_flag(s,0xa9e,a[0],error))return 0;break;
+    /* fn_80035D70 pushes menu floor 0x393 and yields until it returns.
+     * That menu floor is not ported; it returns at once. */
+    case 0xca:s->view.unported_menu=0xca;
+        log_line(s,"story_menu_floor floor=393 status=unported_returned");break;
+    /* fn_801C766C: record the resume floor and run the save menu
+     * (fn_801D0748(4,2,0) == 4 is saved). The scene owns saving; here
+     * the save menu is not opened, which the original reports as 0. */
+    case 0xeb:s->view.unported_menu=0xeb;
+        log_line(s,"story_save_menu status=unported_not_saved");value=0;break;
+    case 0x54:case 0x55:case 0x56:case 0x57:
+        t->program=c->native;t->prog_state=0;t->prog_asking=0;
+        return program_step(s,t,0,error);
     /* floorSetFadeScript: the scripts run around the next floor fade. */
     case 0x90:s->fade_begin=a[0];s->fade_poll=a[1];
         log_line(s,"story_fade_scripts begin=%08lx poll=%08lx",(unsigned long)a[0],(unsigned long)a[1]);break;
@@ -921,6 +966,91 @@ static int run_native(Impl *s,RunTask *t,char *error)
     default:return fail(error,"Unported native %02lx in GSVM %08lx at %08lx",(unsigned long)c->native,(unsigned long)c->script_id,(unsigned long)c->pc);
     }
     return resume(s,t,value,error);
+}
+
+/* etctool.c menu programs as state machines. say() shows a message and
+ * continues at `next`; ask() shows a message then the yes/no menu
+ * (fn_8001E184: 0 is yes). A step that needs an unported menu (party
+ * selection, Day Care withdrawal, the gift table) takes the branch the
+ * original takes when the player cancels, and view.unported_menu records
+ * the native. END finishes the native with 0. */
+enum { END=-1 };
+static int say(Impl *s,RunTask *t,uint32_t id,int next,char *error)
+{t->prog_state=next;t->prog_asking=0;return message(s,t,id,s->speaker,error);}
+static int ask(Impl *s,RunTask *t,uint32_t id,int yes,int no,char *error)
+{t->prog_yes=yes;t->prog_no=no;t->prog_asking=1;return message(s,t,id,s->speaker,error);}
+static void unported_menu(Impl *s,RunTask *t,const char *what)
+{
+    s->view.unported_menu=t->program;
+    log_line(s,"story_menu_program native=%02lx step=%s status=unported_cancel_branch",(unsigned long)t->program,what);
+}
+static int program_step(Impl *s,RunTask *t,uint32_t answer,char *error)
+{
+    if(t->prog_asking==1){ /* message shown: open the yes/no menu */
+        t->prog_asking=2;s->dialog_owner=t->key;s->view.dialogue=1;s->view.choice=1;s->view.choice_no=0;
+        t->wait=W_CHOICE;t->remaining=.12f;return 1;
+    }
+    if(t->prog_asking==2){t->prog_state=answer==0?t->prog_yes:t->prog_no;t->prog_asking=0;}
+    for(unsigned guard=0;guard<32;++guard){
+        int st=t->prog_state;
+        if(st==END){
+            t->program=0;s->view.dialogue=0;s->dialog_owner=0;t->wait=W_NONE;
+            return c3_story_resume(&s->vm,t->key,0)||fail(error,"Cannot resume original story task %u",t->key);
+        }
+        switch(t->program){
+        case 0x54: /* fn_801E03D4: rename */
+            switch(st){
+            case 0:return ask(s,t,0x3b21,2,1,error);
+            case 1:return say(s,t,0x3b22,END,error);
+            case 2:unported_menu(s,t,"party_select");return say(s,t,0x3b23,1,error);
+            default:break;
+            }break;
+        case 0x55:{ /* fn_801DFC30: Day Care */
+            C3GameSummary party;
+            switch(st){
+            case 0:t->prog_state=c3_game_state_daycare_occupied(s->game)?9:1;continue;
+            case 1:return ask(s,t,0x3b11,2,8,error);
+            case 2:if(!c3_game_state_summary(s->game,&party))return fail(error,"Day Care needs the party");
+                t->prog_state=party.party_count==1?3:5;continue;
+            case 3:return say(s,t,0x3b13,END,error);
+            case 4:return say(s,t,0x3b15,END,error);
+            case 5:unported_menu(s,t,"party_select");return say(s,t,0x3b17,8,error);
+            case 8:return say(s,t,0x3b1b,END,error);
+            /* The level-up report 3B1D needs the Day Care Pokemon's record. */
+            case 9:unported_menu(s,t,"daycare_levels");return say(s,t,0x3b1c,12,error);
+            case 12:return ask(s,t,0x3b1e,13,4,error);
+            case 13:unported_menu(s,t,"daycare_withdraw");t->prog_state=4;continue;
+            default:break;
+            }break;}
+        case 0x56: /* fn_801DF790: Move Deleter */
+            switch(st){
+            case 0:return ask(s,t,0x3b28,2,12,error);
+            case 2:unported_menu(s,t,"party_select");return say(s,t,0x3b29,12,error);
+            case 12:return say(s,t,0x3b2d,END,error);
+            default:break;
+            }break;
+        case 0x57:{ /* fn_801DF474: the item gift */
+            uint32_t v=0;
+            switch(st){
+            case 0:
+                if(!flag(s,0xd0,&v,error))return 0;
+                if(!v){if(!set_flag(s,0xd0,1,error))return 0;t->prog_state=1;continue;}
+                if(!flag(s,0xd1,&v,error))return 0;
+                if(v>=500){if(!set_flag(s,0xd1,0,error))return 0;t->prog_state=1;continue;}
+                if(!flag(s,0xafe,&v,error))return 0;
+                if(v){if(!set_flag(s,0xafe,0,error))return 0;t->prog_state=3;continue;}
+                t->prog_state=4;continue;
+            case 1:return say(s,t,0x5571,2,error);
+            case 2:unported_menu(s,t,"gift_table");t->prog_state=END;continue;
+            case 3:return say(s,t,0x5573,END,error);
+            case 4:return say(s,t,0x5574,END,error);
+            default:break;
+            }break;}
+        default:break;
+        }
+        return fail(error,"Menu program %02lx reached unported state %d",(unsigned long)t->program,st);
+    }
+    return fail(error,"Menu program %02lx did not settle",(unsigned long)t->program);
 }
 
 static int wait_task(Impl *s,RunTask *t,float seconds,uint16_t *pressed,char *error)
