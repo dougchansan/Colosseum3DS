@@ -491,7 +491,11 @@ static int run_native(Impl *s,RunTask *t,char *error)
         if(!parent->source||parent->source->resource!=0x010b0400u||a[4]!=1||
            !parent->public.model||!parent->source->part1_bone_plus_one||
            parent->source->part1_bone_plus_one>parent->public.model->bone_count||parent->parent||p==parent)
-            return fail(error,"Original attachment part %lu on actor %lu is not prepared",(unsigned long)a[4],(unsigned long)a[3]);
+        {
+            /* Only the reviewed vehicle attachment is ported: any other
+             * leaves the child where it stands, and the gap is recorded. */
+            note_presentation(s,0x46,"attachment_unported_left_detached");break;
+        }
         /* GSmodelAttachToGSpart(type7,updateOnce0,reset1). The reviewed
          * vehicle has an identity source root and one sampled part node. */
         p->parent=parent;p->moving=p->turning=p->waypoint_active=0;
