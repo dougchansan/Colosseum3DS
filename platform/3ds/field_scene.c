@@ -145,6 +145,13 @@ static uint32_t campaign_flags(C3GameState *state,uint32_t *set)
         ++*set;hash=(hash^id)*16777619u;hash=(hash^value)*16777619u;}
     return hash;
 }
+extern uint32_t c3_campaign_launch;
+static uint32_t campaign_pick(uint32_t floor)
+{
+    uint32_t h=c3_campaign_launch*0x9E3779B9u^campaign.steps*0x85EBCA6Bu^floor*0xC2B2AE35u;
+    h^=h>>16;h*=0x7FEB352Du;h^=h>>15;h*=0x846CA68Bu;h^=h>>16;
+    return h;
+}
 static int campaign_try(uint64_t key)
 {
     for(unsigned i=0;i<campaign.tried_count;++i)if(campaign.tried[i]==key)return 0;
@@ -156,6 +163,9 @@ static int campaign_try(uint64_t key)
 /* Launch count, kept on the SD card: emulated time repeats from boot to
  * boot, so choices that must differ between relaunches mix this in. */
 uint32_t c3_campaign_launch;
+/* A well-mixed choice from the launch count, the step and the floor (a
+ * plain linear mix kept the same parity on alternating floors). */
+static uint32_t campaign_pick(uint32_t floor);
 static void campaign_count_launch(void)
 {
     FILE *f=fopen(CAMPAIGN_LAUNCH_PATH,"rb");
@@ -523,13 +533,13 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                     /* Every event tried: a random door, so relaunches (which
                      * reset the in-memory use counts) do not replay one route. */
                     if(kind<0){uint32_t doors=0;for(uint32_t i=0;i<area.link_count;++i)doors+=area.links[i].kind==1u;
-                        if(doors){uint32_t pick=(c3_campaign_launch*2654435761u+campaign.steps*40503u)%doors;
+                        if(doors){uint32_t pick=campaign_pick(map.floor)%doors;
                             for(uint32_t i=0;i<area.link_count;++i)if(area.links[i].kind==1u&&!pick--){kind=1;id=area.links[i].source_id;break;}}}
                     /* No door (an exit made of touch events such as stairs):
                      * a random touch event; with none, back to the floor we
                      * came from through a save and relaunch. */
                     if(kind<0){uint32_t touches=0;for(uint32_t i=0;i<area.link_count;++i)touches+=area.links[i].kind==2u;
-                        if(touches){uint32_t pick=(c3_campaign_launch*2654435761u+campaign.steps*40503u)%touches;
+                        if(touches){uint32_t pick=campaign_pick(map.floor)%touches;
                             for(uint32_t i=0;i<area.link_count;++i)if(area.links[i].kind==2u&&!pick--){kind=2;id=area.links[i].source_id;break;}}}
                     if(kind<0&&summary.previous_floor&&summary.previous_floor!=map.floor){
                         int saved=c3_game_state_set_floor(state,summary.previous_floor,map.floor,0)&&
