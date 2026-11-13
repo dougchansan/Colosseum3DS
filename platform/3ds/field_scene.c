@@ -508,8 +508,12 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                             if(campaign_try(key)){kind=(int)link->kind;id=link->source_id;}
                         }
                     }
-                    if(kind<0)for(uint32_t i=0;i<area.link_count&&i<64;++i)if(area.links[i].kind==1u&&
-                        campaign.uses[map.floor&0x3ffu][i]<best_uses){best_uses=campaign.uses[map.floor&0x3ffu][i];slot=i;kind=1;id=area.links[i].source_id;}
+                    /* Every event tried: a random door, so relaunches (which
+                     * reset the in-memory use counts) do not replay one route. */
+                    if(kind<0){uint32_t doors=0;for(uint32_t i=0;i<area.link_count;++i)doors+=area.links[i].kind==1u;
+                        if(doors){uint32_t pick=(uint32_t)(c3_n3ds_time_us()/1000u)%doors;
+                            for(uint32_t i=0;i<area.link_count;++i)if(area.links[i].kind==1u&&!pick--){kind=1;id=area.links[i].source_id;break;}}}
+                    (void)best_uses;
                     if(kind==1)for(uint32_t i=0;i<area.link_count&&i<64;++i)if(area.links[i].kind==1u&&area.links[i].source_id==id){slot=i;break;}
                     if(kind==1&&slot<64)++campaign.uses[map.floor&0x3ffu][slot];
                     ++campaign.steps;idle=0;
@@ -619,7 +623,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                 /* Successive floor loads fragment the heap (a full exterior
                  * needs almost all of it): after two in-process loads the
                  * campaign saves at the doorway and the watcher relaunches. */
-                {static unsigned loads;if(++loads>=3){
+                {static unsigned loads;if(view->next_floor!=C3_FLOOR_WORLD_MAP_ID&&++loads>=3){
                     int saved=save_game(state,save_path,trace,message,sizeof message);
                     campaign_store_tried();
                     campaign_line("floor=%03lx door_to=%03lx action=restart_for_memory saved=%d",(unsigned long)map.floor,(unsigned long)view->next_floor,saved);
