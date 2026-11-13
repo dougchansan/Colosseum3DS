@@ -104,7 +104,7 @@ static int validate_native(const Impl *s,const C3StoryCall *c,char *error)
         {0x3a,6,60},{0x3b,5,28},{0x3c,5,28},{0x3d,6,56},{0x3e,3,0},
         {0x3f,3,0},{0x40,3,0},{0x41,2,0},{0x42,5,0},{0x43,2,0},{0x44,3,4},{0x45,3,4},
         {0x46,5,0},{0x47,2,0},{0x48,3,0},{0x49,5,28},{0x4a,3,0},
-        {0x4c,2,0},{0x4d,2,0},{0x4e,1,0},{0x4f,1,0},{0x50,2,0},{0x51,1,0},
+        {0x4c,2,0},{0x4d,2,0},{0x4e,1,0},{0x4f,1,0},{0x50,2,0},{0x51,1,0},{0x52,1,0},
         {0x5c,0,0},{0x5d,0,0},{0x5e,0,0},{0x5f,2,0},{0x64,2,0},{0x65,4,14},
         {0x67,0,0},{0x68,3,0},{0x69,3,0},{0x6a,2,0},{0x6d,2,0},{0x72,2,0},{0x76,2,0},
         {0x7d,3,0},{0x7f,3,7},{0x88,0,0},{0x8a,4,0},{0x8c,5,30},{0x98,3,0},
@@ -477,6 +477,10 @@ static int run_native(Impl *s,RunTask *t,char *error)
     case 0x4f:if(!set_flag(s,a[0],0,error))return 0;break;
     case 0x50:if(!set_flag(s,a[0],a[1],error))return 0;break;
     case 0x51:if(!flag(s,a[0],&value,error))return 0;break;
+    /* GSflagGet (fn_801906A0, native table lbl_802E1CF0 entry 0x52): the
+     * flag's whole stored value. Phenac Stadium's receptionist (function 7)
+     * reads flag 0x9A0 with it. */
+    case 0x52:if(!flag(s,a[0],&value,error))return 0;break;
     case 0x5c:value=s->area->floor;break;
     case 0x5d:value=s->area->group;break;
     case 0x5e:value=s->previous_floor;break;

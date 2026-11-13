@@ -445,6 +445,12 @@ static void synthetic_regressions(void)
      CHECK(!door->playing&&door->clip==1&&door->seconds==1.0f&&c3_field_object_enabled(&s->map,1));
      CHECK(!c3_field_object_enabled(&s->map,0)&&!c3_field_story_actor(&s->story,3)->visible); /* row 6 opened, no model, no wait */
      close_scene(s);
+     /* Native 52 (GSflagGet) is admitted with one word and reads the flag
+      * like 51; the synthetic save has no flag definitions, so the read
+      * itself reports that rather than an unported native. */
+     memset(code,0,sizeof code);args[0]=0x9a0;native(code+3,0x52,1,args,1);args[0]=3;args[1]=0;native(code+3,0x64,2,args,1);
+     synthetic_load(s,&game,file,code,0,0,0x1000003);CHECK(c3_field_story_enter(&s->story,error));
+     error[0]=0;c3_field_story_tick(&s->story,0,0,error);CHECK(!strstr(error,"Unported native 52"));close_scene(s);
      /* A door without a model takes its collision from its open state at
       * binding, like one with a model: here closed, so its object is on. */
      {C3AreaDoor closed_row={.index=7,.open_anim=0,.close_anim=1,.open_end_anim=-1,.close_end_anim=-1,.collision_id=1,
