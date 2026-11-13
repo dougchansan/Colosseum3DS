@@ -221,6 +221,13 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     if(!c3_field_load(&map,path,error,capacity))goto done;
     snprintf(path,sizeof path,BOOT_ROOT "%s.c3a",prefix);
     if(!c3_area_load(&area,path,error,capacity))goto done;
+    {   /* Event surfaces may sit on CCD objects past the walk/wall rows
+         * (the mayor's-house exit is on object 3 of three): cover them. */
+        uint32_t objects=0;
+        for(uint32_t i=0;i<area.transition_count;++i)if(area.transitions[i].object+1u>objects)objects=area.transitions[i].object+1u;
+        for(uint32_t i=0;i<area.interaction_count;++i)if(area.interactions[i].object+1u>objects)objects=area.interactions[i].object+1u;
+        if(!c3_field_cover_objects(&map,objects)){snprintf(error,capacity,"The area's event surfaces exceed the collision object bound.");goto done;}
+    }
     if(map.floor!=summary.floor||area.floor!=map.floor||map.actor_bone!=UINT32_MAX||map.actor_first_vertex!=0u){
         snprintf(error,capacity,"The field and interaction packs disagree.");goto done;
     }

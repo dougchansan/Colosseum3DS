@@ -57,6 +57,11 @@ int c3_field_load(C3FieldMap *map, const char *path, char *error, size_t capacit
 void c3_field_close(C3FieldMap *map);
 int c3_field_spawn(const C3FieldMap *map, uint32_t source_index, C3FieldPlayer *player);
 int c3_field_set_object_enabled(C3FieldMap *map, uint32_t object, int enabled);
+/* object_count is implied by the walk/wall rows, but event surfaces (area
+ * transitions and touches) may sit on later CCD objects that hold no walk or
+ * wall triangle, e.g. the mayor's-house exit on object 3 of three. Raise the
+ * count to cover them; added objects start enabled, as CCD objects do. */
+int c3_field_cover_objects(C3FieldMap *map, uint32_t count);
 int c3_field_object_enabled(const C3FieldMap *map, uint32_t object);
 /* Resolve a proposed foot position after an actor pushes the player. Walls
  * retain priority; unavailable ground restores the previous foot position. */

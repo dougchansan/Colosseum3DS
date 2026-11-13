@@ -258,6 +258,9 @@ FLOORS = {
         "models": 4,
         "groups": (((2, 3), ("short", 299)),),
         "objects": (0, 1),
+        # Door rows 6 and 7 -> models 0 and 1, matched by position against the
+        # touch surfaces (sources 0 and 1) whose links open them.
+        "door_objects": {6: 0, 7: 1},
         "path_joints": True,
         "material_colors": "constant",
     },

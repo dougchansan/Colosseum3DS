@@ -93,6 +93,14 @@ int main(int argc,char **argv)
     CHECK(player.position[0]>2.5f && player.collision_count==0);
     CHECK(!c3_field_set_object_enabled(&map,2,0));
     CHECK(!c3_field_set_object_enabled(&map,256,0));
+    /* An event-only CCD object past the walk/wall rows: covered, it starts
+     * enabled and can be switched; the count never shrinks or passes 256. */
+    {C3FieldMap covered=map;
+     CHECK(!c3_field_object_enabled(&covered,3));
+     CHECK(c3_field_cover_objects(&covered,4)&&covered.object_count==4&&c3_field_object_enabled(&covered,3));
+     CHECK(c3_field_set_object_enabled(&covered,3,0)&&!c3_field_object_enabled(&covered,3));
+     CHECK(c3_field_cover_objects(&covered,1)&&covered.object_count==4);
+     CHECK(!c3_field_cover_objects(&covered,257)&&!c3_field_cover_objects(NULL,1));}
     CHECK(!c3_field_set_object_enabled(NULL,0,0));
     CHECK(c3_field_set_object_enabled(&map,0,1));
     CHECK(c3_field_object_enabled(&map,0));

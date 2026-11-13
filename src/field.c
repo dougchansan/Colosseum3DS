@@ -179,6 +179,15 @@ int c3_field_object_enabled(const C3FieldMap *map,uint32_t object)
         !(map->disabled_objects[object/8u]&(1u<<(object%8u)));
 }
 
+int c3_field_cover_objects(C3FieldMap *map,uint32_t count)
+{
+    if(!map||count>256u)return 0;
+    for(uint32_t object=map->object_count;object<count;++object)
+        map->disabled_objects[object/8u]&=(uint8_t)~(1u<<(object%8u));
+    if(count>map->object_count)map->object_count=count;
+    return 1;
+}
+
 int c3_field_set_object_enabled(C3FieldMap *map,uint32_t object,int enabled)
 {
     if(!map||object>=map->object_count||object>=256u)return 0;
