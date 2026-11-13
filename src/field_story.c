@@ -13,7 +13,7 @@
 #define MAX_WAYPOINTS 64u /* Phenac actor 24 allocates 36 points (bank 013E0E00 fn 34). */
 
 typedef enum { W_NONE, W_SECONDS, W_TASK, W_MOTION, W_MOVE, W_CAMERA,
-               W_CAMERA_MOVE, W_FADE, W_MESSAGE, W_CHOICE, W_TV, W_BATTLE, W_NAME, W_ITEM, W_DOOR, W_SHOP } Wait;
+               W_CAMERA_MOVE, W_FADE, W_MESSAGE, W_CHOICE, W_TV, W_BATTLE, W_NAME, W_ITEM, W_DOOR, W_SHOP, W_DIALOG } Wait;
 typedef struct {
     uint16_t key, child;
     C3StoryCall call;
@@ -21,6 +21,7 @@ typedef struct {
     float remaining;
     uint32_t value, stage;
     int child_finished;
+    uint32_t pending_message; const char *pending_speaker; /* W_DIALOG */
 } RunTask;
 typedef struct Person {
     C3StoryActor public;
@@ -121,7 +122,8 @@ static int validate_native(const Impl *s,const C3StoryCall *c,char *error)
         /* Whole-game survey (tests/test_world_story.c), table lbl_802E1CF0. */
         {0x97,3,0},{0xaa,7,0x3c},{0xab,1,0},{0xad,1,0},{0xe1,0,0},
         {0xa2,0,0},{0xac,3,0},{0xcb,3,0},{0xd4,0,0},{0x61,5,0},{0xe2,0,0},{0x90,2,0},{0x7b,0,0},{0xc5,4,0},
-        {0xe7,3,0},{0x22,5,0}
+        {0xe7,3,0},{0x22,5,0},
+        {0x78,1,0},{0x7c,0,0},{0xf2,0,0},{0xa8,2,0},{0xd6,2,0},{0x53,3,0},{0x9b,3,0},{0xc7,5,0}
     };
     for(unsigned i=0;i<sizeof signature/sizeof signature[0];++i){
         if(signature[i].id!=c->native)continue;
@@ -258,6 +260,16 @@ static int message(Impl *s,RunTask *t,uint32_t id,const char *speaker,char *erro
     log_line(s,"story_message script=%08lx pc=%08lx id=%05lx",(unsigned long)t->call.script_id,
              (unsigned long)t->call.pc,(unsigned long)id);return 1;
 }
+/* The original message window is one shared window: a script that opens a
+ * message while another script's message is showing waits for the window
+ * (winMsgOpen blocks its thread) instead of failing. */
+static int message_when_free(Impl *s,RunTask *t,uint32_t id,const char *speaker,char *error)
+{
+    if(s->dialog_owner&&s->dialog_owner!=t->key){
+        t->pending_message=id;t->pending_speaker=speaker;t->wait=W_DIALOG;return 1;
+    }
+    return message(s,t,id,speaker,error);
+}
 static void close_message(Impl *s)
 {s->view.dialogue=0;s->view.choice=0;s->dialog_owner=0;s->view.message_id=0;s->view.message[0]=0;}
 static void restore_speakers(Impl *s)
@@ -334,7 +346,7 @@ static int run_native(Impl *s,RunTask *t,char *error)
         if(c3_story_active(&s->vm,t->child)){t->wait=W_TASK;return 1;}break;
     case 0x07:
         if(c->argc<3||a[1]!=1)return fail(error,"Only blocking original field messages are supported");
-        return message(s,t,a[0],s->speaker,error);
+        return message_when_free(s,t,a[0],s->speaker,error);
     case 0x08: close_message(s);break;
     case 0x0b:
         s->dialog_owner=t->key;s->view.dialogue=1;s->view.choice=1;s->view.choice_no=0;
@@ -412,7 +424,7 @@ static int run_native(Impl *s,RunTask *t,char *error)
             if(!p->talking){p->old_yaw=p->public.pose.yaw;p->talking=1;}
             if(p->source->talk_start==2)p->public.pose.yaw=atan2f(s->hero->position[0]-p->public.pose.position[0],s->hero->position[2]-p->public.pose.position[2]);
         }
-        return message(s,t,a[2],s->speaker,error);
+        return message_when_free(s,t,a[2],s->speaker,error);
     case 0x37:close_message(s);restore_speakers(s);break;
     case 0x3a:
         p=person(s,a[0],a[1]);if(p){C3FieldPlayer *q=pose(s,p);float x=q->position[0]/s->map->scale,z=q->position[2]/s->map->scale;
@@ -581,6 +593,35 @@ static int run_native(Impl *s,RunTask *t,char *error)
     case 0x22:memcpy(s->auto_event,a,sizeof s->auto_event);
         log_line(s,"story_auto_event script=%08lx args=%lu,%lu,%lu,%lu",(unsigned long)a[0],(unsigned long)a[1],
                  (unsigned long)a[2],(unsigned long)a[3],(unsigned long)a[4]);break;
+    /* scriptHaveItem: heroItemCheckHaveItemDataId over the bag pockets. */
+    case 0x78:{static const unsigned counts[]={20,43,16,64,46,3};uint32_t total=0;
+        for(unsigned pocket=0;pocket<6;++pocket)for(unsigned i=0;i<counts[pocket];++i){C3GameItem item;
+            if(c3_game_state_item(s->game,pocket,i,&item)&&item.id==a[0])total+=item.quantity;}
+        value=total&0xffu;}break;
+    /* scriptGetDarkPokemonNum / scriptGetDarkPointZeroPokemonNum: party
+     * Shadow Pokemon (darkpokemonDataId at 0xD8 with dp >= 0), and those
+     * whose heart gauge (dp at 0xDC) is empty. */
+    case 0x7c:case 0xf2:{C3GameSummary party;uint8_t record[0x138];
+        if(!c3_game_state_summary(s->game,&party))return fail(error,"Native %02lx needs the party",(unsigned long)c->native);
+        value=0;
+        for(unsigned i=0;i<party.party_count&&i<6;++i){if(!c3_game_state_pokemon(s->game,i,record))continue;
+            uint16_t dark=(uint16_t)(record[0xd8]<<8|record[0xd9]);
+            int32_t dp=(int32_t)((uint32_t)record[0xdc]<<24|(uint32_t)record[0xdd]<<16|(uint32_t)record[0xde]<<8|record[0xdf]);
+            if(dark&&dp>=0&&(c->native==0x7c||dp==0))++value;}
+    }break;
+    /* fn_80184470: detach a person from the part it rides. */
+    case 0xa8:p=person(s,a[0],a[1]);if(p&&p->parent){p->parent=NULL;}break;
+    /* floorEventSetTresureDisp: show or hide a treasure object; treasure
+     * objects are not floor people here, so the change is recorded. */
+    case 0xd6:log_line(s,"story_treasure_display index=%lu visible=%lu status=unported_table",(unsigned long)a[0],(unsigned long)a[1]);break;
+    /* fn_801D0BD0: the Poke Ball battle-intro animation (mode 0) and its
+     * cleanup (modes 1-3). Not rendered. */
+    case 0x53:note_presentation(s,0x53,"battle_intro_balls");break;
+    /* fn_80188984 (peopleIsHeadTurning): head turns complete at once here. */
+    case 0x9b:value=0;break;
+    /* fn_801C8DD0 (menuSubOpenSelect): the selection menu returns the
+     * chosen row. The menu is not ported; the first row is taken. */
+    case 0xc7:note_presentation(s,0xc7,"select_menu_first_row");value=0;break;
     /* floorSetFadeScript: the scripts run around the next floor fade. */
     case 0x90:s->fade_begin=a[0];s->fade_poll=a[1];
         log_line(s,"story_fade_scripts begin=%08lx poll=%08lx",(unsigned long)a[0],(unsigned long)a[1]);break;
@@ -688,8 +729,14 @@ static int run_native(Impl *s,RunTask *t,char *error)
     case 0x6a:case 0x6d:case 0x8a:case 0x99:
         note_presentation(s,c->native,"field_audio_backend_pending");break;
     case 0x72:
-        /* Current entry enables the already visible exterior map resource. */
-        if(a[1]!=1)return fail(error,"Dynamic map-resource visibility is not prepared");
+        /* fn_801CB954: a resource that is a floor person changes that
+         * person's visibility (as native 32); otherwise the map model's.
+         * Map-model visibility is recorded; the floor renderer draws every
+         * map group (hidden groups are a renderer follow-up). */
+        p=person(s,s->area->group,a[0]);
+        if(p){p->public.visible=a[1]&&p->public.model;break;}
+        if(!a[1])note_presentation(s,0x72,"map_resource_hide");
+        log_line(s,"story_map_visibility resource=%lu visible=%lu",(unsigned long)a[0],(unsigned long)a[1]);
         break;
     case 0x76:
         value=c3_field_set_object_enabled(s->map,a[0],!!a[1])?0:2;break;
@@ -906,6 +953,9 @@ static int wait_task(Impl *s,RunTask *t,float seconds,uint16_t *pressed,char *er
     case W_FADE:
         if(s->fade_elapsed<s->fade_duration)return 1;
         return resume(s,t,0,error);
+    case W_DIALOG:
+        if(s->dialog_owner&&s->dialog_owner!=t->key)return 1;
+        return message(s,t,t->pending_message,t->pending_speaker,error);
     case W_TV:
         if(!t->stage){
             t->remaining-=seconds;if(t->remaining>0)return 1;
