@@ -607,7 +607,17 @@ def prepare_floor_actors(disc, output, parser, floor, models=True):
                 raise ValueError("Person %d model %08x is not in %s: %s" % (
                     owner["index"],owner["model_resource"],profile["archive"],error)) from error
             # Exterior actors use C3T3 like the first exterior's NPC packs.
-            reports += npc_pack(archive,owner,fixed,lights,profile["sha256"],stage,format_version=3)
+            try:
+                reports += npc_pack(archive,owner,fixed,lights,profile["sha256"],stage,format_version=3)
+            except ValueError as error:
+                # Surveyed floors (approximation mode): only this person
+                # loses its model; the others keep theirs.
+                if not geometry.approximate("npc_pack_unavailable"):
+                    raise
+                owner["file"] = None
+                for actor in sharers:
+                    actor["file"] = None
+                continue
             for actor in sharers:
                 adopt_shared_pack(actor,owner)
             if sharers:

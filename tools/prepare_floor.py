@@ -31,7 +31,7 @@ import floor_profiles as _profiles
 # get auto_geometry for the warp tour.
 FLOORS = {**{name: row for name, row in _profiles.FLOORS.items() if row.get("auto") and row.get("map")},
           **geometry_floors()}
-MAX_MAP_PACKS = 15  # C3_STAGE_MAX_MODELS (16) minus Wes.
+MAX_MAP_PACKS = 40  # C3_FIELD_MAX_MODEL_PACKS is 47; leave room for Wes and NPCs (C3_STAGE_MAX_MODELS 48).
 
 
 def admit_floor(disc, profile):
@@ -187,6 +187,15 @@ def prepare_floor_geometry(archive, field_common, profile, output):
         schedules = [(clip, sample_sequence(end) if end else [0.], False)
                      for clip, end in enumerate(model.ends)]
         samples = sum(len(sequence) for _, sequence, _ in schedules)
+        if samples > 4000:
+            # C3T holds at most 4096 sampled frames. Surveyed floors keep every
+            # clip at a coarser rate (approximation mode); the last frame stays.
+            from prepare_field_geometry import approximate
+            if approximate("object_clips_decimated"):
+                step = -(-samples // 4000)
+                schedules = [(clip, sequence[::step] + ([sequence[-1]] if (len(sequence) - 1) % step else []), loop)
+                             for clip, sequence, loop in schedules]
+                samples = sum(len(sequence) for _, sequence, _ in schedules)
         group = prepare_pack_set(own, schedules, 60, [fixed] * samples, lights, profile["sha256"], output,
                                  "%s_obj%d" % (profile["prefix"], index), expected_count=1,
                                  format_version=version, gpu_textures=True, crop_textures=True)

@@ -8,6 +8,7 @@ distributed with the tool. See docs/title-format.md for the supported subset.
 """
 import argparse
 import bisect
+import copy
 import hashlib
 import json
 import math
@@ -29,6 +30,9 @@ ARCHIVE_BYTES = 1374336
 MAX_BYTES = 24 * 1024 * 1024
 FPS = 60.0
 LIMITS = (64, 32768, 64, 32, 32, 4096, 8)
+# Set by prepare_field_geometry for surveyed floors: approximate(reason) ->
+# bool accepts a recorded approximation instead of stopping.
+APPROXIMATE_HOOK = None
 CULL_BACK, CULL_FRONT, TRANSLUCENT, ADDITIVE = 1, 2, 4, 8
 LIT, VERTEX_COLOR, VERTEX_ALPHA, SPECULAR = 16, 32, 64, 128
 TEV_LERP, NO_DEPTH_WRITE = 256, 512
@@ -248,7 +252,16 @@ def geometry(model, raw_meshes):
         mob, mat = dobj.mobject, dobj.mobject.material
         tex = mob.texture
         if tex and (tex.next or tex.source != 4 or any(tex.rotation) or tex.wrap_t == 2):
-            raise ValueError("Title texture generator exceeds the reviewed affine UV subset")
+            if not (APPROXIMATE_HOOK and APPROXIMATE_HOOK("texture_generator_outside_affine_uv")):
+                raise ValueError("Title texture generator exceeds the reviewed affine UV subset")
+            # Approximation: UV0 affine map without rotation, repeat wrap; a
+            # generated (non-UV) coordinate source leaves the mesh untextured.
+            if tex.source != 4:
+                tex = None
+            else:
+                tex = copy.copy(tex); tex.next = None; tex.rotation = (0., 0., 0.)
+                if tex.wrap_t == 2: tex.wrap_t = 0
+            mob = copy.copy(mob); mob.texture = tex
         if mob.render_data or mob.render_mode & 8:
             raise ValueError("Custom material renders/specular exceed the reviewed title subset")
         mode = mob.render_mode
@@ -265,8 +278,10 @@ def geometry(model, raw_meshes):
                         "color_a":133,"color_b":128,"color_c":8,"color_d":15,
                         "alpha_a":7,"alpha_b":7,"alpha_c":7,"alpha_d":7,"active":0x40000077}
             if any(getattr(tev, name) != value for name, value in expected.items()):
-                raise ValueError("Unsupported title TEV expression")
-            flags |= TEV_LERP
+                if not (APPROXIMATE_HOOK and APPROXIMATE_HOOK("tev_expression_ignored")):
+                    raise ValueError("Unsupported title TEV expression")
+            else:
+                flags |= TEV_LERP
         if tex:
             image = mesh.material.texture_layers[0].image
             pixels = rgba_top_down(image.pixels, image.width, image.height)
@@ -341,12 +356,21 @@ def camera_values(camera, frame):
     return (*[curve_value(getattr(anim,name),frame,default) for name,default in zip(fields,defaults)], camera.aspect, 0.0)
 
 
-def light_values(root, dat, units):
+def light_values(root, dat, units, approximate=None):
+    """approximate(reason) -> bool lets a caller accept recorded approximations:
+    a chained light keeps only itself, attenuation is ignored and a light of
+    an unsupported kind is dropped."""
     result = []
     for light_set in root.lights:
         light = light_set.light
         if light.link or light_set.animations or light.attn_flags or light.flags & 3 not in (0,1,2):
-            raise ValueError("Unsupported animated/chained/spot title light")
+            if not (approximate and approximate("light_chain_spot_or_animation")):
+                raise ValueError("Unsupported animated/chained/spot title light")
+            if light.flags & 3 not in (0,1,2):
+                continue
+            attenuation = 0
+        else:
+            attenuation = light.attn_flags
         # Light.Color is raw u8, unlike Material.Color (normalized at parse).
         color = [getattr(light.color,k) / 255.0 for k in ("red","green","blue","alpha")]
         pos = [v * units for v in light.position.position] if light.position else [0,0,0]
@@ -358,7 +382,7 @@ def light_values(root, dat, units):
             # The pinned parser omits the third field; canonical LOBJ descriptor
             # specifies GXDistAttnFn at offset8 of HSD_LightPointDesc.
             function = float(struct.unpack_from(">I", dat, 32 + light.property.address + 8)[0])
-        result.append((light.flags,light.attn_flags,*color,*pos,*interest,brightness,distance,function,0.0))
+        result.append((light.flags,attenuation,*color,*pos,*interest,brightness,distance,function,0.0))
     return result
 
 
@@ -420,7 +444,7 @@ def encode_pack(bones, vertices, batches, textures, clips, lights, frames, fps=F
         raise ValueError("Unsupported title pack version")
     counts = (bones,len(vertices),len(batches),len(textures),len(clips),sum(clip[1] for clip in clips),len(lights))
     if any(not isinstance(n,int) or not 0 < n <= limit for n,limit in zip(counts,LIMITS)):
-        raise ValueError("Title exceeds section bounds")
+        raise ValueError("Title exceeds section bounds: %r of %r" % (counts, LIMITS))
     if not math.isfinite(fps) or not 1 <= fps <= 120 or len(vertices) % 3:
         raise ValueError("Invalid title timing or triangle count")
     frame_bytes = (bones + 1) * 48 + len(batches) * {1:48,2:64,3:96,4:96}[format_version]

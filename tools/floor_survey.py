@@ -104,6 +104,7 @@ def survey(disc, index_path):
         entry["messages"] = kinds.get(0x0a, [None])[0]
         # Mt. Battle archives carry a shared message member and a floor one.
         entry["extra_messages"] = kinds.get(0x0a, [])[1:]
+        entry["event_cameras"] = kinds.get(0x18, [])
         entry["collision"] = kinds.get(0x06, [None])[0]
         entry["maps"] = kinds.get(0x02, [])
         rels = kinds.get(0x1c, [])

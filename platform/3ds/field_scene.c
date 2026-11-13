@@ -210,6 +210,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
 {
     C3FieldMap map={0};C3Area area={0};C3FieldPlayer player={0};C3GameSummary summary;
     C3FieldStory story={0};C3AreaLights lights={0};C3AreaCamera room_camera={0};
+    C3AreaCamera event_cameras[7]={{0}};uint32_t event_camera_count=0;
     C3Title *storage=NULL;const C3Title *models[C3_STAGE_MAX_MODELS]={0};
     C3Title *actor_models[C3_AREA_MAX_ACTORS]={0};
     C3AreaDoors doors={0};C3Title *door_models[C3_AREA_MAX_DOORS]={0};
@@ -320,9 +321,18 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         models[opened++]=storage+tv_index;
         if(!c3_title_animate(storage+tv_index,0,0))goto done;
     }
-    if(profile->features&C3_FLOOR_ROOM_CAMERA){
-        snprintf(path,sizeof path,BOOT_ROOT "%s_camera.c3c",prefix);
+    /* Reviewed floors name their event camera; a surveyed floor loads one
+     * when tools/prepare_tour.py prepared it. */
+    snprintf(path,sizeof path,BOOT_ROOT "%s_camera.c3c",prefix);
+    if((profile->features&C3_FLOOR_ROOM_CAMERA)||exists(path)){
         if(!c3_area_camera_load(&room_camera,path,error,capacity))goto done;
+    }
+    /* Further event cameras (prefix_camera1.c3c ...) of a surveyed floor. */
+    for(unsigned i=1;i<=7;++i){
+        snprintf(path,sizeof path,BOOT_ROOT "%s_camera%u.c3c",prefix,i);
+        if(!exists(path))break;
+        if(!c3_area_camera_load(event_cameras+event_camera_count,path,error,capacity))goto done;
+        ++event_camera_count;
     }
     if(profile->features&C3_FLOOR_LIGHTS){
         snprintf(path,sizeof path,BOOT_ROOT "%s.c3l",prefix);
@@ -352,6 +362,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         if(trace){fprintf(trace,"field_doors floor=%lu rows=%lu models=%lu\n",(unsigned long)map.floor,(unsigned long)doors.count,(unsigned long)with_model);fflush(trace);}
     }
     c3_field_story_set_floor_support(&story,floor_reachable);
+    c3_field_story_bind_cameras(&story,event_cameras,event_camera_count);
     c3_field_story_enable_name_entry(&story,1);
     c3_field_story_enable_shop(&story,1);
     c3_field_story_set_item_service(&story,receive_item,state);
@@ -745,7 +756,9 @@ done:
     c3_pda_preview_close(&pda_preview);
     c3_field_story_close(&story);
     for(uint32_t i=0;i<opened;++i)c3_title_close(storage+i);
-    free(storage);c3_area_lights_close(&lights);c3_area_camera_close(&room_camera);c3_area_close(&area);c3_field_close(&map);
+    free(storage);c3_area_lights_close(&lights);c3_area_camera_close(&room_camera);
+    for(uint32_t i=0;i<event_camera_count;++i)c3_area_camera_close(event_cameras+i);
+    c3_area_close(&area);c3_field_close(&map);
     if(trace){fprintf(trace,"field_end result=%d error=%s\n",result,result<0?error:"");fflush(trace);}
     return result;
 }

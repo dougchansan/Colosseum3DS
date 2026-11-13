@@ -566,6 +566,7 @@ def auto_profiles(survey_path):
             "entrance_count": entry["entrance_count"], "people_table": entry["people_table"],
             "people_count": entry["people_count"], "script": entry["script"], "messages": entry["messages"],
             "extra_messages": entry.get("extra_messages", []),
+            "event_cameras": tuple(entry.get("event_cameras", ())),
             "prefix": prefix, "story_pack": prefix + ".c3s", "auto": True}
     return rows
 

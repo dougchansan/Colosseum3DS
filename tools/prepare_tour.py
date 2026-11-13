@@ -23,6 +23,7 @@ def tour_floors():
 
 
 def prepare_tour(disc, boot, parser, names=None):
+    import prepare_field_geometry as geometry
     from prepare_area import prepare_floor_actors
     from prepare_floor import prepare as prepare_floor
     import prepare_area_runtime as runtime
@@ -34,6 +35,11 @@ def prepare_tour(disc, boot, parser, names=None):
     for name in names or tour_floors():
         profile = FLOORS[name]
         row = {"floor_profile": name, "floor": profile["floor"]}
+        # Surveyed floors only: recorded approximations instead of stopping
+        # on unreviewed materials and lights (prepare_field_geometry).
+        geometry.APPROXIMATE["enabled"] = bool(profile.get("auto"))
+        geometry.APPROXIMATIONS.clear()
+        title.APPROXIMATE_HOOK = geometry.approximate if profile.get("auto") else None
         with tempfile.TemporaryDirectory(prefix=".tour-", dir=boot.parent) as temporary:
             stage = Path(temporary)
             try:
@@ -65,6 +71,7 @@ def prepare_tour(disc, boot, parser, names=None):
             for file, data in files.items():
                 if file.endswith(".c3a"):
                     (boot / file).write_bytes(data)
+            row["approximations"] = dict(geometry.APPROXIMATIONS)
             report["floors"].append(row)
         print("%s %s" % (name, "ok" if row in report["floors"] else "failed"), flush=True)
     return report
@@ -78,7 +85,7 @@ def main():
     parser.add_argument("--floor", action="append", help="Floor profile (repeatable; default every surveyed floor)")
     args = parser.parse_args()
     report = prepare_tour(args.disc, args.boot, args.parser, args.floor)
-    (args.boot / "tour-manifest.json").write_text(json.dumps(report, indent=1) + "\n")
+    (args.boot / ("tour-manifest.json" if not args.floor else "tour-manifest-partial.json")).write_text(json.dumps(report, indent=1) + "\n")
     print(json.dumps({"floors": len(report["floors"]),
                       "without_npc_models": [r["floor_profile"] for r in report["floors"] if not r["npc_models"]],
                       "failures": report["failures"]}, indent=1))

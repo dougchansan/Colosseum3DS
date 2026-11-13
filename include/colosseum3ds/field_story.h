@@ -75,6 +75,9 @@ int c3_field_story_bind_doors(C3FieldStory *story,const C3AreaDoor *rows,uint32_
 const C3StoryDoor *c3_field_story_door(const C3FieldStory *story,uint32_t position);
 /* Floors the scene can load. Without a predicate only floors 1 and 2 pass;
  * any other destination blocks with an explicit notice. */
+/* Further event cameras of the floor (native 2A plays the one whose
+ * resource the script names). The array must outlive the story. */
+void c3_field_story_bind_cameras(C3FieldStory *story,const C3AreaCamera *cameras,uint32_t count);
 void c3_field_story_set_floor_support(C3FieldStory *story,int (*supported)(uint32_t floor));
 /* The shared 16-bit game RNG (fn_801ADCD8) for native 02. Unbound, that
  * native fails instead of inventing a value. */

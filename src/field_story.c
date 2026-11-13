@@ -46,6 +46,7 @@ typedef struct {
     C3FieldPlayer *hero;
     C3Title *hero_model;
     const C3AreaCamera *camera_track;
+    const C3AreaCamera *cameras; uint32_t camera_count; /* c3_field_story_bind_cameras */
     Person actors[C3_AREA_MAX_ACTORS], hero_actor;
     RunTask tasks[C3_STORY_TASKS];
     C3FieldStoryView view;
@@ -392,6 +393,9 @@ static int run_native(Impl *s,RunTask *t,char *error)
         aim_camera(s,x,y);break;
     }
     case 0x2a:
+        /* A floor with several event cameras plays the one named. */
+        for(uint32_t i=0;i<s->camera_count;++i)
+            if(s->cameras[i].frames&&s->cameras[i].resource==a[1]){s->camera_track=s->cameras+i;break;}
         if(a[0]!=s->area->group||!s->camera_track||!s->camera_track->frames||
            a[1]!=(s->camera_track->resource?s->camera_track->resource:0x00e51800u))
             return fail(error,"Original camera %08lx is not prepared",(unsigned long)a[1]);
@@ -412,8 +416,10 @@ static int run_native(Impl *s,RunTask *t,char *error)
         memcpy(s->target_from,s->view.camera.target,sizeof s->target_from);
         memcpy(s->target_to,pose(s,p)->position,sizeof s->target_to);break;
     case 0x32:
-        p=person(s,a[0],a[1]);if(p){p->public.visible=!!a[2];
-            if(a[2]&&!p->public.model)return fail(error,"Visible actor %lu is not prepared",(unsigned long)a[1]);}break;
+        /* A person whose pack could not be prepared stays hidden (as a
+         * person without a model does in retail) and the gap is recorded. */
+        p=person(s,a[0],a[1]);if(p){p->public.visible=a[2]&&p->public.model;
+            if(a[2]&&!p->public.model)note_presentation(s,0x32,"actor_pack_missing_hidden");}break;
     case 0x33:
         p=person(s,a[0],a[1]);if(!set_motion(s,p,a[2],a[3],a[4],error))return 0;value=p!=NULL;break;
     case 0x34:p=person(s,a[0],a[1]);if(p)p->public.playing=0;break;
@@ -677,8 +683,8 @@ static int run_native(Impl *s,RunTask *t,char *error)
         if(s->floor_supported?!s->floor_supported(a[0]):(a[0]!=1&&a[0]!=2)){snprintf(s->view.blocked,sizeof s->view.blocked,"Area %lu is not prepared in this build.",(unsigned long)a[0]);t->wait=W_BATTLE;return 1;}
         s->pending_floor=a[0];s->pending_spawn=a[1];break;
     case 0x64:
-        p=person(s,s->area->group,a[0]);if(p){p->public.visible=!!a[1];
-            if(a[1]&&!p->public.model)return fail(error,"Original actor %lu is visible but its pack is missing",(unsigned long)a[0]);}break;
+        p=person(s,s->area->group,a[0]);if(p){p->public.visible=a[1]&&p->public.model;
+            if(a[1]&&!p->public.model)note_presentation(s,0x64,"actor_pack_missing_hidden");}break;
     case 0x65:
         p=person(s,s->area->group,a[0]);if(p){for(unsigned i=0;i<3;++i)
             (p->parent?p->local_position:pose(s,p)->position)[i]=as_float(a[i+1])*s->map->scale;}break;
@@ -1211,6 +1217,8 @@ const C3StoryDoor *c3_field_story_door(const C3FieldStory *story,uint32_t positi
     const Impl *s=story?story->impl:NULL;
     return s&&position<s->door_count?s->doors+position:NULL;
 }
+void c3_field_story_bind_cameras(C3FieldStory *story,const C3AreaCamera *cameras,uint32_t count)
+{Impl *s=story?story->impl:NULL;if(s){s->cameras=cameras;s->camera_count=cameras?count:0;}}
 void c3_field_story_set_floor_support(C3FieldStory *story,int (*supported)(uint32_t floor))
 {
     Impl *s=story?story->impl:NULL;if(s)s->floor_supported=supported;

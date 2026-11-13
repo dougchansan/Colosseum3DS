@@ -16,6 +16,22 @@ import pack_textures
 import prepare_title as title
 
 DUAL_MODULATE, SUBTRACT, ADDITIVE_ONE, REFLECTION_BLEND = 1024, 2048, 4096, 8192
+# Surveyed floors without a reviewed profile (the warp tour) may be prepared
+# with recorded approximations instead of stopping: an unsupported second
+# texture layer is drawn without that layer, animated lights keep their
+# first values, chained/spot lights drop the unsupported part and an
+# unreviewed blend state takes the nearest supported one. Reviewed floors
+# never enable this. Each use is counted in APPROXIMATIONS.
+import collections as _collections
+APPROXIMATE = {"enabled": False}
+APPROXIMATIONS = _collections.Counter()
+
+
+def approximate(reason):
+    if not APPROXIMATE["enabled"]:
+        return False
+    APPROXIMATIONS[reason] += 1
+    return True
 UNITS = 0.1
 
 
@@ -589,7 +605,12 @@ def pixel_engine_flags(pe, flags):
              # as the reviewed 0x31 translucent interior state does.
              (57,1,1,1,3):ADDITIVE_ONE | title.TRANSLUCENT}
     if state not in modes:
-        raise ValueError("Unreviewed field pixel-engine state: " + str(state))
+        # Nearest supported blend: any ONE destination is framebuffer
+        # addition, otherwise the source-alpha translucent blend.
+        if not approximate("pixel_engine_state_%d_%d_%d_%d_%d" % state):
+            raise ValueError("Unreviewed field pixel-engine state: " + str(state))
+        modes[state] = (ADDITIVE_ONE if pe.destination_factor == 1 and pe.source_factor == 1 else
+                        title.ADDITIVE if pe.destination_factor == 1 else 0) | title.TRANSLUCENT
     flags &= ~(title.ADDITIVE | ADDITIVE_ONE | SUBTRACT | title.TRANSLUCENT | title.NO_DEPTH_WRITE)
     flags |= modes[state]
     if not pe.flags & 0x20:
@@ -626,7 +647,9 @@ def build_mesh(model, mesh_index, max_envelope_weights=3, source_materials=False
         neutral.scale=(1.,1.,1.);neutral.rotation=(0.,0.,0.);neutral.translation=(0.,0.,0.)
         raw_textures=[neutral,reflection_texture]
     if len(raw_textures) > 2:
-        raise ValueError("Field material has more than two texture layers")
+        if not approximate("texture_layers_beyond_first"):
+            raise ValueError("Field material has more than two texture layers")
+        raw_textures = raw_textures[:1]
     source_blend = (source_materials and len(raw_textures)==2 and
                     raw_textures[0].flags==0x30010 and raw_textures[0].blending==1 and
                     not raw_textures[0].tev and not raw_textures[1].tev and
@@ -648,8 +671,17 @@ def build_mesh(model, mesh_index, max_envelope_weights=3, source_materials=False
                       dobj.mobject.render_mode & 7 == 1)
     dual = len(raw_textures) == 2 and raw_textures[1].flags == 0x40010 and not blend_modulate
     reflection = len(raw_textures) == 2 and raw_textures[1].flags == 0x30081
+    if dual and APPROXIMATE["enabled"] and (
+            len(mesh.uv_layers) != 2 or [t.source for t in raw_textures] != [4,5] or
+            any(t.flags != 0x40010 or not t.tev or t.tev.active != 0x40000077 or
+                t.tev.tev0.asRGBList() != [0,0,0] or t.tev.konst.asRGBList() != [127/255]*3
+                for t in raw_textures)):
+        dual = False  # not the reviewed gradient pair: handled as unreviewed below
     if len(raw_textures)==2 and not (dual or reflection or source_blend or source_normal_pair or blend_modulate):
-        raise ValueError("Unreviewed second field texture expression")
+        if not approximate("second_texture_layer_0x%x" % raw_textures[1].flags):
+            raise ValueError("Unreviewed second field texture expression")
+        raw_textures = raw_textures[:1]
+        reflection = False
     if dual:
         if len(mesh.uv_layers) != 2 or [t.source for t in raw_textures] != [4,5]:
             raise ValueError("Unsupported dual field texture generators")
@@ -1107,6 +1139,21 @@ def prepare_pack_set(meshes, schedules, fps, camera_frames, lights, archive_hash
     """
     if retained_parts and expected_count!=1:
         raise ValueError("Retained source parts require one explicit model pack")
+    # Surveyed floors: a mesh above one pack's vertex bound is split into
+    # whole-triangle slices that share its material (approximation mode).
+    split = []
+    for mesh in meshes:
+        count = len(mesh["vertices"])
+        if count > 30000 and approximate("mesh_split_at_vertex_bound"):
+            step = 30000 - 30000 % 3
+            for start in range(0, count, step):
+                piece = mesh["vertices"][start:start+step]
+                batch = list(mesh["batch"]); batch[0], batch[1] = 0, len(piece)
+                split.append({**mesh, "vertices": piece, "batch": batch,
+                              "descriptors": mesh["descriptors"][start:start+step]})
+        else:
+            split.append(mesh)
+    meshes = split
     frames = [(clip,frame) for clip,sequence,_loop in schedules for frame in sequence]
     models = list(dict.fromkeys(mesh["model"] for mesh in meshes))
     states = {model:[model.world(clip if model.tracks else 0,frame) for clip,frame in frames] for model in models}
@@ -1287,11 +1334,12 @@ def fixed_lights(raw, data):
     for light_set in raw.lights:
         for animation in light_set.animations or []:
             if animation.next or animation.animation or animation.eye_position_animation or animation.interest_animation:
-                raise ValueError("Animated Outskirt light exceeds the reviewed subset")
+                if not approximate("animated_light_first_values"):
+                    raise ValueError("Animated Outskirt light exceeds the reviewed subset")
         item = copy.copy(light_set)
         item.animations = []
         root.lights.append(item)
-    return title.light_values(root,data,UNITS)
+    return title.light_values(root,data,UNITS,approximate=approximate)
 
 
 def prepare_geometry(archives, output):
