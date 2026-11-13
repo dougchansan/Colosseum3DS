@@ -118,7 +118,7 @@ static int validate_native(const Impl *s,const C3StoryCall *c,char *error)
         {0x19,1,0},{0x4c,2,0},{0x4d,2,0},{0x4e,1,0},{0x4f,1,0},{0x50,2,0},{0x51,1,0},{0x52,1,0},
         {0x5c,0,0},{0x5d,0,0},{0x5e,0,0},{0x5f,2,0},{0x64,2,0},{0x65,4,14},
         {0x67,0,0},{0x68,3,0},{0x69,3,0},{0x6a,2,0},{0x6d,2,0},{0x72,2,0},{0x76,2,0},
-        {0x7d,3,0},{0x7f,3,7},{0x88,0,0},{0x8a,4,0},{0x8c,5,30},{0x98,3,0},
+        {0x7d,3,0},{0x7f,3,7},{0x88,0,0},{0x8a,4,0},{0x8c,5,30},{0x98,3,0},{0xd9,1,0},
         {0x99,1,0},{0x9d,1,1},{0xb3,2,1},{0xb6,1,0},{0xd1,5,0},{0xd3,0,0},{0xe4,0,0},
         /* Phenac City exterior bank 013E0E00 (native table lbl_802E1CF0). */
         {0x02,1,0},{0x16,2,0},{0x23,1,0},{0x31,0,0},{0x66,1,0},{0x7e,2,0},
@@ -604,6 +604,12 @@ static int run_native(Impl *s,RunTask *t,char *error)
     case 0xa2:break;
     /* GbaMisc_HasActiveContextState: no Game Boy Advance is connected. */
     case 0xd4:value=0;break;
+    case 0xd9:
+        /* fn_801CADA8(kind): the hero receives a gift Pokemon (1..6; 3 at
+         * floor 014). Building its party record is not ported yet: the call
+         * reports success so the story continues, and the gap is recorded. */
+        note_presentation(s,0xd9,"gift_pokemon_not_added");
+        log_line(s,"story_gift_pokemon kind=%lu status=unported",(unsigned long)a[0]);value=1;break;
     /* fn_8018BDF4: the person's position into a script GSvec. */
     case 0xac:{
         p=person(s,a[0],a[1]);if(!p||!a[2])break;
