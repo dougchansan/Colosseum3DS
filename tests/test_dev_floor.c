@@ -98,7 +98,7 @@ int main(void)
     /* Wes placement: a quarter turn maps local +X to world -Z, then offsets. */
     static C3Title wes;C3TitleDrawVertex vertex;memset(&vertex,0,sizeof vertex);
     vertex.pos[0]=1;vertex.pos[1]=2;vertex.normal[0]=1;
-    C3FieldPlayer player={{10,1,-5},1.5707964f,0,0,0,0};
+    C3FieldPlayer player={{10,1,-5},1.5707964f,0,0,0,0,{10,1,-5}};
     wes.draw_vertices=&vertex;wes.vertex_count=1;wes.batch_count=1;
     wes.pose.materials[0].specular_origin[0]=1;
     c3_dev_floor_place_actor(&wes,&player);

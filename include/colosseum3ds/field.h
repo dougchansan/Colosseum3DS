@@ -42,6 +42,11 @@ typedef struct {
     float position[3], yaw, animation_seconds, speed;
     uint32_t motion; /* 0 idle, 1 walk, 2 run */
     uint32_t collision_count;
+    /* The step c3_field_move proposed before wall correction. people.c
+     * queries touched event surfaces (GScolsys2ThruGetEventID) with this
+     * point and only then applies GScolsys2HumanCollision, so a touch
+     * surface behind a wall is still reached. Equals position when idle. */
+    float proposed[3];
 } C3FieldPlayer;
 
 /* Initialize the map to zero. Parse/load own their decoded tables and replace

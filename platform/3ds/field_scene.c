@@ -466,7 +466,11 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                          * script takes the frame; the doorway follows once
                          * it has finished and the player keeps moving. */
                         uint16_t touched[4];int touch_started=0;
-                        unsigned touch_count=c3_area_touch_events(&area,&map,from,to,map.radius,touched);
+                        /* people.c queries touches with the step before wall
+                         * correction (player.proposed), so a fence's own
+                         * touch surface is reached; doorways keep `to`. */
+                        float touch_to[3]={player.proposed[0],player.proposed[1]+8.5f*map.scale,player.proposed[2]};
+                        unsigned touch_count=c3_area_touch_events(&area,&map,from,touch_to,map.radius,touched);
                         for(unsigned i=0;i<touch_count&&!touch_started;++i){
                             touch_started=c3_field_story_touch(&story,touched[i],story_error);
                             if(touch_started<0)goto story_failed;

@@ -325,6 +325,7 @@ int c3_field_move(const C3FieldMap *map,C3FieldPlayer *player,int stick_x,int st
     /* Bound collision travel after a stalled frame, but keep the sampled
      * motion on the same elapsed clock as scripted actors and cameras. */
     float dt=fminf(seconds,0.25f);player->animation_seconds+=seconds;
+    memcpy(player->proposed,player->position,sizeof player->proposed);
     if(!x&&!y)return 1;
     float fx=fabsf((float)x)/28.0f,fy=fabsf((float)y)/28.0f;
     float angle_part=fy<0.001f?1.5707964f:1.5707964f*sinf(fminf(fx/fy,5.0f)/3.1830988f);
@@ -338,6 +339,7 @@ int c3_field_move(const C3FieldMap *map,C3FieldPlayer *player,int stick_x,int st
     step*=dt*60.0f;
     float before[3];memcpy(before,player->position,sizeof before);
     player->position[0]+=sinf(player->yaw)*step;player->position[2]+=cosf(player->yaw)*step;
+    memcpy(player->proposed,player->position,sizeof player->proposed);
     return c3_field_resolve_position(map,player,before);
 }
 
