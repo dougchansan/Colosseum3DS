@@ -401,9 +401,25 @@ walking; the same commit (0453902) built with and without
 
 Phenac is now GPU-bound: in control, 736 of 1,995 acquisitions waited for
 the previous GPU frame (12.8 ms per frame), 38% of frames took three
-VBlanks, and the CPU work (about 21 ms) fits. Its map packs are not yet
-GPU-native (`tools/pack_textures.py` lowered Outskirt's GPU frame by about
-2.7 ms). Before this work no Phenac pack had run on hardware: person npc11
+VBlanks, and the CPU work (about 21 ms) fits.
+
+All 36 Phenac packs through `tools/pack_textures.py` (defaults, as for
+Outskirt), same build 0453902 and route:
+
+| | original packs | GPU-native packs |
+| --- | ---: | ---: |
+| pack bytes on SD | 72.4 MB | 62.7 MB |
+| GPU storage (`gpu_bytes`) | 18.8 MB | 16.2 MB |
+| linear memory free after load | 12.1 MB | 14.7 MB |
+| GPU frame, idle / walking (median) | 27.6 / 27.0 ms | 24.0 / 22.2 ms |
+| fps, idle / walking | 25.0 / 26.0 | 27.8 / 28.8 |
+| frames taking 3 VBlanks (in control) | 770 / 1,995 | 234 / 1,587 |
+| waiting for the GPU per frame | 11.4 ms | 7.7 ms |
+
+Native-size captures at the same spot show no visible difference. Phenac
+is still GPU-bound in about one frame in seven. The converted packs live on
+the console and in `private/phenac-story/gpu-native/`; the prepare pipeline
+does not run `pack_textures.py` yet. Before this work no Phenac pack had run on hardware: person npc11
 pairs alpha tests GREATER 127 and GREATER 0, which `valid_batch` refused,
 and the whole area failed to load.
 
