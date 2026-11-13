@@ -110,7 +110,14 @@ FLOORS = {
         # the native per-pack bone bound. Those copies are drawn at the first
         # sample; the structural subtree itself keeps its animation.
         "frozen_instance_targets": {6: (135,)},
-        "groups": (((0, 1, 2, 3, 4, 5, 7), ("short", 20)),
+        # Models 0-5 are the six doors of the common door table (rows 0-5,
+        # open clip 0, close clip 1): object packs that rest until native 60
+        # plays a clip. Looping clip0 as map geometry swung them open and shut.
+        "objects": (0, 1, 2, 3, 4, 5),
+        # Door-table row -> map model, matched by position: each object sits
+        # on the touch surface whose link opens that row.
+        "door_objects": {0: 0, 1: 1, 2: 2, 3: 3, 4: 4, 5: 5},
+        "groups": (((7,), ("short", 20)),
                    ((6,), ("short", 299)),
                    ((8,), ("sky", 24999))),
     },
@@ -500,6 +507,9 @@ def validate(profiles=None):
             if (isinstance(models, bool) or not isinstance(models, int) or
                     sorted([*grouped, *objects]) != list(range(models))):
                 raise ValueError("Floor groups and objects must cover each map model once: " + name)
+            doors = row.get("door_objects", {})
+            if any(not isinstance(r, int) or r < 0 or model not in objects for r, model in doors.items()):
+                raise ValueError("Door objects must name object packs of the floor: " + name)
             if any(kind not in ("short", "sky", "static") for _, (kind, _end) in row["groups"]):
                 raise ValueError("Unknown floor group clock: " + name)
             if row.get("pack_format", 2) not in (2, 3):

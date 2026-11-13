@@ -27,7 +27,10 @@ class FloorProfileTests(unittest.TestCase):
         self.assertEqual(profile["archive"], "M1_out.fsys")
         self.assertEqual(profile["module"], 15)
         grouped = sorted(i for indices, _ in profile["groups"] for i in indices)
-        self.assertEqual(grouped, list(range(profile["models"])))
+        # Models 0-5 are the six door-table doors (object packs, rows 0-5).
+        self.assertEqual(profile["objects"], (0, 1, 2, 3, 4, 5))
+        self.assertEqual(profile["door_objects"], {row: row for row in range(6)})
+        self.assertEqual(sorted(grouped + list(profile["objects"])), list(range(profile["models"])))
         # REL15 publishes its entrances in section 3, like REL131.
         rel = bytearray(0x200)
         rel[0:4] = (15).to_bytes(4, "big")

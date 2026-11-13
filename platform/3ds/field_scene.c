@@ -233,6 +233,13 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     arrival_count=(profile->features&C3_FLOOR_ARRIVAL)&&opening_done&&!arrival_done?map.arrival_pack_count:0;
     count=map.map_pack_count+1u+arrival_count;wes_index=map.map_pack_count;arrival_index=wes_index+1u;
     for(uint32_t i=0;i<area.actor_count;++i)if(area.actors[i].file[0])++count;
+    /* The floor's door table (native 60) and the object pack of each door
+     * that has one; those rest on their first frame until a script plays a
+     * clip. A door without a pack changes only its open flag and collision,
+     * as the original does for a door without a model. */
+    snprintf(path,sizeof path,BOOT_ROOT "%s.c3d",prefix);
+    if(exists(path)&&!c3_area_doors_load(&doors,path,error,capacity))goto done;
+    for(uint32_t i=0;i<doors.count;++i)if(doors.rows[i].file[0])++count;
     if(profile->features&C3_FLOOR_TV)tv_index=count++;
     if(count>C3_STAGE_MAX_MODELS){snprintf(error,capacity,"The area exceeds the model bound.");goto done;}
     storage=calloc(count,sizeof(*storage));
@@ -254,6 +261,15 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         snprintf(model_paths[opened],sizeof model_paths[opened],"%s",path);
         models[opened++]=model;actor_models[i]=model;
         if(!c3_title_animate(model,area.actors[i].motions[0],0)){snprintf(error,capacity,"Original NPC idle motion is missing.");goto done;}
+    }
+    for(uint32_t i=0;i<doors.count;++i)if(doors.rows[i].file[0]){
+        snprintf(path,sizeof path,BOOT_ROOT "%s",doors.rows[i].file);
+        C3Title *model=storage+opened;
+        if(!c3_title_load(model,path,error,capacity))goto done;
+        snprintf(model_paths[opened],sizeof model_paths[opened],"%s",path);
+        models[opened++]=model;door_models[i]=model;
+        int rest=doors.rows[i].open_anim>=0?doors.rows[i].open_anim:0;
+        if(!c3_title_animate(model,(uint32_t)rest,0)){snprintf(error,capacity,"Original door clip is missing.");goto done;}
     }
     C3Title *wes=storage+wes_index,*arrival=arrival_count?storage+arrival_index:NULL;
     if(wes->vertex_count!=map.actor_vertex_count||wes->clip_count<4u){
@@ -303,14 +319,10 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     snprintf(path,sizeof path,BOOT_ROOT "%s",profile->story);
     if(!c3_field_story_load(&story,path,state,&map,&area,&player,wes,actor_models,&room_camera,trace,story_error)||
        !c3_field_story_bind_battle(&story,BOOT_ROOT "willie.c3b",story_error))goto story_failed;
-    /* The floor's door table (native 60). No door models are prepared yet:
-     * a door then changes only its open flag and collision, as the original
-     * does for a door without a model. Floors without a table skip doors. */
-    snprintf(path,sizeof path,BOOT_ROOT "%s.c3d",prefix);
-    if(exists(path)){
-        if(!c3_area_doors_load(&doors,path,error,capacity))goto done;
+    if(doors.count){
+        uint32_t with_model=0;for(uint32_t i=0;i<doors.count;++i)with_model+=door_models[i]!=NULL;
         if(!c3_field_story_bind_doors(&story,doors.rows,doors.count,door_models,story_error))goto story_failed;
-        if(trace){fprintf(trace,"field_doors floor=%lu rows=%lu models=0\n",(unsigned long)map.floor,(unsigned long)doors.count);fflush(trace);}
+        if(trace){fprintf(trace,"field_doors floor=%lu rows=%lu models=%lu\n",(unsigned long)map.floor,(unsigned long)doors.count,(unsigned long)with_model);fflush(trace);}
     }
     c3_field_story_set_floor_support(&story,floor_reachable);
     c3_field_story_enable_name_entry(&story,1);
@@ -564,6 +576,13 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         uint64_t place_clock=c3_n3ds_time_us(),place_animate=c3_title_perf_animate_us();
         if(!c3_field_story_sample(&story,story_error))goto story_failed;
         c3_stage_renderer_perf_place(c3_n3ds_time_us()-place_clock-(c3_title_perf_animate_us()-place_animate));
+        /* Doors hold the clip and time native 60 left them at; retained, so
+         * a door at rest is not resampled. */
+        for(uint32_t i=0;i<doors.count;++i)if(door_models[i]){
+            const C3StoryDoor *door=c3_field_story_door(&story,i);
+            door_models[i]->retained=1;
+            sampled&=c3_title_animate(door_models[i],door->clip,door->seconds);
+        }
         if(phase==FIELD_ARRIVAL){for(uint32_t i=0;i<arrival_count;++i)sampled&=c3_title_animate(storage+arrival_index+i,0,phase_seconds);}
         else if(phase==FIELD_ARRIVAL_OUT&&!arrival_end_sampled){
             sampled&=c3_title_animate(arrival,0,fmaxf(0,arrival_seconds-.1f/30.0f));arrival_end_sampled=1;

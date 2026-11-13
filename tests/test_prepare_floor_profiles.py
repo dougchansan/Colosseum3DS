@@ -62,7 +62,8 @@ class FloorProfileTableTests(unittest.TestCase):
     def test_interior_groups_objects_and_feature_keys(self):
         rows = profiles.FLOORS
         self.assertEqual({name: row.get("objects", ()) for name, row in rows.items() if row.get("objects")},
-                         {"phenac_mayor1f": (0,), "phenac_pc1f": (3,), "phenac_pregym1f": (0,),
+                         {"phenac": (0, 1, 2, 3, 4, 5),
+                          "phenac_mayor1f": (0,), "phenac_pc1f": (3,), "phenac_pregym1f": (0,),
                           "phenac_stadium1f": (0, 1), "phenac_pregymb1": (0,)})
         self.assertEqual(sorted(name for name, row in rows.items() if row.get("path_joints")),
                          ["phenac_houseb1f", "phenac_pc1f", "phenac_pcb1", "phenac_pregymb1", "phenac_stadium1f"])
@@ -70,8 +71,9 @@ class FloorProfileTableTests(unittest.TestCase):
                          {"phenac_pc1f": "frozen", "phenac_pregym1f": "frozen", "phenac_stadium1f": "constant",
                           "phenac_shop1f": "frozen", "phenac_shop2f": "frozen", "phenac_pcb1": "frozen"})
         self.assertEqual(rows["phenac_mayor2f"]["groups"], (((0, 1, 2), ("static", 0)),))
-        # The exterior row keeps its developer-pack behaviour: none of the interior keys.
-        for key in ("scene", "pack_format", "objects", "path_joints", "material_colors"):
+        # The exterior row keeps its exterior pack format; only its six doors
+        # are object packs (checked above), as the door table needs.
+        for key in ("scene", "pack_format", "path_joints", "material_colors"):
             self.assertNotIn(key, rows["phenac"])
 
     def test_partner_profile_matches_the_wes_clip_convention(self):

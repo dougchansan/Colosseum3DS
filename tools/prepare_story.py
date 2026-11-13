@@ -338,11 +338,13 @@ def extract_doors(rel, floors):
     return doors
 
 
-def encode_door_pack(floor, rows):
+def encode_door_pack(floor, rows, files=None):
     """C3D1, read by c3_area_doors_parse (src/area.c): a 32-byte header and one
-    64-byte little-endian row per door of the floor, in table order. No door
-    model is prepared yet, so the pack names and part bones stay empty and
-    native 60 changes only the flags and collision, as for a missing model."""
+    64-byte little-endian row per door of the floor, in table order. files maps
+    a row index to its prepared object pack (prepare_floor.py <prefix>_obj<n>);
+    a row without one keeps an empty name, and native 60 then changes only the
+    flags and collision, as for a missing model."""
+    files = files or {}
     rows = sorted(rows, key=lambda row: row["index"])
     if not rows or len(rows) > 16 or any(row["floor"] != floor for row in rows):
         raise ValueError("Door pack rows must belong to one floor and fit its bound")
@@ -352,9 +354,12 @@ def encode_door_pack(floor, rows):
                                       "alternate_anim_a", "alternate_anim_b")]
         if any(not -1 <= value < 64 for value in anims) or row["collision_id"] < -1:
             raise ValueError("Door row %d exceeds the runtime pack" % row["index"])
+        name = files.get(row["index"], "").encode("ascii")
+        if len(name) >= 40 or not all(c in b"abcdefghijklmnopqrstuvwxyz0123456789_." for c in name):
+            raise ValueError("Door object pack name is not a runtime file name")
         body += struct.pack("<I6b2BhHHHI40s", row["index"], *anims, row["door_type"], row["part_index"],
                             row["collision_id"], row["open_flag"], row["close_flag"], 0,
-                            int(row["resource_id"], 16), b"")
+                            int(row["resource_id"], 16), name)
     header = struct.pack("<4s5I8x", b"C3D1", 1, 32 + len(body), floor, len(rows), 64)
     return header + bytes(body)
 
@@ -378,11 +383,15 @@ def main():
             output.mkdir(parents=True, exist_ok=True)
             (output / "area-doors.json").write_bytes(encoded)
             packs = {}
+            rows_by_floor = {story_floors()[n]["floor"]: story_floors()[n] for n in names}
             for floor, (_archive, _script, _messages, story_pack) in areas.items():
                 own = [row for row in doors if row["floor"] == floor]
                 if own:
-                    name = story_pack[:-len(".c3s")] + ".c3d"
-                    pack = encode_door_pack(floor, own)
+                    prefix = story_pack[:-len(".c3s")]
+                    name = prefix + ".c3d"
+                    objects = rows_by_floor[floor].get("door_objects", {})
+                    pack = encode_door_pack(floor, own, {row: "%s_obj%d.c3t" % (prefix, model)
+                                                         for row, model in objects.items()})
                     (output / name).write_bytes(pack)
                     packs[name] = {"rows": len(own), "sha256": hashlib.sha256(pack).hexdigest()}
             print(json.dumps({"output": str(output), "file": "area-doors.json", "records": len(doors),
