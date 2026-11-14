@@ -22,7 +22,6 @@ typedef struct {
     unsigned selection,hub_selection,pda_selection,pocket,sort,tab,detail,option_mono,option_rumble;
     unsigned count,order[512],active,dirty,preview;
     unsigned idle; /* hub shown as the field bottom screen: no cursor */
-    unsigned option_battles; /* port setting: 1 play story battles, 0 skip */
     unsigned filter_types[2],filter_color,saved_filters[3];
     C3InventoryRequest inventory;
     C3InventoryResult inventory_result;

@@ -1010,12 +1010,12 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
             if(page==PAUSE_CLOSED){
                 if(view->blocked[0]&&(input.pressed&(C3_PAD_START|C3_PAD_X))){result=0;break;}
                 if(view->blocked[0]&&view->battle_id&&view->battle_id!=10&&(input.pressed&C3_PAD_A)){
-                    /* Options > BATTLES: PLAY runs the encounter on the
-                     * general battle engine (bottom screen). With SKIP, or
-                     * an encounter the engine refuses, it is reported as the
-                     * hero's win (result ID 2) and nothing is written. */
+                    /* A story battle always runs on the
+                     * general battle engine. Only an encounter the engine
+                     * refuses is reported as the hero's win (result ID 2),
+                     * with nothing written. */
                     uint32_t skipped=view->battle_id;
-                    if(c3_n3ds_battles_play()){
+                    {
                         FieldBattleHost host={storage,models,actor_models,model_paths,&story,&npc,ingame,
                                               count,tv_index,skin_actors,view?view->tv_enabled:1,frames,elapsed};
                         int played=play_story_battle(&story,state,skipped,0,&host,trace,story_error,sizeof story_error);
@@ -1211,8 +1211,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                 else if(event.kind==C3_INGAME_RESUME){c3_pda_audio_close();pda_audio_ready=0;page=PAUSE_CLOSED;dirty=1;}
                 else if(event.kind==C3_INGAME_SAVE){page=PAUSE_SAVE;yes=0;dirty=1;}
                 else if(event.kind==C3_INGAME_LEAVE){page=PAUSE_LEAVE;yes=0;dirty=1;}
-                else if(event.kind==C3_INGAME_OPTIONS){c3_movie_player_set_mono(ingame->option_mono);c3_music_set_mono(ingame->option_mono);
-                    c3_n3ds_set_battles_play((int)ingame->option_battles);dirty=1;}
+                else if(event.kind==C3_INGAME_OPTIONS){c3_movie_player_set_mono(ingame->option_mono);c3_music_set_mono(ingame->option_mono);dirty=1;}
                 else if(event.kind==C3_INGAME_READ_MAIL){
                     int ready=!event.mail.script||c3_field_story_menu_event(&story,event.mail.script,story_error);
                     if(ready&&!c3_game_state_mail_read(state,&event.mail.save,1)){

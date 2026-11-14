@@ -44,7 +44,7 @@ void c3_field_ui_draw_to(C3BottomUi *ui,const C3GameSummary *summary,FieldPhase 
     }else if(page==PAUSE_CLOSED&&story&&story->blocked[0]){
         c3_ui_dialogue(ui,pager,story->blocked,0,0);
         if(!pager->more)c3_ui_footer(ui,story->battle_id==10?"A: battle   X / START: menu":
-            story->battle_id?(c3_n3ds_battles_play()?"A: battle   X: menu":"A: skip as a win   X: menu"):"X / START: main menu");
+            story->battle_id?"A: battle   X: menu":"X / START: main menu");
     }else if(page==PAUSE_CLOSED&&story&&story->dialogue){
         c3_ui_dialogue(ui,pager,story->message,story->choice,!story->choice_no);
     }else if(page==PAUSE_CLOSED){

@@ -193,8 +193,7 @@ C3IngameEvent c3_ingame_update(C3IngameMenu *m,C3GameState *state,const C3N3dsIn
             case 1:m->pocket=0;open_list(m,state,C3_GAME_ITEMS,0);break;
             case 2:if(!m->assets.data)c3_ingame_error(m,"Prepare boot/pda.c3pd from the original game data to open the P*DA.");else page(m,C3_GAME_PDA,m->pda_selection);break;
             case 3:page(m,C3_GAME_TRAINER,0);break;
-            case 4:{C3GameSummary s;c3_game_state_summary(state,&s);m->option_mono=s.sound_mono;m->option_rumble=s.rumble_disabled;
-                m->option_battles=(unsigned)c3_n3ds_battles_play();page(m,C3_GAME_OPTIONS,0);break;}
+            case 4:{C3GameSummary s;c3_game_state_summary(state,&s);m->option_mono=s.sound_mono;m->option_rumble=s.rumble_disabled;page(m,C3_GAME_OPTIONS,0);break;}
             case 5:e.kind=C3_INGAME_SAVE;break;
             case 6:e.kind=C3_INGAME_LEAVE;break;
         }}
@@ -229,11 +228,10 @@ C3IngameEvent c3_ingame_update(C3IngameMenu *m,C3GameState *state,const C3N3dsIn
             page(m,m->page==C3_GAME_PARTY?C3_GAME_POKEMON:m->page==C3_GAME_ITEMS?C3_GAME_ITEM:m->page==C3_GAME_MEMO?C3_GAME_MEMO_ENTRY:C3_GAME_SNAG_ENTRY,m->selection);
         }
     }else if(m->page==C3_GAME_OPTIONS){
-        move(m,keys,4,1);
-        if(keys&(C3_PAD_LEFT|C3_PAD_RIGHT)){if(m->selection==0)m->option_mono^=1u;else if(m->selection==1)m->option_rumble^=1u;
-            else if(m->selection==2)m->option_battles^=1u;}
+        move(m,keys,3,1);
+        if(keys&(C3_PAD_LEFT|C3_PAD_RIGHT)){if(m->selection==0)m->option_mono^=1u;else if(m->selection==1)m->option_rumble^=1u;}
         if(back)page(m,C3_GAME_HUB,m->hub_selection);
-        else if(accept&&m->selection==3){if(c3_game_state_set_options(state,(uint8_t)m->option_mono,(uint8_t)m->option_rumble)){e.kind=C3_INGAME_OPTIONS;page(m,C3_GAME_HUB,m->hub_selection);}else c3_ingame_error(m,"Unable to apply Options.");}
+        else if(accept&&m->selection==2){if(c3_game_state_set_options(state,(uint8_t)m->option_mono,(uint8_t)m->option_rumble)){e.kind=C3_INGAME_OPTIONS;page(m,C3_GAME_HUB,m->hub_selection);}else c3_ingame_error(m,"Unable to apply Options.");}
     }else if(m->page==C3_GAME_TONES){
         unsigned previous=m->selection;move(m,keys,10,1);
         if(back){open_list(m,state,C3_GAME_MAIL,0);e.kind=C3_INGAME_STOP_TONE;}
@@ -476,10 +474,8 @@ void c3_ingame_draw_to(C3IngameMenu *m,const C3GameState *state,C3BottomUi *ui)
     case C3_GAME_OPTIONS:
         header(m,ui,"OPTIONS","Changes apply with END; Save keeps them.");
         snprintf(label,sizeof label,"SOUND  <%s>",m->option_mono?"MONO":"STEREO");c3_ui_row(ui,72,label,m->selection==0,0);
-        snprintf(label,sizeof label,"RUMBLE <%s>",m->option_rumble?"OFF":"ON");c3_ui_row(ui,104,label,m->selection==1,0);
-        snprintf(label,sizeof label,"BATTLES <%s>",m->option_battles?"PLAY":"SKIP");c3_ui_row(ui,136,label,m->selection==2,0);
-        c3_ui_row(ui,168,"END",m->selection==3,0);
-        c3_ui_text(ui,38,200,244,1,"BATTLES is a 3DS port setting.",C3_UI_MUTED);c3_ui_footer(ui,"D-pad: change   A: END   B: cancel");break;
+        snprintf(label,sizeof label,"RUMBLE <%s>",m->option_rumble?"OFF":"ON");c3_ui_row(ui,109,label,m->selection==1,0);c3_ui_row(ui,146,"END",m->selection==2,0);
+        c3_ui_text(ui,38,185,244,1,"3DS has no Controller Rumble motor.",C3_UI_MUTED);c3_ui_footer(ui,"D-pad: change   A: END   B: cancel");break;
     case C3_GAME_MAIL:{
         unsigned tone,sort;if(!c3_game_state_mail_settings(state,&sort,&tone)){body(m,ui,"The saved mail settings are invalid.");c3_ui_footer(ui,"B: back");break;}
         snprintf(sub,sizeof sub,"%u letters   %s",m->count,sorts[sort]);header(m,ui,"MAIL",sub);
