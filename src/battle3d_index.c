@@ -5,6 +5,7 @@
 
 #define HEADER 64u
 #define MODEL 128u
+#define MODEL_V2 512u
 #define FLOOR 32u
 
 static uint32_t le32(const uint8_t *p) { return (uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24; }
@@ -23,19 +24,20 @@ static int safe_name(const uint8_t *p, size_t n)
 int c3_battle3d_index_decode(C3Battle3dIndex *x, const void *data, size_t size, char *error, size_t cap)
 {
     const uint8_t *b = data;
-    if (!x || !b || size < HEADER || memcmp(b, "C3BN", 4) || le32(b + 4) != 1) return fail(error, cap, "Invalid 3D battle index header.");
+    if (!x || !b || size < HEADER || memcmp(b, "C3BN", 4) || (le32(b + 4) != 1 && le32(b + 4) != 2)) return fail(error, cap, "Invalid 3D battle index header.");
     C3Battle3dIndex v; memset(&v, 0, sizeof v);
+    v.version = le32(b + 4); v.model_bytes = v.version == 2 ? MODEL_V2 : MODEL;
     v.species_count = le32(b + 8); v.trainer_count = le32(b + 12); v.floor_count = le32(b + 16); v.model_count = le32(b + 20);
     v.species_at = le32(b + 24); v.trainer_at = le32(b + 28); v.floor_at = le32(b + 32); v.model_at = le32(b + 36);
     if (v.species_count > 4096 || v.trainer_count > 4096 || v.floor_count > 1024 || v.model_count >= 0xFFFF ||
         !span(size, v.species_at, 2ull * v.species_count) || !span(size, v.trainer_at, 2ull * v.trainer_count) ||
-        !span(size, v.floor_at, (uint64_t)FLOOR * v.floor_count) || !span(size, v.model_at, (uint64_t)MODEL * v.model_count))
+        !span(size, v.floor_at, (uint64_t)FLOOR * v.floor_count) || !span(size, v.model_at, (uint64_t)v.model_bytes * v.model_count))
         return fail(error, cap, "3D battle index tables out of bounds.");
     for (uint32_t i = 0; i < v.species_count; ++i) { unsigned m = le16(b + v.species_at + 2 * i); if (m != 0xFFFF && m >= v.model_count) return fail(error, cap, "3D battle index species model."); }
     for (uint32_t i = 0; i < v.trainer_count; ++i) { unsigned m = le16(b + v.trainer_at + 2 * i); if (m != 0xFFFF && m >= v.model_count) return fail(error, cap, "3D battle index trainer model."); }
     for (uint32_t i = 0; i < v.floor_count; ++i) if (!safe_name(b + v.floor_at + FLOOR * i, FLOOR)) return fail(error, cap, "3D battle index floor name.");
     for (uint32_t i = 0; i < v.model_count; ++i) {
-        const uint8_t *r = b + v.model_at + MODEL * i;
+        const uint8_t *r = b + v.model_at + (size_t)v.model_bytes * i;
         if (!r[0] || !safe_name(r, C3_BATTLE3D_NAME) || le32(r + 48 + 4 * C3_BATTLE3D_ENTRIES) > 1) return fail(error, cap, "3D battle index model record.");
     }
     v.bytes = (uint8_t *)data; v.size = size;
@@ -70,7 +72,7 @@ void c3_battle3d_index_free(C3Battle3dIndex *x)
 static int model(const C3Battle3dIndex *x, unsigned m, C3Battle3dModel *out)
 {
     if (m == 0xFFFF || m >= x->model_count) return 0;
-    const uint8_t *r = x->bytes + x->model_at + MODEL * m;
+    const uint8_t *r = x->bytes + x->model_at + (size_t)x->model_bytes * m;
     if (out) {
         memset(out, 0, sizeof *out);
         memcpy(out->file, r, C3_BATTLE3D_NAME); out->file[C3_BATTLE3D_NAME - 1] = 0;
@@ -78,6 +80,18 @@ static int model(const C3Battle3dIndex *x, unsigned m, C3Battle3dModel *out)
         out->kind = le32(r + 48 + 4 * C3_BATTLE3D_ENTRIES);
         uint32_t s = le32(r + 52 + 4 * C3_BATTLE3D_ENTRIES); memcpy(&out->scale, &s, 4);
         if (!(out->scale > 0.01f && out->scale < 100.f)) out->scale = 1.f;
+        memset(out->part_bone, 0xFF, sizeof out->part_bone); memset(out->camera_part, 0xFF, sizeof out->camera_part);
+        out->closed_eye_texanim = 0xFFFFFFFFu;
+        if (x->version == 2) {
+            out->flags = le32(r + 124);
+            memcpy(out->part_bone, r + 128, 17); memcpy(out->camera_part, r + 145, 3);
+            out->closed_eye_texanim = le32(r + 148);
+            for (unsigned e = 0; e < C3_BATTLE3D_ENTRIES; ++e)
+                for (unsigned k = 0; k < 4; ++k) {
+                    uint32_t u = le32(r + 152 + 16 * e + 4 * k); float f; memcpy(&f, &u, 4);
+                    out->timing[e][k] = f == f && f > -1e6f && f < 1e6f ? f : 0;
+                }
+        }
     }
     return 1;
 }

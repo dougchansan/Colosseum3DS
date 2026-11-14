@@ -7,7 +7,8 @@
 /* Index of the private 3D battle assets (tools/prepare_battle_stages.py):
  * which stage each battle floor uses and which model pack each internal
  * species and trainer uses, with the pack clip of every original PKX
- * animation entry. Little-endian "C3BN" version 1. */
+ * animation entry. Little-endian "C3BN" version 1, or 2 with each model's
+ * body-part bones and PKX timing marks (512-byte model records). */
 #define C3_BATTLE3D_ENTRIES 17u
 #define C3_BATTLE3D_NO_CLIP 0xFFFFFFFFu
 #define C3_BATTLE3D_NAME 48u
@@ -17,6 +18,12 @@ typedef struct {
     uint32_t entry_clip[C3_BATTLE3D_ENTRIES];
     uint32_t kind; /* 0 Pokemon, 1 trainer */
     float scale;
+    /* Version 2 (zero/0xFF in a version-1 index): */
+    uint32_t flags;           /* bit0: body parts present */
+    uint8_t part_bone[17];    /* PKX body-map slots 0..15 and the centre -> pack bone, 0xFF none */
+    uint8_t camera_part[3];
+    uint32_t closed_eye_texanim;
+    float timing[C3_BATTLE3D_ENTRIES][4]; /* PKX entry timing marks, 60 Hz ticks */
 } C3Battle3dModel;
 
 typedef struct {
@@ -24,6 +31,7 @@ typedef struct {
     size_t size;
     uint32_t species_count, trainer_count, floor_count, model_count;
     uint32_t species_at, trainer_at, floor_at, model_at;
+    uint32_t version, model_bytes;
 } C3Battle3dIndex;
 
 int c3_battle3d_index_decode(C3Battle3dIndex *index, const void *bytes, size_t size, char *error, size_t capacity);
