@@ -810,8 +810,19 @@ class Synth:
             elif op == 0x15:
                 pass                          # surround panning: no rear channel in stereo
             else:
-                self.note_unsupported("macro_op_%02x" % op)
+                handled = self.extra_op(v, op, a, b)
+                if handled is None:
+                    self.note_unsupported("macro_op_%02x" % op)
+                elif handled:
+                    return                    # the voice now waits (or ended)
         v.active = False
+
+    def extra_op(self, v, op, a, b):
+        """Hook for macro opcodes outside the music subset (prepare_battle_sfx).
+
+        Returns None when unsupported, True when the voice stops stepping, False
+        to continue with the next step."""
+        return None
 
     def note_unsupported(self, name):
         self.unsupported[name] = self.unsupported.get(name, 0) + 1

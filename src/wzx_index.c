@@ -17,8 +17,8 @@ int c3_wzx_index_decode(C3WzxIndex *x, const void *data, size_t size, char *erro
     if (v.rows > 65536 || v.rows_at < 32 || v.rows_at > size || (size - v.rows_at) / ROW < v.rows || v.names_at > size)
         return fail(error, cap, "Effect index tables out of bounds.");
     for (uint32_t i = 0; i < v.rows; ++i) {
-        uint32_t name = le32(b + v.rows_at + ROW * i + 8);
-        if (name < v.names_at || name >= size || !memchr(b + name, 0, size - name)) return fail(error, cap, "Effect index name out of bounds.");
+        uint64_t name = (uint64_t)v.names_at + le32(b + v.rows_at + ROW * i + 8); /* relative to names_at */
+        if (name >= size || !memchr(b + name, 0, size - name)) return fail(error, cap, "Effect index name out of bounds.");
         const char *s = (const char *)b + name;
         if (!s[0] || strchr(s, '/') || strchr(s, '\\') || strstr(s, "..")) return fail(error, cap, "Unsafe effect pack name.");
     }
@@ -51,7 +51,7 @@ static const char *find(const C3WzxIndex *x, unsigned category, unsigned kind, u
         const uint8_t *r = x->bytes + x->rows_at + ROW * i;
         if (r[0] != category || le16(r + 2) != id || (kind && r[1] != kind) || le16(r + 6) != variant) continue;
         if (!any_pkx && le16(r + 4) != pkx) continue;
-        return (const char *)x->bytes + le32(r + 8);
+        return (const char *)x->bytes + x->names_at + le32(r + 8);
     }
     return NULL;
 }

@@ -2,6 +2,7 @@
 #include "battle_general_scene.h"
 #include "battle_general_stage.h"
 #include "battle_audio_player.h"
+#include "sfx_player.h"
 #include "bottom_screen.h"
 #include "n3ds_platform.h"
 #include "render_recovery.h"
@@ -57,6 +58,15 @@ int c3_battle_general_3d_ready(const C3GeneralBattle *b, FILE *trace, char *why,
     return !missing;
 }
 
+static int sfx_open_ok, cue_audio;
+/* Every game sound request from the full pack (sfx.c3s); the encounter-10
+ * cue pack only for ids that pack lacks. */
+static int battle_cue(uint32_t cue, uint32_t sound, char *e, size_t n)
+{
+    if (sfx_open_ok && c3_sfx_has(sound)) { c3_sfx_play(sound, 127); return 1; }
+    if (cue_audio) return c3_battle_audio_player_cue(cue, sound, e, n);
+    return 1;
+}
 static int autoplay; /* unattended probe: the hero uses the opponent policy */
 
 static int silent(uint32_t cue, uint32_t sound, char *e, size_t n) { (void)cue; (void)sound; (void)e; (void)n; return 1; }
@@ -78,7 +88,7 @@ static int open_stage(C3BattleGeneralStage *s, const C3Battle3dIndex *index, con
     uint64_t start = c3_n3ds_time_us();
     c3_bottom_screen_notice("BATTLE", "Loading the battle stage...", "");
     if (!c3_battle_general_stage_load(s, index, cast, pack, C3_BATTLE3D_ROOT, EFFECTS_ROOT, hp, trace, error, cap)) return 0;
-    s->sound_cue = audio ? c3_battle_audio_player_cue : silent;
+    s->sound_cue = audio || sfx_open_ok ? battle_cue : silent;
     if (trace) { fprintf(trace, "general_battle_stage_open us=%llu\n", (unsigned long long)(c3_n3ds_time_us() - start));
         c3_n3ds_log_memory(trace, "general_battle_stage"); fflush(trace); }
     return 1;
@@ -99,8 +109,11 @@ int c3_battle_general_3d_run(const C3BattlePack *pack, C3GeneralBattle *b, FILE 
     opening_cast(b, &cast);
     if (trace) { fprintf(trace, "general_battle_begin encounter=%lu trainer=%s/%s active=%u hero_party=%u foe_party=%u scene=3d floor=%u\n",
         (unsigned long)b->encounter, b->info.title, b->info.trainer, b->active_count, b->party_count[0], b->party_count[1], cast.floor); fflush(trace); }
+    sfx_open_ok = c3_sfx_open(C3_BATTLE3D_ROOT "/sfx.c3s", error, sizeof error);
+    if (!sfx_open_ok && trace) { fprintf(trace, "battle_sfx_unavailable error=%s\n", error); fflush(trace); }
+    error[0] = 0;
     if (c3_battle_audio_player_open(EFFECTS_ROOT, error, sizeof error)) {
-        audio = 1; c3_render_recovery_set_pause_callback(c3_battle_audio_player_pause);
+        audio = 1; cue_audio = 1; c3_render_recovery_set_pause_callback(c3_battle_audio_player_pause);
     } else {
         if (trace) { fprintf(trace, "battle_audio_unavailable error=%s playing_silently=1\n", error); fflush(trace); }
         error[0] = 0;
@@ -210,7 +223,8 @@ done:
     if (error[0] && trace) { fprintf(trace, "general_battle_3d_failed error=%s turn=%lu\n", error, (unsigned long)b->turn); fflush(trace); }
     if (close_stage(stage, trace, frames)) result = 1;
     c3_render_recovery_set_pause_callback(NULL);
-    if (audio) c3_battle_audio_player_close();
+    if (audio) { c3_battle_audio_player_close(); cue_audio = 0; }
+    if (sfx_open_ok) { c3_sfx_stop_all(); c3_sfx_close(); sfx_open_ok = 0; }
     c3_battle_music_end(&music);
     c3_battle3d_index_free(&index);
     free(stage);

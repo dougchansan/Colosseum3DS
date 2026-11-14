@@ -26,7 +26,7 @@ int c3_wzx_pack_decode(C3WzxPack *pack, const void *data, size_t size, char *err
         uint32_t map = le32(n + 136), maps = le32(n + 140);
         if (kind < C3_WZX_CONTROL || kind > C3_WZX_ACTION || le32(n + 20) >= 16 || le32(n + 24) >= 16 || le32(n + 28) > 16 ||
             (bytes && !span(size, payload, bytes)) || (maps && !span(size, map, 2ull * maps)) ||
-            (name && (!p.strings_at || name >= size || !memchr(b + name, 0, size - name))))
+            (name && (!p.strings_at || (uint64_t)p.strings_at + name >= size || !memchr(b + p.strings_at + name, 0, size - p.strings_at - name))))
             return fail(error, cap, "WZX pack node out of bounds.");
     }
     *pack = p;
@@ -43,7 +43,7 @@ int c3_wzx_pack_node(const C3WzxPack *p, uint32_t i, C3WzxNode *o)
     for (unsigned k = 0; k < 16; ++k) o->timing[k] = (int32_t)le32(n + 32 + 4 * k);
     o->flags = le32(n + 96); o->part = le32(n + 100); o->node_ver = le32(n + 104); o->state = le32(n + 108);
     o->payload_bytes = le32(n + 116); o->payload = o->payload_bytes ? p->bytes + le32(n + 112) : NULL;
-    uint32_t name = le32(n + 120); o->file = name ? (const char *)p->bytes + name : NULL;
+    uint32_t name = le32(n + 120); o->file = name ? (const char *)p->bytes + p->strings_at + name : NULL; /* relative to strings_at */
     o->status = le32(n + 124); o->model_clips = le32(n + 128); o->model_bones = le32(n + 132);
     o->joint_map_count = le32(n + 140);
     o->joint_map = o->joint_map_count ? (const uint16_t *)(p->bytes + le32(n + 136)) : NULL;
