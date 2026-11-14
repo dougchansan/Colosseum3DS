@@ -43,8 +43,10 @@ static int read_file(const char *path,unsigned char *out,size_t cap,size_t *byte
     return !io&&extra==EOF;
 }
 
+static void wzx_close(C3BattleGeneralStage *s);
 static void release(C3BattleGeneralStage *s)
 {
+    wzx_close(s);
     c3_particle_cancel(&s->particles);c3_wzx_damage_cancel(&s->damage);
     for(uint32_t i=s->count;i>0;--i)c3_title_close(&s->models[i-1]);
     s->count=0;free(s->particle_bytes);s->particle_bytes=NULL;s->damage_available=0;
@@ -55,6 +57,8 @@ static int model_for_slot(const C3BattleGeneralStage *s,unsigned slot)
     for(uint32_t i=0;i<s->count;++i)if(s->slots[i]==slot)return (int)i;
     return -1;
 }
+static int sound(C3BattleGeneralStage *s,uint32_t id,char *e,size_t n);
+#include "battle_general_wzx.inc"
 
 /* Load a pack once; a second cast member with the same pack borrows it. */
 static int load_actor(C3BattleGeneralStage *s,const char *root,const C3Battle3dModel *m,unsigned slot,char *e,size_t n)
@@ -78,6 +82,8 @@ static int load_actor(C3BattleGeneralStage *s,const char *root,const C3Battle3dM
     slot_position(slot,s->cast.active_per_side,s->transforms[i]);
     s->transforms[i][4]=m->scale;
     s->appear[i]=1;s->draw[i]=t;
+    if(slot<6){memcpy(s->part_bone[slot],m->part_bone,17);memcpy(s->timing[slot],m->timing,sizeof s->timing[slot]);
+        memcpy(s->entry_clip[slot],m->entry_clip,sizeof s->entry_clip[slot]);}
     return 1;
 }
 
@@ -126,6 +132,7 @@ static int renderer_start(C3BattleGeneralStage *s,char *error,size_t cap)
     if(c3_stage_renderer_init(s->draw,s->count,error,cap)!=C3_RENDER_OK)return 0;
     s->initialized=1;
     if(s->damage_available&&c3_stage_renderer_particle_pack(&s->particle_pack,error,cap)!=C3_RENDER_OK)return 0;
+    wzx_register_banks(s,error,cap);
     for(uint32_t i=0;i<s->count;++i){
         const float *t=s->transforms[i];C3Title *m=&s->models[i];
         if(s->slots[i]==ARENA&&m->clip_count==1&&m->clips[0].frame_count==1&&
@@ -194,6 +201,7 @@ int c3_battle_general_stage_load(C3BattleGeneralStage *s,const C3Battle3dIndex *
         s->camera.target[0]=player[0]+axis[0]*span*.75f;s->camera.target[1]=player[1]+.9f;s->camera.target[2]=player[2]+axis[1]*span*.75f;
     }
     if(!damage_load(s,effects,error,cap))goto bad;
+    if(wzx_open(s,root)&&trace){fprintf(trace,"wzx_layer rows=%lu\n",(unsigned long)s->wzx->index.rows);fflush(trace);}
     c3_battle_presentation_init(&s->presentation,hp);
     if(!c3_battle_presentation_wait_limit(&s->presentation,20000))goto invalid;
     if(!renderer_start(s,error,cap)){if(!s->initialized)goto bad;return 0;}
@@ -253,12 +261,39 @@ static void event(const C3BattlePreviewEvent *e,int finished,void *user)
         int m=e->actor<4?model_for_slot(s,e->actor):-1;
         unsigned role=c3_general_view_move_role(s->pack,e->move);
         s->presentation.duration_ms=s->message_ms;
+        s->wzx_move=0;s->wzx_damage[0]=0;s->wzx_damage_run=NULL;
+        if(s->wzx&&e->actor<4){
+            unsigned pkx=slot_pkx(s,e->actor);
+            const char *attack=c3_wzx_index_move(&s->wzx->index,e->move,1,(uint16_t)pkx,0);
+            unsigned kind=1;
+            if(!attack){attack=c3_wzx_index_move(&s->wzx->index,e->move,3,(uint16_t)pkx,0);kind=3;}
+            for(uint32_t j=s->presentation.cursor+1;j<s->presentation.count&&s->presentation.events[j].group==e->group;++j){
+                const C3BattlePreviewEvent *h=&s->presentation.events[j];
+                if(h->kind==C3_PREVIEW_EVENT_HP&&h->target<4&&h->hp[h->target]<h->hp_before[h->target]){
+                    const char *damage=c3_wzx_index_move(&s->wzx->index,e->move,2,(uint16_t)slot_pkx(s,h->target),0);
+                    if(damage){snprintf(s->wzx_damage,sizeof s->wzx_damage,"%s",damage);s->wzx_damage_target=h->target;}
+                    break;
+                }
+            }
+            if(attack&&wzx_begin(s,attack,kind,e->actor,e->target)){
+                s->wzx_move=1;s->wzx_attack_wait=1;
+                c3_battle_presentation_wait(&s->presentation,1);s->presentation.duration_ms=0;
+                break;
+            }
+            if(s->wzx_damage[0])s->wzx_move=1;
+        }
         start_clip(s,m,role?role:2,0);
         break;}
     case C3_PREVIEW_EVENT_HP:{
         int m=e->target<4?model_for_slot(s,e->target):-1;
         s->presentation.duration_ms=450;
         if(e->target<4&&e->hp[e->target]<e->hp_before[e->target]){
+            if(s->wzx_move&&e->actor<4){
+                WzxRun *r=s->wzx_damage[0]&&s->wzx_damage_target==e->target?wzx_begin(s,s->wzx_damage,2,e->target,e->actor):NULL;
+                s->wzx_damage[0]=0;s->wzx_damage_run=r;
+                if(r){s->wzx_hp_wait=1;c3_battle_presentation_wait(&s->presentation,1);s->presentation.duration_ms=0;break;}
+                start_clip(s,m,3,0);break;
+            }
             start_clip(s,m,3,0);
             if(e->actor<4&&!damage_begin(s,m,e->sequence,s->error,sizeof s->error))return;
         }
@@ -319,6 +354,7 @@ int c3_battle_general_stage_step(C3BattleGeneralStage *s,uint32_t ms,char *error
         if(s->immutable[i]&&s->sampled[i])continue;
         if(s->appear[i]<1){s->appear[i]+=dt/.35f;if(s->appear[i]>1)s->appear[i]=1;}
         if(s->slots[i]==EFFECT){s->clocks[i]=s->damage.model_seconds;continue;}
+        if(s->slots[i]==WZX_EFFECT_SLOT)continue;
         C3Title *m=&s->models[i];const C3TitleClip *clip=&m->clips[s->clips[i]];
         float length=(float)clip->frame_count/m->fps;
         float last=length>1.f/m->fps?length-1.f/m->fps:0;
@@ -331,18 +367,28 @@ int c3_battle_general_stage_step(C3BattleGeneralStage *s,uint32_t ms,char *error
         }else if(s->slots[i]<6&&s->clips[i]!=s->roles[i][0]&&!clip->loop)active=1;
     }
     if(!damage_step(s,ms,error,cap))return 0;
+    wzx_step(s,ms);
+    if(s->wzx_attack_wait&&!wzx_running(s,1)&&!wzx_running(s,3))s->wzx_attack_wait=0;
+    if(s->wzx_hp_wait){
+        WzxRun *r=s->wzx_damage_run;
+        if(!r||!r->active||c3_wzx_player_reached(&r->player,C3_WZX_TIME_DAMAGE)){s->wzx_hp_wait=0;c3_battle_presentation_wait(&s->presentation,0);}
+    }
     /* The damage effect holds the timeline only until its HP gate; its
      * particles and floor flash finish behind the following events. */
-    if(s->presentation.waiting&&!active&&(!s->damage.active||s->damage.hp_gates))c3_battle_presentation_wait(&s->presentation,0);
+    else if(s->presentation.waiting&&!active&&!s->wzx_attack_wait&&(!s->damage.active||s->damage.hp_gates))c3_battle_presentation_wait(&s->presentation,0);
     if(!c3_battle_presentation_step(&s->presentation,ms,event,s))return fail(error,cap,"Battle presentation timeline failed.");
     if(s->error[0])return fail(error,cap,s->error);
     for(uint32_t i=0;i<s->count;++i){
         C3Title *m=&s->models[i];
-        if(s->slots[i]==ARENA&&!c3_stage_renderer_set_modulation(i,s->damage.active&&s->damage.floor_enabled?s->damage.floor_rgb:NULL))
+        const uint8_t *floor=s->wzx&&s->wzx->floor_tint?s->wzx->floor_rgb:s->damage.active&&s->damage.floor_enabled?s->damage.floor_rgb:NULL;
+        if(s->slots[i]==ARENA&&!c3_stage_renderer_set_modulation(i,floor))
             return fail(error,cap,"Battle floor modulation failed.");
+        if(s->wzx&&s->slots[i]<4&&!c3_stage_renderer_set_modulation(i,s->wzx->owner_tint[s->slots[i]]?s->wzx->owner_rgb[s->slots[i]]:NULL))
+            return fail(error,cap,"Battle actor modulation failed.");
         if(s->immutable[i]&&s->sampled[i])continue;
         float *t=s->transforms[i];
         int visible=s->slots[i]==EFFECT?s->damage.active&&s->damage.model_visible:
+                    s->slots[i]==WZX_EFFECT_SLOT?wzx_model_visible(s,i):
                     s->slots[i]>=4?1:s->presentation.visible[s->slots[i]];
         m->retained=1;m->hidden=(uint8_t)!visible;
 #ifndef C3_NO_GPU_SKIN
@@ -351,12 +397,14 @@ int c3_battle_general_stage_step(C3BattleGeneralStage *s,uint32_t ms,char *error
         float scale=t[4]*(s->appear[i]<1?.15f+.85f*s->appear[i]:1);
         if(t[0]==0&&t[1]==0&&t[2]==0&&t[3]==0&&scale==1)m->placement.enabled=0;
         else c3_title_place_yaw(m,t,cosf(t[3]),sinf(t[3]),scale,0);
-        if(!c3_title_animate(m,s->clips[i],s->clocks[i]))return fail(error,cap,"Battle clip sampling failed.");
+        if(!c3_title_animate(m,s->clips[i],s->clocks[i]>0?s->clocks[i]:0))return fail(error,cap,"Battle clip sampling failed.");
         s->sampled[i]=1;
         if(!visible)for(uint32_t j=0;j<m->batch_count;++j)m->pose.materials[j].visible=0;
     }
-    if(s->particles_started&&s->damage.active){
-        static const float identity[12]={.1f,0,0,0,0,.1f,0,0,0,0,.1f,0};
+    static const float identity[12]={.1f,0,0,0,0,.1f,0,0,0,0,.1f,0};
+    const C3ParticleSystem *bound=wzx_live_system(s);
+    if(bound){if(!c3_stage_renderer_particles(bound,identity))return fail(error,cap,"Effect particle binding failed.");}
+    else if(s->particles_started&&s->damage.active){
         if(!c3_stage_renderer_particles(&s->particles,identity))return fail(error,cap,"Damage particle binding failed.");
     }else c3_stage_renderer_particles(NULL,NULL);
     return 1;
@@ -388,7 +436,22 @@ int c3_battle_general_stage_swap(C3BattleGeneralStage *s,const C3Battle3dIndex *
     for(unsigned r=0;r<9;++r)if(s->roles[m][r]!=C3_BATTLE3D_NO_CLIP&&s->roles[m][r]>=t->clip_count)s->roles[m][r]=s->roles[m][0];
     s->clips[m]=s->roles[m][0];s->clocks[m]=0;s->hold[m]=0;s->appear[m]=1;s->sampled[m]=0;
     s->transforms[m][4]=model.scale;s->cast.species[slot]=species;s->presentation.visible[slot]=0;
+    memcpy(s->part_bone[slot],model.part_bone,17);memcpy(s->timing[slot],model.timing,sizeof s->timing[slot]);
+    memcpy(s->entry_clip[slot],model.entry_clip,sizeof s->entry_clip[slot]);
     s->draw[m]=t;
+    return renderer_start(s,error,cap);
+}
+
+int c3_battle_general_stage_prepare(C3BattleGeneralStage *s,const C3BattlePreviewEvent *e,uint32_t count,
+                                    const char *root,char *error,size_t cap)
+{
+    if(!s||!s->wzx)return 1;
+    int moves=0;for(uint32_t i=0;i<count;++i)moves|=e[i].kind==C3_PREVIEW_EVENT_MOVE;
+    if(!moves&&s->count==s->wzx->base_count)return 1;
+    if(s->initialized){if(!c3_stage_renderer_try_shutdown())return fail(error,cap,"Renderer busy during effect preparation.");s->initialized=0;}
+    c3_particle_cancel(&s->particles);c3_wzx_damage_cancel(&s->damage);
+    wzx_prepare(s,e,count,root);
+    for(uint32_t i=s->wzx->base_count;i<s->count;++i)s->sampled[i]=0;
     return renderer_start(s,error,cap);
 }
 

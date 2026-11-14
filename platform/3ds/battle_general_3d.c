@@ -142,6 +142,16 @@ int c3_battle_general_3d_run(const C3BattlePack *pack, C3GeneralBattle *b, FILE 
                     }
                     previous = c3_n3ds_active_time_us();
                 }
+                int moves = 0;
+                for (uint32_t k = 0; k < n; ++k) moves |= batch[k].kind == C3_PREVIEW_EVENT_MOVE;
+                if (moves && stage->wzx) {
+                    /* This turn's move effects: load them while the GPU is idle. */
+                    uint64_t prepare_start = c3_n3ds_time_us();
+                    if (c3_render_recover(trace, "general_battle_effects", frames, C3_RECOVER_DRAIN) == C3_RECOVERY_EXIT) { result = 1; goto done; }
+                    if (!c3_battle_general_stage_prepare(stage, batch, n, C3_BATTLE3D_ROOT, error, sizeof error)) goto done;
+                    if (trace) { fprintf(trace, "general_battle_effects_ready us=%llu\n", (unsigned long long)(c3_n3ds_time_us() - prepare_start)); fflush(trace); }
+                    previous = c3_n3ds_active_time_us();
+                }
                 if (!c3_battle_general_stage_submit(stage, batch, n)) { snprintf(error, sizeof error, "Invalid battle event batch."); goto done; }
                 count = n; dirty = 1;
             } else if (b->outcome != C3_GB_RUNNING) { ui.page = C3_GUI_RESULT; dirty = 1; }

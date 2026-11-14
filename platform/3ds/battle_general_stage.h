@@ -21,7 +21,7 @@
  * bite_damage.*) is present. Move-specific effects, the original battle
  * camera sequences and Pokemon cries are not part of this stage.
  * Switching species needs a reload (close, then load the new cast). */
-#define C3_GSTAGE_MODELS 24u
+#define C3_GSTAGE_MODELS 40u
 
 typedef struct {
     uint16_t floor;
@@ -54,6 +54,16 @@ typedef struct {
     float damage_particle_local[3];
     uint8_t damage_available, particles_started, initialized;
     uint32_t message_ms;
+    /* General WZX effects (battle_general_wzx.inc): per position the PKX
+     * body-part bones, timing marks and entry clips from the index. */
+    struct C3BattleWzxLayer *wzx;
+    uint8_t part_bone[6][17];
+    float timing[6][C3_BATTLE3D_ENTRIES][4];
+    uint32_t entry_clip[6][C3_BATTLE3D_ENTRIES];
+    char wzx_damage[48];
+    uint32_t wzx_damage_target;
+    void *wzx_damage_run;
+    uint8_t wzx_attack_wait, wzx_hp_wait, wzx_move;
     int (*sound_cue)(uint32_t, uint32_t, char *, size_t);
     char error[192];
     FILE *trace;
@@ -75,6 +85,11 @@ int c3_battle_general_stage_submit(C3BattleGeneralStage *, const C3BattlePreview
  * hidden until its send-out plays. 0 (error set) when it cannot: reload. */
 int c3_battle_general_stage_swap(C3BattleGeneralStage *, const C3Battle3dIndex *, unsigned slot, uint16_t species,
                                  const char *root, char *, size_t);
+/* Load the effect sequences this batch's moves use (attack, damage and
+ * special roots for the actual owners) and restart the renderer with them.
+ * The caller drains the GPU first. Without a wzx.c3n nothing changes. */
+int c3_battle_general_stage_prepare(C3BattleGeneralStage *, const C3BattlePreviewEvent *, uint32_t count,
+                                    const char *root, char *, size_t);
 /* Whether the submitted batch has been fully presented. */
 int c3_battle_general_stage_idle(const C3BattleGeneralStage *);
 int c3_battle_general_stage_step(C3BattleGeneralStage *, uint32_t ms, char *, size_t);
