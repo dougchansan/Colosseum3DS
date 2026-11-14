@@ -441,9 +441,9 @@ int c3_battle_general_stage_step(C3BattleGeneralStage *s,uint32_t ms,char *error
         if(!visible)for(uint32_t j=0;j<m->batch_count;++j)m->pose.materials[j].visible=0;
     }
     static const float identity[12]={.1f,0,0,0,0,.1f,0,0,0,0,.1f,0};
-    const C3ParticleSystem *bound=wzx_live_system(s);
-    if(bound){if(!c3_stage_renderer_particles(bound,identity))return fail(error,cap,"Effect particle binding failed.");}
-    else if(s->particles_started&&s->damage.active){
+    if(s->wzx&&!wzx_bind_systems(s)&&s->trace&&!s->particle_bind_logged){
+        s->particle_bind_logged=1;fprintf(s->trace,"wzx_particle_slot_refused\n");fflush(s->trace);}
+    if(s->particles_started&&s->damage.active){
         if(!c3_stage_renderer_particles(&s->particles,identity))return fail(error,cap,"Damage particle binding failed.");
     }else c3_stage_renderer_particles(NULL,NULL);
     return 1;

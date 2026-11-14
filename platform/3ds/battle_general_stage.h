@@ -64,7 +64,7 @@ typedef struct {
     char wzx_damage[48];
     uint32_t wzx_damage_target;
     void *wzx_damage_run;
-    uint8_t wzx_attack_wait, wzx_hp_wait, wzx_move;
+    uint8_t wzx_attack_wait, wzx_hp_wait, wzx_move, particle_bind_logged;
     uint32_t wzx_id; /* move id, or 0x1000|special, of the sequence being started */
     int (*sound_cue)(uint32_t, uint32_t, char *, size_t);
     char error[192];

@@ -9,8 +9,8 @@
 #include "colosseum3ds/wzx_camera.h"
 
 #define WZX_SEQUENCES 8u
-#define WZX_BANKS 16u
-#define WZX_SYSTEMS 6u
+#define WZX_BANKS 28u
+#define WZX_SYSTEMS 12u /* renderer slots 1..12 (slot 0: the generic damage effect) */
 #define WZX_PLAYERS 4u
 #define WZX_EFFECT_SLOT (UINT32_MAX - 3u)
 
@@ -164,7 +164,8 @@ static WzxSequence *wzx_sequence(C3BattleGeneralStage *s, const char *root, cons
                 uint8_t sha[20];
                 if (read_all(path, &bk->bytes, &bk->size)) {
                     c3_save_codec_sha1(sha, bk->bytes, (uint32_t)bk->size);
-                    if (c3_particle_pack_decode(&bk->pack, bk->bytes, bk->size, sha, error, sizeof error)) {
+                    if (c3_particle_pack_decode_general(&bk->pack, bk->bytes, bk->size, sha, error, sizeof error) ||
+                        c3_particle_pack_decode(&bk->pack, bk->bytes, bk->size, sha, error, sizeof error)) {
                         snprintf(bk->name, sizeof bk->name, "%s", n.file); found = (int)w->bank_count++;
                     } else { free(bk->bytes); memset(bk, 0, sizeof *bk); }
                 }
@@ -555,10 +556,14 @@ static int wzx_model_visible(const C3BattleGeneralStage *s, uint32_t model)
     return 0;
 }
 
-/* The renderer binds one particle system: the earliest live launch. */
-static const C3ParticleSystem *wzx_live_system(const C3BattleGeneralStage *s)
+/* Every live launch in its own renderer slot (1..WZX_SYSTEMS), in world
+ * source units like the damage effect. */
+static int wzx_bind_systems(const C3BattleGeneralStage *s)
 {
-    if (!s->wzx) return NULL;
-    for (unsigned k = 0; k < WZX_SYSTEMS; ++k) if (s->wzx->system_used[k]) return &s->wzx->systems[k];
-    return NULL;
+    static const float world[12] = {.1f,0,0,0,0,.1f,0,0,0,0,.1f,0};
+    for (unsigned k = 0; k < WZX_SYSTEMS && k + 1 < C3_STAGE_MAX_PARTICLE_SYSTEMS; ++k) {
+        const C3ParticleSystem *sys = s->wzx && s->wzx->system_used[k] ? &s->wzx->systems[k] : NULL;
+        if (!c3_stage_renderer_particles_set(k + 1, sys, sys ? world : NULL) && sys) return 0;
+    }
+    return 1;
 }
