@@ -201,7 +201,7 @@ int c3_battle_general_stage_load(C3BattleGeneralStage *s,const C3Battle3dIndex *
         s->camera.target[0]=player[0]+axis[0]*span*.75f;s->camera.target[1]=player[1]+.9f;s->camera.target[2]=player[2]+axis[1]*span*.75f;
     }
     if(!damage_load(s,effects,error,cap))goto bad;
-    if(wzx_open(s,root)&&trace){fprintf(trace,"wzx_layer rows=%lu\n",(unsigned long)s->wzx->index.rows);fflush(trace);}
+    if(wzx_open(s,root)){wzx_load_persistent(s,root);if(trace){fprintf(trace,"wzx_layer rows=%lu persistent=%u\n",(unsigned long)s->wzx->index.rows,s->wzx->persistent_sequences);fflush(trace);}}
     c3_battle_presentation_init(&s->presentation,hp);
     if(!c3_battle_presentation_wait_limit(&s->presentation,20000))goto invalid;
     if(!renderer_start(s,error,cap)){if(!s->initialized)goto bad;return 0;}
@@ -266,14 +266,21 @@ static void event(const C3BattlePreviewEvent *e,int finished,void *user)
         }
         break;
     case C3_PREVIEW_EVENT_MESSAGE:case C3_PREVIEW_EVENT_MISS:case C3_PREVIEW_EVENT_CRITICAL:
-        s->presentation.duration_ms=s->message_ms;break;
+        s->presentation.duration_ms=s->message_ms;
+        /* A recall (fightOutPokemonModosuEffect): the ball's in special. */
+        if(e->kind==C3_PREVIEW_EVENT_MESSAGE&&e->effect==BALL_IN&&e->actor<4&&s->presentation.visible[e->actor]&&wzx_special(s,BALL_IN,e->actor,0,0)){
+            s->wzx_attack_wait=1;c3_battle_presentation_wait(&s->presentation,1);s->presentation.duration_ms=0;
+        }
+        break;
     case C3_PREVIEW_EVENT_SEND_OUT:{
         int m=e->target<4?model_for_slot(s,e->target):-1;
         if(m>=0){s->presentation.visible[e->target]=1;s->appear[m]=0;s->clips[m]=s->roles[m][0];s->clocks[m]=0;s->hold[m]=0;}
         s->presentation.duration_ms=s->message_ms;
-        /* fightOutPokemonDasuEffect: the cry follows the send-out. */
+        /* fightOutPokemonDasuEffect: ball open, then out with the cry. */
         {uint16_t voice=e->target<4?c3_battle_pack_species_voice(s->pack,s->cast.species[e->target]):0;
-         if(voice&&!sound(s,voice,s->error,sizeof s->error))return;}
+         if(e->target<4&&wzx_special(s,BALL_OPEN,e->target,BALL_OUT,voice)){
+             s->wzx_attack_wait=1;c3_battle_presentation_wait(&s->presentation,1);s->presentation.duration_ms=0;
+         }else if(voice&&!sound(s,voice,s->error,sizeof s->error))return;}
         break;}
     case C3_PREVIEW_EVENT_MOVE:{
         int m=e->actor<4?model_for_slot(s,e->actor):-1;
@@ -321,6 +328,8 @@ static void event(const C3BattlePreviewEvent *e,int finished,void *user)
         int m=e->target<4?model_for_slot(s,e->target):-1;
         s->presentation.duration_ms=s->message_ms;
         if(m>=0&&s->roles[m][4]!=C3_BATTLE3D_NO_CLIP)start_clip(s,m,4,1);
+        /* fightOutPokemonKizetuEffect: the ball's downin special. */
+        if(e->target<4&&wzx_special(s,BALL_DOWN,e->target,0,0)){s->wzx_attack_wait=1;c3_battle_presentation_wait(&s->presentation,1);s->presentation.duration_ms=0;}
         break;}
     case C3_PREVIEW_EVENT_OUTCOME:{
         int won=e->outcome==C3_PREVIEW_PLAYER_WON,lost=e->outcome==C3_PREVIEW_PLAYER_LOST;
@@ -387,7 +396,7 @@ int c3_battle_general_stage_step(C3BattleGeneralStage *s,uint32_t ms,char *error
     }
     if(!damage_step(s,ms,error,cap))return 0;
     wzx_step(s,ms);
-    if(s->wzx_attack_wait&&!wzx_running(s,1)&&!wzx_running(s,3))s->wzx_attack_wait=0;
+    if(s->wzx_attack_wait&&!wzx_running(s,1)&&!wzx_running(s,3)&&!wzx_running(s,4))s->wzx_attack_wait=0;
     if(s->wzx_hp_wait){
         WzxRun *r=s->wzx_damage_run;
         if(!r||!r->active||c3_wzx_player_reached(&r->player,C3_WZX_TIME_DAMAGE)){s->wzx_hp_wait=0;c3_battle_presentation_wait(&s->presentation,0);}

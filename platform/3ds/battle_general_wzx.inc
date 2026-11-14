@@ -47,7 +47,13 @@ struct C3BattleWzxLayer {
     C3WzxCameraScene scene;
     C3TitleCamera home;
     uint8_t camera_ok, sequence_camera, command_phase;
+    unsigned persistent_sequences, persistent_banks; /* the Poke Ball specials, kept for the battle */
+    char follow[48]; unsigned follow_owner; uint16_t follow_voice; uint8_t follow_pending;
 };
+/* Poke Ball specials (lbl_803727C8 rows 0x0A-0x0C, 0x40: monsterball in /
+ * open / out / downin). The general engine has no ball item, so every
+ * Pokemon uses the Poke Ball's. */
+enum { BALL_IN = 0x0A, BALL_OPEN = 0x0B, BALL_OUT = 0x0C, BALL_DOWN = 0x40 };
 /* Battle-grid order the camera uses: each trainer, then its Pokemon. */
 static const unsigned grid_slot[6] = {4, 0, 1, 5, 2, 3};
 static unsigned slot_actor(unsigned slot) { for (unsigned a = 0; a < 6; ++a) if (grid_slot[a] == slot) return a; return 0; }
@@ -78,9 +84,10 @@ static void wzx_release_batch(C3BattleGeneralStage *s)
     for (unsigned i = 0; i < WZX_PLAYERS; ++i) if (w->runs[i].active) c3_wzx_player_stop(&w->runs[i].player);
     memset(w->runs, 0, sizeof w->runs);
     for (unsigned i = 0; i < WZX_SYSTEMS; ++i) { c3_particle_cancel(&w->systems[i]); w->system_used[i] = 0; }
-    for (unsigned i = 0; i < w->sequence_count; ++i) free(w->sequences[i].bytes);
-    for (unsigned i = 0; i < w->bank_count; ++i) free(w->banks[i].bytes);
-    w->sequence_count = w->bank_count = 0;
+    for (unsigned i = w->persistent_sequences; i < w->sequence_count; ++i) free(w->sequences[i].bytes);
+    for (unsigned i = w->persistent_banks; i < w->bank_count; ++i) free(w->banks[i].bytes);
+    w->sequence_count = w->persistent_sequences; w->bank_count = w->persistent_banks;
+    w->follow_pending = 0;
     while (s->count > w->base_count) { c3_title_close(&s->models[s->count - 1]); memset(&s->models[s->count - 1], 0, sizeof s->models[0]); --s->count; }
     w->floor_tint = 0; memset(w->owner_tint, 0, sizeof w->owner_tint);
 }
@@ -88,6 +95,8 @@ static void wzx_release_batch(C3BattleGeneralStage *s)
 static void wzx_close(C3BattleGeneralStage *s)
 {
     if (!s->wzx) return;
+    s->wzx->persistent_sequences = s->wzx->persistent_banks = 0;
+    s->wzx->base_count = 0;
     wzx_release_batch(s);
     c3_wzx_index_free(&s->wzx->index);
     free(s->wzx->systems); free(s->wzx); s->wzx = NULL;
@@ -162,6 +171,20 @@ static WzxSequence *wzx_sequence(C3BattleGeneralStage *s, const char *root, cons
     }
     ++w->sequence_count;
     return q;
+}
+
+/* At stage load, after wzx_open: the Poke Ball specials stay loaded. */
+static void wzx_load_persistent(C3BattleGeneralStage *s, const char *root)
+{
+    struct C3BattleWzxLayer *w = s->wzx;
+    if (!w) return;
+    static const uint16_t ids[] = {BALL_IN, BALL_OPEN, BALL_OUT, BALL_DOWN};
+    for (unsigned i = 0; i < sizeof ids / sizeof ids[0]; ++i) {
+        const char *name = c3_wzx_index_special(&w->index, ids[i]);
+        if (name) (void)wzx_sequence(s, root, name);
+    }
+    w->persistent_sequences = w->sequence_count; w->persistent_banks = w->bank_count;
+    w->base_count = s->count;
 }
 
 /* Load what this batch's moves need. The renderer must be stopped. */
@@ -463,6 +486,20 @@ static WzxRun *wzx_begin_id(C3BattleGeneralStage *s, const char *name, unsigned 
 
 #define wzx_begin(s, name, kind, owner, target) wzx_begin_id(s, name, kind, owner, target, s->wzx_id)
 
+/* A battle special on a Pokemon; `then` (0: none) follows when it ends,
+ * with `voice` (a cry) at its start. */
+static WzxRun *wzx_special(C3BattleGeneralStage *s, uint16_t special, unsigned owner, uint16_t then, uint16_t voice)
+{
+    struct C3BattleWzxLayer *w = s->wzx;
+    if (!w || owner >= 4) return NULL;
+    const char *name = c3_wzx_index_special(&w->index, special);
+    s->wzx_id = 0x1000u | special;
+    WzxRun *r = name ? wzx_begin(s, name, 4, owner, owner) : NULL;
+    const char *next = then ? c3_wzx_index_special(&w->index, then) : NULL;
+    if (r && next) { snprintf(w->follow, sizeof w->follow, "%s", next); w->follow_owner = owner; w->follow_voice = voice; w->follow_pending = 1; }
+    return r;
+}
+
 static void wzx_step(C3BattleGeneralStage *s, uint32_t ms)
 {
     struct C3BattleWzxLayer *w = s->wzx;
@@ -480,11 +517,23 @@ static void wzx_step(C3BattleGeneralStage *s, uint32_t ms)
                 (long)r->player.time, (unsigned long)r->player.started, (unsigned long)r->player.skipped); fflush(s->trace); }
         }
     }
+    if (w->follow_pending) {
+        int busy = 0;
+        for (unsigned i = 0; i < WZX_PLAYERS; ++i) busy |= w->runs[i].active && w->runs[i].owner == w->follow_owner;
+        if (!busy) {
+            char error[160];
+            w->follow_pending = 0;
+            if (w->follow_voice) (void)sound(s, w->follow_voice, error, sizeof error);
+            s->wzx_id = 0x1000u | BALL_OUT;
+            if (wzx_begin(s, w->follow, 4, w->follow_owner, w->follow_owner)) s->wzx_attack_wait = 1;
+        }
+    }
     camera_step(s, ms);
 }
 
 static int wzx_running(const C3BattleGeneralStage *s, unsigned kind)
 {
+    if (kind == 3 && s->wzx && s->wzx->follow_pending) return 1;
     if (!s->wzx) return 0;
     for (unsigned i = 0; i < WZX_PLAYERS; ++i) if (s->wzx->runs[i].active && (!kind || s->wzx->runs[i].kind == kind)) return 1;
     return 0;

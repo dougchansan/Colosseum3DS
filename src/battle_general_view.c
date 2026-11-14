@@ -102,7 +102,7 @@ uint32_t c3_general_view_batch(C3GeneralView *v, const C3GeneralBattle *b,
             if (e->target < 4) memset(v->stages[e->target], 0, sizeof v->stages[e->target]);
             break;
         case C3_GB_EVENT_SWITCH:
-            if (is_recall(b, i)) { e->kind = C3_PREVIEW_EVENT_MESSAGE; break; }
+            if (is_recall(b, i)) { e->kind = C3_PREVIEW_EVENT_MESSAGE; e->effect = 0x0A; /* the ball's in special */ break; }
             e->kind = C3_PREVIEW_EVENT_SEND_OUT;
             if (e->actor < 4) {
                 e->target = e->actor; e->target_mask = (uint8_t)(1u << e->actor);
