@@ -1211,7 +1211,8 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                 else if(event.kind==C3_INGAME_RESUME){c3_pda_audio_close();pda_audio_ready=0;page=PAUSE_CLOSED;dirty=1;}
                 else if(event.kind==C3_INGAME_SAVE){page=PAUSE_SAVE;yes=0;dirty=1;}
                 else if(event.kind==C3_INGAME_LEAVE){page=PAUSE_LEAVE;yes=0;dirty=1;}
-                else if(event.kind==C3_INGAME_OPTIONS){c3_movie_player_set_mono(ingame->option_mono);c3_music_set_mono(ingame->option_mono);dirty=1;}
+                else if(event.kind==C3_INGAME_OPTIONS){c3_movie_player_set_mono(ingame->option_mono);c3_music_set_mono(ingame->option_mono);
+                    c3_n3ds_set_battles_play((int)ingame->option_battles);dirty=1;}
                 else if(event.kind==C3_INGAME_READ_MAIL){
                     int ready=!event.mail.script||c3_field_story_menu_event(&story,event.mail.script,story_error);
                     if(ready&&!c3_game_state_mail_read(state,&event.mail.save,1)){
