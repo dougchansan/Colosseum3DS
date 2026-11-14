@@ -143,7 +143,7 @@ int c3_battle_general_3d_run(const C3BattlePack *pack, C3GeneralBattle *b, FILE 
                     previous = c3_n3ds_active_time_us();
                 }
                 int moves = 0;
-                for (uint32_t k = 0; k < n; ++k) moves |= batch[k].kind == C3_PREVIEW_EVENT_MOVE;
+                for (uint32_t k = 0; k < n; ++k) moves |= batch[k].kind == C3_PREVIEW_EVENT_MOVE || (batch[k].kind == C3_PREVIEW_EVENT_STATUS && batch[k].effect);
                 if (moves && stage->wzx) {
                     /* This turn's move effects: load them while the GPU is idle. */
                     uint64_t prepare_start = c3_n3ds_time_us();

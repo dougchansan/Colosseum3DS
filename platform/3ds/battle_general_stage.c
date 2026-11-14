@@ -251,7 +251,15 @@ static void event(const C3BattlePreviewEvent *e,int finished,void *user)
     if(finished||s->error[0])return;
     switch(e->kind){
     case C3_PREVIEW_EVENT_INTRO:s->presentation.duration_ms=s->message_ms+400;break;
-    case C3_PREVIEW_EVENT_MESSAGE:case C3_PREVIEW_EVENT_STATUS:case C3_PREVIEW_EVENT_MISS:case C3_PREVIEW_EVENT_CRITICAL:
+    case C3_PREVIEW_EVENT_STATUS:
+        s->presentation.duration_ms=s->message_ms;
+        /* The status condition's or stat change's own battle special. */
+        if(s->wzx&&e->effect&&e->target<4&&s->presentation.visible[e->target]){
+            const char *name=c3_wzx_index_special(&s->wzx->index,e->effect);
+            if(name&&wzx_begin(s,name,3,e->target,e->actor)){s->wzx_attack_wait=1;c3_battle_presentation_wait(&s->presentation,1);s->presentation.duration_ms=0;}
+        }
+        break;
+    case C3_PREVIEW_EVENT_MESSAGE:case C3_PREVIEW_EVENT_MISS:case C3_PREVIEW_EVENT_CRITICAL:
         s->presentation.duration_ms=s->message_ms;break;
     case C3_PREVIEW_EVENT_SEND_OUT:{
         int m=e->target<4?model_for_slot(s,e->target):-1;
@@ -446,7 +454,7 @@ int c3_battle_general_stage_prepare(C3BattleGeneralStage *s,const C3BattlePrevie
                                     const char *root,char *error,size_t cap)
 {
     if(!s||!s->wzx)return 1;
-    int moves=0;for(uint32_t i=0;i<count;++i)moves|=e[i].kind==C3_PREVIEW_EVENT_MOVE;
+    int moves=0;for(uint32_t i=0;i<count;++i)moves|=e[i].kind==C3_PREVIEW_EVENT_MOVE||(e[i].kind==C3_PREVIEW_EVENT_STATUS&&e[i].effect);
     if(!moves&&s->count==s->wzx->base_count)return 1;
     if(s->initialized){if(!c3_stage_renderer_try_shutdown())return fail(error,cap,"Renderer busy during effect preparation.");s->initialized=0;}
     c3_particle_cancel(&s->particles);c3_wzx_damage_cancel(&s->damage);

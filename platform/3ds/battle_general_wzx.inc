@@ -149,6 +149,11 @@ static void wzx_prepare(C3BattleGeneralStage *s, const C3BattlePreviewEvent *e, 
     if (!w) return;
     wzx_release_batch(s);
     for (uint32_t i = 0; i < count; ++i) {
+        if (e[i].kind == C3_PREVIEW_EVENT_STATUS && e[i].effect && e[i].target < 4) {
+            const char *name = c3_wzx_index_special(&w->index, e[i].effect);
+            if (name) (void)wzx_sequence(s, root, name);
+            continue;
+        }
         if (e[i].kind != C3_PREVIEW_EVENT_MOVE || e[i].actor >= 4) continue;
         unsigned pkx = slot_pkx(s, e[i].actor);
         const char *names[3] = {

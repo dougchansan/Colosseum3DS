@@ -2,6 +2,32 @@
 #include <stdio.h>
 #include <string.h>
 
+/* Battle specials (lbl_803727C8) for a new status condition, as
+ * fight_range_80211A00.c starts them: sleep 0x2E, paralysis 0x2F, freeze
+ * 0x30, burn 0x31, poison 0x32, toxic 0x33. */
+static uint16_t status_special(unsigned status)
+{
+    switch (status) {
+    case C3_GB_SLEEP: return 0x2E; case C3_GB_PARALYSIS: return 0x2F; case C3_GB_FREEZE: return 0x30;
+    case C3_GB_BURN: return 0x31; case C3_GB_POISON: return 0x32; case C3_GB_TOXIC: return 0x33;
+    default: return 0;
+    }
+}
+/* Stat-change specials: red 0x26/0x27 Attack and green 0x28/0x29 Defense are
+ * the encounter-10 ones; blue 0x2A/0x2B for the special stats, purple 0x2D
+ * Speed up and gray 0x2C/0x3C for the rest are inferred from the table. */
+static uint16_t stat_special(int stat, int delta)
+{
+    int up = delta > 0;
+    switch (stat) {
+    case 0: return up ? 0x26 : 0x27;
+    case 1: return up ? 0x28 : 0x29;
+    case 2: case 3: return up ? 0x2A : 0x2B;
+    case 4: return up ? 0x2D : 0x3C;
+    default: return up ? 0x2C : 0x3C;
+    }
+}
+
 static int is_recall(const C3GeneralBattle *b, uint32_t i)
 {
     /* The engine logs a voluntary switch as "come back" then "Go" for the
@@ -99,6 +125,13 @@ uint32_t c3_general_view_batch(C3GeneralView *v, const C3GeneralBattle *b,
                 e->target = e->actor;
                 e->actor = v->last_move_group == v->group ? v->last_actor : e->actor;
                 e->move = v->last_move;
+                e->effect = stat_special(g->stat, g->stat_delta);
+            } else if (g->status && e->actor < 4) {
+                e->kind = C3_PREVIEW_EVENT_STATUS;
+                e->target = e->actor;
+                e->actor = v->last_move_group == v->group ? v->last_actor : e->actor;
+                e->move = v->last_move;
+                e->effect = status_special(g->status);
             }
             break;
         }

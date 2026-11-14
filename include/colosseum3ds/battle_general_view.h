@@ -14,8 +14,9 @@
  * so the scene can swap that position's model before the send-out plays.
  * Kinds: the first log line of a battle becomes INTRO; MOVE, HP, FAINT and
  * OUTCOME map directly; a send-out becomes SEND_OUT; a recall ("come back")
- * and other lines become MESSAGE; a stage change becomes STATUS with the
- * tracked stages (its `move` is the move that caused it). An HP event's
+ * and other lines become MESSAGE; a stage change or a new status condition
+ * becomes STATUS with the tracked stages, `move` the move that caused it and
+ * `effect` the battle special (lbl_803727C8) the original plays for it. An HP event's
  * actor is the move's user when it falls within that move's group. */
 typedef struct {
     uint32_t sequence, group, next, last_move_group;
