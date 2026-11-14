@@ -21,7 +21,7 @@
  * bite_damage.*) is present. Move-specific effects, the original battle
  * camera sequences and Pokemon cries are not part of this stage.
  * Switching species needs a reload (close, then load the new cast). */
-#define C3_GSTAGE_MODELS 16u
+#define C3_GSTAGE_MODELS 24u
 
 typedef struct {
     uint16_t floor;

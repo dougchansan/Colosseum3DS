@@ -7,6 +7,8 @@
 #include "render_recovery.h"
 #include "colosseum3ds/battle3d_index.h"
 #include "colosseum3ds/battle_general_view.h"
+#include "colosseum3ds/game_state.h"
+#include "trace_writer.h"
 #include <3ds.h>
 #include <stdlib.h>
 #include <string.h>
@@ -17,7 +19,7 @@
 static void opening_cast(const C3GeneralBattle *b, C3BattleGeneralCast *c)
 {
     memset(c, 0, sizeof *c);
-    c->floor = b->info.battle_floor;
+    c->floor = b->info.floor_data_id; /* battle-floor row; battle_floor is its field id */
     c->active_per_side = b->active_count;
     c->trainer[0] = HERO_TRAINER;
     c->trainer[1] = b->info.trainer_id;
@@ -54,6 +56,8 @@ int c3_battle_general_3d_ready(const C3GeneralBattle *b, FILE *trace, char *why,
     (void)trace;
     return !missing;
 }
+
+static int autoplay; /* unattended probe: the hero uses the opponent policy */
 
 static int silent(uint32_t cue, uint32_t sound, char *e, size_t n) { (void)cue; (void)sound; (void)e; (void)n; return 1; }
 
@@ -136,8 +140,17 @@ int c3_battle_general_3d_run(const C3BattlePack *pack, C3GeneralBattle *b, FILE 
         uint16_t pressed = input.pressed;
         /* Hold A or B to hurry the messages along. */
         stage->message_ms = (input.held & (C3_PAD_A | C3_PAD_B)) && ui.page == C3_GUI_EVENTS ? 300 : 1100;
+        if (autoplay && ui.page != C3_GUI_EVENTS && ui.page != C3_GUI_RESULT) {
+            C3GeneralCommand c[2]; memset(c, 0, sizeof c);
+            for (unsigned a = 0; a < b->active_count; ++a)
+                if (b->active[0][a] != 255 && b->party[0][b->active[0][a]].hp) c3_general_battle_choose(b, pack, a, &c[a]);
+            if (!c3_general_battle_turn(b, pack, c, error)) goto done;
+            if (trace) { fprintf(trace, "general_battle_turn turn=%lu events=%lu outcome=%d autoplay=1\n",
+                (unsigned long)b->turn, (unsigned long)b->event_count, (int)b->outcome); fflush(trace); }
+            ui.page = C3_GUI_EVENTS; c3_general_view_restart(&view, b); count = 0; dirty = 1;
+        }
         if (ui.page == C3_GUI_RESULT) {
-            if (pressed & C3_PAD_A) { ended = 1; result = 0; break; }
+            if ((pressed & C3_PAD_A) || (autoplay && ++autoplay > 120)) { ended = 1; result = 0; break; }
         } else if (ui.page != C3_GUI_EVENTS && pressed) {
             dirty = 1;
             if (c3_general_ui_press(&ui, pack, b, pressed, trace)) { c3_general_view_restart(&view, b); count = 0; }
@@ -160,7 +173,17 @@ int c3_battle_general_3d_run(const C3BattlePack *pack, C3GeneralBattle *b, FILE 
             if (r == C3_RECOVERY_EXIT) { result = 1; goto done; }
             if (r == C3_RECOVERY_RESUME_PAUSED) previous = c3_n3ds_active_time_us();
             error[0] = 0;
-        } else ++frames;
+        } else {
+            ++frames;
+            if (autoplay && (frames == 240 || frames == 900 || frames == 1800 || frames == 3000)) {
+                char shot[96];
+                snprintf(shot, sizeof shot, "sdmc:/3ds/Colosseum3DS/general3d_%u_top.bmp", frames);
+                int top = c3_n3ds_capture_top(shot) == 0;
+                snprintf(shot, sizeof shot, "sdmc:/3ds/Colosseum3DS/general3d_%u_bottom.bmp", frames);
+                int bottom = c3_n3ds_capture_bottom(shot) == 0;
+                if (trace) { fprintf(trace, "general3d_shot frame=%u top=%d bottom=%d\n", frames, top, bottom); fflush(trace); }
+            }
+        }
     }
     if (!ended) result = 1;
 done:
@@ -175,3 +198,29 @@ done:
         (unsigned long)b->encounter, (int)b->outcome, (unsigned long)b->turn, result, frames); fflush(trace); }
     return result;
 }
+
+#ifdef C3_GENERAL_3D_PROBE
+/* Compile-time diagnostic (-DC3_GENERAL_3D_PROBE=<encounter>): a fresh
+ * game's party fights that encounter on its 3D stage with both sides on
+ * the opponent policy; writes general3d-probe.log and never a save. */
+int c3_battle_general_3d_probe_run(uint32_t encounter)
+{
+    C3GameState state; C3BattlePack pack; char error[192] = ""; int result = 1;
+    uint8_t party[C3_GB_PARTY][C3_GB_POKEMON_SIZE];
+    memset(&state, 0, sizeof state); memset(&pack, 0, sizeof pack);
+    FILE *trace = fopen("sdmc:/3ds/Colosseum3DS/general3d-probe.log", "w"); /* synchronous: survives a hang */
+    if (trace) { fprintf(trace, "general3d_probe_start encounter=%lu\n", (unsigned long)encounter); fflush(trace); }
+    C3GeneralBattle *b = calloc(1, sizeof *b);
+    int ok = b && c3_game_state_new(&state, "WES", 0x12345678u, "sdmc:/3ds/Colosseum3DS/boot/newgame.c3g", error) &&
+             c3_battle_pack_load(&pack, C3_BATTLE_PACK_PATH, error);
+    for (unsigned i = 0; ok && i < C3_GB_PARTY; ++i) ok = c3_game_state_pokemon(&state, i, party[i]);
+    if (ok) ok = c3_general_battle_begin(b, &pack, encounter, party, 0x5EED0000u ^ encounter, error);
+    if (ok && !c3_battle_general_3d_ready(b, trace, error, sizeof error)) ok = 0;
+    if (trace) { fprintf(trace, "general3d_probe encounter=%lu ready=%d error=%s save_writes=0\n", (unsigned long)encounter, ok, error); fflush(trace); }
+    if (ok) { autoplay = 1; result = c3_battle_general_3d_run(&pack, b, trace) == 0 ? 0 : 1; }
+    if (trace) { fprintf(trace, "general3d_probe_end result=%d outcome=%d turns=%lu\n", result, b ? (int)b->outcome : 0, b ? (unsigned long)b->turn : 0ul); fclose(trace); }
+    if (!ok) { consoleClear(); printf("GENERAL 3D PROBE\n\n%s\n\nSTART + SELECT: exit\n", error); c3_n3ds_wait_for_exit(); }
+    free(b); c3_battle_pack_free(&pack); c3_game_state_free(&state);
+    return result;
+}
+#endif

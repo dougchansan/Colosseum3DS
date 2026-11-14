@@ -20,4 +20,7 @@
  * intact and the caller may continue it on the 2D scene). */
 int c3_battle_general_3d_ready(const C3GeneralBattle *battle, FILE *trace, char *why, size_t capacity);
 int c3_battle_general_3d_run(const C3BattlePack *pack, C3GeneralBattle *battle, FILE *trace);
+#ifdef C3_GENERAL_3D_PROBE
+int c3_battle_general_3d_probe_run(uint32_t encounter);
+#endif
 #endif

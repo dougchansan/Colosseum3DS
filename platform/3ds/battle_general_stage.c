@@ -20,7 +20,9 @@ static void slot_position(unsigned slot,unsigned per_side,float out[4])
 {
     static const float doubles[4][3]={{-3.5f,0,-2.625f},{-3.5f,0,2.625f},{3.5f,0,2.625f},{3.5f,0,-2.625f}};
     if(slot<4){memcpy(out,doubles[slot],12);if(per_side<2)out[2]=0;}
-    else{out[0]=slot==4?-5.6875f:5.6875f;out[1]=0;out[2]=0;}
+    /* The hero trainer stands behind his team but off the command camera's
+     * centre line (the source grid has him at z 0, in front of that view). */
+    else{out[0]=slot==4?-5.6875f:5.6875f;out[1]=0;out[2]=slot==4?-4.2f:0;}
     out[3]=slot==4||slot<2?(float)M_PI/2:-(float)M_PI/2;
 }
 
@@ -118,7 +120,7 @@ int c3_battle_general_stage_load(C3BattleGeneralStage *s,const C3Battle3dIndex *
                                  const C3BattlePack *pack,const char *root,const char *effects,
                                  const uint16_t hp[4],FILE *trace,char *error,size_t cap)
 {
-    unsigned char data[128+128*C3_GSTAGE_MODELS];char path[512],name[32];size_t bytes=0;
+    unsigned char data[128+128*16];char path[512],name[32];size_t bytes=0;
     if(!s||!x||!cast||!root||!hp)return fail(error,cap,"Invalid battle stage arguments.");
     memset(s,0,sizeof *s);s->trace=trace;s->cast=*cast;s->pack=pack;s->message_ms=1100;
     const char *missing=c3_battle_general_stage_missing(x,cast);
