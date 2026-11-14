@@ -1,4 +1,6 @@
 #include "colosseum3ds/battle_general.h"
+#include "colosseum3ds/battle_general_view.h"
+#include "colosseum3ds/battle_presentation.h"
 #include "colosseum3ds/game_state.h"
 #include "save_codec.h"
 #include <stdio.h>
@@ -97,13 +99,53 @@ static void make_party(uint8_t party[6][0x138], unsigned species, unsigned level
     }
 }
 
+/* The 3D presentation of a log (src/battle_general_view.c): every logged
+ * event becomes exactly one presentation event, batches are contiguous and
+ * accepted by the presentation timeline, and each send-out starts a batch
+ * with the species it brings in. */
+static C3GeneralView view;
+static C3BattlePresentation timeline;
+static unsigned send_outs, hits_with_actor;
+static void check_view(const C3GeneralBattle *b)
+{
+    static C3BattlePreviewEvent out[C3_PREVIEW_EVENT_LIMIT];
+    uint32_t first = 0, expected = 0, n;
+    c3_general_view_restart(&view, b);
+    while ((n = c3_general_view_batch(&view, b, out, C3_PREVIEW_EVENT_LIMIT, &first))) {
+        CHECK(first == expected);
+        expected += n;
+        CHECK(c3_battle_presentation_submit(&timeline, out, n));
+        for (uint32_t i = 0; i < n; ++i) {
+            unsigned position; uint16_t species;
+            const C3BattlePreviewEvent *e = &out[i];
+            int send = c3_general_view_send_out(b, first + i, &position, &species);
+            CHECK(send == (e->kind == C3_PREVIEW_EVENT_SEND_OUT));
+            if (send) { CHECK(i == 0 || first + i == 0); CHECK(species && position < 4 && e->target == position); ++send_outs; }
+            if (e->kind == C3_PREVIEW_EVENT_HP) { CHECK(e->target < 4); hits_with_actor += e->actor < 4; }
+            if (e->kind == C3_PREVIEW_EVENT_FAINT) CHECK(e->target < 4 && b->events[first + i].hp[e->target] == 0);
+        }
+        /* Play the batch out so the next submit is accepted. */
+        timeline.cursor = timeline.count; timeline.last_sequence = out[n - 1].sequence;
+    }
+    CHECK(expected == b->event_count);
+}
+static void view_begin(const C3GeneralBattle *b)
+{
+    static const uint16_t hp[4];
+    memset(&view, 0, sizeof view);
+    c3_battle_presentation_init(&timeline, hp);
+    check_view(b);
+}
+
 static C3GeneralOutcome play(C3GeneralBattle *b, const C3BattlePack *p, unsigned *turns)
 {
+    view_begin(b);
     while (b->outcome == C3_GB_RUNNING) {
         C3GeneralCommand c[2] = {{0}};
         for (unsigned a = 0; a < b->active_count; ++a)
             if (b->active[0][a] != 255 && b->party[0][b->active[0][a]].hp) CHECK(c3_general_battle_choose(b, p, a, &c[a]));
         CHECK(c3_general_battle_turn(b, p, c, error));
+        check_view(b);
         ++*turns;
     }
     return b->outcome;
@@ -217,6 +259,7 @@ static void private_sweep(const char *pack_path, const char *newgame_dir, const 
                (unsigned long)rw.result_code, (unsigned long)rw.prize);
         won += o == C3_GB_WON; lost += o == C3_GB_LOST; draw += o == C3_GB_DRAW;
     }
+    printf("battle-general: view send_outs=%u hits_with_attacker=%u\n", send_outs, hits_with_actor);
     printf("battle-general: private sweep %u admitted (%u refused): %u won, %u lost, %u draw, %lu turns\n",
            admitted, refused, won, lost, draw, total_turns);
     c3_game_state_free(&game); c3_battle_pack_free(&pack);

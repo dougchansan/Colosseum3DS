@@ -185,6 +185,8 @@ static int say(C3GeneralBattle *b,C3GeneralEventKind kind,unsigned actor,unsigne
     C3GeneralEvent *e=&b->events[b->event_count++];
     memset(e,0,sizeof *e);e->kind=(uint8_t)kind;e->actor=(uint8_t)actor;e->target=(uint8_t)target;e->move=move;
     for(unsigned i=0;i<4;++i){const C3GeneralMon *m=cat(b,i);e->hp[i]=m?m->hp:0;e->max_hp[i]=m?m->max_hp:0;}
+    {const C3GeneralMon *m=actor<4?cat(b,actor):NULL;e->species=m?m->species:0;}
+    e->stat=-1;
     va_list ap;va_start(ap,f);vsnprintf(e->text,sizeof e->text,f,ap);va_end(ap);
     return 1;
 }
@@ -320,8 +322,11 @@ static int change_stage(C3GeneralBattle *b,unsigned pos,unsigned stage,int delta
     int next=m->stages[stage]+delta;
     if(next>6||next<-6)return say(b,C3_GB_EVENT_MESSAGE,pos,pos,0,"%s's %s won't go %s!",who(b,pos),stat_names[stage],delta>0?"higher":"lower");
     m->stages[stage]=(int8_t)next;
-    return say(b,C3_GB_EVENT_MESSAGE,pos,pos,0,"%s's %s %s%s!",who(b,pos),stat_names[stage],
-               delta>1||delta<-1?"sharply ":"",delta>0?"rose":"fell");
+    unsigned before=b->event_count;
+    if(!say(b,C3_GB_EVENT_MESSAGE,pos,pos,0,"%s's %s %s%s!",who(b,pos),stat_names[stage],
+            delta>1||delta<-1?"sharply ":"",delta>0?"rose":"fell"))return 0;
+    if(b->event_count>before){b->events[before].stat=(int8_t)stage;b->events[before].stat_delta=(int8_t)delta;}
+    return 1;
 }
 static int inflict(C3GeneralBattle *b,unsigned pos,unsigned status)
 {
@@ -333,7 +338,10 @@ static int inflict(C3GeneralBattle *b,unsigned pos,unsigned status)
     if(status==C3_GB_FREEZE&&(m->types[0]==15||m->types[1]==15))return 1;
     m->status=(uint8_t)status;m->toxic_count=0;
     if(status==C3_GB_SLEEP){if(!roll(b,4,&r))return 0;m->status_turns=(uint8_t)(2+r);}
-    return say(b,C3_GB_EVENT_MESSAGE,pos,pos,0,"%s %s!",who(b,pos),text[status]);
+    unsigned before=b->event_count;
+    if(!say(b,C3_GB_EVENT_MESSAGE,pos,pos,0,"%s %s!",who(b,pos),text[status]))return 0;
+    if(b->event_count>before)b->events[before].status=(uint8_t)status;
+    return 1;
 }
 static int hurt(C3GeneralBattle *b,unsigned pos,unsigned amount,int endure_ok)
 {
