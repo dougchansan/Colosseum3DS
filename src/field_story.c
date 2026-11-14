@@ -821,8 +821,7 @@ static int run_native(Impl *s,RunTask *t,char *error)
             log_line(s,"story_battle_snapshot encounter=%lu player_party=%u status=waiting_backend save_unchanged=1",
                      (unsigned long)a[0],s->battle_request.player_party_count);
         }
-        if(a[0]==10)snprintf(s->view.blocked,sizeof s->view.blocked,"A trainer battle is about to begin.");
-        else snprintf(s->view.blocked,sizeof s->view.blocked,"Battle %lu is not playable in this build yet.\nThe story can continue as if it were won.\nNothing is added to your party or money.",(unsigned long)a[0]);
+        snprintf(s->view.blocked,sizeof s->view.blocked,"A trainer battle is about to begin.");
         log_line(s,"story_battle encounter=%lu status=waiting_backend result_written=0",(unsigned long)a[0]);
         t->wait=W_BATTLE;return 1;
     case 0x67:
@@ -1363,6 +1362,24 @@ int c3_field_story_battle_result(C3FieldStory *story,uint32_t result,char *error
         return resume(s,t,result,error);
     }
     return fail(error,"No original battle request is waiting for a result");
+}
+/* A lost battle whose encounter has the zenmetu flag: fn_8020DAD0 halves the
+ * money, restores the party and sends the hero to the temporary whiteout
+ * point (fn_80113FE8, set by native A1) instead of resuming the script. The
+ * scene applies money and party; this leaves the floor through the normal
+ * departure. Without a recorded point the script resumes with result 3. */
+int c3_field_story_battle_whiteout(C3FieldStory *story,char *error)
+{
+    Impl *s=story?story->impl:NULL;
+    if(!s||!c3_field_story_battle_pending(story,NULL))return fail(error,"No original battle request is waiting for a result");
+    if(!s->whiteout_valid){
+        log_line(s,"story_battle_whiteout return_point=missing resumed_with=3");
+        return c3_field_story_battle_result(story,3,error);
+    }
+    s->fight_result=3;s->view.blocked[0]=0;s->view.battle_id=0;
+    s->pending_floor=s->whiteout_floor;s->pending_spawn=s->whiteout_spawn;s->whiteout_valid=0;
+    log_line(s,"story_battle_whiteout floor=%lu spawn=%lu",(unsigned long)s->pending_floor,(unsigned long)s->pending_spawn);
+    return 1;
 }
 int c3_field_story_bind_battle(C3FieldStory *story,const char *path,char *error)
 {

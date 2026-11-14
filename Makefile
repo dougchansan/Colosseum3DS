@@ -73,8 +73,9 @@ build/test_field_story: tests/test_field_story.c $(FIELD_STORY_SOURCES) $(HEADER
 build/test_phenac_story: tests/test_phenac_story.c src/floor_profile.c $(FIELD_STORY_SOURCES) $(HEADERS)
 	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_phenac_story.c src/floor_profile.c $(FIELD_STORY_SOURCES) $(LDFLAGS) -lm -o $@
 
-build/test_world_story: tests/test_world_story.c $(FIELD_STORY_SOURCES) $(HEADERS)
-	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_world_story.c $(FIELD_STORY_SOURCES) $(LDFLAGS) -lm -o $@
+WORLD_BATTLE_SOURCES = src/battle_general.c src/battle_story.c src/battle_rng.c src/decomp_rng.c
+build/test_world_story: tests/test_world_story.c $(FIELD_STORY_SOURCES) $(WORLD_BATTLE_SOURCES) build/battle_rng_source.h $(HEADERS) $(UPSTREAM)
+	$(CC) $(CPPFLAGS) -Ibuild -Isrc $(CFLAGS) tests/test_world_story.c $(FIELD_STORY_SOURCES) $(WORLD_BATTLE_SOURCES) $(LDFLAGS) -lm -o $@
 
 build/test_battle: tests/test_battle.c src/battle.c include/colosseum3ds/battle.h build/save_codec.c
 	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_battle.c src/battle.c build/save_codec.c $(LDFLAGS) -o $@
@@ -508,3 +509,5 @@ battle-entry-preview-check: build/test_battle_entry_preview
 	./build/test_battle_entry_preview
 test: battle-entry-preview-check
 test: battle-runtime-trainer-check
+
+include tests/battle-general.mk

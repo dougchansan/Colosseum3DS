@@ -1,4 +1,5 @@
 #define _POSIX_C_SOURCE 200809L
+#include "colosseum3ds/battle_story.h"
 #include "colosseum3ds/field_story.h"
 
 #include <dirent.h>
@@ -12,15 +13,19 @@
  * a player's own save, places the hero on that floor and runs the original
  * scripts headlessly: the arrival (load/init/pre/main), then each door link,
  * each touch link and each NPC conversation in a fresh scene. Dialogue is
- * advanced with A, choices take the default, battles are reported as the
- * hero's win (result 2) and shops close at once. Nothing is rendered.
+ * advanced with A, choices take the default and shops close at once.
+ * Battles: with [battles.c3x] each requested encounter is played by the
+ * general battle (both sides on the opponent policy) and its real result,
+ * party and money go back through native 98 (one "world_battle" line each);
+ * without it every battle is reported as the hero's win (result 2).
+ * Nothing is rendered.
  *
  * Every event ends in one line "world floor=.. event=.. status=.. reason=.."
  * so the report groups what the port still needs (unported natives, missing
  * data, engine gaps). A floor change requested by a script is recorded as a
  * connector (next=..). Without arguments the test checks nothing private.
  *
- * usage: test_world_story <newgame dir> <world boot dir> <save.gci> [report]
+ * usage: test_world_story <newgame dir> <world boot dir> <save.gci> [report] [battles.c3x]
  */
 static char error[C3_STORY_ERROR];
 static FILE *trace, *report;
@@ -37,10 +42,14 @@ typedef struct Scene {
     C3Title wes, npc; /* stand-ins: one shared by every actor */
     C3Title *models[C3_AREA_MAX_ACTORS];
     C3AreaCamera camera;
+    C3GameState *game;
+    const char *prefix;
 } Scene;
 
 static const char *newgame, *root, *save;
 static unsigned totals[4]; /* ok, failed, blocked, partial */
+static C3BattlePack battles; static int have_battles;
+static unsigned battle_totals[4]; /* played, won, lost, refused */
 
 static void path(char out[1024], const char *dir, const char *name)
 { CHECK(snprintf(out, 1024, "%s/%s", dir, name) > 0 && strlen(out) < 1023); }
@@ -78,7 +87,27 @@ static int run(Scene *s, unsigned frames, unsigned *used, uint32_t *next)
         if (v->next_floor && !*next) *next = v->next_floor;
         if (frame > 30 && v->control && !v->dialogue) { *used = frame; return 1; }
         uint16_t pressed = (v->dialogue || v->choice) && frame % 15 == 0 ? 0x100 : 0;
-        if (c3_field_story_battle_pending(&s->story, NULL) && !c3_field_story_battle_result(&s->story, 2, error)) return 0;
+        uint32_t encounter;
+        if (c3_field_story_battle_pending(&s->story, &encounter)) {
+            C3BattleEncounterInfo info;
+            memset(&info, 0, sizeof info);
+            if (have_battles && c3_battle_pack_info(&battles, encounter, &info) && !info.reason) {
+                C3GeneralRewards rw; unsigned turns = 0;
+                if (!c3_battle_story_autoplay(&s->story, s->game, &battles, encounter, 0x5eed0000u ^ encounter,
+                                              restore, &rw, &turns, error)) return 0;
+                ++battle_totals[0]; ++battle_totals[rw.result_code == 2 ? 1 : 2];
+                fprintf(report, "world_battle prefix=%s encounter=%lu trainer=%s/%s turns=%u result=%lu prize=%lu wipeout=%d\n",
+                        s->prefix, (unsigned long)encounter, info.title, info.trainer, turns,
+                        (unsigned long)rw.result_code, (unsigned long)rw.prize, rw.wipeout);
+            } else {
+                if (have_battles) {
+                    ++battle_totals[3];
+                    fprintf(report, "world_battle prefix=%s encounter=%lu result=2 refused=%s\n", s->prefix,
+                            (unsigned long)encounter, info.reason ? c3_battle_pack_reason(info.reason) : "not in pack");
+                }
+                if (!c3_field_story_battle_result(&s->story, 2, error)) return 0;
+            }
+        }
         if (v->shop && !c3_field_story_shop_done(&s->story, error)) return 0;
         if (v->name_entry && !c3_field_story_name_result(&s->story, "WES", error)) return 0;
         if (!c3_field_story_tick(&s->story, 1.0f/60.0f, pressed, error) || !c3_field_story_sample(&s->story, error)) return 0;
@@ -107,6 +136,7 @@ static void event(const char *prefix, uint32_t floor, int kind, uint32_t id, uin
     if (!c3_field_load(&s->map, file, error, sizeof error)) goto done;
     snprintf(name, sizeof name, "%s.c3a", prefix); path(file, root, name);
     if (!c3_area_load(&s->area, file, error, sizeof error)) goto done;
+    s->game = &game; s->prefix = prefix;
     stand_in(&s->wes); stand_in(&s->npc);
     for (uint32_t i = 0; i < s->area.actor_count && i < C3_AREA_MAX_ACTORS; ++i) s->models[i] = &s->npc;
     if (!c3_field_spawn(&s->map, 0, &s->hero)) { snprintf(error, sizeof error, "entrance 0 is unavailable"); goto done; }
@@ -209,6 +239,7 @@ int main(int argc, char **argv)
     if (argc < 4) { puts("world-story: private integration skipped (needs <newgame dir> <world boot dir> <save.gci>)"); return 0; }
     newgame = argv[1]; root = argv[2]; save = argv[3];
     report = argc > 4 ? fopen(argv[4], "w") : stdout; CHECK(report);
+    if (argc > 5) { CHECK(c3_battle_pack_load(&battles, argv[5], error)); have_battles = 1; }
     trace = tmpfile(); CHECK(trace);
     /* Every prepared area pack names one floor; sorted for a stable report. */
     static char names[512][64];
@@ -226,6 +257,9 @@ int main(int argc, char **argv)
         floor_events(names[i]);
     }
     printf("world-story: floors=%u ok=%u failed=%u blocked=%u partial=%u\n", floors, totals[0], totals[1], totals[2], totals[3]);
+    if (have_battles) printf("world-story: battles played=%u won=%u lost=%u refused=%u\n",
+                             battle_totals[0], battle_totals[1], battle_totals[2], battle_totals[3]);
+    c3_battle_pack_free(&battles);
     if (report != stdout) fclose(report);
     return 0;
 }
