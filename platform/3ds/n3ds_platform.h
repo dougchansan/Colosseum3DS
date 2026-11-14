@@ -48,6 +48,11 @@ int c3_n3ds_capture_bottom(const char *path);
 /* Top-screen loading indicator: a spinning ring of dots and a progress bar
  * (fraction 0..1), drawn straight into the top framebuffer and presented. */
 void c3_n3ds_top_loading(float fraction);
+/* Port setting (sdmc:/3ds/Colosseum3DS/settings.bin, not the game save):
+ * 1 = play story battles with the general battle engine, 0 = skip them as
+ * wins. Defaults to 1. */
+int c3_n3ds_battles_play(void);
+void c3_n3ds_set_battles_play(int play);
 #ifdef C3_CAMPAIGN
 /* Campaign build: while enabled, every poll adds an A press each
  * `interval` seconds (menus and battles play their default choices). */

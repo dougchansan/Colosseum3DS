@@ -60,6 +60,13 @@ def compress_directory(directory, codec="zstd", level=None, pattern="*.c3t", max
                 raw = repacked[0] if isinstance(repacked, tuple) else repacked
             except ValueError:
                 pass
+        elif max_texture and len(raw) > 112:
+            capped, count = pack_textures.cap_encoded(raw, max_texture)
+            if not count and data[:4] == wanted:
+                before += len(raw)
+                after += len(data)
+                continue
+            raw = capped
         elif data[:4] == wanted:
             before += len(raw)
             after += len(data)

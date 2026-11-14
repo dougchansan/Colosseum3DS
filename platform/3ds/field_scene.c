@@ -4,6 +4,8 @@
 #include "ingame_menu.h"
 #include "pack_cache.h"
 #include "pack_loader.h"
+#include "battle_general_scene.h"
+#include "colosseum3ds/battle_story.h"
 #include "pda_preview.h"
 #include "pda_audio.h"
 #include "movie_player.h"
@@ -156,6 +158,52 @@ static int npc_stream_attach(NpcStream *npc,int wait,C3Title *storage,const C3Ti
     if(trace){fprintf(trace,"field_people_stream count=%lu us=%llu\n",(unsigned long)npc->count,
                       (unsigned long long)(c3_n3ds_time_us()-npc->start_us));fflush(trace);}
     return 1;
+}
+/* A story battle other than encounter 10, on the general battle engine:
+ * the pack is loaded only for the battle (Phenac's heap is nearly full).
+ * autoplay: both sides use the engine's policy (campaign build).
+ * Returns 1 played and applied, 0 not playable here (the caller skips it),
+ * 2 the application must exit, -1 error (in error). */
+static int play_story_battle(C3FieldStory *story,C3GameState *state,uint32_t encounter,int autoplay,
+                             FILE *trace,char *error,size_t capacity)
+{
+    C3BattlePack pack;memset(&pack,0,sizeof pack);
+    char problem[C3_GB_ERROR_SIZE]="";C3BattleEncounterInfo info;
+    if(!c3_battle_pack_load(&pack,C3_BATTLE_PACK_PATH,problem)){
+        if(trace){fprintf(trace,"field_battle_engine encounter=%lu status=no_pack reason=%s\n",(unsigned long)encounter,problem);fflush(trace);}
+        return 0;
+    }
+    if(!c3_battle_pack_info(&pack,encounter,&info)||info.reason){
+        if(trace){fprintf(trace,"field_battle_engine encounter=%lu status=refused reason=%s\n",(unsigned long)encounter,
+                          c3_battle_pack_reason(info.reason));fflush(trace);}
+        c3_battle_pack_free(&pack);return 0;
+    }
+    uint32_t seed=(uint32_t)c3_game_state_random16(state)<<16|c3_game_state_random16(state);
+    C3GeneralRewards rewards;memset(&rewards,0,sizeof rewards);int result=-1;
+    if(autoplay){
+        unsigned turns=0;
+        result=c3_battle_story_autoplay(story,state,&pack,encounter,seed,NULL,&rewards,&turns,problem)?1:-1;
+        if(trace){fprintf(trace,"field_battle_engine encounter=%lu trainer=%s mode=autoplay turns=%u result=%d code=%u\n",
+                          (unsigned long)encounter,info.trainer,turns,result,(unsigned)rewards.result_code);fflush(trace);}
+    }else{
+        uint8_t party[C3_GB_PARTY][C3_GB_POKEMON_SIZE];
+        C3GeneralBattle *battle=malloc(sizeof *battle);int ok=battle!=NULL;
+        for(unsigned i=0;ok&&i<C3_GB_PARTY;++i)ok=c3_game_state_pokemon(state,i,party[i]);
+        if(ok)ok=c3_general_battle_begin(battle,&pack,encounter,party,seed,problem);
+        else if(!problem[0])snprintf(problem,sizeof problem,"The party could not be read for the battle.");
+        if(ok){
+            int scene=c3_battle_general_scene_run(&pack,battle,trace);
+            if(scene==1)result=2;
+            else if(scene<0){if(!problem[0])snprintf(problem,sizeof problem,"The battle engine failed (see the trace).");}
+            else result=c3_battle_story_apply(story,state,battle,&pack,NULL,&rewards,problem)?1:-1;
+        }
+        if(trace){fprintf(trace,"field_battle_engine encounter=%lu trainer=%s mode=played result=%d code=%u prize=%lu\n",
+                          (unsigned long)encounter,info.trainer,result,(unsigned)rewards.result_code,(unsigned long)rewards.prize);fflush(trace);}
+        free(battle);
+    }
+    c3_battle_pack_free(&pack);
+    if(result<0)snprintf(error,capacity,"%s",problem[0]?problem:"The story battle failed.");
+    return result;
 }
 static int floor_reachable(uint32_t floor)
 {
@@ -609,8 +657,11 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                     campaign_line("floor=%03lx battle=10 mode=scene",(unsigned long)map.floor);
                     c3_n3ds_autopress(1,1.6f);input.pressed|=C3_PAD_A;
                 }else if(view->blocked[0]&&view->battle_id){
-                    campaign_line("floor=%03lx battle=%lu mode=reported_win",(unsigned long)map.floor,(unsigned long)view->battle_id);
-                    if(!c3_field_story_battle_result(&story,2,story_error))goto story_failed;
+                    int played=play_story_battle(&story,state,view->battle_id,1,trace,story_error,sizeof story_error);
+                    if(played<0)goto story_failed;
+                    campaign_line("floor=%03lx battle=%lu mode=%s",(unsigned long)map.floor,(unsigned long)view->battle_id,
+                                  played==1?"engine_autoplay":"reported_win");
+                    if(played!=1&&!c3_field_story_battle_result(&story,2,story_error))goto story_failed;
                 }else if(view->blocked[0]){
                     /* An unprepared destination: reload this floor (the
                      * flags the script already wrote are kept). */
@@ -894,11 +945,17 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
             if(page==PAUSE_CLOSED){
                 if(view->blocked[0]&&(input.pressed&(C3_PAD_START|C3_PAD_X))){result=0;break;}
                 if(view->blocked[0]&&view->battle_id&&view->battle_id!=10&&(input.pressed&C3_PAD_A)){
-                    /* Temporary shortcut: only encounter 10 has a battle
-                     * scene. Any other requested encounter is reported as
-                     * the hero's win (result ID 2) so the original script
-                     * can continue; nothing is written to the party. */
+                    /* Options > BATTLES: PLAY runs the encounter on the
+                     * general battle engine (bottom screen). With SKIP, or
+                     * an encounter the engine refuses, it is reported as the
+                     * hero's win (result ID 2) and nothing is written. */
                     uint32_t skipped=view->battle_id;
+                    if(c3_n3ds_battles_play()){
+                        int played=play_story_battle(&story,state,skipped,0,trace,story_error,sizeof story_error);
+                        if(played<0)goto story_failed;
+                        if(played==2){result=1;break;}
+                        if(played==1){dirty=1;continue;}
+                    }
                     if(!c3_field_story_battle_result(&story,2,story_error))goto story_failed;
                     if(trace){fprintf(trace,"field_battle_skipped encounter=%lu result_reported=2 temporary=1 party_writeback=0\n",
                         (unsigned long)skipped);fflush(trace);}
@@ -1000,6 +1057,12 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                         /* D-pad Up/Down zoom the view; free flight moves the camera, not the hero. */
                         uint16_t walk_buttons=(uint16_t)(input.held&~(C3_PAD_UP|C3_PAD_DOWN));
                         int walk_x=orbit.free?0:input.stick_x,walk_y=orbit.free?0:input.stick_y;
+                        /* Hold L to run: the circle pad's direction at full reach,
+                         * which is hard to hold by thumb. */
+                        if((input.held&C3_PAD_L)&&!orbit.free){
+                            float reach=hypotf((float)walk_x,(float)walk_y);
+                            if(reach>15.0f){walk_x=(int)lroundf((float)walk_x*127.0f/reach);walk_y=(int)lroundf((float)walk_y*127.0f/reach);}
+                        }
                         if(orbit.free)walk_buttons=0;
                         if(!c3_field_move(&map,&player,walk_x,walk_y,walk_buttons,move_yaw,delta)){
                             snprintf(error,capacity,"Field movement failed.");result=-1;break;

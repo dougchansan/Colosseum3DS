@@ -287,6 +287,24 @@ void c3_n3ds_top_loading(float fraction)
     gfxScreenSwapBuffers(GFX_TOP, false);
 }
 
+#define SETTINGS_PATH "sdmc:/3ds/Colosseum3DS/settings.bin"
+static int settings_loaded, battles_play = 1;
+int c3_n3ds_battles_play(void)
+{
+    if (!settings_loaded) {
+        settings_loaded = 1;
+        FILE *file = fopen(SETTINGS_PATH, "rb");
+        if (file) { int c = fgetc(file); if (c == 0 || c == 1) battles_play = c; fclose(file); }
+    }
+    return battles_play;
+}
+void c3_n3ds_set_battles_play(int play)
+{
+    settings_loaded = 1; battles_play = play ? 1 : 0;
+    FILE *file = fopen(SETTINGS_PATH, "wb");
+    if (file) { fputc(battles_play, file); fclose(file); }
+}
+
 void c3_n3ds_log_memory(FILE *trace, const char *stage)
 {
     if (!trace) return;

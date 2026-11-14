@@ -136,6 +136,42 @@ def repack(pack, max_dimension=1024):
     return bytes(header) + body + bytes(pixels), report
 
 
+def cap_encoded(pack, max_dimension):
+    """Drop leading mip levels of an already GPU-encoded pack's textures so no
+    level 0 exceeds max_dimension. Single-level images (RGBA8 cutouts) are
+    kept as they are. Returns (pack, number of textures capped)."""
+    if len(pack) < HEADER_BYTES or pack[:3] != b"C3T" or not pack[ENCODING_BYTE]:
+        raise ValueError("Pack textures are not GPU-encoded")
+    total, = struct.unpack_from("<I", pack, 8)
+    counts = struct.unpack_from("<7I", pack, 12)
+    offsets = list(struct.unpack_from("<7I", pack, 44))
+    pixel_bytes, = struct.unpack_from("<I", pack, 76)
+    if total != len(pack) or offsets[6] + pixel_bytes != total:
+        raise ValueError("Pack extents are inconsistent")
+    descriptors, pixels, capped = bytearray(), bytearray(), 0
+    for i in range(counts[3]):
+        width, height, offset, size, wrap_s, wrap_t = struct.unpack_from("<6I", pack, offsets[2] + i * 24)
+        fmt, levels = (wrap_s >> 8) & 0xFF, ((wrap_s >> 16) & 0xFF) + 1
+        bpp = {GPU_RGBA8: 4, GPU_RGB565: 2}.get(fmt)
+        if bpp is None or offset < offsets[6] or offset + size > total:
+            raise ValueError("Unexpected encoded texture %d" % i)
+        data, w, h = pack[offset:offset + size], width, height
+        while levels > 1 and (w > max_dimension or h > max_dimension) and w >= 16 and h >= 16:
+            data, w, h, levels = data[w * h * bpp:], w // 2, h // 2, levels - 1
+        if w != width:
+            capped += 1
+        descriptors.extend(struct.pack("<6I", w, h, offsets[6] + len(pixels), len(data),
+                                       (wrap_s & 0xFF) | fmt << 8 | (levels - 1) << 16, wrap_t))
+        pixels.extend(data)
+    if not capped:
+        return pack, 0
+    header = bytearray(pack[:HEADER_BYTES])
+    struct.pack_into("<I", header, 8, offsets[6] + len(pixels))
+    struct.pack_into("<I", header, 76, len(pixels))
+    body = pack[HEADER_BYTES:offsets[2]] + bytes(descriptors) + pack[offsets[2] + counts[3] * 24:offsets[6]]
+    return bytes(header) + body + bytes(pixels), capped
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("input", type=pathlib.Path)
