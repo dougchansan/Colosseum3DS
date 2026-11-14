@@ -24,6 +24,7 @@ static void opening_cast(const C3GeneralBattle *b, C3BattleGeneralCast *c)
     c->active_per_side = b->active_count;
     c->trainer[0] = HERO_TRAINER;
     c->trainer[1] = b->info.trainer_id;
+    c->intro_wzx = (uint16_t)(b->info.intro_wzx <= 0xFFFF ? b->info.intro_wzx : 0);
     /* The species each position shows first: the log's first send-out there
      * (a turn log may switch a position), else the active Pokemon. */
     for (unsigned pos = 0; pos < 4; ++pos) {

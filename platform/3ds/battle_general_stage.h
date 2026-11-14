@@ -28,6 +28,7 @@ typedef struct {
     uint16_t species[4];   /* battle positions 0,1 hero; 2,3 foe; 0 empty */
     uint16_t trainer[2];   /* hero, opponent trainer ids */
     uint8_t active_per_side;
+    uint16_t intro_wzx;    /* the battle floor's appear special (0: none) */
 } C3BattleGeneralCast;
 
 typedef struct {

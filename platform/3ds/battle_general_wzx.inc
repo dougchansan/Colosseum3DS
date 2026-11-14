@@ -54,6 +54,9 @@ struct C3BattleWzxLayer {
  * open / out / downin). The general engine has no ball item, so every
  * Pokemon uses the Poke Ball's. */
 enum { BALL_IN = 0x0A, BALL_OPEN = 0x0B, BALL_OUT = 0x0C, BALL_DOWN = 0x40 };
+/* fight_action.c: the trainer intro (0x5F, wzx_intro_zako) and the battle's
+ * end (0x59 wzx_win / 0x5A wzx_lose). */
+enum { TRAINER_INTRO = 0x5F, BATTLE_WIN = 0x59, BATTLE_LOSE = 0x5A };
 /* Battle-grid order the camera uses: each trainer, then its Pokemon. */
 static const unsigned grid_slot[6] = {4, 0, 1, 5, 2, 3};
 static unsigned slot_actor(unsigned slot) { for (unsigned a = 0; a < 6; ++a) if (grid_slot[a] == slot) return a; return 0; }
@@ -178,8 +181,9 @@ static void wzx_load_persistent(C3BattleGeneralStage *s, const char *root)
 {
     struct C3BattleWzxLayer *w = s->wzx;
     if (!w) return;
-    static const uint16_t ids[] = {BALL_IN, BALL_OPEN, BALL_OUT, BALL_DOWN};
+    uint16_t ids[] = {BALL_IN, BALL_OPEN, BALL_OUT, BALL_DOWN, TRAINER_INTRO, BATTLE_WIN, BATTLE_LOSE, s->cast.intro_wzx};
     for (unsigned i = 0; i < sizeof ids / sizeof ids[0]; ++i) {
+        if (!ids[i]) continue;
         const char *name = c3_wzx_index_special(&w->index, ids[i]);
         if (name) (void)wzx_sequence(s, root, name);
     }
@@ -237,7 +241,7 @@ static void wzx_part_position(const C3BattleGeneralStage *s, unsigned slot, unsi
     float local[3] = {0, 0, 0};
     if (bone != 0xFF && bone < model->bone_count) {
         const float *b = model->pose.matrices[bone]; local[0] = b[3]; local[1] = b[7]; local[2] = b[11];
-    }
+    } else if (slot >= 4 && attach != 0) local[1] = attach == 16 ? .9f : 1.4f; /* trainers keep no parts */
     float co = cosf(t[3]), si = sinf(t[3]);
     out[0] = t[0] + t[4] * (co * local[0] + si * local[2]);
     out[1] = t[1] + t[4] * local[1];
@@ -456,7 +460,7 @@ static void camera_step(C3BattleGeneralStage *s, uint32_t ms)
 static WzxRun *wzx_begin_id(C3BattleGeneralStage *s, const char *name, unsigned kind, unsigned owner, unsigned target, unsigned id)
 {
     struct C3BattleWzxLayer *w = s->wzx; char error[160];
-    if (!w || !name || owner >= 4) return NULL;
+    if (!w || !name || owner >= 6) return NULL;
     WzxSequence *q = NULL;
     for (unsigned i = 0; i < w->sequence_count; ++i) if (!strcmp(w->sequences[i].name, name)) q = &w->sequences[i];
     if (!q) return NULL;
@@ -473,7 +477,7 @@ static WzxRun *wzx_begin_id(C3BattleGeneralStage *s, const char *name, unsigned 
     if (!c3_wzx_player_begin(&r->player, &q->pack, kind, timing, &backend, error, sizeof error)) return NULL;
     r->active = 1;
     int m = model_for_slot(s, owner);
-    if (m >= 0 && s->entry_clip[owner][entry] != C3_BATTLE3D_NO_CLIP && s->entry_clip[owner][entry] < s->models[m].clip_count) {
+    if (m >= 0 && owner < 4 && s->entry_clip[owner][entry] != C3_BATTLE3D_NO_CLIP && s->entry_clip[owner][entry] < s->models[m].clip_count) {
         s->clips[m] = s->entry_clip[owner][entry];
         s->clocks[m] = -(float)r->player.motion_delay / 60.f; s->hold[m] = 0;
     }
@@ -491,7 +495,7 @@ static WzxRun *wzx_begin_id(C3BattleGeneralStage *s, const char *name, unsigned 
 static WzxRun *wzx_special(C3BattleGeneralStage *s, uint16_t special, unsigned owner, uint16_t then, uint16_t voice)
 {
     struct C3BattleWzxLayer *w = s->wzx;
-    if (!w || owner >= 4) return NULL;
+    if (!w || owner >= 6) return NULL;
     const char *name = c3_wzx_index_special(&w->index, special);
     s->wzx_id = 0x1000u | special;
     WzxRun *r = name ? wzx_begin(s, name, 4, owner, owner) : NULL;

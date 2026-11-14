@@ -255,7 +255,16 @@ static void event(const C3BattlePreviewEvent *e,int finished,void *user)
     C3BattleGeneralStage *s=user;
     if(finished||s->error[0])return;
     switch(e->kind){
-    case C3_PREVIEW_EVENT_INTRO:s->presentation.duration_ms=s->message_ms+400;break;
+    case C3_PREVIEW_EVENT_INTRO:
+        s->presentation.duration_ms=s->message_ms+400;
+        /* fight_action.c intro: the floor's appear sequence, then the
+         * opponent trainer's intro with its message. */
+        if(s->wzx){
+            int floor=s->cast.intro_wzx&&wzx_special(s,s->cast.intro_wzx,5,0,0)!=NULL;
+            if(!floor)(void)wzx_special(s,TRAINER_INTRO,5,0,0);
+            if(wzx_running(s,4)){s->wzx_attack_wait=1;c3_battle_presentation_wait(&s->presentation,1);s->presentation.duration_ms=0;}
+        }
+        break;
     case C3_PREVIEW_EVENT_STATUS:
         s->presentation.duration_ms=s->message_ms;
         /* The status condition's or stat change's own battle special. */
@@ -334,7 +343,9 @@ static void event(const C3BattlePreviewEvent *e,int finished,void *user)
     case C3_PREVIEW_EVENT_OUTCOME:{
         int won=e->outcome==C3_PREVIEW_PLAYER_WON,lost=e->outcome==C3_PREVIEW_PLAYER_LOST;
         s->presentation.duration_ms=s->message_ms+600;
-        if(won||lost){start_clip(s,model_for_slot(s,4),won?7:8,1);start_clip(s,model_for_slot(s,5),won?8:7,1);}
+        if(won||lost){start_clip(s,model_for_slot(s,4),won?7:8,1);start_clip(s,model_for_slot(s,5),won?8:7,1);
+            /* fight_action.c: wzx_win / wzx_lose on the hero's side. */
+            if(s->wzx)(void)wzx_special(s,won?BATTLE_WIN:BATTLE_LOSE,4,0,0);}
         break;}
     default:break;
     }
