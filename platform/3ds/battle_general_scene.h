@@ -11,4 +11,22 @@
  * Returns 0 when the battle finished, 1 when the application must exit,
  * -1 on an engine error (the battle is left unfinished). */
 int c3_battle_general_scene_run(const C3BattlePack *pack, C3GeneralBattle *battle, FILE *trace);
+
+/* The bottom-screen command UI, shared with the 3D battle scene
+ * (battle_general_3d.c), which shows the events on the top screen. */
+typedef enum { C3_GUI_EVENTS, C3_GUI_MOVES, C3_GUI_TARGET, C3_GUI_SWITCH, C3_GUI_RESULT } C3GeneralUiPage;
+typedef struct {
+    C3GeneralUiPage page;
+    unsigned cursor, position, target_cursor;
+    C3GeneralCommand commands[2];
+    char error[C3_GB_ERROR_SIZE];
+} C3GeneralUi;
+/* Start choosing the hero's commands for the next turn. */
+void c3_general_ui_commands(C3GeneralUi *ui, const C3GeneralBattle *b);
+/* A press on a command page. Returns 1 when the commands were complete and
+ * the turn ran (its events are in b->events), 0 otherwise; an engine error
+ * is shown on the page and command entry starts again. */
+int c3_general_ui_press(C3GeneralUi *ui, const C3BattlePack *pack, C3GeneralBattle *b, uint16_t pressed, FILE *trace);
+/* shown: the logged event being presented (its text and HP), or NULL. */
+void c3_general_ui_draw(const C3BattlePack *pack, const C3GeneralBattle *b, const C3GeneralUi *ui, const C3GeneralEvent *shown);
 #endif

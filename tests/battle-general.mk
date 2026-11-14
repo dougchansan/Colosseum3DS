@@ -5,7 +5,13 @@ build/test_battle_general: tests/test_battle_general.c $(BATTLE_GENERAL_SOURCES)
 
 all: build/test_battle_general
 .PHONY: battle-general-check
-battle-general-check: build/test_battle_general
+battle-general-check: build/test_battle_general build/test_battle3d_index
 	./build/test_battle_general
+	./build/test_battle3d_index
 
 test: battle-general-check
+
+# The 3D battle asset index (synthetic; a prepared index as argument lists it).
+build/test_battle3d_index: tests/test_battle3d_index.c src/battle3d_index.c include/colosseum3ds/battle3d_index.h
+	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_battle3d_index.c src/battle3d_index.c $(LDFLAGS) -o $@
+all: build/test_battle3d_index

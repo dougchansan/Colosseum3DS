@@ -5,6 +5,7 @@
 #include "pack_cache.h"
 #include "pack_loader.h"
 #include "battle_general_scene.h"
+#include "battle_general_3d.h"
 #include "colosseum3ds/battle_story.h"
 #include "pda_preview.h"
 #include "pda_audio.h"
@@ -178,8 +179,42 @@ static int npc_stream_attach(NpcStream *npc,int wait,C3Title *storage,const C3Ti
  * autoplay: both sides use the engine's policy (campaign build).
  * Returns 1 played and applied, 0 not playable here (the caller skips it),
  * 2 the application must exit, -1 error (in error). */
+static void release_field_models(C3Title *storage,uint32_t count);
+static int restore_field_models(C3Title *storage,uint32_t count,char paths[][160],C3FieldStory *story,
+                                float elapsed,char *error,size_t capacity);
+/* What a 3D story battle needs from the field to free its models first and
+ * restore them afterwards (the encounter-10 path does the same inline). */
+typedef struct {
+    C3Title *storage; const C3Title **models; C3Title **actor_models; char (*paths)[160];
+    C3FieldStory *story; NpcStream *npc; C3IngameMenu *ingame;
+    uint32_t count, tv_index; uint64_t skin; int tv_enabled; unsigned frames; float elapsed;
+} FieldBattleHost;
+static int field_battle_release(FieldBattleHost *h,FILE *trace,char *error,size_t capacity)
+{
+    c3_n3ds_log_memory(trace,"field_battle_before_drain");
+    if(c3_render_recover(trace,"field-to-battle",h->frames,C3_RECOVER_DRAIN)==C3_RECOVERY_EXIT)return -1;
+    /* A battle start waits for the streamed people, as encounter 10 does. */
+    if(!h->npc->attached&&!npc_stream_attach(h->npc,1,h->storage,h->models,h->actor_models,h->paths,h->story,h->count,
+                                             h->skin,h->tv_index,h->tv_enabled,h->frames,trace,error,capacity))return 0;
+    release_field_models(h->storage,h->count);
+    if(h->ingame->active)c3_ingame_close(h->ingame);
+    c3_pack_cache_clear(); /* the battle needs the linear memory */
+    c3_n3ds_log_memory(trace,"field_battle_payloads_released");
+    return 1;
+}
+static int field_battle_restore(FieldBattleHost *h,int exiting,FILE *trace,char *error,size_t capacity)
+{
+    if(c3_render_recover(trace,"battle-to-field",0,exiting?C3_RECOVER_EXIT:C3_RECOVER_DRAIN)==C3_RECOVERY_EXIT)return -1;
+    c3_n3ds_log_memory(trace,"field_battle_before_restore");
+    if(!restore_field_models(h->storage,h->count,h->paths,h->story,h->elapsed,error,capacity))return 0;
+    if(field_renderer_init(h->storage,h->models,h->count,h->skin,error,capacity))return 0;
+    if(h->tv_index!=UINT32_MAX&&!c3_stage_renderer_set_tv(h->tv_index,1,1,h->tv_enabled,error,capacity))return 0;
+    c3_n3ds_log_memory(trace,"field_battle_restored");
+    return 1;
+}
+/* host: the field to release for a 3D battle (NULL: bottom screen only). */
 static int play_story_battle(C3FieldStory *story,C3GameState *state,uint32_t encounter,int autoplay,
-                             FILE *trace,char *error,size_t capacity)
+                             FieldBattleHost *host,FILE *trace,char *error,size_t capacity)
 {
     C3BattlePack pack;memset(&pack,0,sizeof pack);
     char problem[C3_GB_ERROR_SIZE]="";C3BattleEncounterInfo info;
@@ -206,7 +241,22 @@ static int play_story_battle(C3FieldStory *story,C3GameState *state,uint32_t enc
         if(ok)ok=c3_general_battle_begin(battle,&pack,encounter,party,seed,problem);
         else if(!problem[0])snprintf(problem,sizeof problem,"The party could not be read for the battle.");
         if(ok){
-            int scene=c3_battle_general_scene_run(&pack,battle,trace);
+            int scene=-1;char why[192]="";
+            if(host&&c3_battle_general_3d_ready(battle,trace,why,sizeof why)){
+                /* On its original stage: the field's models make room first. */
+                int released=field_battle_release(host,trace,problem,sizeof problem);
+                if(released<0){free(battle);c3_battle_pack_free(&pack);return 2;}
+                if(!released){free(battle);c3_battle_pack_free(&pack);
+                    snprintf(error,capacity,"%s",problem[0]?problem:"The field could not make room for the battle.");return -1;}
+                scene=c3_battle_general_3d_run(&pack,battle,trace);
+                int restored=field_battle_restore(host,scene==1,trace,problem,sizeof problem);
+                if(restored<0)scene=1;
+                else if(!restored){free(battle);c3_battle_pack_free(&pack);
+                    snprintf(error,capacity,"%s",problem[0]?problem:"The field could not be restored after the battle.");return -1;}
+                /* A failed 3D stage leaves the battle intact: finish it below. */
+                if(scene<0&&trace){fprintf(trace,"field_battle_3d_fallback encounter=%lu turn=%lu\n",(unsigned long)encounter,(unsigned long)battle->turn);fflush(trace);}
+            }else if(trace&&host){fprintf(trace,"field_battle_3d_unavailable encounter=%lu reason=%s\n",(unsigned long)encounter,why);fflush(trace);}
+            if(scene<0)scene=c3_battle_general_scene_run(&pack,battle,trace);
             if(scene==1)result=2;
             else if(scene<0){if(!problem[0])snprintf(problem,sizeof problem,"The battle engine failed (see the trace).");}
             else result=c3_battle_story_apply(story,state,battle,&pack,NULL,&rewards,problem)?1:-1;
@@ -672,7 +722,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                     campaign_line("floor=%03lx battle=10 mode=scene",(unsigned long)map.floor);
                     c3_n3ds_autopress(1,1.6f);input.pressed|=C3_PAD_A;
                 }else if(view->blocked[0]&&view->battle_id){
-                    int played=play_story_battle(&story,state,view->battle_id,1,trace,story_error,sizeof story_error);
+                    int played=play_story_battle(&story,state,view->battle_id,1,NULL,trace,story_error,sizeof story_error);
                     if(played<0)goto story_failed;
                     campaign_line("floor=%03lx battle=%lu mode=%s",(unsigned long)map.floor,(unsigned long)view->battle_id,
                                   played==1?"engine_autoplay":"reported_win");
@@ -966,10 +1016,14 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                      * hero's win (result ID 2) and nothing is written. */
                     uint32_t skipped=view->battle_id;
                     if(c3_n3ds_battles_play()){
-                        int played=play_story_battle(&story,state,skipped,0,trace,story_error,sizeof story_error);
+                        FieldBattleHost host={storage,models,actor_models,model_paths,&story,&npc,ingame,
+                                              count,tv_index,skin_actors,view?view->tv_enabled:1,frames,elapsed};
+                        int played=play_story_battle(&story,state,skipped,0,&host,trace,story_error,sizeof story_error);
                         if(played<0)goto story_failed;
                         if(played==2){result=1;break;}
-                        if(played==1){dirty=1;continue;}
+                        /* Battle time must not advance the paused field scripts. */
+                        previous=c3_n3ds_active_time_us();
+                        if(played==1){dirty=1;next_console=0;continue;}
                     }
                     if(!c3_field_story_battle_result(&story,2,story_error))goto story_failed;
                     if(trace){fprintf(trace,"field_battle_skipped encounter=%lu result_reported=2 temporary=1 party_writeback=0\n",
