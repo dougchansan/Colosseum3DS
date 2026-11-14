@@ -213,10 +213,15 @@ invalid:fail(error,cap,"Invalid battle floor or cast descriptor.");
 bad:release(s);return 0;
 }
 
+/* Best effort: a sound the audio backend has not prepared plays nothing
+ * (logged once per id) rather than stopping the battle. */
 static int sound(C3BattleGeneralStage *s,uint32_t id,char *e,size_t n)
 {
-    if(!s->sound_cue)return 1;
-    return s->sound_cue(++s->cue_serial,id,e,n);
+    char problem[160];
+    if(!s->sound_cue||!id)return 1;
+    if(!s->sound_cue(++s->cue_serial,id,problem,sizeof problem)&&s->trace&&s->missing_sound!=id){
+        s->missing_sound=id;fprintf(s->trace,"general_sound_unavailable id=%lx reason=%s\n",(unsigned long)id,problem);fflush(s->trace);}
+    (void)e;(void)n;return 1;
 }
 
 static void start_clip(C3BattleGeneralStage *s,int m,unsigned role,int hold)
@@ -264,7 +269,11 @@ static void event(const C3BattlePreviewEvent *e,int finished,void *user)
     case C3_PREVIEW_EVENT_SEND_OUT:{
         int m=e->target<4?model_for_slot(s,e->target):-1;
         if(m>=0){s->presentation.visible[e->target]=1;s->appear[m]=0;s->clips[m]=s->roles[m][0];s->clocks[m]=0;s->hold[m]=0;}
-        s->presentation.duration_ms=s->message_ms;break;}
+        s->presentation.duration_ms=s->message_ms;
+        /* fightOutPokemonDasuEffect: the cry follows the send-out. */
+        {uint16_t voice=e->target<4?c3_battle_pack_species_voice(s->pack,s->cast.species[e->target]):0;
+         if(voice&&!sound(s,voice,s->error,sizeof s->error))return;}
+        break;}
     case C3_PREVIEW_EVENT_MOVE:{
         int m=e->actor<4?model_for_slot(s,e->actor):-1;
         unsigned role=c3_general_view_move_role(s->pack,e->move);

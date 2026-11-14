@@ -88,6 +88,11 @@ int c3_battle_pack_move(const C3BattlePack *p,uint16_t id,C3GeneralMoveInfo *out
     out->priority=(int8_t)m[0];out->pp=m[1];out->type=m[2];out->range=m[3];out->accuracy=m[4];
     out->power=(int16_t)be16(m+22);out->effect=be16(m+26);return 1;
 }
+uint16_t c3_battle_pack_species_voice(const C3BattlePack *p,uint16_t species)
+{
+    const uint8_t *s=p&&p->bytes?species_row(p,species):NULL;
+    return s?(uint16_t)be16(s+14):0;
+}
 int c3_battle_pack_info(const C3BattlePack *p,uint32_t id,C3BattleEncounterInfo *out)
 {
     const uint8_t *r=entry(p,id);

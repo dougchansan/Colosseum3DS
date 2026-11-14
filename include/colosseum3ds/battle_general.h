@@ -122,6 +122,8 @@ typedef struct C3GeneralMoveInfo {
     uint16_t effect;
 } C3GeneralMoveInfo;
 int c3_battle_pack_move(const C3BattlePack *pack, uint16_t move, C3GeneralMoveInfo *info);
+/* The species' cry: its voice sound request (species row +14), 0 none. */
+uint16_t c3_battle_pack_species_voice(const C3BattlePack *pack, uint16_t species);
 
 /* party: the save body's six consecutive 0x138-byte records, read-only. */
 int c3_general_battle_begin(C3GeneralBattle *battle, const C3BattlePack *pack,

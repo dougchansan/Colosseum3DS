@@ -53,7 +53,7 @@ typedef struct {
     uint32_t damage_model, damage_owner, damage_sequence, cue_serial;
     float damage_particle_local[3];
     uint8_t damage_available, particles_started, initialized;
-    uint32_t message_ms;
+    uint32_t message_ms, missing_sound;
     /* General WZX effects (battle_general_wzx.inc): per position the PKX
      * body-part bones, timing marks and entry clips from the index. */
     struct C3BattleWzxLayer *wzx;
