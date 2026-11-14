@@ -122,3 +122,69 @@ int c3_particle_pack_decode(C3ParticlePack *out,const void *p,size_t n,const uin
 {return decode_pack(out,p,n,hash,0,e,cap);}
 int c3_particle_pack_decode_reachable(C3ParticlePack *out,const void *p,size_t n,const uint8_t hash[20],unsigned profile,char *e,size_t cap)
 {if(profile!=C3_PARTICLE_PROFILE_GROWL_V1&&profile!=C3_PARTICLE_PROFILE_GREEN_DOWN_V1&&profile!=C3_PARTICLE_PROFILE_RED_DOWN_V1&&profile!=C3_PARTICLE_PROFILE_TACKLE_V1)return fail(e,cap,"Unsupported reachable particle pack profile.");return decode_pack(out,p,n,hash,profile,e,cap);}
+
+static int pow2_edge(uint32_t v){return v>=8&&v<=64&&!(v&(v-1));}
+static size_t gx_bytes(uint32_t fmt,uint32_t w,uint32_t h)
+{
+    static const uint8_t bpp[7]={4,8,8,16,16,16,32},bw[7]={8,8,8,4,4,4,4},bh[7]={8,4,4,4,4,4,4};
+    return (size_t)((w+bw[fmt]-1)/bw[fmt]*bw[fmt])*((h+bh[fmt]-1)/bh[fmt]*bh[fmt])*bpp[fmt]/8;
+}
+int c3_particle_pack_decode_general(C3ParticlePack *out,const void *data,size_t bytes,
+    const uint8_t expected_sha1[20],char *error,size_t capacity)
+{
+    const uint8_t *p=data;uint8_t digest[20];
+    static C3ParticlePack next; /* ~11 KiB; kept off the 3DS stack, not reentrant. */
+    if(!out || !p || !expected_sha1 || bytes<128 || bytes>C3_PARTICLE_PACK_MAX_BYTES ||
+       overlap(out,sizeof *out,p,bytes))return fail(error,capacity,"Invalid C3PT buffer/size/ownership.");
+    if(memcmp(p,"C3PT",4) || le32(p+4)!=2 || le32(p+8)!=bytes || !zero(p+100,28))
+        return fail(error,capacity,"Unsupported C3PT v2 header/version/reserved fields.");
+    c3_save_codec_sha1(digest,p,(uint32_t)bytes);
+    if(memcmp(digest,expected_sha1,20))return fail(error,capacity,"C3PT whole-pack SHA-1 mismatch.");
+    memset(&next,0,sizeof next);
+    uint32_t bank_at=le32(p+16),bank_bytes=le32(p+20),count=le32(p+24),table=le32(p+28),roots=le32(p+96);
+    size_t roots_at=128u+(size_t)count*32u;
+    if(!count || count>C3_PARTICLE_PACK_MAX_TEXTURES || table!=128 || !roots || roots>C3_PARTICLE_PACK_MAX_ROOTS ||
+       !bank_bytes || bank_bytes>1024u*1024u || bank_at!=aligned(roots_at+4u*roots) ||
+       !span(bytes,bank_at,bank_bytes))return fail(error,capacity,"C3PT v2 table/root/bank bound.");
+    if(!zero(p+roots_at+4u*roots,bank_at-(roots_at+4u*roots)))return fail(error,capacity,"Nonzero C3PT v2 table padding.");
+    for(uint32_t i=0;i<roots;++i){next.roots[i]=le32(p+roots_at+4u*i);for(uint32_t j=0;j<i;++j)if(next.roots[j]==next.roots[i])return fail(error,capacity,"Duplicate C3PT v2 root.");}
+    if(next.roots[0]!=le32(p+12))return fail(error,capacity,"C3PT v2 primary root differs from its root table.");
+    if(!c3_particle_bank_decode_general(&next.bank,p+bank_at,bank_bytes,next.roots,roots,error,capacity))return 0;
+    const uint8_t *bank=next.bank.bytes;size_t txg=be32(bank+8),refs=be32(bank+16);
+    size_t cursor=(size_t)bank_at+bank_bytes,next_at=aligned(cursor);
+    if(!span(bytes,cursor,next_at-cursor) || !zero(p+cursor,next_at-cursor))return fail(error,capacity,"Invalid C3PT bank alignment padding.");
+    cursor=next_at;
+    uint32_t group_frames[C3_PARTICLE_MAX_TEXTURE_GROUPS]={0};
+    for(uint32_t i=0;i<count;++i){
+        const uint8_t *r=p+128u+i*32u;C3ParticlePackTexture *t=&next.textures[i];
+        t->group=le32(r);t->pose=le32(r+4);t->width=le32(r+8);t->height=le32(r+12);
+        uint32_t offset=le32(r+16);t->rgba_bytes=le32(r+20);t->source_format=le32(r+24);
+        if(le32(r+28) || t->group>=next.bank.texture_group_count || !next.bank.texture_frames[t->group] ||
+           t->pose>=next.bank.texture_frames[t->group] || t->source_format>6 ||
+           !pow2_edge(t->width) || !pow2_edge(t->height) || t->rgba_bytes!=t->width*t->height*4u ||
+           offset!=cursor || !span(bytes,offset,t->rgba_bytes))
+            return fail(error,capacity,"C3PT v2 texture dimensions/format/extent bound.");
+        for(uint32_t j=0;j<i;++j)if(next.textures[j].group==t->group && next.textures[j].pose==t->pose)
+            return fail(error,capacity,"Duplicate C3PT texture group/pose.");
+        /* Metadata against the borrowed source TXG (already bounded by the
+         * general decode for every group a decoded generator uses). */
+        size_t group_at=txg+(size_t)be32(bank+txg+4u+4u*t->group);
+        if(be32(bank+group_at+4)!=t->source_format)return fail(error,capacity,"C3PT texture metadata differs from source TXG.");
+        size_t pixels=txg+(size_t)be32(bank+group_at+24u+4u*t->pose);
+        if(!span(refs,pixels,gx_bytes(t->source_format,be32(bank+group_at+12),be32(bank+group_at+16))))
+            return fail(error,capacity,"C3PT source texture pixel extent.");
+        ++group_frames[t->group];t->rgba=p+offset;
+        next_at=aligned(cursor+t->rgba_bytes);
+        if(!span(bytes,cursor+t->rgba_bytes,next_at-(cursor+t->rgba_bytes)) ||
+           !zero(p+cursor+t->rgba_bytes,next_at-(cursor+t->rgba_bytes)))
+            return fail(error,capacity,"Invalid C3PT texture alignment padding.");
+        cursor=next_at;
+    }
+    if(cursor!=bytes)return fail(error,capacity,"Unknown C3PT trailing bytes.");
+    for(unsigned i=0;i<next.bank.generator_count;++i){uint32_t g=next.bank.generators[i].tex_group;
+        if(group_frames[g]!=next.bank.texture_frames[g])return fail(error,capacity,"C3PT v2 decoded generator texture group incomplete.");}
+    next.bytes=p;next.length=bytes;next.root_generator=next.roots[0];next.root_count=roots;next.texture_count=count;
+    next.source_sha256=p+32;next.payload_sha256=p+64;*out=next;
+    if(error && capacity)error[0]=0;
+    return 1;
+}

@@ -14,8 +14,12 @@
  * allocated for the scene's actual vertex total; at the bound it is 11.0 MB. */
 #define C3_STAGE_MAX_MODELS 48u
 #define C3_STAGE_MAX_VERTICES 196608u
-#define C3_STAGE_MAX_TEXTURES 128u
-#define C3_STAGE_MAX_PARTICLE_BANKS 8u
+/* Texture slots: scene + HUD + every registered particle bank (a converted
+ * C3PT v2 bank holds at most 32 RGBA8 textures of at most 64x64). */
+#define C3_STAGE_MAX_TEXTURES 512u
+#define C3_STAGE_MAX_PARTICLE_BANKS 32u
+/* Live particle systems drawn per frame: slot 0 is the legacy binding. */
+#define C3_STAGE_MAX_PARTICLE_SYSTEMS 16u
 
 /* Pinned SDK steady particle draw uses 114 words; 192 also bounds setup.
  * Leave room for the subsequent HUD/fade and command-list finalization. */
@@ -89,11 +93,21 @@ int c3_stage_renderer_get_modulation(size_t model_index, uint8_t rgb[3], int *en
 /* Upload once before first draw. Borrowed pack/system outlive guarded teardown.
  * Updating the live attachment only copies CPU state; GPU buffers are written
  * after the sole nonblocking FrameBegin completion barrier. */
-/* Register up to eight borrowed banks (including qualified move profiles)
- * before first draw. Re-registering the
+/* Register up to C3_STAGE_MAX_PARTICLE_BANKS (32) borrowed banks (including
+ * qualified move profiles) after the scene is initialized and before its first
+ * draw (scene_count != 0, nothing drawn yet); later registration fails. Re-registering the
  * same pack pointer is idempotent. Binding selects by bank.bytes identity. */
 int c3_stage_renderer_particle_pack(const C3ParticlePack *,char *,size_t);
 int c3_stage_renderer_particles(const C3ParticleSystem *,const float attachment[12]);
+/* Bind slot `index` (0..C3_STAGE_MAX_PARTICLE_SYSTEMS-1) for the following
+ * frames; index 0 is exactly c3_stage_renderer_particles. Slots 1..15 draw
+ * after slot 0 with c3_particle_quad only (no AppSRT/source-order/POINT line
+ * adapters; such particles are skipped), in slot then particle order, and
+ * only as many quads as the frame's command budget still admits after slot 0
+ * (the rest are skipped, never a frame error). The system's bank must be a
+ * registered pack's bank (bank.bytes identity). NULL system clears the slot.
+ * Returns 1 bound/cleared, 0 rejected (previous binding kept). */
+int c3_stage_renderer_particles_set(unsigned index,const C3ParticleSystem *,const float attachment[12]);
 /* Explicit source-world Growl adapter. Only AppSRT render caches may change;
  * simulation coordinates, clocks and cosmetic RNG remain independent of draws. */
 int c3_stage_renderer_particles_app_srt(C3ParticleSystem *);

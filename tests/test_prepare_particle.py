@@ -149,6 +149,56 @@ class ParticlePreparationTests(unittest.TestCase):
         self.assertEqual(packed[200:220], hashlib.sha1(b"synthetic-particles").digest())
         self.assertEqual(packed[236:], hashlib.sha1(packed[:236]).digest())
 
+    # --- General path (C3PT v2) -------------------------------------------
+    def test_general_program_admits_source_table_and_refuses_unsafe(self):
+        raw = (b"\xa9" + struct.pack(">f", .3) + b"\x8b" + struct.pack(">2f", 1., 2.) +
+               b"\xfa\0\1\xfb\xaa\0\2\0\3\xff\xe1")
+        instructions, refs, direct, poses = particle.general_program(raw)
+        self.assertEqual(instructions[1]["args"]["values"], [1., 2., 0.])
+        self.assertEqual(refs, [2, 3, 4])
+        self.assertEqual(instructions[-1]["opcode"], 0xFF)  # tail after FF unreachable
+        _, _, direct, _ = particle.general_program(b"\xa5\0\7\xef\0\x09\3\xb9\0\5\xff")
+        self.assertEqual(direct, [7, 9, 5])
+        for bad, why in ((b"\x81" + struct.pack(">f", 1.) + b"\xff", "partial vector set"),
+                         (b"\xfa\0\xfb\xff", "zero-time loop"), (b"\xfc\xfd", "zero-time mark"),
+                         (b"\xe1\xff", "outside"), (b"\xa0", "truncated"), (b"\1", "lacks an end")):
+            with self.assertRaisesRegex(ValueError, why):
+                particle.general_program(bad)
+        self.assertEqual(len(particle.general_program(b"\1\xfb\xfd")[0]), 3)  # FB with no FA wraps to 0
+
+    def test_gx_formats_tile_order_and_channels(self):
+        ia8 = bytes([0x80, 0x10] * 16)
+        self.assertEqual(particle.decode_gx(3, ia8, 4, 4)[:4], bytes((0x10, 0x10, 0x10, 0x80)))
+        rgb565 = bytes([0xF8, 0x00] + [0] * 30)
+        self.assertEqual(particle.decode_gx(4, rgb565, 4, 4)[:4], bytes((255, 0, 0, 255)))
+        rgba8 = bytes([0x7F, 0x11] + [0] * 30 + [0x22, 0x33] + [0] * 30)
+        self.assertEqual(particle.decode_gx(6, rgba8, 4, 4)[:4], bytes((0x11, 0x22, 0x33, 0x7F)))
+        self.assertEqual(particle.decode_gx(2, bytes([0xA5] * 32), 8, 4)[:4], bytes((0x55, 0x55, 0x55, 0xAA)))
+        rgba, w, h = particle.fit_texture(bytes(range(256)) * (128 * 128 * 4 // 256), 128, 128)
+        self.assertEqual((w, h, len(rgba)), (64, 64, 64 * 64 * 4))
+        rgba, w, h = particle.fit_texture(bytes(4 * 4 * 4), 4, 4)
+        self.assertEqual((w, h), (8, 8))
+        with self.assertRaises(ValueError):
+            particle.decode_gx(8, b"", 8, 8)
+
+    def test_general_bank_disables_children_and_encodes_v2(self):
+        raw = self.bank(b"\xf0\0\0\7\xff")  # root spawns itself: a cycle is admitted
+        report = particle.general_bank(raw, [0])
+        self.assertEqual((report["closure"], report["disabled"]), ([0], {}))
+        pack = particle.encode_general(raw, report, "12" * 32)
+        magic, version, total, root, offset, size, count, table = struct.unpack_from("<4s7I", pack)
+        self.assertEqual((magic, version, total, root, size, count, table), (b"C3PT", 2, len(pack), 0, 228, 1, 128))
+        self.assertEqual(struct.unpack_from("<I", pack, 96)[0], 1)
+        self.assertEqual(struct.unpack_from("<I", pack, 128 + 32)[0], 0)
+        self.assertEqual(offset, 192)
+        self.assertEqual(pack[offset:offset + size], raw)
+        self.assertEqual(pack[64:96], hashlib.sha256(pack[128:]).digest())
+        width, height = struct.unpack_from("<2I", pack, 136)
+        self.assertEqual((width, height), (8, 8))  # 8x4 I8 resampled to a PICA edge
+        camera = bytearray(raw)
+        struct.pack_into(">I", camera, 56, 0x01020000)
+        with self.assertRaisesRegex(ValueError, "root generator camera basis"):
+            particle.general_bank(camera, [0])
 
 if __name__ == "__main__":
     unittest.main()

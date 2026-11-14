@@ -306,6 +306,16 @@ wzx-tackle-check: build/test_wzx_tackle
 	./build/test_wzx_tackle
 test: wzx-tackle-check
 
+# Private, optional: every C3PT v2 pack from tools/prepare_particle.py --batch
+# decodes, matches the converter closure and simulates PARTICLE_DISC_TICKS.
+PARTICLE_DISC_DIR ?= private/particles-general
+PARTICLE_DISC_TICKS ?= 600
+build/test_particle_disc: tests/test_particle_disc.c src/particle.c src/particle_pack.c build/save_codec.c $(HEADERS) | build
+	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_particle_disc.c src/particle.c src/particle_pack.c build/save_codec.c $(LDFLAGS) -lm -o $@
+.PHONY: particle-disc-check
+particle-disc-check: build/test_particle_disc
+	./build/test_particle_disc $(PARTICLE_DISC_DIR) $(PARTICLE_DISC_TICKS)
+
 all: build/test_particle_tackle
 .PHONY: particle-tackle-check
 particle-tackle-check: build/test_particle_tackle

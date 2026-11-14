@@ -2,9 +2,13 @@
 #define C3_PARTICLE_H
 #include <stddef.h>
 #include <stdint.h>
-#define C3_PARTICLE_MAX_GENERATORS 16u
-#define C3_PARTICLE_MAX_TEXTURE_GROUPS 16u
-#define C3_PARTICLE_MAX_EMITTERS 16u
+/* Decoded generator slots. Legacy dense decode keeps its 16-generator bound;
+ * the general path decodes only the reached closure (disc union peak 109). */
+#define C3_PARTICLE_MAX_GENERATORS 128u
+#define C3_PARTICLE_LEGACY_MAX_GENERATORS 16u
+#define C3_PARTICLE_MAX_SOURCE_GENERATORS 4096u
+#define C3_PARTICLE_MAX_TEXTURE_GROUPS 64u
+#define C3_PARTICLE_MAX_POINTS 8u
 #define C3_PARTICLE_MAX_APP_SRT 16u
 #define C3_PARTICLE_PROFILE_GROWL_V1 1u
 #define C3_PARTICLE_PROFILE_GREEN_DOWN_V1 2u
@@ -14,8 +18,13 @@
 /* Measured admitted Reflect closure peak1369; bounded1536 live slots. */
 #define C3_PARTICLE_MAX_PARTICLES 1536u
 #endif
+/* Generators are cheap and the source allocates them on demand: disc effects
+ * keep one alive per particle while its children live (peak >1000). */
+#define C3_PARTICLE_MAX_EMITTERS C3_PARTICLE_MAX_PARTICLES
 #define C3_PARTICLE_MAX_DEPTH 4u
+#define C3_PARTICLE_GENERAL_MAX_DEPTH 16u
 #define C3_PARTICLE_MAX_INSTRUCTIONS 128u
+#define C3_PARTICLE_GENERAL_MAX_INSTRUCTIONS 1024u
 #define C3_PARTICLE_MAX_CATCHUP 600u
 /* Checked native handles, not original PPC pointers. Raw GPT1 bytes must remain immutable and outlive bank/system.
  * Source: psstructs.h PSCmdList, particle.c, generator.c, psinterpret.c.
@@ -27,6 +36,9 @@ typedef struct {
  uint16_t type,tex_group,gen_life,life;
  uint32_t kind,script_offset,script_bytes;
  float grav,fric,velocity[3],radius,angle,rate,size,param[3];
+ /* General decode only: closure slot whose source checks failed. Never
+  * slotted today (spawns of it resolve to the source NULL-template no-op). */
+ uint8_t disabled;
 } C3ParticleGenerator;
 typedef struct {
  const uint8_t *bytes;size_t length;
@@ -38,6 +50,9 @@ typedef struct {
  uint32_t source_generator_count,reference_offset;
  uint16_t source_ids[C3_PARTICLE_MAX_GENERATORS];
  uint8_t profile;
+ /* 1: c3_particle_bank_decode_general closure (source_ids map slots, refs
+  * are read from the original REF table, source-faithful opcode semantics). */
+ uint8_t general;
 } C3ParticleBank;
 typedef struct {
  uint8_t active,depth;uint16_t generator,life;
@@ -46,6 +61,10 @@ typedef struct {
  uint16_t source_flags;
  uint32_t app_srt_handle;
  uint8_t deferred;
+ /* General banks: psSetGeneratorAngleRadiusScale applied (root flag0x20,
+  * always for psCopyGeneratorData children). */
+ uint8_t angle_radius_scaled;
+ uint16_t children; /* General banks: live particles owned (psGenerator numChild). */
 } C3ParticleEmitter;
 typedef struct {
  uint8_t active,depth,tex_group,pose;
@@ -61,6 +80,9 @@ typedef struct {
  float tornado_radius,tornado_angle,tornado_speed,tornado_turn,tornado_origin[3];
  float position[3],velocity[3],size,size_target,rotation,rotate_target,rotate_accel,grav,fric,trail;
  uint8_t prim[4],env[4],color_base[2][4],color_target[2][4];
+ /* General banks: gen_slot is the owning generator's template slot (psGenerator
+  * vel for F4); general selects source-faithful quad approximations. */
+ uint16_t gen_slot;uint8_t general;
 } C3Particle;
 
 /* Reached Growl owns camera-relative SRTs with identity rotation/scale.
@@ -87,6 +109,10 @@ typedef struct {
  uint16_t source_order[C3_PARTICLE_MAX_PARTICLES],source_order_count;
  uint32_t root_emitter_serial;
  uint16_t source_attachment_flags;
+ /* General banks: psPointJObj stand-ins (BF owner -> B7/B8 targets) and
+  * spawns the source would also have refused (pool/nesting full). */
+ float points[C3_PARTICLE_MAX_POINTS][3];uint8_t point_valid[C3_PARTICLE_MAX_POINTS];
+ uint32_t dropped;
  char diagnostic[160];
 } C3ParticleSystem;
 typedef struct {
@@ -108,6 +134,16 @@ typedef struct {
 int c3_particle_quad(const C3Particle *,const float attachment[12],
                      const C3ParticleCamera *,C3ParticleQuad *,char *,size_t);
 int c3_particle_bank_decode(C3ParticleBank *,const void *,size_t,char *,size_t);
+/* General path (C3PT v2): decodes the closure reachable from 1..32 source
+ * root IDs with tools/prepare_particle.py general_bank's admission rules:
+ * the whole psInterpretParticle0 table except partial vector SETs, shapes
+ * 0,1,2,3,4,6,7,8 (type bit 0x80 kills children at expiry), no camera
+ * basis/AppSRT (kind 0x30000), GX texture formats 0-6. A failing non-root
+ * generator is left out; spawning it is the source NULL-template no-op.
+ * Begin such a bank through c3_particle_begin_position_flags with a SOURCE
+ * root ID and any source attachment flags. */
+int c3_particle_bank_decode_general(C3ParticleBank *,const void *,size_t,
+ const uint32_t *roots,unsigned root_count,char *,size_t);
 /* Explicit Growl v1 root18/113 source descriptors, or stat-down v1 root0/3
  * dense descriptors. Original IDs/bytes remain unchanged. Stat-down source hash
  * authentication is enforced by the opt-in pack decoder; raw decode checks
