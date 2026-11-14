@@ -69,6 +69,12 @@ int c3_battle_general_stage_load(C3BattleGeneralStage *, const C3Battle3dIndex *
                                  const C3BattlePack *, const char *root, const char *effects,
                                  const uint16_t hp[4], FILE *, char *, size_t);
 int c3_battle_general_stage_submit(C3BattleGeneralStage *, const C3BattlePreviewEvent *, uint32_t);
+/* Put a different species at a Pokemon position without reloading the
+ * stage: the caller drains the GPU first; only that position's pack is
+ * loaded and the renderer restarts over the kept models. The position stays
+ * hidden until its send-out plays. 0 (error set) when it cannot: reload. */
+int c3_battle_general_stage_swap(C3BattleGeneralStage *, const C3Battle3dIndex *, unsigned slot, uint16_t species,
+                                 const char *root, char *, size_t);
 /* Whether the submitted batch has been fully presented. */
 int c3_battle_general_stage_idle(const C3BattleGeneralStage *);
 int c3_battle_general_stage_step(C3BattleGeneralStage *, uint32_t ms, char *, size_t);

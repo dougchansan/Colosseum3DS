@@ -116,6 +116,27 @@ static int damage_load(C3BattleGeneralStage *s,const char *root,char *e,size_t n
     return 1;
 }
 
+/* Bring the renderer up over the current models (load, and after a swap). */
+static int renderer_start(C3BattleGeneralStage *s,char *error,size_t cap)
+{
+#ifndef C3_NO_GPU_SKIN
+    {uint64_t actors=0;for(uint32_t i=0;i<s->count;++i)if(s->slots[i]<6u)actors|=UINT64_C(1)<<i;
+     c3_stage_renderer_request_gpu_skin(actors);}
+#endif
+    if(c3_stage_renderer_init(s->draw,s->count,error,cap)!=C3_RENDER_OK)return 0;
+    s->initialized=1;
+    if(s->damage_available&&c3_stage_renderer_particle_pack(&s->particle_pack,error,cap)!=C3_RENDER_OK)return 0;
+    for(uint32_t i=0;i<s->count;++i){
+        const float *t=s->transforms[i];C3Title *m=&s->models[i];
+        if(s->slots[i]==ARENA&&m->clip_count==1&&m->clips[0].frame_count==1&&
+           t[0]==0&&t[1]==0&&t[2]==0&&t[3]==0&&t[4]==1){
+            s->immutable[i]=1;
+            if(!c3_stage_renderer_set_static(i,true))return fail(error,cap,"Static arena admission failed.");
+        }
+    }
+    return 1;
+}
+
 int c3_battle_general_stage_load(C3BattleGeneralStage *s,const C3Battle3dIndex *x,const C3BattleGeneralCast *cast,
                                  const C3BattlePack *pack,const char *root,const char *effects,
                                  const uint16_t hp[4],FILE *trace,char *error,size_t cap)
@@ -175,21 +196,7 @@ int c3_battle_general_stage_load(C3BattleGeneralStage *s,const C3Battle3dIndex *
     if(!damage_load(s,effects,error,cap))goto bad;
     c3_battle_presentation_init(&s->presentation,hp);
     if(!c3_battle_presentation_wait_limit(&s->presentation,20000))goto invalid;
-#ifndef C3_NO_GPU_SKIN
-    {uint64_t actors=0;for(uint32_t i=0;i<s->count;++i)if(s->slots[i]<6u)actors|=UINT64_C(1)<<i;
-     c3_stage_renderer_request_gpu_skin(actors);}
-#endif
-    if(c3_stage_renderer_init(s->draw,s->count,error,cap)!=C3_RENDER_OK)goto bad;
-    s->initialized=1;
-    if(s->damage_available&&c3_stage_renderer_particle_pack(&s->particle_pack,error,cap)!=C3_RENDER_OK)return 0;
-    for(uint32_t i=0;i<s->count;++i){
-        const float *t=s->transforms[i];C3Title *m=&s->models[i];
-        if(s->slots[i]==ARENA&&m->clip_count==1&&m->clips[0].frame_count==1&&
-           t[0]==0&&t[1]==0&&t[2]==0&&t[3]==0&&t[4]==1){
-            s->immutable[i]=1;
-            if(!c3_stage_renderer_set_static(i,true))return fail(error,cap,"Static arena admission failed.");
-        }
-    }
+    if(!renderer_start(s,error,cap)){if(!s->initialized)goto bad;return 0;}
     if(trace){fprintf(trace,"general_stage_loaded floor=%u descriptor=%s models=%lu species=%u,%u,%u,%u trainers=%u,%u damage_effect=%u\n",
         cast->floor,name,(unsigned long)s->count,cast->species[0],cast->species[1],cast->species[2],cast->species[3],
         cast->trainer[0],cast->trainer[1],s->damage_available);fflush(trace);}
@@ -353,6 +360,36 @@ int c3_battle_general_stage_step(C3BattleGeneralStage *s,uint32_t ms,char *error
         if(!c3_stage_renderer_particles(&s->particles,identity))return fail(error,cap,"Damage particle binding failed.");
     }else c3_stage_renderer_particles(NULL,NULL);
     return 1;
+}
+
+int c3_battle_general_stage_swap(C3BattleGeneralStage *s,const C3Battle3dIndex *x,unsigned slot,uint16_t species,
+                                 const char *root,char *error,size_t cap)
+{
+    C3Battle3dModel model;char path[512];
+    if(!s||slot>=4||!species)return fail(error,cap,"Invalid battle swap.");
+    if(!c3_battle3d_species(x,species,&model))return fail(error,cap,"No prepared 3D species for the swap.");
+    int m=model_for_slot(s,slot);
+    if(m<0)return fail(error,cap,"Swap position has no model.");
+    for(uint32_t j=0;j<s->count;++j)if((int)j!=m&&s->models[j].borrowed_storage&&s->slots[j]<6&&!strcmp(s->files[j],s->files[m]))
+        return fail(error,cap,"Swap of a shared model needs a reload.");
+    if(s->initialized){if(!c3_stage_renderer_try_shutdown())return fail(error,cap,"Renderer busy during swap.");s->initialized=0;}
+    c3_particle_cancel(&s->particles);c3_wzx_damage_cancel(&s->damage);
+    c3_title_close(&s->models[m]);memset(&s->models[m],0,sizeof s->models[m]);
+    int shared=-1;
+    for(uint32_t j=0;j<s->count;++j)if((int)j!=m&&s->slots[j]<6&&!s->models[j].borrowed_storage&&!strcmp(s->files[j],model.file)){shared=(int)j;break;}
+    int ok;
+    if(shared>=0)ok=c3_title_instance(&s->models[m],&s->models[shared],error,cap);
+    else ok=snprintf(path,sizeof path,"%s/%s",root,model.file)<(int)sizeof path&&c3_title_load(&s->models[m],path,error,cap);
+    if(!ok){if(!error[0])fail(error,cap,"Swap pack load failed.");return 0;}
+    snprintf(s->files[m],sizeof s->files[m],"%s",model.file);
+    c3_battle3d_roles(&model,s->roles[m]);
+    C3Title *t=&s->models[m];
+    if(s->roles[m][0]>=t->clip_count)return fail(error,cap,"Swapped model has no idle clip.");
+    for(unsigned r=0;r<9;++r)if(s->roles[m][r]!=C3_BATTLE3D_NO_CLIP&&s->roles[m][r]>=t->clip_count)s->roles[m][r]=s->roles[m][0];
+    s->clips[m]=s->roles[m][0];s->clocks[m]=0;s->hold[m]=0;s->appear[m]=1;s->sampled[m]=0;
+    s->transforms[m][4]=model.scale;s->cast.species[slot]=species;s->presentation.visible[slot]=0;
+    s->draw[m]=t;
+    return renderer_start(s,error,cap);
 }
 
 int c3_battle_general_stage_draw(C3BattleGeneralStage *s,C3TitleRenderStats *stats,char *error,size_t cap)

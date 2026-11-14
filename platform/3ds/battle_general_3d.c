@@ -129,8 +129,17 @@ int c3_battle_general_3d_run(const C3BattlePack *pack, C3GeneralBattle *b, FILE 
                     memcpy(hp, view.hp, sizeof hp); hp[pos] = 0;
                     for (unsigned p = 0; p < 4; ++p) if (!stage->presentation.visible[p]) hp[p] = 0;
                     if (trace) { fprintf(trace, "general_battle_swap position=%u species=%u->%u\n", pos, stage->cast.species[pos], species); fflush(trace); }
-                    if (close_stage(stage, trace, frames)) { result = 1; goto done; }
-                    if (!open_stage(stage, &index, &next, pack, hp, audio, trace, error, sizeof error)) goto done;
+                    uint64_t swap_start = c3_n3ds_time_us();
+                    if (c3_render_recover(trace, "general_battle_swap", frames, C3_RECOVER_DRAIN) == C3_RECOVERY_EXIT) { result = 1; goto done; }
+                    if (c3_battle_general_stage_swap(stage, &index, pos, species, C3_BATTLE3D_ROOT, error, sizeof error)) {
+                        if (trace) { fprintf(trace, "general_battle_swap_fast us=%llu\n", (unsigned long long)(c3_n3ds_time_us() - swap_start)); fflush(trace); }
+                    } else {
+                        /* Shared pack or no room: rebuild the whole stage. */
+                        if (trace) { fprintf(trace, "general_battle_swap_reload reason=%s\n", error); fflush(trace); }
+                        error[0] = 0;
+                        if (close_stage(stage, trace, frames)) { result = 1; goto done; }
+                        if (!open_stage(stage, &index, &next, pack, hp, audio, trace, error, sizeof error)) goto done;
+                    }
                     previous = c3_n3ds_active_time_us();
                 }
                 if (!c3_battle_general_stage_submit(stage, batch, n)) { snprintf(error, sizeof error, "Invalid battle event batch."); goto done; }
