@@ -27,6 +27,8 @@ import struct
 import traceback
 import types
 
+import numpy as np
+
 from prepare_battle_encounters import Rel, roster, u16
 from prepare_battle_init import COMMON_BYTES, COMMON_SHA1, SOURCE_COMMIT
 from prepare_battle_scene import PKX_TABLE, UNSUPPORTED, archive_names, clip_mapping, load_pkx
@@ -44,6 +46,7 @@ ARENA_MAX_SAMPLES = 121
 ARENA_REDUCED_SAMPLES = 31
 MAX_ARENA_RECORDS = 8
 MAX_PACK_BONES = 64       # C3_TITLE_MAX_BONES: sampled tracks per pack
+MODEL_RECORD = 512        # index v2 model record
 MODEL_RAM_BUDGET = 4_000_000  # decompressed bytes per Pokemon/trainer pack, where possible
 MAX_MERGE_ERROR = 0.05    # of the model's extent: merged envelope tracks beyond this fail
 REFERENCE_FLOOR = 5  # S1_out_bf: its arena lights/camera fill the actor packs' fixed fields.
@@ -175,7 +178,245 @@ def merge_batches(meshes):
     return result
 
 
-def merge_tracks(geometry, meshes, states, approximate):
+HIDDEN_SINGULAR = {}      # (id(model), descriptor) -> samples hidden as collapsed/excessive
+EXCESSIVE = 1e5           # a sampled transform entry beyond this is treated as collapsed
+JOINT_CHANNELS = set(range(1, 13)) | {40}  # rotation, path, translation, scale, NODE/BRANCH, particles
+BUMP = 1 << 24            # TOBJ emboss bump flag
+
+
+def actor_source_fixes(ir_model, raw_model):
+    """Approximations applied to the parsed PKX before Model (--approximate).
+
+    Joint channels outside the field set (e.g. 42, an integer user-data
+    channel next to the type-40 particle callback) hold their rest value; an
+    IK constraint outside the reviewed 3-joint, pole-less form keeps its FK
+    animation. Returns the recorded counts.
+    """
+    import prepare_title as title
+    used = collections.Counter()
+
+    def strip(aobj, allowed, label):
+        if aobj is None:
+            return
+        previous, fobj = None, aobj.frame
+        while fobj:
+            if fobj.type not in allowed:
+                used["%s_channel_%d_held_at_rest" % (label, fobj.type)] += 1
+                if previous is None:
+                    aobj.frame = fobj.next
+                else:
+                    previous.next = fobj.next
+            else:
+                previous = fobj
+            fobj = fobj.next
+
+    for root in getattr(raw_model, "animated_joints", None) or []:
+        for node in title.tree_nodes(root):
+            strip(node.animation, JOINT_CHANNELS, "joint")
+    for root in getattr(raw_model, "animated_material_joints", None) or []:
+        for node in title.tree_nodes(root):
+            anim = node.animation
+            while anim:
+                strip(anim.animation, set(range(1, 11)), "material")
+                texture = anim.texture_animation
+                while texture:
+                    strip(texture.animation, set(range(2, 10)) | set(range(12, 24)) |
+                          ({1} if texture.image_table_count else set()), "texture")
+                    texture = texture.next
+                anim = anim.next
+    kept = []
+    for constraint in ir_model.ik_constraints:
+        if constraint.chain_length != 3 or constraint.pole_target_bone:
+            used["ik_chain_left_to_fk_%d_joints%s" % (
+                constraint.chain_length, "_pole" if constraint.pole_target_bone else "")] += 1
+        else:
+            kept.append(constraint)
+    ir_model.ik_constraints = kept
+    return used
+
+
+def strip_joint_paths(raw_model):
+    import prepare_title as title
+    used = collections.Counter()
+    for root in getattr(raw_model, "animated_joints", None) or []:
+        for node in title.tree_nodes(root):
+            aobj = node.animation
+            if aobj is None:
+                continue
+            previous, fobj = None, aobj.frame
+            while fobj:
+                if fobj.type == 4:
+                    used["joint_path_held_at_rest"] += 1
+                    if previous is None:
+                        aobj.frame = fobj.next
+                    else:
+                        previous.next = fobj.next
+                else:
+                    previous = fobj
+                fobj = fobj.next
+    return used
+
+
+def hold_texture_blend(model):
+    """Approximation: an animated texture blend factor holds its authored
+    (rest) value; C3T has no per-sample blend factor."""
+    count = 0
+    for mapping in model.materials:
+        for _, tex_tracks in mapping.values():
+            for tracks in tex_tracks.values():
+                if 9 in tracks:
+                    del tracks[9]
+                    count += 1
+    return count
+
+
+DUAL_STAGES = 1024 | 8192 | 16384 | 32768 | 65536  # second-texture stage flags (prepare_title)
+
+
+def drop_unencodable_dual(mesh):
+    """Approximation: a second-texture stage whose base stage is not the
+    MODULATE form the C3T encoder admits (batch words 4:6 == 4,0) is dropped."""
+    batch = mesh["batch"]
+    if not batch[3] & (1024 | 8192) or tuple(batch[4:6]) == (4, 0):
+        return mesh, None
+    batch = list(batch)
+    batch[3] &= ~DUAL_STAGES
+    batch[26], batch[27] = 0, 0.
+    mesh = dict(mesh, batch=batch, textures=mesh["textures"][:1], raw_textures=mesh["raw_textures"][:1])
+    return mesh, "mesh %d: second texture stage dropped (base stage op %d)" % (mesh["index"], batch[4])
+
+
+def build_actor_mesh(geometry, model, index, approximate):
+    """Reviewed source-material mesh, else (approximation) the plain field
+    material path, else the base (first non-bump) texture layer alone."""
+    mesh, note = build_actor_layers(geometry, model, index, approximate)
+    if approximate:
+        mesh, dropped = drop_unencodable_dual(mesh)
+        note = "; ".join(n for n in (note, dropped) if n) or None
+    return mesh, note
+
+
+def build_actor_layers(geometry, model, index, approximate):
+    import copy
+    try:
+        return geometry.build_mesh(model, index, max_envelope_weights=10, source_materials=True), None
+    except ValueError as error:
+        if not approximate:
+            raise
+        first = str(error)
+    try:
+        mesh = geometry.build_mesh(model, index, max_envelope_weights=10, source_materials=False)
+        return mesh, "mesh %d: source material expression dropped (%s)" % (index, first)
+    except ValueError as error:
+        second = str(error)
+    dobj = model.meshes[index][1]
+    head, layers, texture = dobj.mobject.texture, [], dobj.mobject.texture
+    while texture:
+        layers.append(texture)
+        texture = texture.next
+    base = next((t for t in layers if not t.flags & BUMP), None)
+    if base is None or base is not layers[0]:
+        raise ValueError("%s; no leading base texture layer to keep" % second)
+    single = copy.copy(base)
+    single.next = None
+    dobj.mobject.texture = single
+    try:
+        mesh = geometry.build_mesh(model, index, max_envelope_weights=10, source_materials=False)
+    finally:
+        dobj.mobject.texture = head
+    return mesh, "mesh %d: base texture layer only, %d layer(s) dropped (%s; %s)" % (
+        index, len(layers) - 1, first, second)
+
+
+def singular_samples(model, descriptor, states):
+    import numpy as np
+    from prepare_field_geometry import base_descriptor
+    rest_inverse = np.linalg.inv(model.deform(base_descriptor(descriptor), model.rest))
+    result = np.asarray([model.deform(descriptor, world) @ rest_inverse for world, _ in states])
+    bad = ~np.isfinite(result).all(axis=(1, 2)) | (np.nan_to_num(np.abs(result[:, :3, :]), nan=np.inf)
+                                                   .max(axis=(1, 2)) > EXCESSIVE)
+    safe = np.where(bad[:, None, None], np.eye(4), result)
+    values = np.linalg.svd(safe[:, :3, :3], compute_uv=False)
+    return bad | (values[:, -1] <= values[:, 0] * 1e-9), bad
+
+
+def hide_singular(meshes, states, pairs):
+    """Approximation: a joint that collapses (singular transform) hides the
+    triangles it drives at those samples, as exactly-zero ones already are.
+    Meshes split into runs of triangles with equal hidden samples (draw order
+    kept). Returns (meshes, hidden descriptor count)."""
+    import numpy as np
+    masks, excessive = {}, {}
+    for mesh in meshes:
+        for d in set(mesh["descriptors"]):
+            key = (id(mesh["model"]), d)
+            if key not in masks:
+                found, bad = singular_samples(mesh["model"], d, states)
+                masks[key] = found if found.any() else None
+                if bad.any():
+                    excessive[key] = bad
+    if not any(m is not None for m in masks.values()):
+        return meshes, 0
+    result = []
+    for mesh in meshes:
+        d = mesh["descriptors"]
+        runs = []
+        for offset in range(0, len(d), 3):
+            mask = np.zeros(len(states), dtype=bool)
+            for item in set(d[offset:offset + 3]):
+                own = masks[(id(mesh["model"]), item)]
+                if own is not None:
+                    mask |= own
+            signature = mask.tobytes()
+            if not runs or runs[-1][0] != signature:
+                runs.append((signature, mask, []))
+            runs[-1][2].extend(range(offset, offset + 3))
+        for _, mask, indices in runs:
+            part = dict(mesh)
+            if len(runs) > 1:
+                part["vertices"] = [mesh["vertices"][i] for i in indices]
+                part["descriptors"] = [d[i] for i in indices]
+                part["batch"] = list(mesh["batch"])
+                part["batch"][1] = len(indices)
+            part["singular_samples"] = {pairs[i] for i in np.flatnonzero(mask)}
+            result.append(part)
+    hidden = [key for key, mask in masks.items() if mask is not None]
+    HIDDEN_SINGULAR.update({key: excessive.get(key) for key in hidden})
+    return result, len(hidden)
+
+
+def install_singular_sampler(geometry):
+    """_sample_descriptor that admits the singular samples hide_singular hid."""
+    import numpy as np
+    original = geometry._sample_descriptor
+    if getattr(original, "battle3d", False):
+        return
+
+    def sampler(model, descriptor, states, attachment=None):
+        key = (id(model), descriptor)
+        try:
+            result = original(model, descriptor, states, attachment)
+        except ValueError as error:
+            if ("Singular" not in str(error) and "Nonfinite" not in str(error)) or key not in HIDDEN_SINGULAR:
+                raise
+            rest_inverse = np.linalg.inv(model.deform(geometry.base_descriptor(descriptor), model.rest))
+            result = np.asarray([model.deform(descriptor, world) @ rest_inverse for world, _ in states])
+            if attachment is not None:
+                result = attachment @ result
+            result = result[:, :3, :].astype("<f4")
+        bad = HIDDEN_SINGULAR.get(key)
+        if bad is not None and len(bad) == len(result):
+            # Hidden samples whose transform is nonfinite or excessive are
+            # stored collapsed at the origin (the runtime admits a singular
+            # bone while every batch using it is hidden).
+            result = np.array(result)
+            result[bad] = 0
+        return result
+    sampler.battle3d = True
+    geometry._sample_descriptor = sampler
+
+
+def merge_tracks(geometry, meshes, states, approximate, limit=MAX_PACK_BONES):
     """Approximation: fold skin tracks together until a model fits one pack.
 
     Every sampled track maps rest-pose model-space vertices to the pose, so a
@@ -192,6 +433,9 @@ def merge_tracks(geometry, meshes, states, approximate):
             points.setdefault((mesh["model"], descriptor), []).append(vertex[:3])
     groups, fixed = {}, []
     for key in points:
+        if (id(key[0]), key[1]) in HIDDEN_SINGULAR:
+            fixed.append(key)
+            continue
         try:
             track = geometry._sample_descriptor(key[0], key[1], states)
         except ValueError:
@@ -202,9 +446,9 @@ def merge_tracks(geometry, meshes, states, approximate):
             continue
         groups.setdefault(track.tobytes(), (track, []))[1].append(key)
     distinct = len(groups) + len(fixed)
-    if distinct <= MAX_PACK_BONES or not approximate:
+    if distinct <= limit or not approximate:
         return None
-    if len(fixed) >= MAX_PACK_BONES or len({key[0] for key in points}) != 1:
+    if len(fixed) >= limit or len({key[0] for key in points}) != 1:
         raise ValueError("Skin tracks cannot be merged into one pack")
     reps = list(groups.values())
     picks = np.linspace(0, len(states) - 1, min(len(states), 64)).round().astype(int)
@@ -225,7 +469,7 @@ def merge_tracks(geometry, meshes, states, approximate):
         cost[a] = np.sqrt((moved ** 2).sum(-1)).max(axis=(1, 2))
     np.fill_diagonal(cost, np.inf)
     alive, owner, worst = count, list(range(count)), 0.
-    while alive + len(fixed) > MAX_PACK_BONES:
+    while alive + len(fixed) > limit:
         a, b = np.unravel_index(np.argmin(cost), cost.shape)
         worst = max(worst, cost[a, b])
         cost[b] = np.maximum(cost[b], cost[a])
@@ -236,7 +480,7 @@ def merge_tracks(geometry, meshes, states, approximate):
         alive -= 1
     if worst > MAX_MERGE_ERROR * extent:
         raise ValueError("Merging %d skin tracks into %d moves vertices %.3f (%.1f%% of the model)" % (
-            distinct, MAX_PACK_BONES, worst, 100 * worst / extent))
+            distinct, limit, worst, 100 * worst / extent))
     mapping = {}
     for index, (_, keys) in enumerate(reps):
         target = reps[owner[index]][1][0]
@@ -245,7 +489,7 @@ def merge_tracks(geometry, meshes, states, approximate):
                 mapping[key] = target[1]
     for mesh in meshes:
         mesh["descriptors"] = [mapping.get((mesh["model"], d), d) for d in mesh["descriptors"]]
-    return {"distinct_tracks": distinct, "merged_to": MAX_PACK_BONES,
+    return {"distinct_tracks": distinct, "merged_to": limit,
             "max_displacement": round(worst, 5), "model_extent": round(extent, 5),
             "max_displacement_share": round(worst / extent, 5)}
 
@@ -295,14 +539,51 @@ def encode_stage(camera, files):
     return bytes(output)
 
 
+PKX_ROW = 0xD0  # Colosseum PKX animation row (sequence.c SequenceEntrySrc)
+CENTRE_SLOT = 16
+
+
+def pkx_rows(payload, header):
+    """Original PKX rows, read as fn_801DD5E8 does (sequence.c).
+
+    Header +0x10 load mode selects the header size; rows follow the aligned
+    DAT and GPT1. Row: s32 value count, s32 track count, u32, s32 values[16]
+    (60 Hz ticks, scaled by the game rate on load), s32 body map[16] at
+    +0x4C (GSmodel part per slot), tracks at +0x8C. Load mode 5 also gives
+    the closed-eye texture animation (header +0x18 as s16, fn_801DF3D4).
+    """
+    def align(n):
+        return (n + 31) & ~31
+    main, aux, count, mode = u32(payload, 0), u32(payload, 4), u32(payload, 8), u32(payload, 0x10)
+    head = align(0x24 + (-0x10 if mode in (1, 2) else -0xC if mode in (3, 4) else 0))
+    start = head + align(main) + align(aux)
+    rows = []
+    for index in range(count):
+        row = extent(payload, start + index * PKX_ROW, PKX_ROW)
+        values, tracks = struct.unpack_from(">ii", row, 0)
+        if not 0 <= values <= 16 or not 0 <= tracks <= 8:
+            raise ValueError("PKX row counts out of range")
+        subs = [struct.unpack_from(">II", row, 0x8C + 8 * j) for j in range(tracks)]
+        rows.append({"values": values, "timing": list(struct.unpack_from(">16i", row, 0x0C)),
+                     "body_map": list(struct.unpack_from(">16i", row, 0x4C)), "tracks": subs})
+    # Cross-check against the pinned parser's own read of the same rows.
+    for row, entry in zip(rows, header.anim_entries):
+        if row["body_map"] != list(entry.body_map_bones) or \
+                [list(t) for t in row["tracks"][:len(entry.sub_anims)]] != \
+                [[a.motion_type, a.anim_index] for a in entry.sub_anims]:
+            raise ValueError("PKX row layout differs from the parser's header")
+    closed_eye = struct.unpack_from(">h", payload, 0x1A)[0] if mode not in (1, 2, 3, 4) else -1
+    return rows, closed_eye, mode
+
+
 def encode_index(species_models, trainer_models, floors, models):
     header = 64
     species_off = header
     trainer_off = (species_off + SPECIES_COUNT * 2 + 3) & ~3
     floor_off = (trainer_off + TRAINER_COUNT * 2 + 3) & ~3
     model_off = (floor_off + FLOOR_COUNT * 32 + 3) & ~3
-    output = bytearray(model_off + len(models) * 128)
-    struct.pack_into("<4s9I", output, 0, b"C3BN", 1, SPECIES_COUNT, TRAINER_COUNT, FLOOR_COUNT,
+    output = bytearray(model_off + len(models) * MODEL_RECORD)
+    struct.pack_into("<4s9I", output, 0, b"C3BN", 2, SPECIES_COUNT, TRAINER_COUNT, FLOOR_COUNT,
                      len(models), species_off, trainer_off, floor_off, model_off)
     for i in range(SPECIES_COUNT):
         struct.pack_into("<H", output, species_off + i * 2, species_models.get(i, 0xFFFF))
@@ -314,12 +595,21 @@ def encode_index(species_models, trainer_models, floors, models):
             raise ValueError("Floor descriptor name too long")
         output[floor_off + i * 32:floor_off + i * 32 + len(name)] = name
     for i, model in enumerate(models):
-        at = model_off + i * 128
+        at = model_off + i * MODEL_RECORD
         name = model["file"].encode("ascii")
         if len(name) > 47:
             raise ValueError("Model pack name too long")
         output[at:at + len(name)] = name
         struct.pack_into("<17IIf", output, at + 48, *model["entry_clip"], model["kind"], 1.)
+        parts = model.get("body_parts")
+        if parts:
+            # v2: +124 flags, +128 part_bone[17], +145 camera_part[3],
+            # +148 closed-eye texture animation, +152 timing[17][4] (ticks).
+            struct.pack_into("<I17B3BI", output, at + 124, 1, *parts["part_bone"],
+                             *parts["camera_part"], parts["closed_eye_texanim"] & 0xFFFFFFFF)
+            struct.pack_into("<68f", output, at + 152, *[v for row in parts["timing"] for v in row])
+        else:
+            struct.pack_into("<I17B3BI", output, at + 124, 0, *[0xFF] * 20, 0xFFFFFFFF)
     return bytes(output)
 
 
@@ -365,6 +655,8 @@ class Run:
         # Like the field tour's surveyed floors: recorded approximations
         # instead of stopping on unreviewed materials and lights.
         geometry.APPROXIMATE["enabled"] = self.approximate
+        if self.approximate:
+            install_singular_sampler(geometry)
         title.APPROXIMATE_HOOK = geometry.approximate if self.approximate else None
         self.report = {"schema": 1, "format": "battle3d index v1", "source_commit": SOURCE_COMMIT,
                        "common_sha1": COMMON_SHA1, "max_texture": self.max_texture,
@@ -410,6 +702,8 @@ class Run:
             if kind == "floors" and (ram > self.arena_budget or len(old["packs"]) > MAX_ARENA_RECORDS):
                 return None
             if kind == "models" and ram > MODEL_RAM_BUDGET:
+                return None
+            if kind == "models" and old["kind"] == 0 and "body_parts" not in old:
                 return None
             print("Reusing %s %s" % (kind, key), flush=True)
             old.setdefault("approximations", {})
@@ -616,14 +910,38 @@ class Run:
             options = {"filepath": binding["archive"], "game": "COLO_XD", "max_frame": 1000000000,
                        "section_names": [], "ik_hack": False, "pkx_header": header}
             scene = describe_scene([types.SimpleNamespace(root_node=raw, section_name="scene_data")], options)
-        model = geometry.Model(scene.models[0], raw.models[0], allow_image_swaps=True,
-                               **({"frozen_material_colors": True} if self.approximate else {}))
+        fixes = actor_source_fixes(scene.models[0], raw.models[0]) if self.approximate else {}
+        # Approximation mode also admits joint paths and the targetless
+        # (effector) IK form the field actors use (solve_ik_upper/lower).
+        options = ({"frozen_material_colors": True, "allow_paths": True, "allow_instances": True}
+                   if self.approximate else {})
+        try:
+            model = geometry.Model(scene.models[0], raw.models[0], allow_image_swaps=True, **options)
+        except ValueError as error:
+            if not self.approximate or "path" not in str(error):
+                raise
+            # A path track the field subset cannot place holds its rest value.
+            fixes = collections.Counter(fixes) + strip_joint_paths(raw.models[0])
+            model = geometry.Model(scene.models[0], raw.models[0], allow_image_swaps=True, **options)
+        held_blends = hold_texture_blend(model) if self.approximate else 0
         entries = clip_mapping(header, model.ends)
         wanted = POKEMON_ENTRIES if kind == 0 else TRAINER_ENTRIES
         idle = entries[0]["clips"][0]
-        built = [geometry.build_mesh(model, i, max_envelope_weights=10, source_materials=True)
-                 for i in range(len(model.meshes))]
-        approximations = self.used(before)
+        built, material_notes = [], []
+        for i in range(len(model.meshes)):
+            mesh, note = build_actor_mesh(geometry, model, i, self.approximate)
+            built.append(mesh)
+            if note:
+                material_notes.append(note)
+        approximations = self.used(before) + collections.Counter(fixes)
+        if held_blends:
+            approximations["texture_blend_animation_held_at_rest"] += held_blends
+        for note in material_notes:
+            for phrase, label in (("source material", "source_material_dropped"),
+                                  ("base texture layer only", "base_texture_layer_only"),
+                                  ("second texture stage dropped", "second_texture_stage_dropped")):
+                if phrase in note:
+                    approximations[label] += 1
         if getattr(model, "frozen_material_tracks", None):
             approximations["frozen_material_colors"] += 1
         camera, lights = self.reference()
@@ -635,6 +953,7 @@ class Run:
             variants.append((0.5, tuple(e for e in wanted if e not in (3, 4))))
         if not self.approximate:
             variants = variants[:1]
+        parts_plan = self.body_part_plan(payload, header, model) if kind == 0 else None
         reductions = []
         for attempt, (rate, chosen) in enumerate(variants):
             self.cleanup(prefix)
@@ -659,20 +978,63 @@ class Run:
             batches = len(meshes)
             if batches > 64:
                 meshes = merge_batches(meshes)
-            merged = merge_tracks(geometry, meshes, states, self.approximate)
+            hidden = 0
+            if self.approximate:
+                meshes, hidden = hide_singular(meshes, states, pairs)
+            retained, dropped, reduced_parts = [], [], False
+            if parts_plan:
+                for joint in parts_plan["joints"]:
+                    det = min(abs(np.linalg.det(np.asarray(world[joint])[:3, :3])) for world, _ in states)
+                    (retained if det >= 1e-9 else dropped).append(joint)
+            try:
+                merged = merge_tracks(geometry, meshes, states, self.approximate,
+                                      MAX_PACK_BONES - len(retained))
+            except ValueError as error:
+                # Too many skin tracks to also hold every body part: keep the
+                # most attached slots (0, 1, 2, 6, 7; wzx-research 1.1).
+                essential = {parts_plan["slots"][i] for i in (0, 1, 2, 6, 7)} if parts_plan else set()
+                if not str(error).startswith("Merging") or not set(retained) - essential:
+                    raise
+                dropped += [j for j in retained if j not in essential]
+                retained = [j for j in retained if j in essential]
+                reduced_parts = True
+                merged = merge_tracks(geometry, meshes, states, self.approximate,
+                                      MAX_PACK_BONES - len(retained))
             mark_collapsed(meshes, states, pairs)
+            for mesh in meshes:
+                mesh["collapsed_samples"] = mesh.get("collapsed_samples", set()) | mesh.pop("singular_samples", set())
             written = geometry.prepare_pack_set(meshes, schedules, 60. * rate, [camera] * count, lights,
                                                 self.report["archives"][binding["archive"]]["sha256"],
-                                                self.output, prefix, expected_count=1, format_version=3)
+                                                self.output, prefix, expected_count=1, format_version=3,
+                                                retained_parts=tuple((model, j, j) for j in retained))
             packs = [self.finish_pack(pack) for pack in written]
+            if parts_plan:
+                bones = {r["source_part"]: r["sampled_bone"] for r in written[0]["retained_parts"]}
             ram = packs[0]["repacked_bytes"]
             if ram <= MODEL_RAM_BUDGET or attempt == len(variants) - 1:
                 approximations += self.used(since)
                 break
             reductions.append({"was_bytes": ram, "next": "%g Hz, entries %s" % (
                 60 * variants[attempt + 1][0], list(variants[attempt + 1][1]))})
+        body_parts = None
+        if parts_plan:
+            slots = parts_plan["slots"]
+            part_bone = [bones.get(j, 0xFF) if j is not None else 0xFF for j in slots]
+            body_parts = {"part_bone": part_bone, "camera_part": part_bone[:3],
+                          "slot_joints": slots, "dropped_singular_joints": dropped,
+                          "closed_eye_texanim": parts_plan["closed_eye"],
+                          "timing": parts_plan["timing"], "timing_units": "60 Hz ticks",
+                          "body_map_differs_in_entries": parts_plan["differs"],
+                          "pkx_load_mode": parts_plan["mode"], "pkx_rows": parts_plan["rows"],
+                          "entry_body_maps": parts_plan["entry_body_maps"],
+                          "centre": "body-map slot 2 (sequence fn_801D97F0 without a GSmodel centre null)"}
+            if dropped:
+                approximations["body_parts_reduced_to_slots_0_1_2_6_7" if reduced_parts
+                               else "body_part_singular_dropped"] += len(dropped)
         if merged:
             approximations["skin_tracks_merged"] += 1
+        if hidden:
+            approximations["singular_joints_hidden"] += hidden
         if rate != 1:
             approximations["actor_sampled_at_30hz"] += 1
         if len(chosen) != len(wanted):
@@ -686,6 +1048,8 @@ class Run:
                 "omitted_zero_surface_meshes": omitted,
                 "merged_skin_tracks": merged, "size_reductions": reductions,
                 "joined_batches": batches - len(meshes),
+                "body_parts": body_parts,
+                "material_notes": material_notes,
                 "approximations": dict(approximations),
                 "member": "%08x" % binding["resource"], "member_bytes": len(payload),
                 "member_sha256": hashlib.sha256(payload).hexdigest(),
@@ -693,6 +1057,24 @@ class Run:
                 "animation_entries": entries, "particle_events": model.particle_events,
                 "fixed_lights_camera": "battle floor %d arena" % REFERENCE_FLOOR,
                 "packs": packs}
+
+    @staticmethod
+    def body_part_plan(payload, header, model):
+        """Body-map joints (entry 0 row) plus the centre, retained as pack parts."""
+        rows, closed_eye, mode = pkx_rows(payload, header)
+        if not rows:
+            raise ValueError("PKX has no animation rows")
+        body = rows[0]["body_map"]
+        slots = [j if 0 <= j < len(model.joints) else None for j in body]
+        slots.append(slots[2])  # centre: fn_801D97F0 falls back to row +0x54 (slot 2)
+        # A missing row (fewer than 17 in the PKX) keeps zero marks; the
+        # sequence loader substitutes entry 0/1 for it (wzx-research 1.1).
+        timing = [[float(row["timing"][k]) if k < row["values"] else 0. for k in range(4)]
+                  for row in rows[:ENTRY_COUNT]] + [[0.] * 4] * max(0, ENTRY_COUNT - len(rows))
+        return {"slots": slots, "joints": sorted({j for j in slots if j is not None}),
+                "closed_eye": closed_eye, "timing": timing, "mode": mode, "rows": len(rows),
+                "entry_body_maps": [row["body_map"] for row in rows[:ENTRY_COUNT]],
+                "differs": [i for i, row in enumerate(rows[:ENTRY_COUNT]) if row["body_map"] != body]}
 
     def prepare_models(self, species_ids, trainer_ids):
         groups = {}
