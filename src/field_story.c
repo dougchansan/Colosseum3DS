@@ -77,6 +77,7 @@ typedef struct {
     uint16_t (*random16)(void *context);void *random_context;
     int (*species_name)(void *context,unsigned species,char *out,size_t capacity);void *species_context;
     C3FieldStoryReceive receive;void *receive_context;
+    C3FieldStoryAudio audio;void *audio_context;
     const C3AreaDoor *door_rows;C3StoryDoor doors[C3_AREA_MAX_DOORS];uint32_t door_count;
     C3FieldStoryRestore restore;void *restore_context;
     uint32_t message_values[256]; /* msgctrlSetValue: one word per control byte */
@@ -829,8 +830,23 @@ static int run_native(Impl *s,RunTask *t,char *error)
          * left in the fight-floor global. Zero until a battle has finished. */
         value=s->fight_result;break;
     case 0x68:case 0x69:
-        s->sound_id=a[0];note_presentation(s,c->native,"field_audio_backend_pending");break;
-    case 0x6a:case 0x6d:case 0x8a:case 0x99:
+        /* fn_80165A20 / fn_801659FC (sound, fade, volume): start a song in
+         * the 0x406 / 0x407 slot; the floor scripts start area music here. */
+        s->sound_id=a[0];
+        if(s->audio){
+            int r=s->audio(s->audio_context,c->native==0x68?C3_STORY_AUDIO_PLAY_406:C3_STORY_AUDIO_PLAY_407,a[0],a[1],a[2]);
+            log_line(s,"story_audio native=%02lx sound=%lx fade=%lu volume=%lu started=%d",(unsigned long)c->native,
+                     (unsigned long)a[0],(unsigned long)a[1],(unsigned long)a[2],r);
+        }else note_presentation(s,c->native,"field_audio_backend_pending");
+        break;
+    case 0x6a:case 0x6d:
+        /* soundStop(sound, fade) / fn_80165718(volume, fade). */
+        if(s->audio){
+            s->audio(s->audio_context,c->native==0x6a?C3_STORY_AUDIO_STOP:C3_STORY_AUDIO_MASTER,a[0],a[1],0);
+            log_line(s,"story_audio native=%02lx a0=%lx fade=%lu",(unsigned long)c->native,(unsigned long)a[0],(unsigned long)a[1]);
+        }else note_presentation(s,c->native,"field_audio_backend_pending");
+        break;
+    case 0x8a:case 0x99:
         note_presentation(s,c->native,"field_audio_backend_pending");break;
     case 0x72:
         /* fn_801CB954: a resource that is a floor person changes that
@@ -1295,6 +1311,10 @@ int c3_field_story_shop_done(C3FieldStory *story,char *error)
         return resume(s,t,0,error);
     }
     return fail(error,"No shop is waiting");
+}
+void c3_field_story_set_audio_service(C3FieldStory *story,C3FieldStoryAudio audio,void *context)
+{
+    Impl *s=story?story->impl:NULL;if(s){s->audio=audio;s->audio_context=context;}
 }
 void c3_field_story_set_item_service(C3FieldStory *story,C3FieldStoryReceive receive,void *context)
 {

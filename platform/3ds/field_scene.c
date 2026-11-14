@@ -34,6 +34,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include "music_player.h"
 
 #define BOOT_ROOT "sdmc:/3ds/Colosseum3DS/boot/"
 #define SAVE_DIRECTORY "sdmc:/3ds/Colosseum3DS/saves"
@@ -92,6 +93,19 @@ static int receive_item(void *context,uint32_t item,uint32_t count,char *name,si
     }
     free(data);return result;
 }
+/* Script music natives 68/69/6A/6D -> the streamed MusyX player. */
+static int story_audio(void *context,unsigned op,uint32_t a,uint32_t b,uint32_t c)
+{
+    (void)context;
+    switch(op){
+    case C3_STORY_AUDIO_PLAY_406:return c3_music_play(C3_MUSIC_SLOT_406,a,c,b);
+    case C3_STORY_AUDIO_PLAY_407:return c3_music_play(C3_MUSIC_SLOT_407,a,c,b);
+    case C3_STORY_AUDIO_STOP:c3_music_stop(a,b);return 1;
+    case C3_STORY_AUDIO_MASTER:c3_music_master(a,b);return 1;
+    }
+    return 0;
+}
+
 /* Party service for script native D8. */
 static int restore_party(void *context)
 {
@@ -614,6 +628,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     c3_field_story_enable_shop(&story,1);
     c3_field_story_set_item_service(&story,receive_item,state);
     c3_field_story_set_party_service(&story,restore_party,state);
+    c3_field_story_set_audio_service(&story,story_audio,NULL);
     if(!c3_field_story_prepare(&story,story_error))goto story_failed;
     view=c3_field_story_view(&story);
     if(trace){fprintf(trace,"field_begin floor=%lu previous=%lu spawn=%u new=%d maps=%lu npcs=%lu models=%lu arrival=%d duration=%.3f\n",
@@ -1142,7 +1157,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                 else if(event.kind==C3_INGAME_RESUME){c3_pda_audio_close();pda_audio_ready=0;page=PAUSE_CLOSED;dirty=1;}
                 else if(event.kind==C3_INGAME_SAVE){page=PAUSE_SAVE;yes=0;dirty=1;}
                 else if(event.kind==C3_INGAME_LEAVE){page=PAUSE_LEAVE;yes=0;dirty=1;}
-                else if(event.kind==C3_INGAME_OPTIONS){c3_movie_player_set_mono(ingame->option_mono);dirty=1;}
+                else if(event.kind==C3_INGAME_OPTIONS){c3_movie_player_set_mono(ingame->option_mono);c3_music_set_mono(ingame->option_mono);dirty=1;}
                 else if(event.kind==C3_INGAME_READ_MAIL){
                     int ready=!event.mail.script||c3_field_story_menu_event(&story,event.mail.script,story_error);
                     if(ready&&!c3_game_state_mail_read(state,&event.mail.save,1)){

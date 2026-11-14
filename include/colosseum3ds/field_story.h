@@ -67,6 +67,13 @@ void c3_field_story_set_item_service(C3FieldStory *story,C3FieldStoryReceive rec
  * the number of members restored or a negative value. Unbound, D8 fails. */
 typedef int (*C3FieldStoryRestore)(void *context);
 void c3_field_story_set_party_service(C3FieldStory *story,C3FieldStoryRestore restore,void *context);
+/* Music (GSsnd wrappers). Natives 68/69 call fn_80165A20/fn_801659FC with
+ * (sound, fade, volume), loading the 0x406/0x407 song slots; 6A is
+ * soundStop(sound, fade); 6D is fn_80165718(volume, fade), the music master
+ * volume. Unbound, these natives only log, as before. */
+enum { C3_STORY_AUDIO_PLAY_406=1, C3_STORY_AUDIO_PLAY_407, C3_STORY_AUDIO_STOP, C3_STORY_AUDIO_MASTER };
+typedef int (*C3FieldStoryAudio)(void *context,unsigned op,uint32_t a,uint32_t b,uint32_t c);
+void c3_field_story_set_audio_service(C3FieldStory *story,C3FieldStoryAudio audio,void *context);
 /* Doors of this floor for script native 60 (floorEventCtrlDoor). rows and
  * models are borrowed; models[i] may be NULL (the native then returns -1
  * after its flag and collision changes, as for a missing model). A door

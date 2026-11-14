@@ -5,6 +5,7 @@
 #include "game_menu.h"
 #include "bottom_screen.h"
 #include "movie_player.h"
+#include "music_player.h"
 #include "n3ds_platform.h"
 #include "render_recovery.h"
 #include "title_renderer.h"
@@ -137,12 +138,21 @@ static int run_title(FILE *trace, C3GameState *state,
                 (unsigned long)title->texture_count, (unsigned long)title->bone_count, (double)title->fps);
         fflush(trace);
     }
+    /* gs_title_8001EF78.c fn_8001FD48: fn_80165A20(0x46A, 0, 0xFF). The
+     * original runs the attract demo when the song ends (fn_801666BC == 0)
+     * and restarts it on return; without the demo, restart it directly. */
+    c3_music_play(C3_MUSIC_SLOT_406, 0x46A, 0xFF, 0);
+    uint64_t music_check = c3_n3ds_active_time_us() + 1000000u;
     previous = c3_n3ds_active_time_us();
     result = 1;
     while (c3_n3ds_poll(&input)) {
         uint64_t now = c3_n3ds_active_time_us();
         float delta = (float)(now - previous) / 1000000.0f;
         previous = now;
+        if (now >= music_check) {
+            music_check = now + 1000000u;
+            if (!c3_music_status(0x46A)) c3_music_play(C3_MUSIC_SLOT_406, 0x46A, 0xFF, 0);
+        }
         clip_seconds += delta;
         phase_seconds += delta;
         float fade = 1.0f;
@@ -345,14 +355,24 @@ int c3_boot_scene_run(int core_status)
         return tour_result < 0 ? 1 : 0;
     }
 #endif
+    {
+        char music_error[128] = {0};
+        if (!c3_music_open("sdmc:/3ds/Colosseum3DS", music_error, sizeof music_error) && trace)
+            fprintf(trace, "music_open status=unavailable reason=%s\n", music_error);
+    }
     int result = c3_movie_player_run(BOOT_ROOT "tpc.c3v", "tpc", trace, error, sizeof(error));
+    /* movie.c fn_800364C8: the converted logo movie has no audio track; the
+     * original plays its jingle as sound 0x4D1 (volume 0x7F) at movie start. */
+    if (!result) c3_music_play(C3_MUSIC_SLOT_406, 0x4D1, 0x7F, 0);
     if (!result) result = c3_movie_player_run(BOOT_ROOT "gs_logo.c3v", "gs_logo", trace, error, sizeof(error));
+    c3_music_trace(trace, "gs_logo_end");
     int from_game = 0;
     while (!result) {
         int new_game = 0, dev_floor = 0;
         result = run_title(trace, &state, &new_game, &dev_floor, from_game,
                            &session_options, &options_edited, error, sizeof(error));
         if (result) break;
+        c3_music_stop_slot(C3_MUSIC_SLOT_406, 500);   /* the floor scripts start area music */
         if (dev_floor) {
             /* No game state crosses this call; return to the title menu. */
             result = c3_dev_floor_scene_run(trace, error, sizeof(error));
@@ -361,6 +381,7 @@ int c3_boot_scene_run(int core_status)
         }
         if (new_game) {
             uint64_t before = c3_n3ds_active_time_us();
+            c3_music_stop_slot(C3_MUSIC_SLOT_406, 0);   /* the opening movie carries its own audio */
             if (trace) { fprintf(trace, "game_link floor=928 name=openingdemo\n"); fflush(trace); }
             result = c3_movie_player_run(BOOT_ROOT "openingdemo.c3v", "openingdemo", trace, error, sizeof(error));
             c3_game_state_add_play_time(&state, (double)(c3_n3ds_active_time_us() - before) / 1000000.0);
@@ -379,9 +400,11 @@ int c3_boot_scene_run(int core_status)
             session_options.sound_mono=current_options.sound_mono;
             session_options.rumble_disabled=current_options.rumble_disabled;
             c3_movie_player_set_mono(session_options.sound_mono);
+            c3_music_set_mono(session_options.sound_mono);
         }
         from_game = 1;
     }
+    c3_music_close();
     c3_game_state_free(&state);
     if (trace) { fprintf(trace, "boot_end result=%d error=%s\n", result, error); fclose(trace); }
     if (result < 0) {
