@@ -1481,15 +1481,19 @@ static int advance_people(Impl *s,float elapsed,char *error)
         float walk,run;
         if(p->source){
             uint32_t clip=p->source->motions[1];
-            if(!p->public.model||clip>=p->public.model->clip_count||p->public.model->clips[clip].frame_count<2)
-                return fail(error,"Actor walking rate is not prepared");
-            float frames=(float)(p->public.model->clips[clip].frame_count-1u)*30.0f/p->public.model->fps;
+            /* A person still streaming in (no model yet) or a pack without
+             * the walk clip: one walk cycle per second until it arrives. */
+            float frames=30.0f;
+            if(p->public.model&&clip<p->public.model->clip_count&&p->public.model->clips[clip].frame_count>=2)
+                frames=(float)(p->public.model->clips[clip].frame_count-1u)*30.0f/p->public.model->fps;
+            else if(p->public.model)note_presentation(s,0x49,"actor_walk_clip_missing_default_rate");
             walk=p->source->walk_distance/frames;run=walk;
             if(p->speed>1){
                 clip=p->source->motions[2];
-                if(clip>=p->public.model->clip_count||p->public.model->clips[clip].frame_count<2)
-                    return fail(error,"Actor running rate is not prepared");
-                frames=(float)(p->public.model->clips[clip].frame_count-1u)*30.0f/p->public.model->fps;
+                frames=30.0f;
+                if(p->public.model&&clip<p->public.model->clip_count&&p->public.model->clips[clip].frame_count>=2)
+                    frames=(float)(p->public.model->clips[clip].frame_count-1u)*30.0f/p->public.model->fps;
+                else if(p->public.model)note_presentation(s,0x49,"actor_run_clip_missing_default_rate");
                 run=p->source->run_distance/frames;
             }
         }else{walk=s->map->walk_distance/s->map->walk_frames;run=s->map->run_distance/s->map->run_frames;}

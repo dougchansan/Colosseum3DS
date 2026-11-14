@@ -30,9 +30,10 @@ int c3_orbit_input(C3OrbitCamera *orbit, int stick_x, int stick_y, uint16_t held
     float x = stick(stick_x), y = stick(stick_y);
     int acted = 0;
     if (x != 0.0f || y != 0.0f) {
-        /* Right orbits the camera to the hero's right; up raises the view. */
-        orbit->yaw -= x * C3_ORBIT_LOOK_SPEED * seconds;
-        orbit->pitch += y * C3_ORBIT_LOOK_SPEED * seconds;
+        /* Reversed after hardware testing (2026-11-13): right swings the
+         * camera to the hero's left, up lowers the view toward the horizon. */
+        orbit->yaw += x * C3_ORBIT_LOOK_SPEED * seconds;
+        orbit->pitch -= y * C3_ORBIT_LOOK_SPEED * seconds;
         acted = 1;
     }
     if (!(held & (PAD_Z | PAD_R))) {

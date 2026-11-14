@@ -13,7 +13,7 @@
  * relative to the look direction. No camera collision is added. */
 #define C3_FIRST_PERSON_EYE_HEIGHT 14.0f
 #define C3_FIRST_PERSON_EYE_FORWARD 2.0f
-#define C3_FIRST_PERSON_LOOK_SPEED 2.0f      /* radians per second at full stick */
+#define C3_FIRST_PERSON_LOOK_SPEED 3.5f      /* radians per second at full stick (raised from 2.0 after hardware testing) */
 #define C3_FIRST_PERSON_TOUCH_SPEED 0.012f   /* radians per bottom-screen pixel */
 #define C3_FIRST_PERSON_PITCH_LIMIT 1.35f    /* radians; never reaches vertical */
 #define C3_FIRST_PERSON_DEADZONE 15          /* of +/-127, the mod's 12 of +/-100 */
