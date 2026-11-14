@@ -52,6 +52,8 @@ int c3_stage_renderer_init(const C3Title *const *models, size_t count,
  * costs 48 bytes of linear memory per vertex; the request applies to the
  * next init only. */
 void c3_stage_renderer_request_gpu_skin(uint64_t models);
+/* 1 when init would admit this pack's materials and batches (no GPU work). */
+int c3_stage_renderer_validate(const C3Title *title, char *error, size_t capacity);
 /* After init: the batches of model the GPU can skin and light
  * (colosseum3ds/skin_uniforms.h). A caller may copy it into that retained
  * title's gpu_batches; zero when nothing qualifies. */

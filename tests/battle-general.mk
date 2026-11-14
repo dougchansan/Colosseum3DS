@@ -21,3 +21,12 @@ all: build/test_battle3d_index
 build/test_wzx_player: tests/test_wzx_player.c src/wzx_player.c include/colosseum3ds/wzx_player.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -D_POSIX_C_SOURCE=200809L tests/test_wzx_player.c src/wzx_player.c $(LDFLAGS) -o $@
 all: build/test_wzx_player
+
+# The general WZX battle camera (synthetic; a prepared wzx_camera.c3k as argument is exercised too).
+build/test_wzx_camera: tests/test_wzx_camera.c src/wzx_camera.c include/colosseum3ds/wzx_camera.h include/colosseum3ds/title.h
+	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_wzx_camera.c src/wzx_camera.c $(LDFLAGS) -lm -o $@
+all: build/test_wzx_camera
+.PHONY: wzx-camera-check
+wzx-camera-check: build/test_wzx_camera
+	./build/test_wzx_camera
+battle-general-check: wzx-camera-check

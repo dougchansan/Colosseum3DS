@@ -1422,3 +1422,9 @@ int c3_stage_renderer_probe_clear(void)
     return C3_RENDER_OK;
 }
 #endif
+
+/* Whether the stage renderer can draw this pack (same checks as init). */
+int c3_stage_renderer_validate(const C3Title *title, char *error, size_t capacity)
+{
+    return validate_asset(title, error, capacity) == 0;
+}

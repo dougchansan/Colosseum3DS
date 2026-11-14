@@ -116,7 +116,11 @@ static WzxSequence *wzx_sequence(C3BattleGeneralStage *s, const char *root, cons
         snprintf(path, sizeof path, "%s/%s", root, n.file);
         if ((n.kind == C3_WZX_MODEL || n.kind == C3_WZX_EFFECT) && strstr(n.file, ".c3t") && s->count < C3_GSTAGE_MODELS) {
             uint32_t m = s->count;
-            if (c3_title_load(&s->models[m], path, error, sizeof error)) {
+            if (c3_title_load(&s->models[m], path, error, sizeof error) && !c3_stage_renderer_validate(&s->models[m], error, sizeof error)) {
+                /* A material the renderer cannot draw: the node keeps its time, unseen. */
+                if (s->trace) { fprintf(s->trace, "wzx_model_unsupported file=%s reason=%s\n", n.file, error); fflush(s->trace); }
+                c3_title_close(&s->models[m]); memset(&s->models[m], 0, sizeof s->models[m]);
+            } else if (s->models[m].file_data) {
                 s->count = m + 1; s->slots[m] = WZX_EFFECT_SLOT; s->draw[m] = &s->models[m];
                 s->transforms[m][4] = 1; s->clips[m] = 0; s->clocks[m] = 0; s->appear[m] = 1;
                 snprintf(s->files[m], sizeof s->files[m], "%s", n.file);
