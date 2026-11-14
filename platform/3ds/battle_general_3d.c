@@ -105,6 +105,7 @@ int c3_battle_general_3d_run(const C3BattlePack *pack, C3GeneralBattle *b, FILE 
         if (trace) { fprintf(trace, "battle_audio_unavailable error=%s playing_silently=1\n", error); fflush(trace); }
         error[0] = 0;
     }
+    C3BattleMusic music; c3_battle_music_begin(&music, &b->info, trace);
     c3_general_view_restart(&view, b);
     uint16_t hp[4]; memcpy(hp, view.hp, sizeof hp);
     if (!open_stage(stage, &index, &cast, pack, hp, audio, trace, error, sizeof error)) goto done;
@@ -191,6 +192,7 @@ done:
     if (close_stage(stage, trace, frames)) result = 1;
     c3_render_recovery_set_pause_callback(NULL);
     if (audio) c3_battle_audio_player_close();
+    c3_battle_music_end(&music);
     c3_battle3d_index_free(&index);
     free(stage);
     if (input.exit_requested || !aptMainLoop()) result = 1;

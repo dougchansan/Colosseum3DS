@@ -1,10 +1,28 @@
 #include "battle_general_scene.h"
 #include "bottom_screen.h"
 #include "n3ds_platform.h"
+#include "music_player.h"
 #include <stdlib.h>
 #include <string.h>
 
 #define EVENT_MS 900u
+
+void c3_battle_music_begin(C3BattleMusic *m, const C3BattleEncounterInfo *info, FILE *trace)
+{
+    m->field[0] = c3_music_current(C3_MUSIC_SLOT_406);
+    m->field[1] = c3_music_current(C3_MUSIC_SLOT_407);
+    int bgm = info->bgm && c3_music_play(C3_MUSIC_SLOT_406, info->bgm, 0xFF, 0);
+    if (info->environment_sound) c3_music_play(C3_MUSIC_SLOT_407, info->environment_sound, 0xFF, 1000);
+    else c3_music_stop_slot(C3_MUSIC_SLOT_407, 1000);
+    if (trace) { fprintf(trace, "battle_music bgm=%lx playing=%d environment=%lx field=%lx,%lx\n", (unsigned long)info->bgm, bgm,
+        (unsigned long)info->environment_sound, (unsigned long)m->field[0], (unsigned long)m->field[1]); fflush(trace); }
+}
+
+void c3_battle_music_end(const C3BattleMusic *m)
+{
+    if (m->field[0]) c3_music_play(C3_MUSIC_SLOT_406, m->field[0], 0xFF, 1000); else c3_music_stop_slot(C3_MUSIC_SLOT_406, 1000);
+    if (m->field[1]) c3_music_play(C3_MUSIC_SLOT_407, m->field[1], 0xFF, 1000); else c3_music_stop_slot(C3_MUSIC_SLOT_407, 1000);
+}
 
 static unsigned living_foes(const C3GeneralBattle *b, unsigned out[2])
 {
@@ -164,6 +182,7 @@ int c3_battle_general_scene_run(const C3BattlePack *pack, C3GeneralBattle *b, FI
     memset(&ui, 0, sizeof ui);
     ui.page = C3_GUI_EVENTS;
     uint64_t event_start = c3_n3ds_time_us();
+    C3BattleMusic music; c3_battle_music_begin(&music, &b->info, trace);
     if (trace) { fprintf(trace, "general_battle_begin encounter=%lu trainer=%s/%s active=%u hero_party=%u foe_party=%u scene=2d\n",
         (unsigned long)b->encounter, b->info.title, b->info.trainer, b->active_count, b->party_count[0], b->party_count[1]); fflush(trace); }
     int dirty = 1;
@@ -182,6 +201,7 @@ int c3_battle_general_scene_run(const C3BattlePack *pack, C3GeneralBattle *b, FI
             if (pressed & C3_PAD_A) {
                 if (trace) { fprintf(trace, "general_battle_end encounter=%lu outcome=%d turns=%lu\n",
                     (unsigned long)b->encounter, (int)b->outcome, (unsigned long)b->turn); fflush(trace); }
+                c3_battle_music_end(&music);
                 return 0;
             }
         } else if (pressed) {
@@ -190,5 +210,6 @@ int c3_battle_general_scene_run(const C3BattlePack *pack, C3GeneralBattle *b, FI
         }
         if (dirty) { c3_general_ui_draw(pack, b, &ui, event < b->event_count ? &b->events[event] : NULL); dirty = 0; }
     }
+    c3_battle_music_end(&music);
     return 1;
 }

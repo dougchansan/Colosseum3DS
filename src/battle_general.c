@@ -97,6 +97,9 @@ int c3_battle_pack_info(const C3BattlePack *p,uint32_t id,C3BattleEncounterInfo 
     i.id=(uint16_t)id;i.reason=be16(r+4);i.kind=enc[0];i.wipeout=enc[2];i.floor_data_id=be16(enc+4);
     i.battle_floor=be16(floor+2);i.active_per_side=type[2];i.trainer_id=be16(enc+32);
     i.trainer_kind=be16(trainer+2);i.prize_base=be16(kind);i.party_count=r[2];
+    i.bgm=be32(enc+12);if(!i.bgm)i.bgm=be32(floor+12);if(!i.bgm)i.bgm=be32(kind+8);if(!i.bgm)i.bgm=1;
+    i.intro_wzx=be32(enc+20);if(!i.intro_wzx)i.intro_wzx=be32(floor+8);
+    i.environment_sound=be32(floor+16);
     for(unsigned k=0;k<i.party_count;++k){const uint8_t *m=r+192+k*TRAINER_MON;
         i.species[k]=be16(m+10);i.levels[k]=m[4];i.shadow_count=(uint8_t)(i.shadow_count+(m[3]!=0));}
     const uint8_t *names=p->bytes+p->names_at+(p->species+p->moves+2u*id)*C3_GB_NAME;

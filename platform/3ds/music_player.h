@@ -32,6 +32,9 @@ void c3_music_stop_slot(int slot, uint32_t fade_ms);
 void c3_music_master(uint32_t volume, uint32_t fade_ms);
 /* fn_801666BC: 2 while `sound` is queued or audible, 0 otherwise. */
 int c3_music_status(uint32_t sound);
+/* The sound queued or audible in a slot (0 when none): lets a battle put
+ * the area music back afterwards. */
+uint32_t c3_music_current(int slot);
 void c3_music_pause_slot(int slot, int paused);
 void c3_music_set_mono(int mono);
 void c3_music_trace(FILE *trace, const char *phase);

@@ -415,6 +415,18 @@ void c3_music_master(uint32_t volume, uint32_t fade_ms)
     LightLock_Unlock(&music.lock);
 }
 
+uint32_t c3_music_current(int slot_index)
+{
+    uint32_t sound = 0;
+    if (!music.open || slot_index < 0 || (unsigned)slot_index >= SLOTS) return 0;
+    LightLock_Lock(&music.lock);
+    const Slot *slot = &music.slots[slot_index];
+    if (slot->request.pending == 1) sound = slot->request.sound;
+    else if (slot->state && slot->state != 3) sound = slot->sound;
+    LightLock_Unlock(&music.lock);
+    return sound;
+}
+
 int c3_music_status(uint32_t sound)
 {
     int result = 0;

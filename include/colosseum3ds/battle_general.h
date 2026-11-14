@@ -38,6 +38,11 @@ typedef struct C3BattleEncounterInfo {
     uint16_t species[C3_GB_PARTY];
     uint8_t levels[C3_GB_PARTY];
     char trainer[C3_GB_NAME], title[C3_GB_NAME];
+    /* fightEncountGetBgmSndDataId (0x8020DD80): the encounter's override,
+     * else the battle floor's, else the opponent trainer kind's, else 1. */
+    uint32_t bgm;
+    uint32_t intro_wzx;      /* encounter row +20, else battle floor row +8 */
+    uint32_t environment_sound; /* battle floor row +16 */
 } C3BattleEncounterInfo;
 
 typedef enum {
