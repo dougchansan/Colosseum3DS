@@ -6,6 +6,7 @@
  * nothing yet (the node still keeps its scheduled time). */
 #include "colosseum3ds/wzx_player.h"
 #include "colosseum3ds/wzx_index.h"
+#include "colosseum3ds/wzx_camera.h"
 
 #define WZX_SEQUENCES 8u
 #define WZX_BANKS 16u
@@ -40,7 +41,16 @@ struct C3BattleWzxLayer {
     int floor_tint; uint8_t floor_rgb[3];
     int owner_tint[4]; uint8_t owner_rgb[4][3];
     uint32_t started, skipped;
+    /* The original battle camera (src/wzx_camera.c). */
+    C3WzxCameraTables camera_tables;
+    C3WzxCamera camera;
+    C3WzxCameraScene scene;
+    C3TitleCamera home;
+    uint8_t camera_ok, sequence_camera, command_phase;
 };
+/* Battle-grid order the camera uses: each trainer, then its Pokemon. */
+static const unsigned grid_slot[6] = {4, 0, 1, 5, 2, 3};
+static unsigned slot_actor(unsigned slot) { for (unsigned a = 0; a < 6; ++a) if (grid_slot[a] == slot) return a; return 0; }
 
 static int read_all(const char *path, uint8_t **out, size_t *bytes)
 {
@@ -93,6 +103,14 @@ static int wzx_open(C3BattleGeneralStage *s, const char *root)
     if (!w->systems || !c3_wzx_index_load(&w->index, path, s->error, sizeof s->error)) { s->error[0] = 0; free(w->systems); free(w); return 0; }
     w->base_count = s->count;
     s->wzx = w;
+    snprintf(path, sizeof path, "%s/wzx_camera.c3k", root);
+    char error[160];
+    if (c3_wzx_camera_tables_load(&w->camera_tables, path, error, sizeof error)) {
+        c3_wzx_camera_init(&w->camera, &w->camera_tables, 0xCA3E0000u ^ s->cue_serial);
+        c3_wzx_camera_idle_reset(&w->camera, 0);
+        w->camera_ok = 1;
+    } else if (s->trace) { fprintf(s->trace, "wzx_camera_unavailable reason=%s\n", error); fflush(s->trace); }
+    w->home = s->camera;
     return 1;
 }
 
@@ -328,9 +346,91 @@ static void be_stop(void *user, uint32_t i, const C3WzxNode *n, int forced)
 
 static const C3WzxBackend wzx_backend = {NULL, be_start, be_update, be_stop};
 
+static int camera_part(void *user, unsigned actor, unsigned body_slot, float out[3])
+{
+    C3BattleGeneralStage *s = user;
+    if (actor >= 6) return 0;
+    unsigned slot = grid_slot[actor];
+    if (model_for_slot(s, slot) < 0) return 0;
+    if (slot >= 4 || body_slot >= 17 || s->part_bone[slot][body_slot] == 0xFF) {
+        int m = model_for_slot(s, slot);
+        out[0] = s->transforms[m][0]; out[1] = s->transforms[m][1] + .8f * s->transforms[m][4]; out[2] = s->transforms[m][2];
+        return 1;
+    }
+    wzx_part_position(s, slot, body_slot, out);
+    return 1;
+}
+
+/* Fill the camera's actor view of the stage (root, yaw, bounds, timing). */
+static void camera_scene(C3BattleGeneralStage *s)
+{
+    struct C3BattleWzxLayer *w = s->wzx;
+    C3WzxCameraScene *c = &w->scene;
+    memset(c, 0, sizeof *c);
+    c->count = 6; c->part_world = camera_part; c->user = s;
+    c->grid_scale[0] = c->grid_scale[1] = c->grid_scale[2] = 1;
+    c->base = w->home;
+    for (unsigned a = 0; a < 6; ++a) {
+        unsigned slot = grid_slot[a];
+        int m = model_for_slot(s, slot);
+        C3WzxCameraActor *x = &c->actors[a];
+        x->is_trainer = slot >= 4;
+        x->pokemon_count = (uint16_t)(s->cast.active_per_side ? s->cast.active_per_side : 1);
+        x->source_facing = slot == 4 || slot < 2 ? 1 : -1;
+        x->scale_selector = 1;
+        if (m < 0) continue;
+        const float *t = s->transforms[m];
+        x->present = slot >= 4 || s->presentation.visible[slot];
+        memcpy(x->position, t, 12); x->yaw = t[3];
+        /* No sampled model bound: span of the retained parts, else a body-sized box. */
+        float lo[3] = {-.4f, 0, -.4f}, hi[3] = {.4f, 1.2f, .4f};
+        if (slot < 4) {
+            int any = 0;
+            for (unsigned k = 0; k < 17; ++k) {
+                unsigned bone = s->part_bone[slot][k];
+                if (bone == 0xFF || bone >= s->models[m].bone_count) continue;
+                const float *b = s->models[m].pose.matrices[bone];
+                float v[3] = {b[3], b[7], b[11]};
+                for (unsigned j = 0; j < 3; ++j) { if (!any || v[j] < lo[j]) lo[j] = v[j]; if (!any || v[j] > hi[j]) hi[j] = v[j]; }
+                any = 1;
+            }
+            if (any) { lo[1] = 0; for (unsigned j = 0; j < 3; ++j) { float pad = .15f * (hi[j] - lo[j]) + .05f; lo[j] -= j == 1 ? 0 : pad; hi[j] += pad; } }
+        }
+        for (unsigned j = 0; j < 3; ++j) { x->bound_min[j] = lo[j] * t[4]; x->bound_max[j] = hi[j] * t[4]; }
+        if (slot < 4) for (unsigned e = 0; e < C3_WZX_CAMERA_ENTRIES && e < C3_BATTLE3D_ENTRIES; ++e)
+            for (unsigned k = 0; k < 4; ++k) x->timing[e][k] = (int32_t)s->timing[slot][e][k];
+    }
+}
+
+static void camera_sequence(C3BattleGeneralStage *s, const WzxSequence *q, unsigned kind, unsigned id, unsigned owner)
+{
+    struct C3BattleWzxLayer *w = s->wzx; char error[160];
+    if (!w->camera_ok || w->command_phase) return;
+    camera_scene(s);
+    C3WzxCameraSequence seq = {q->pack.flags, q->pack.part_sel, q->pack.entry, kind, id,
+                               q->pack.camera_at ? q->pack.bytes + q->pack.camera_at : NULL, q->pack.camera_count};
+    if (c3_wzx_camera_begin_sequence(&w->camera, &w->scene, slot_actor(owner), &seq, &s->camera, error, sizeof error)) w->sequence_camera = 1;
+    else if (s->trace) { fprintf(s->trace, "wzx_camera_refused name=%s reason=%s\n", q->name, error); fflush(s->trace); }
+}
+
+static void camera_step(C3BattleGeneralStage *s, uint32_t ms)
+{
+    struct C3BattleWzxLayer *w = s->wzx; char error[160];
+    if (!w || !w->camera_ok) return;
+    int running = 0;
+    for (unsigned i = 0; i < WZX_PLAYERS; ++i) running |= w->runs[i].active;
+    if (w->sequence_camera && !running) { c3_wzx_camera_end(&w->camera); w->sequence_camera = 0; c3_wzx_camera_idle_reset(&w->camera, w->command_phase); }
+    camera_scene(s);
+    if (!c3_wzx_camera_step(&w->camera, &w->scene, ms, error, sizeof error)) {
+        if (s->trace) { fprintf(s->trace, "wzx_camera_failed reason=%s\n", error); fflush(s->trace); }
+        w->camera_ok = 0; s->camera = w->home; return;
+    }
+    s->camera = !w->command_phase && c3_wzx_camera_active(&w->camera) ? w->camera.camera : w->home;
+}
+
 /* Start a prepared sequence on an owner; the owner's clip comes from the
  * sequence's PKX entry, delayed by the player's motion delay. */
-static WzxRun *wzx_begin(C3BattleGeneralStage *s, const char *name, unsigned kind, unsigned owner, unsigned target)
+static WzxRun *wzx_begin_id(C3BattleGeneralStage *s, const char *name, unsigned kind, unsigned owner, unsigned target, unsigned id)
 {
     struct C3BattleWzxLayer *w = s->wzx; char error[160];
     if (!w || !name || owner >= 4) return NULL;
@@ -354,11 +454,14 @@ static WzxRun *wzx_begin(C3BattleGeneralStage *s, const char *name, unsigned kin
         s->clips[m] = s->entry_clip[owner][entry];
         s->clocks[m] = -(float)r->player.motion_delay / 60.f; s->hold[m] = 0;
     }
+    camera_sequence(s, q, kind == 3 && id >= 0x1000 ? 4 : kind, id & 0xFFF, owner);
     if (s->trace) { fprintf(s->trace, "wzx_begin name=%s kind=%u owner=%u entry=%u nodes=%lu delay=%ld end=%ld damage=%ld\n", name, kind, owner, entry,
         (unsigned long)q->pack.node_count, (long)r->player.motion_delay, (long)c3_wzx_player_mark(&r->player, C3_WZX_TIME_END),
         (long)c3_wzx_player_mark(&r->player, C3_WZX_TIME_DAMAGE)); fflush(s->trace); }
     return r;
 }
+
+#define wzx_begin(s, name, kind, owner, target) wzx_begin_id(s, name, kind, owner, target, s->wzx_id)
 
 static void wzx_step(C3BattleGeneralStage *s, uint32_t ms)
 {
@@ -377,6 +480,7 @@ static void wzx_step(C3BattleGeneralStage *s, uint32_t ms)
                 (long)r->player.time, (unsigned long)r->player.started, (unsigned long)r->player.skipped); fflush(s->trace); }
         }
     }
+    camera_step(s, ms);
 }
 
 static int wzx_running(const C3BattleGeneralStage *s, unsigned kind)

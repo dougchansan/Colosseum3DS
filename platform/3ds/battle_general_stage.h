@@ -64,6 +64,7 @@ typedef struct {
     uint32_t wzx_damage_target;
     void *wzx_damage_run;
     uint8_t wzx_attack_wait, wzx_hp_wait, wzx_move;
+    uint32_t wzx_id; /* move id, or 0x1000|special, of the sequence being started */
     int (*sound_cue)(uint32_t, uint32_t, char *, size_t);
     char error[192];
     FILE *trace;
@@ -90,6 +91,9 @@ int c3_battle_general_stage_swap(C3BattleGeneralStage *, const C3Battle3dIndex *
  * The caller drains the GPU first. Without a wzx.c3n nothing changes. */
 int c3_battle_general_stage_prepare(C3BattleGeneralStage *, const C3BattlePreviewEvent *, uint32_t count,
                                     const char *root, char *, size_t);
+/* Command menu open (1) or turn playback (0): the original camera switches
+ * to its simple mode and the stage shows the command view. */
+void c3_battle_general_stage_command_phase(C3BattleGeneralStage *, int on);
 /* Whether the submitted batch has been fully presented. */
 int c3_battle_general_stage_idle(const C3BattleGeneralStage *);
 int c3_battle_general_stage_step(C3BattleGeneralStage *, uint32_t ms, char *, size_t);

@@ -261,6 +261,7 @@ static void event(const C3BattlePreviewEvent *e,int finished,void *user)
         /* The status condition's or stat change's own battle special. */
         if(s->wzx&&e->effect&&e->target<4&&s->presentation.visible[e->target]){
             const char *name=c3_wzx_index_special(&s->wzx->index,e->effect);
+            s->wzx_id=0x1000u|e->effect;
             if(name&&wzx_begin(s,name,3,e->target,e->actor)){s->wzx_attack_wait=1;c3_battle_presentation_wait(&s->presentation,1);s->presentation.duration_ms=0;}
         }
         break;
@@ -292,6 +293,7 @@ static void event(const C3BattlePreviewEvent *e,int finished,void *user)
                     break;
                 }
             }
+            s->wzx_id=e->move;
             if(attack&&wzx_begin(s,attack,kind,e->actor,e->target)){
                 s->wzx_move=1;s->wzx_attack_wait=1;
                 c3_battle_presentation_wait(&s->presentation,1);s->presentation.duration_ms=0;
@@ -470,6 +472,16 @@ int c3_battle_general_stage_prepare(C3BattleGeneralStage *s,const C3BattlePrevie
     wzx_prepare(s,e,count,root);
     for(uint32_t i=s->wzx->base_count;i<s->count;++i)s->sampled[i]=0;
     return renderer_start(s,error,cap);
+}
+
+void c3_battle_general_stage_command_phase(C3BattleGeneralStage *s,int on)
+{
+    if(!s||!s->wzx)return;
+    struct C3BattleWzxLayer *w=s->wzx;
+    if(w->command_phase==(uint8_t)(on!=0))return;
+    w->command_phase=(uint8_t)(on!=0);
+    if(w->camera_ok){if(w->sequence_camera){c3_wzx_camera_end(&w->camera);w->sequence_camera=0;}c3_wzx_camera_idle_reset(&w->camera,on);}
+    if(on)s->camera=w->home;
 }
 
 int c3_battle_general_stage_draw(C3BattleGeneralStage *s,C3TitleRenderStats *stats,char *error,size_t cap)

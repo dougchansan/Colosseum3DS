@@ -188,6 +188,7 @@ int c3_battle_general_3d_run(const C3BattlePack *pack, C3GeneralBattle *b, FILE 
             dirty = 1;
             if (c3_general_ui_press(&ui, pack, b, pressed, trace)) { c3_general_view_restart(&view, b); count = 0; }
         }
+        c3_battle_general_stage_command_phase(stage, ui.page != C3_GUI_EVENTS);
         if (!c3_battle_general_stage_step(stage, ms, error, sizeof error)) goto done;
         uint32_t cursor = stage->presentation.cursor < count ? stage->presentation.cursor : count ? count - 1 : 0;
         uint32_t now_shown = count ? first + cursor : UINT32_MAX;
