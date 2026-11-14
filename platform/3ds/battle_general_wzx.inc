@@ -419,6 +419,7 @@ static void camera_scene(C3BattleGeneralStage *s)
                 if (bone == 0xFF || bone >= s->models[m].bone_count) continue;
                 const float *b = s->models[m].pose.matrices[bone];
                 float v[3] = {b[3], b[7], b[11]};
+                if (!isfinite(v[0]) || !isfinite(v[1]) || !isfinite(v[2]) || fabsf(v[0]) > 1000 || fabsf(v[1]) > 1000 || fabsf(v[2]) > 1000) continue; /* not sampled yet (hidden) */
                 for (unsigned j = 0; j < 3; ++j) { if (!any || v[j] < lo[j]) lo[j] = v[j]; if (!any || v[j] > hi[j]) hi[j] = v[j]; }
                 any = 1;
             }
@@ -435,10 +436,19 @@ static void camera_sequence(C3BattleGeneralStage *s, const WzxSequence *q, unsig
     struct C3BattleWzxLayer *w = s->wzx; char error[160];
     if (!w->camera_ok || w->command_phase) return;
     camera_scene(s);
+    /* `present` picks idle candidates; a sequence's owner may still be in its ball. */
+    w->scene.actors[slot_actor(owner)].present = 1;
     C3WzxCameraSequence seq = {q->pack.flags, q->pack.part_sel, q->pack.entry, kind, id,
                                q->pack.camera_at ? q->pack.bytes + q->pack.camera_at : NULL, q->pack.camera_count};
     if (c3_wzx_camera_begin_sequence(&w->camera, &w->scene, slot_actor(owner), &seq, &s->camera, error, sizeof error)) w->sequence_camera = 1;
-    else if (s->trace) { fprintf(s->trace, "wzx_camera_refused name=%s reason=%s\n", q->name, error); fflush(s->trace); }
+    else if (s->trace) {
+        const C3WzxCameraActor *x = &w->scene.actors[slot_actor(owner)];
+        fprintf(s->trace, "wzx_camera_refused name=%s reason=%s present=%u pos=%.2f,%.2f,%.2f yaw=%.2f min=%.2f,%.2f,%.2f max=%.2f,%.2f,%.2f\n",
+            q->name, error, x->present, (double)x->position[0], (double)x->position[1], (double)x->position[2], (double)x->yaw,
+            (double)x->bound_min[0], (double)x->bound_min[1], (double)x->bound_min[2],
+            (double)x->bound_max[0], (double)x->bound_max[1], (double)x->bound_max[2]);
+        fflush(s->trace);
+    }
 }
 
 static void camera_step(C3BattleGeneralStage *s, uint32_t ms)
@@ -475,6 +485,9 @@ static WzxRun *wzx_begin_id(C3BattleGeneralStage *s, const char *name, unsigned 
     for (unsigned k = 0; k < 4; ++k) timing[k] = (int32_t)s->timing[owner][entry][k];
     C3WzxBackend backend = wzx_backend; backend.user = r;
     wzx_stage = s;
+    /* wazaSequenceStart starts the camera before the first update, which
+     * may already hide the owner (a ball's open sequence). */
+    camera_sequence(s, q, kind == 3 && id >= 0x1000 ? 4 : kind, id & 0xFFF, owner);
     if (!c3_wzx_player_begin(&r->player, &q->pack, kind, timing, &backend, error, sizeof error)) return NULL;
     r->active = 1;
     int m = model_for_slot(s, owner);
@@ -482,7 +495,6 @@ static WzxRun *wzx_begin_id(C3BattleGeneralStage *s, const char *name, unsigned 
         s->clips[m] = s->entry_clip[owner][entry];
         s->clocks[m] = -(float)r->player.motion_delay / 60.f; s->hold[m] = 0;
     }
-    camera_sequence(s, q, kind == 3 && id >= 0x1000 ? 4 : kind, id & 0xFFF, owner);
     if (s->trace) { fprintf(s->trace, "wzx_begin name=%s kind=%u owner=%u entry=%u nodes=%lu delay=%ld end=%ld damage=%ld\n", name, kind, owner, entry,
         (unsigned long)q->pack.node_count, (long)r->player.motion_delay, (long)c3_wzx_player_mark(&r->player, C3_WZX_TIME_END),
         (long)c3_wzx_player_mark(&r->player, C3_WZX_TIME_DAMAGE)); fflush(s->trace); }
