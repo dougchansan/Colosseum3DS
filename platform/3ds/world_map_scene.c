@@ -282,6 +282,162 @@ static void draw(const C3WorldMap *map, const char *note)
     c3_bottom_screen_present();
 }
 
+/* The journey before the floor link (the original's menu 0xC3: Wes and Rui
+ * ride the bike across a 3D Orre). A port presentation on the top screen:
+ * the menu's own map image, a curved route from the floor the player left
+ * to the chosen one, a small bike riding it and a progress bar. Drawn by the
+ * CPU straight into the top framebuffer (as c3_n3ds_top_loading), so it
+ * needs no GPU state. A or B skips. */
+#define JOURNEY_SECONDS 3.2f
+#define JOURNEY_MAP_X 40 /* the 320x240 map, centred on the 400x240 screen */
+
+static void jput(uint8_t *fb, int x, int y, uint8_t r, uint8_t g, uint8_t b)
+{
+    if (x < 0 || x >= 400 || y < 0 || y >= 240) return;
+    uint8_t *p = fb + ((size_t)x * 240u + (239u - (unsigned)y)) * 3u;
+    p[0] = b; p[1] = g; p[2] = r;
+}
+
+static void jdisc(uint8_t *fb, int cx, int cy, int radius, uint8_t r, uint8_t g, uint8_t b)
+{
+    for (int y = -radius; y <= radius; ++y)
+        for (int x = -radius; x <= radius; ++x)
+            if (x * x + y * y <= radius * radius + radius / 2) jput(fb, cx + x, cy + y, r, g, b);
+}
+
+/* Darken a pixel (the bike's shadow). */
+static void jshade(uint8_t *fb, int x, int y)
+{
+    if (x < 0 || x >= 400 || y < 0 || y >= 240) return;
+    uint8_t *p = fb + ((size_t)x * 240u + (239u - (unsigned)y)) * 3u;
+    p[0] = (uint8_t)(p[0] / 2); p[1] = (uint8_t)(p[1] / 2); p[2] = (uint8_t)(p[2] / 2);
+}
+
+/* The map image as a ready top framebuffer (BGR8, column-major). */
+static uint8_t *journey_background(const MapImage *board)
+{
+    uint8_t *bg = malloc(400u * 240u * 3u);
+    if (!bg) return NULL;
+    for (int y = 0; y < 240; ++y)
+        for (int x = 0; x < 400; ++x) {
+            int mx = x - JOURNEY_MAP_X;
+            uint8_t r = 18, g = 12, b = 8; /* dusk bars either side */
+            if (mx >= 0 && mx < 320) {
+                const uint8_t *s = board->rgba + ((size_t)(y * (int)board->h / 240) * board->w +
+                                                  (size_t)(mx * (int)board->w / 320)) * 4u;
+                r = (uint8_t)(s[0] * s[3] / 255); g = (uint8_t)(s[1] * s[3] / 255); b = (uint8_t)(s[2] * s[3] / 255);
+            }
+            uint8_t *p = bg + ((size_t)x * 240u + (239u - (unsigned)y)) * 3u;
+            p[0] = b; p[1] = g; p[2] = r;
+        }
+    return bg;
+}
+
+/* Centre of a floor's marker in top-screen pixels; 0 if the floor has none. */
+static int journey_place(const MapPack *pack, uint32_t floor, float *x, float *y)
+{
+    for (uint32_t i = 0; i < c3_world_map_entry_count(); ++i) {
+        C3WorldMapEntry entry; const MapItem *m;
+        if (!c3_world_map_entry(i, &entry) || entry.floor != floor || !(m = pack_item(pack, entry.item))) continue;
+        *x = (float)(JOURNEY_MAP_X + m->x + m->w / 2); *y = (float)(m->y + m->h / 2);
+        return 1;
+    }
+    return 0;
+}
+
+/* The bike: two wheels, a red frame, Wes up front and Rui behind. */
+static void journey_bike(uint8_t *fb, int x, int y, int face, int bob)
+{
+    for (int i = -7; i <= 7; ++i) for (int j = -2; j <= 2; ++j)
+        if (i * i * 4 + j * j * 49 <= 196) jshade(fb, x + i, y + 4 + j);
+    y -= bob;
+    jdisc(fb, x - 5 * face, y, 3, 30, 30, 34);
+    jdisc(fb, x + 5 * face, y, 3, 30, 30, 34);
+    jput(fb, x - 5 * face, y, 170, 170, 170);
+    jput(fb, x + 5 * face, y, 170, 170, 170);
+    for (int i = -5; i <= 6; ++i) { jput(fb, x + i * face, y - 3, 200, 40, 32); jput(fb, x + i * face, y - 2, 150, 28, 24); }
+    jput(fb, x + 7 * face, y - 4, 240, 230, 160); /* headlamp */
+    jdisc(fb, x + 1 * face, y - 6, 2, 40, 48, 70);  /* Wes */
+    jput(fb, x + 1 * face, y - 9, 230, 230, 235);
+    jdisc(fb, x - 3 * face, y - 6, 2, 200, 120, 60); /* Rui */
+    jput(fb, x - 3 * face, y - 9, 220, 70, 60);
+}
+
+/* Returns 1 if frames were shown, 0 if the scene could not be drawn, -1 on
+ * an exit request. */
+static int journey_run(const MapPack *pack, uint32_t from, uint32_t to, FILE *trace)
+{
+    float x0, y0, x2, y2;
+    if (!pack->data || gfxGetScreenFormat(GFX_TOP) != GSP_BGR8_OES || !journey_place(pack, to, &x2, &y2)) return 0;
+    if (!journey_place(pack, from, &x0, &y0)) { x0 = 200.0f; y0 = 120.0f; }
+    uint8_t *bg = journey_background(pack->image);
+    if (!bg) return 0;
+    /* Bow the route to one side, a quarter of its length. */
+    float dx = x2 - x0, dy = y2 - y0, len = sqrtf(dx * dx + dy * dy);
+    float x1 = (x0 + x2) * 0.5f, y1 = (y0 + y2) * 0.5f;
+    if (len > 1.0f) { x1 += -dy / len * len * 0.25f; y1 += dx / len * len * 0.25f; }
+    if (y1 < 10.0f) y1 = 10.0f;
+    c3_bottom_screen_notice(label(to), "Travelling...", "A / B: skip");
+    if (trace) {
+        fprintf(trace, "world_map_journey from=%03lx to=%03lx start=%d,%d end=%d,%d\n", (unsigned long)from,
+                (unsigned long)to, (int)x0, (int)y0, (int)x2, (int)y2);
+        fflush(trace);
+    }
+    C3N3dsInput input = {0};
+    uint64_t start = c3_n3ds_time_us();
+    int released = 0, frames = 0, skipped = 0, result = 1;
+    for (;;) {
+        if (!c3_n3ds_poll(&input)) { result = -1; break; }
+        if (!input.held && !input.touch_held) released = 1;
+        if (released && (input.pressed & (C3_PAD_A | C3_PAD_B))) { skipped = 1; break; }
+        float s = (float)(c3_n3ds_time_us() - start) / 1e6f, t = s / JOURNEY_SECONDS;
+        if (t > 1.0f) t = 1.0f;
+        float e = t * t * (3.0f - 2.0f * t); /* ease in and out */
+        u16 width = 0, height = 0;
+        uint8_t *fb = gfxGetFramebuffer(GFX_TOP, GFX_LEFT, &width, &height);
+        if (!fb || width != 240 || height < 400) break;
+        memcpy(fb, bg, 400u * 240u * 3u);
+        /* Route: dotted, bright where the bike has been. */
+        for (int i = 0; i <= 64; ++i) {
+            float u = (float)i / 64.0f, a = (1 - u) * (1 - u), b = 2 * u * (1 - u), c = u * u;
+            int px = (int)lroundf(a * x0 + b * x1 + c * x2), py = (int)lroundf(a * y0 + b * y1 + c * y2);
+            if (u <= e) jdisc(fb, px, py, 1, 255, 236, 120);
+            else if (i % 2 == 0) jput(fb, px, py, 120, 90, 50);
+        }
+        jdisc(fb, (int)x0, (int)y0, 3, 80, 160, 255);
+        jdisc(fb, (int)x2, (int)y2, 3 + (int)(fmodf(s * 4.0f, 2.0f)), 255, 90, 60);
+        {   /* The bike on the curve, facing its direction of travel. */
+            float a = (1 - e) * (1 - e), b = 2 * e * (1 - e), c = e * e;
+            float bx = a * x0 + b * x1 + c * x2, by = a * y0 + b * y1 + c * y2;
+            float tx = 2 * (1 - e) * (x1 - x0) + 2 * e * (x2 - x1);
+            int face = tx < 0 ? -1 : 1;
+            for (int k = 1; k <= 3 && e < 1.0f; ++k) /* dust */
+                jdisc(fb, (int)bx - face * (8 + k * 4), (int)by + 2 - (k & 1), k == 1 ? 2 : 1, 210, 180, 130);
+            journey_bike(fb, (int)lroundf(bx), (int)lroundf(by), face, e < 1.0f && ((int)(s * 12.0f) & 1));
+        }
+        /* Progress bar. */
+        for (int x = 80; x < 320; ++x)
+            for (int y = 226; y < 233; ++y) {
+                int edge = y == 226 || y == 232 || x == 80 || x == 319;
+                int filled = x - 81 < (int)(e * 238.0f);
+                if (edge) jput(fb, x, y, 40, 28, 16);
+                else if (filled) jput(fb, x, y, 255, 200, 90);
+                else jput(fb, x, y, 90, 70, 50);
+            }
+        gfxFlushBuffers();
+        gfxScreenSwapBuffers(GFX_TOP, false);
+        ++frames;
+        if (t >= 1.0f && s >= JOURNEY_SECONDS + 0.4f) break; /* a beat at the destination */
+        gspWaitForVBlank();
+    }
+    free(bg);
+    if (trace) {
+        fprintf(trace, "world_map_journey_end frames=%d skipped=%d\n", frames, skipped);
+        fflush(trace);
+    }
+    return result < 0 ? -1 : frames > 0;
+}
+
 int c3_world_map_scene_run(C3GameState *state, FILE *trace, char *error, size_t capacity)
 {
     C3GameSummary summary;
@@ -375,13 +531,19 @@ int c3_world_map_scene_run(C3GameState *state, FILE *trace, char *error, size_t 
                     free(pack.data);preview_release(trace);free(preview);preview=NULL;
                 return -1;
                 }
+                int presented = 0;
+                /* The orbit preview owns the GPU; drain it before the
+                 * journey draws into the framebuffer. */
+                preview_release(trace);
+                if (travel && native) presented = journey_run(&pack, map.origin_floor, floor, trace);
                 if (trace) {
-                    fprintf(trace, "world_map_link floor=%lu entrance=0 cancel=%d journey=%d journey_presented=0 save_writes=0\n",
-                            (unsigned long)floor, choice < 0, travel);
+                    fprintf(trace, "world_map_link floor=%lu entrance=0 cancel=%d journey=%d journey_presented=%d save_writes=0\n",
+                            (unsigned long)floor, choice < 0, travel, presented > 0);
                     fflush(trace);
                 }
+                free(pack.data);free(preview);preview=NULL;
+                if (presented < 0) return 1; /* exit requested during the ride */
                 c3_bottom_screen_notice(label(floor), "Travelling...", "Please wait...");
-                free(pack.data);preview_release(trace);free(preview);preview=NULL;
                 return 2;
             }
         }

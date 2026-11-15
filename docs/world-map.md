@@ -40,9 +40,22 @@ the same row) or with UP/DOWN and A; B is the menu's cancel.
 - Destination names are the port's own English labels, chosen from the
   archive identity of each floor. The original menu strings and the twelve
   location images are not extracted yet.
-- The original 3D Orre map (`0C6A0200`), the bike journey (menu `0xC3`), the
-  route cameras and the info text slots are not drawn. The top screen keeps
-  the last field frame. The trace records `journey_presented=0`.
+- When `c3_world_map_choose` reports `travel=1` and the map pack
+  (`boot/worldmap.c3w`) is loaded, a port journey plays on the top screen
+  before the floor link: the menu's own map image (320x240, centred), a
+  curved dotted route from the origin floor's marker to the destination's,
+  a small procedurally drawn bike with Wes and Rui riding it, and a progress
+  bar. It lasts about 3.6 s and A or B skips it. It is drawn by the CPU into
+  the top framebuffer after the orbit preview is drained, so it needs no GPU
+  state. The trace records `world_map_journey`, `world_map_journey_end
+  frames=N skipped=0|1` and `journey_presented=1`. Without the pack, or for
+  a cancel/no-travel choice, nothing plays and the trace keeps
+  `journey_presented=0`.
+- The original 3D Orre map (`0C6A0200`), the original 3D bike ride (menu
+  `0xC3`), its route cameras and the info text slots are not ported. The
+  decomp travel functions (`fn_80027960`, `fn_80027AA4`) are still asm in the
+  pinned source, and their draft C reads as menu/list bookkeeping rather than
+  drawing, so the journey above is the port's own stand-in.
 - The world-map script bank `01E00E00` (init/pre/main/post, native `B4`) is
   not executed. Its function 6 only reads story flags `0x84E`-`0x890` and
   sets mail/event flags; this is a known gap for later story events.
