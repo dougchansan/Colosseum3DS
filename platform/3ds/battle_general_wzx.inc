@@ -8,7 +8,7 @@
 #include "colosseum3ds/wzx_index.h"
 #include "colosseum3ds/wzx_camera.h"
 
-#define WZX_SEQUENCES 8u
+#define WZX_SEQUENCES 64u /* battle-long ball/trainer specials (up to 52) plus a turn's moves */
 #define WZX_BANKS 28u
 #define WZX_SYSTEMS 12u /* renderer slots 1..12 (slot 0: the generic damage effect) */
 #define WZX_PLAYERS 4u
