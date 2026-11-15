@@ -54,19 +54,25 @@ Converters need the HSD parser as an LF export of the pinned commit
 
 ## Approximations and gaps
 
-- Effect types 12 (distortion), 11 (billboard banners), 8 (shine),
-  9 (after-image), 5 (leaf clones), 1 (lightning) keep their timing but draw
-  nothing; models that move the Pokemon itself ("drive", Dig/Fly) are not
-  parented.
-- Particle generators needing the camera basis / AppSRT stay disabled;
-  particles draw unlit, POINT as quads; 1536 particles per launch.
+- Effect types (battle_wzx_effects.inc): distortion uses the Confusion
+  capture path (masks over 128 px filtered down, particles not captured);
+  banners fill the view in front of the camera; shine is additive passes of
+  the owner instead of a GX environment map; after-images use past
+  positions with the current pose; leaf clones don't play the DAT's
+  animation; lightning is untextured.
+- Models that carry the Pokemon (Dig, Fly, Dive): the owner follows the
+  effect joint's position, not its rotation or scale.
+- Particles draw unlit, POINT as quads; 1536 particles per launch; AppSRT
+  scale/rotation is identity.
 - Models: approximations per pack in the reports (merged skin tracks,
-  dropped texture layers, held blends, IK/joint-path handling); a few
-  effect models fail the renderer's material checks and are skipped.
-- Every Pokemon uses the Poke Ball's sequences (no ball item in the engine);
-  stat-change colours other than Attack/Defense are inferred; the camera's
-  random stream is cosmetic; PPC float rounding is not reproduced.
-- Sounds are dry mono (no pan/reverb).
+  dropped texture layers, held blends, IK/joint-path handling, base shape
+  for shape animations, specular dropped on TEV-lerp batches).
+- Balls: the hero's Pokemon use their recorded ball; opponents the Poke
+  Ball (trainer records carry none); balls past the fourth use the Poke
+  Ball's faint sequence. Stat-change colours other than Attack/Defense are
+  inferred; the camera's random stream is cosmetic; PPC float rounding is
+  not reproduced.
+- Sounds are mono, panned by the owner's place in the view (no reverb).
 
 ## Checks
 
