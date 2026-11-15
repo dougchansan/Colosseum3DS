@@ -68,6 +68,8 @@ typedef struct {
     uint8_t wzx_attack_wait, wzx_hp_wait, wzx_move, particle_bind_logged;
     uint32_t wzx_id; /* move id, or 0x1000|special, of the sequence being started */
     int (*sound_cue)(uint32_t, uint32_t, char *, size_t);
+    int (*sound_cue_pan)(uint32_t sound, float pan); /* optional: panned playback */
+    int sound_owner; /* position whose sound plays next (-1: centre) */
     char error[192];
     FILE *trace;
 } C3BattleGeneralStage;

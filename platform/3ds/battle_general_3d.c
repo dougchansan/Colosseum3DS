@@ -71,6 +71,12 @@ static int battle_cue(uint32_t cue, uint32_t sound, char *e, size_t n)
     if (cue_audio) return c3_battle_audio_player_cue(cue, sound, e, n);
     return 1;
 }
+static int battle_cue_pan(uint32_t sound, float pan)
+{
+    if (!sfx_open_ok || !c3_sfx_has(sound)) return 0;
+    c3_sfx_play_pan(sound, 127, pan);
+    return 1;
+}
 static int autoplay; /* unattended probe: the hero uses the opponent policy */
 
 static int silent(uint32_t cue, uint32_t sound, char *e, size_t n) { (void)cue; (void)sound; (void)e; (void)n; return 1; }
@@ -93,6 +99,7 @@ static int open_stage(C3BattleGeneralStage *s, const C3Battle3dIndex *index, con
     c3_bottom_screen_notice("BATTLE", "Loading the battle stage...", "");
     if (!c3_battle_general_stage_load(s, index, cast, pack, C3_BATTLE3D_ROOT, EFFECTS_ROOT, hp, trace, error, cap)) return 0;
     s->sound_cue = audio || sfx_open_ok ? battle_cue : silent;
+    s->sound_cue_pan = battle_cue_pan; s->sound_owner = -1;
     if (trace) { fprintf(trace, "general_battle_stage_open us=%llu\n", (unsigned long long)(c3_n3ds_time_us() - start));
         c3_n3ds_log_memory(trace, "general_battle_stage"); fflush(trace); }
     return 1;

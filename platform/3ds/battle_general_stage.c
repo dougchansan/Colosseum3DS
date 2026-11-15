@@ -218,7 +218,19 @@ bad:release(s);return 0;
 static int sound(C3BattleGeneralStage *s,uint32_t id,char *e,size_t n)
 {
     char problem[160];
-    if(!s->sound_cue||!id)return 1;
+    if(!id)return 1;
+    /* MusyX positions battle sounds at their owner: pan by where the owner
+     * stands across the current view. */
+    if(s->sound_cue_pan){
+        float pan=0;int m=s->sound_owner>=0?model_for_slot(s,(unsigned)s->sound_owner):-1;
+        if(m>=0){const C3TitleCamera *c=&s->camera;
+            float f[3]={c->target[0]-c->eye[0],0,c->target[2]-c->eye[2]};
+            float d[3]={s->transforms[m][0]-c->eye[0],0,s->transforms[m][2]-c->eye[2]};
+            float right[2]={-f[2],f[0]},rl=sqrtf(right[0]*right[0]+right[1]*right[1]),dl=sqrtf(d[0]*d[0]+d[2]*d[2]);
+            if(rl>1e-4f&&dl>1e-4f)pan=.8f*(d[0]*right[0]+d[2]*right[1])/(rl*dl);}
+        if(s->sound_cue_pan(id,pan))return 1;
+    }
+    if(!s->sound_cue)return 1;
     if(!s->sound_cue(++s->cue_serial,id,problem,sizeof problem)&&s->trace&&s->missing_sound!=id){
         s->missing_sound=id;fprintf(s->trace,"general_sound_unavailable id=%lx reason=%s\n",(unsigned long)id,problem);fflush(s->trace);}
     (void)e;(void)n;return 1;

@@ -37,7 +37,7 @@ typedef struct Voice {
     uint16_t coefs[16];
     ndspWaveBuf wave[BUFFERS];
     ndspAdpcmData adpcm[BUFFERS];
-    float volume, applied_gain;
+    float volume, applied_gain, pan, applied_pan;
     unsigned fade;
     int applied_paused, started;
 } Voice;
@@ -130,7 +130,9 @@ static int start_voice(unsigned v, int row_index, uint32_t handle, uint32_t volu
     voice->row = (uint32_t)row_index;
     voice->sound = row->sound;
     voice->handle = handle;
-    voice->volume = (volume >= 127u ? 127u : volume) / 127.0f;
+    {   uint32_t level = volume & 0xFFu; int pan = (int)((volume >> 8) & 0xFFu) - 128;
+        voice->volume = (level >= 127u ? 127u : level) / 127.0f;
+        voice->pan = pan < -127 ? -1.f : (float)pan / 127.0f; voice->applied_pan = 2.f; }
     voice->fade = 0;
     voice->started = 0;
     memset(voice->wave, 0, sizeof voice->wave);
@@ -256,11 +258,13 @@ static void service(void)
             if (!voice->fade) { release_voice(v); continue; }
             gain *= (float)--voice->fade / (float)FADE_TICKS;
         }
-        if (gain != voice->applied_gain) {
+        if (gain != voice->applied_gain || voice->pan != voice->applied_pan) {
             float mix[12] = {0};
-            mix[0] = mix[1] = gain;  /* mono sound, both front speakers */
+            /* Balance pan of the mono sound: centre is full gain on both. */
+            mix[0] = gain * (voice->pan > 0 ? 1.f - voice->pan : 1.f);
+            mix[1] = gain * (voice->pan < 0 ? 1.f + voice->pan : 1.f);
             ndspChnSetMix(channel(v), mix);
-            voice->applied_gain = gain;
+            voice->applied_gain = gain; voice->applied_pan = voice->pan;
         }
         if (voice->state == 1) queue_buffers(v);
         if (paused != voice->applied_paused && voice->started) {
@@ -394,14 +398,22 @@ static int push(Request request)
     return ok;
 }
 
-uint32_t c3_sfx_play(uint32_t sound, uint32_t volume)
+uint32_t c3_sfx_play_pan(uint32_t sound, uint32_t volume, float pan)
 {
     uint32_t handle;
     if (!sfx.open || find_row(sound) < 0) return 0;
+    if (!(pan >= -1.f)) pan = -1.f;
+    if (pan > 1.f) pan = 1.f;
+    uint32_t packed = (volume >= 127u ? 127u : volume) | (uint32_t)(128 + (int)(pan * 127.f)) << 8;
     LightLock_Lock(&sfx.lock);
     handle = ++sfx.next_handle ? sfx.next_handle : ++sfx.next_handle;
     LightLock_Unlock(&sfx.lock);
-    return push((Request){1, sound, handle, volume}) ? handle : 0;
+    return push((Request){1, sound, handle, packed}) ? handle : 0;
+}
+
+uint32_t c3_sfx_play(uint32_t sound, uint32_t volume)
+{
+    return c3_sfx_play_pan(sound, volume, 0.f);
 }
 
 void c3_sfx_stop(uint32_t sound)

@@ -25,6 +25,8 @@ int c3_sfx_has(uint32_t sound);
 /* Start `sound` at volume 0..127 (127 = as rendered). Returns a nonzero
  * handle, or 0 when the id is absent or the player is closed. */
 uint32_t c3_sfx_play(uint32_t sound, uint32_t volume);
+/* As c3_sfx_play, panned -1 (left) .. 1 (right); 0 is centre. */
+uint32_t c3_sfx_play_pan(uint32_t sound, uint32_t volume, float pan);
 /* fn_80166B18: stop every voice playing `sound` (short fade). */
 void c3_sfx_stop(uint32_t sound);
 void c3_sfx_stop_handle(uint32_t handle);

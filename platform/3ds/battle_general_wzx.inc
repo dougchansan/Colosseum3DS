@@ -364,7 +364,10 @@ static int be_start(void *user, uint32_t i, const C3WzxNode *n)
         if (type != 0) return wzx_effect_start(s, r, i, n);
         r->node_live[i] = 1; return 1; }
     case C3_WZX_SOUND:
-        return sound(s, c3_wzx_payload_u32(n, 0), error, sizeof error) || 1;
+        s->sound_owner = (int)r->owner;
+        (void)sound(s, c3_wzx_payload_u32(n, 0), error, sizeof error);
+        s->sound_owner = -1;
+        return 1;
     case C3_WZX_ACTION: {
         uint32_t action = c3_wzx_payload_u32(n, 0);
         if (r->owner < 4 && (action == 2 || action == 3)) s->presentation.visible[r->owner] = action == 3;
@@ -602,7 +605,7 @@ static void wzx_step(C3BattleGeneralStage *s, uint32_t ms)
         if (!busy) {
             char error[160];
             w->follow_pending = 0;
-            if (w->follow_voice) (void)sound(s, w->follow_voice, error, sizeof error);
+            if (w->follow_voice) { s->sound_owner = (int)w->follow_owner; (void)sound(s, w->follow_voice, error, sizeof error); s->sound_owner = -1; }
             s->wzx_id = 0x1000u | w->follow_special;
             if (wzx_begin(s, w->follow, 4, w->follow_owner, w->follow_owner)) s->wzx_attack_wait = 1;
         }
