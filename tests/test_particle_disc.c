@@ -31,7 +31,7 @@ int main(int argc,char **argv)
     if(!list){printf("particle disc check skipped: %s missing\n",path);return 0;}
     static const C3ParticleCamera camera={{1,0,0},{0,1,0},{1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1}};
     static const float attachment[12]={.1f,0,0,0, 0,.1f,0,0, 0,0,.1f,0};
-    char name[256],error[160];unsigned packs=0,launches=0,failures=0,finished=0,saturated=0;uint32_t peak=0,dropped=0;
+    char name[256],error[160];unsigned app_quads=0,packs=0,launches=0,failures=0,finished=0,saturated=0;uint32_t peak=0,dropped=0;
     while(fscanf(list,"%255s",name)==1){
         unsigned root_count,closure_count;uint32_t roots[C3_PARTICLE_PACK_MAX_ROOTS],closure[C3_PARTICLE_MAX_GENERATORS];
         if(fscanf(list,"%u",&root_count)!=1||root_count>C3_PARTICLE_PACK_MAX_ROOTS)return fprintf(stderr,"bad list\n"),1;
@@ -53,12 +53,16 @@ int main(int argc,char **argv)
             const float origin[3]={0,0,0};++launches;
             if(!c3_particle_begin_position_flags(&sys,&pack.bank,roots[r],0x1234u+r,origin,0,1,1,0x10a9,error,sizeof error)){
                 printf("FAIL %s root %u: begin: %s\n",name,roots[r],error);++failures;continue;}
+            /* Source-world battle camera for kind0x10000 emission bases. */
+            static const float eye[3]={0,500,1500},target[3]={0,100,0},up[3]={0,1,0};
+            if(!c3_particle_set_camera(&sys,eye,target,up,error,sizeof error)){printf("FAIL camera: %s\n",error);return 1;}
             int ok=1;
             for(unsigned t=0;t<ticks&&ok;t+=60){
                 if(!c3_particle_step_ticks(&sys,ticks-t<60?ticks-t:60,0,error,sizeof error)){printf("FAIL %s root %u tick %u: %s\n",name,roots[r],t,error);ok=0;break;}
                 for(unsigned i=0;i<C3_PARTICLE_MAX_PARTICLES;++i){
                     C3ParticleQuad q;if(!sys.particles[i].active)continue;
                     int drawn=c3_particle_quad(&sys.particles[i],attachment,&camera,&q,error,sizeof error);
+                    if(drawn>0&&sys.particles[i].app_srt_handle)++app_quads;
                     if(drawn<0){printf("FAIL %s root %u quad: %s\n",name,roots[r],error);ok=0;break;}
                     if(drawn&&!c3_particle_pack_texture(&pack,q.texture_group,q.texture_frame)){printf("FAIL %s root %u: texture %u/%u absent\n",name,roots[r],q.texture_group,q.texture_frame);ok=0;break;}
                 }
@@ -72,7 +76,7 @@ int main(int argc,char **argv)
         free(data);
     }
     fclose(list);
-    printf("particle disc check: %u packs, %u launches, %u failures; %u finished within %u ticks; peak %u live (%u launches reach the pool); %u spawns dropped\n",
-           packs,launches,failures,finished,ticks,peak,saturated,dropped);
+    printf("particle disc check: %u packs, %u launches, %u failures; %u finished within %u ticks; peak %u live (%u launches reach the pool); %u spawns dropped; %u AppSRT quads\n",
+           packs,launches,failures,finished,ticks,peak,saturated,dropped,app_quads);
     return failures!=0;
 }

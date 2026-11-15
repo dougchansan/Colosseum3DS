@@ -65,6 +65,13 @@ typedef struct {
   * always for psCopyGeneratorData children). */
  uint8_t angle_radius_scaled;
  uint16_t children; /* General banks: live particles owned (psGenerator numChild). */
+ /* General banks, kind0x20000 (psAddGeneratorAppSRT): app_srt_handle is a
+  * per-system AppSRT serial shared by the generator, its particles and the
+  * generators/particles they spawn; position is then AppSRT-local and
+  * app_translate is the source-world origin (follows POSITION updates
+  * until F6 locks it). app_camera: source isGenerator/x72, display rotates
+  * the local frame by the camera (cleared by F5). */
+ float app_translate[3];uint8_t app_camera,app_locked;
 } C3ParticleEmitter;
 typedef struct {
  uint8_t active,depth,tex_group,pose;
@@ -83,6 +90,9 @@ typedef struct {
  /* General banks: gen_slot is the owning generator's template slot (psGenerator
   * vel for F4); general selects source-faithful quad approximations. */
  uint16_t gen_slot;uint8_t general;
+ /* General AppSRT copy (see C3ParticleEmitter): c3_particle_quad resolves
+  * it statelessly to source world before the attachment. */
+ uint8_t app_camera;float app_translate[3];
 } C3Particle;
 
 /* Reached Growl owns camera-relative SRTs with identity rotation/scale.
@@ -113,6 +123,8 @@ typedef struct {
   * spawns the source would also have refused (pool/nesting full). */
  float points[C3_PARTICLE_MAX_POINTS][3];uint8_t point_valid[C3_PARTICLE_MAX_POINTS];
  uint32_t dropped;
+ /* c3_particle_set_camera: source-world camera for kind0x10000 emission. */
+ float camera_eye[3],camera_target[3],camera_up[3];uint8_t camera_valid;
  char diagnostic[160];
 } C3ParticleSystem;
 typedef struct {
@@ -130,15 +142,19 @@ typedef struct {
  * bone lookup and source-part mapping. Returns1 drawn,0 invisible,-1 invalid.
  * UV includes original mirror scale/offset: renderer must use mirror wrapping.
  * TEV: env*(1-texture)+prim*texture; trail multiplies alpha by vertex alpha.
- * blend:0 alpha,1 additive-alpha,2 subtract,3 destination-color/zero. */
+ * blend:0 alpha,1 additive-alpha,2 subtract,3 destination-color/zero.
+ * General-bank AppSRT particles resolve here too (no system needed): source
+ * world = app_translate + R*local, R = camera rotation while app_camera.
+ * Qualified Growl AppSRT particles still require c3_particle_quad_app_srt. */
 int c3_particle_quad(const C3Particle *,const float attachment[12],
                      const C3ParticleCamera *,C3ParticleQuad *,char *,size_t);
 int c3_particle_bank_decode(C3ParticleBank *,const void *,size_t,char *,size_t);
 /* General path (C3PT v2): decodes the closure reachable from 1..32 source
  * root IDs with tools/prepare_particle.py general_bank's admission rules:
  * the whole psInterpretParticle0 table except partial vector SETs, shapes
- * 0,1,2,3,4,6,7,8 (type bit 0x80 kills children at expiry), no camera
- * basis/AppSRT (kind 0x30000), GX texture formats 0-6. A failing non-root
+ * 0,1,2,3,4,6,7,8 (type bit 0x80 kills children at expiry), camera-basis
+ * (kind0x10000) and AppSRT (kind0x20000) generators, GX texture formats 0-6.
+ * A failing non-root
  * generator is left out; spawning it is the source NULL-template no-op.
  * Begin such a bank through c3_particle_begin_position_flags with a SOURCE
  * root ID and any source attachment flags. */
@@ -195,6 +211,14 @@ int c3_particle_position_root(C3ParticleSystem *,uint32_t root_handle,
  * or emitted particles. General source LIVE child/JObj following is unqualified.
  * GREEN remains one-shot and rejects all position updates. */
 int c3_particle_position(C3ParticleSystem *,const float source_world_position[3],char *,size_t);
+/* General banks: the current camera in SOURCE world units (the space of
+ * POSITION inputs, i.e. native world *10 for the usual .1 attachment).
+ * generateParticle builds kind0x10000 emission bases from eye/up (psCamera
+ * eyepos, HSD_CObjGetUpVector); target is the fallback look point when the
+ * eye coincides with the generator. Call after begin and before every step
+ * whose camera changed. Without a camera such generators emit unrotated. */
+int c3_particle_set_camera(C3ParticleSystem *,const float eye[3],const float target[3],
+ const float up[3],char *,size_t);
 /* Fixed60Hz source simulation, retained millisecond fraction; paused consumes no
  * time. Catchup >600ticks fails explicitly; elapsed time is never silently lost.
  * Failure latches until cancel/new begin; diagnostics identify generator/PC/op. */

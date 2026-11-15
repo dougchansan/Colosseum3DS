@@ -638,8 +638,8 @@ def general_generator(data, header, index):
         raise ValueError("nonfinite/excessive generator scalar")
     if gen_type & 0xF not in GENERAL_SHAPES or gen_type & ~0x8F:
         raise ValueError(f"generator shape {gen_type:#x}")
-    if kind & 0x30000:
-        raise ValueError("generator camera basis/application SRT")
+    # kind 0x10000 (camera emission basis) and 0x20000 (AppSRT) are admitted:
+    # the runtime takes the camera from c3_particle_set_camera.
     if group >= header["groups"]:
         raise ValueError("generator texture group outside table")
     if abs(params[7]) > GENERAL_MAX_RATE:

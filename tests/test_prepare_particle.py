@@ -197,8 +197,7 @@ class ParticlePreparationTests(unittest.TestCase):
         self.assertEqual((width, height), (8, 8))  # 8x4 I8 resampled to a PICA edge
         camera = bytearray(raw)
         struct.pack_into(">I", camera, 56, 0x01020000)
-        with self.assertRaisesRegex(ValueError, "root generator camera basis"):
-            particle.general_bank(camera, [0])
+        self.assertEqual(particle.general_bank(camera, [0])["closure"], [0])
 
 if __name__ == "__main__":
     unittest.main()

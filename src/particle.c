@@ -152,7 +152,6 @@ static const char *general_generator(const GeneralHeader *h,uint32_t id,C3Partic
  g->grav=v[0];g->fric=v[1];memcpy(g->velocity,v+2,12);g->radius=v[5];g->angle=v[6];g->rate=v[7];g->size=v[8];memcpy(g->param,v+9,12);
  unsigned shape=g->type&15;
  if((g->type&~0x8fu)||shape==5||shape>8)return "generator shape";
- if(kind&0x30000)return "generator camera basis/application SRT";
  if(g->tex_group>=h->groups)return "generator texture group outside table";
  if(fabsf(g->rate)>C3_PARTICLE_MAX_PARTICLES)return "generator rate bound";
  g->script_offset=(uint32_t)at+60;g->script_bytes=(uint32_t)(end-at-60);
@@ -526,7 +525,7 @@ static int interpret(C3ParticleSystem *s,C3Particle *p)
   }
  }
  done:
- if(!--p->life){if(p->app_srt_handle&&!app_release(s,p->app_srt_handle))return 0;if(s->bank.general)general_point_release(s,p);p->active=0;return 1;}
+ if(!--p->life){if(!s->bank.general&&p->app_srt_handle&&!app_release(s,p->app_srt_handle))return 0;if(s->bank.general)general_point_release(s,p);p->active=0;return 1;}
  if(p->kind&4){
   float sa=sinf(p->grav),sb=sinf(p->fric),ca=cosf(p->grav),cb=cosf(p->fric);p->velocity[2]+=p->tornado_speed;
   float r=fabsf(p->tornado_radius)+p->velocity[2]*tanf(fabsf(p->tornado_angle));r*=p->velocity[1];
@@ -602,6 +601,8 @@ static int general_child(C3ParticleSystem *s,C3Particle *parent,uint32_t source_
  if(copy_velocity)memcpy(p->velocity,parent->velocity,sizeof p->velocity);
  if(p->source_flags&4)yaw_rotate(p->attachment_yaw,p->velocity);
  memcpy(p->position,parent->position,sizeof p->position);
+ /* psAttachParticleAppSRT(child, pp->appsrt). */
+ p->app_srt_handle=parent->app_srt_handle;p->app_camera=parent->app_camera;memcpy(p->app_translate,parent->app_translate,sizeof p->app_translate);
  if(parent->kind&0x20000000)p->kind|=0x20000000;
  {C3ParticleEmitter *owner=general_owner(s,p);if(owner&&owner->children<UINT16_MAX)++owner->children;}
  return interpret(s,p);
@@ -616,9 +617,54 @@ static C3ParticleEmitter *general_emitter(C3ParticleSystem *s,unsigned slot,unsi
   /* psCreateGeneratorID count seed. */
   if(d->kind&0x100)v->count=d->rate<0?(1.f+d->rate>FLT_EPSILON?1.f:0.f):1.f-FLT_EPSILON;
   else v->count=d->rate<0?0:rnd(s);
-  v->serial=++s->spawned_emitters;return v;
+  v->serial=++s->spawned_emitters;
+  /* psCreateGeneratorID kind0x20000: psAddGeneratorAppSRT, isGenerator=1.
+   * The generator then sits at the AppSRT origin (Growl precedent). */
+  if(d->kind&0x20000){if(!++s->app_srt_generation)++s->app_srt_generation;v->app_srt_handle=s->app_srt_generation;
+   memcpy(v->app_translate,pos,sizeof v->app_translate);memset(v->position,0,sizeof v->position);v->app_camera=1;}
+  return v;
  }
  ++s->dropped;return NULL;
+}
+/* Every generator/particle sharing a general AppSRT sees the same state. */
+static void general_app_translate(C3ParticleSystem *s,uint32_t handle,const float pos[3])
+{
+ float t[3];memcpy(t,pos,sizeof t);
+ for(unsigned i=0;i<C3_PARTICLE_MAX_EMITTERS;++i)if(s->emitters[i].active&&s->emitters[i].app_srt_handle==handle)memcpy(s->emitters[i].app_translate,t,sizeof t);
+ for(unsigned i=0;i<C3_PARTICLE_MAX_PARTICLES;++i)if(s->particles[i].active&&s->particles[i].app_srt_handle==handle)memcpy(s->particles[i].app_translate,t,sizeof t);
+}
+static void general_app_flag(C3ParticleSystem *s,uint32_t handle,int lock)
+{
+ for(unsigned i=0;i<C3_PARTICLE_MAX_EMITTERS;++i)if(s->emitters[i].active&&s->emitters[i].app_srt_handle==handle){if(lock)s->emitters[i].app_locked=1;else s->emitters[i].app_camera=0;}
+ if(!lock)for(unsigned i=0;i<C3_PARTICLE_MAX_PARTICLES;++i)if(s->particles[i].active&&s->particles[i].app_srt_handle==handle)s->particles[i].app_camera=0;
+}
+/* generateParticle rot_mtx. kind0x30000 starts from identity (gen->rot, the
+ * native yaw, is ignored); kind0x10000 replaces it with the camera basis
+ * [up x look, look x (up x look), look], look = eye - gen->pos. */
+typedef struct {float m[9];uint8_t mode;} GeneralBasis; /* 0 yaw, 1 none, 2 camera columns */
+static void general_basis(const C3ParticleSystem *s,const C3ParticleEmitter *e,GeneralBasis *b)
+{
+ b->mode=(e->kind&0x10000)?2:(e->kind&0x20000)?1:0;
+ if(b->mode!=2)return;
+ if(!s->camera_valid){b->mode=1;return;}
+ float look[3],up[3],c[3];
+ for(unsigned j=0;j<3;++j)look[j]=s->camera_eye[j]-(e->position[j]+(e->app_srt_handle?e->app_translate[j]:0));
+ float n=sqrtf(look[0]*look[0]+look[1]*look[1]+look[2]*look[2]);
+ if(n<=FLT_EPSILON){for(unsigned j=0;j<3;++j)look[j]=s->camera_eye[j]-s->camera_target[j];n=sqrtf(look[0]*look[0]+look[1]*look[1]+look[2]*look[2]);}
+ if(n<=FLT_EPSILON){b->mode=1;return;}
+ for(unsigned j=0;j<3;++j)look[j]/=n;
+ n=sqrtf(s->camera_up[0]*s->camera_up[0]+s->camera_up[1]*s->camera_up[1]+s->camera_up[2]*s->camera_up[2]);
+ for(unsigned j=0;j<3;++j)up[j]=s->camera_up[j]/n;
+ for(unsigned j=0;j<3;++j)c[j]=up[(j+1)%3]*look[(j+2)%3]-up[(j+2)%3]*look[(j+1)%3];
+ for(unsigned j=0;j<3;++j)up[j]=look[(j+1)%3]*c[(j+2)%3]-look[(j+2)%3]*c[(j+1)%3];
+ for(unsigned j=0;j<3;++j){b->m[j]=c[j];b->m[3+j]=up[j];b->m[6+j]=look[j];}
+}
+static void general_basis_apply(const GeneralBasis *b,const C3ParticleEmitter *e,float v[3])
+{
+ if(b->mode==0){yaw_rotate(e->attachment_yaw,v);return;}
+ if(b->mode==1)return;
+ float x=v[0],y=v[1],z=v[2];
+ for(unsigned j=0;j<3;++j)v[j]=b->m[j]*x+b->m[3+j]*y+b->m[6+j]*z;
 }
 /* F0/EF (flags 0..7 into kind bits 25-27) and A5 (flags -1): psCreateGeneratorID
  * + psCopyGeneratorData (rot/scale/posFlags&~2, AngleRadiusScale from scale2,
@@ -631,6 +677,11 @@ static int general_spawn_generator(C3ParticleSystem *s,C3Particle *p,uint32_t so
  if(p->kind&0x20000000)v->kind|=0x20000000;
  v->attachment_yaw=p->attachment_yaw;v->attachment_scale=p->attachment_scale;v->radius_scale=p->radius_scale;
  v->source_flags=(uint16_t)(p->source_flags&~2u);v->angle_radius_scaled=1;
+ /* psAttachGeneratorAppSRT(gp, pp->appsrt): an AppSRT particle's generator
+  * joins its AppSRT at the particle's local position; otherwise a kind0x20000
+  * generator's own AppSRT starts at the particle (general_emitter). */
+ if(p->app_srt_handle){v->app_srt_handle=p->app_srt_handle;v->app_camera=p->app_camera;v->app_locked=0;
+  memcpy(v->app_translate,p->app_translate,sizeof v->app_translate);memcpy(v->position,p->position,sizeof v->position);}
  return 1;
 }
 static void general_color_add(C3ParticleSystem *s,C3Particle *p,unsigned which_mask,const unsigned delta[4])
@@ -698,7 +749,10 @@ static int general_op(C3ParticleSystem *s,C3Particle *p,unsigned op,unsigned pc)
  case 0xae:p->kind&=~0x60u;return 1;
  case 0xaf:p->kind=(p->kind&~0x40u)|0x20;return 1;
  case 0xb0:p->kind=(p->kind&~0x20u)|0x40;return 1;
- case 0xb2:case 0xf5:case 0xf6:return 1; /* AppSRT detach/lock: general banks never own an AppSRT (kind0x30000 refused) */
+ case 0xf5:case 0xf6:{C3ParticleEmitter *o=general_owner(s,p);  /* F5 gen AppSRT isGenerator=0; F6 gen type0x1000 */
+  if(o&&o->app_srt_handle){general_app_flag(s,o->app_srt_handle,op==0xf6);}return 1;}
+ case 0xb2:if(p->app_srt_handle&&!p->app_camera){                        /* B2 bake into world, psRemoveParticleAppSRT */
+  for(unsigned j=0;j<3;++j){p->position[j]+=p->app_translate[j];}p->app_srt_handle=0;}return 1;
  case 0xb3:{unsigned t;if(!timearg(s,p,&t)||!byte(s,p,&a)||!byte(s,p,&b)||!byte(s,p,&c))return 0;return 1;} /* alpha-compare ramp: not rendered (fixed PICA alpha test) */
  case 0xb4:p->kind|=0x200;return 1;
  case 0xb5:p->kind&=~0x200u;return 1;
@@ -749,20 +803,21 @@ static void general_emit(C3ParticleSystem *s,unsigned index,float step,float *cu
  float elevation=sqrtf(vel[0]*vel[0]+vel[1]*vel[1]+vel[2]*vel[2]);
  int trig=shape!=1&&elevation>FLT_EPSILON;
  float pos[3]={0,0,0},v[3]={0,0,0},tornado[3]={0,0,0};int is_tornado=0;
+ GeneralBasis basis;general_basis(s,e,&basis);
  if(shape==1){
   float r=rnd(s);for(unsigned j=0;j<3;++j){pos[j]=r*(scaled?k:1)*t->param[j];v[j]=vel[j];}
-  yaw_rotate(e->attachment_yaw,pos);yaw_rotate(e->attachment_yaw,v);
+  general_basis_apply(&basis,e,pos);general_basis_apply(&basis,e,v);
  }else if(shape==2){
   float dist=radius<0?1:rnd(s);
   if(t->angle<0)*cur+=step;else *cur=2*PI*rnd(s);
-  float col[3]={0,0,1};if(trig)rotate(t->velocity,col);yaw_rotate(e->attachment_yaw,col);
+  float col[3]={0,0,1};if(trig)rotate(t->velocity,col);general_basis_apply(&basis,e,col);
   float a1=general_atan2(col[1],col[2],col[1]),comb=col[1]*sinf(a1)+col[2]*cosf(a1),a3=general_atan2(col[0],comb,col[0]);
   is_tornado=1;tornado[0]=*cur;tornado[1]=dist;v[0]=a1;v[1]=a3;
  }else if(shape==8){
   float lat_range=scaled?k*t->param[0]:fabsf(t->param[0]),speed=sqrtf(t->velocity[0]*t->velocity[0]+t->velocity[1]*t->velocity[1]+t->velocity[2]*t->velocity[2]);
   if(t->param[0]<0)speed=-speed;
   float lat=lat_range==0?PI*rnd(s):lat_range*rnd(s),lon=2*PI*rnd(s),dist=radius<0?-radius:radius*rnd(s);
-  float dir[3]={sinf(lat)*cosf(lon),sinf(lat)*sinf(lon),cosf(lat)};if(trig)rotate(t->velocity,dir);yaw_rotate(e->attachment_yaw,dir);
+  float dir[3]={sinf(lat)*cosf(lon),sinf(lat)*sinf(lon),cosf(lat)};if(trig)rotate(t->velocity,dir);general_basis_apply(&basis,e,dir);
   for(unsigned j=0;j<3;++j){v[j]=dir[j]*speed;pos[j]=dist*dir[j];}
   if(radius>0&&speed<0)for(unsigned j=0;j<3;++j)v[j]*=dist/radius;
  }else{
@@ -782,13 +837,14 @@ static void general_emit(C3ParticleSystem *s,unsigned index,float step,float *cu
   float sca=elevation*sinf(cone);v[0]=sca*cosf(*cur);v[1]=sca*sinf(*cur);v[2]=elevation*cosf(cone);
   if(shape==3)for(unsigned j=0;j<3;++j)v[j]*=r;
   if(trig){rotate(t->velocity,pos);rotate(t->velocity,v);}
-  yaw_rotate(e->attachment_yaw,pos);yaw_rotate(e->attachment_yaw,v);
+  general_basis_apply(&basis,e,pos);general_basis_apply(&basis,e,v);
  }
  /* psGenerateParticle after all draws: a full pool drops only this particle. */
  C3Particle *p=general_slot(s);if(!p)return;
  initial_particle(s,p,e->generator,e->depth);
  p->emitter=(uint16_t)index;p->emitter_serial=e->serial;p->gen_slot=e->generator;p->kind=e->kind;p->grav=grav;p->fric=fric;
  p->attachment_yaw=e->attachment_yaw;p->attachment_scale=sc;p->radius_scale=k;p->source_flags=e->source_flags;
+ p->app_srt_handle=e->app_srt_handle;p->app_camera=e->app_camera;memcpy(p->app_translate,e->app_translate,sizeof p->app_translate);
  if(e->children<UINT16_MAX)++e->children;
  if(is_tornado){
   p->kind|=4;memcpy(p->velocity,tornado,sizeof tornado);p->grav=v[0];p->fric=v[1];
@@ -946,13 +1002,28 @@ static int red_constant_position(C3ParticleSystem *s,uint32_t handle,const float
  }
  return error(e,cap,"Expired RED constant-point root record.");
 }
+/* genPosUpdate: an AppSRT root moves its AppSRT origin (all attached
+ * particles follow at display), unless F6 locked it. */
+static void general_root_position(C3ParticleSystem *s,C3ParticleEmitter *v,const float pos[3])
+{
+ if(s->bank.general&&v->app_srt_handle){if(!v->app_locked)general_app_translate(s,v->app_srt_handle,pos);return;}
+ memmove(v->position,pos,sizeof v->position);
+}
+int c3_particle_set_camera(C3ParticleSystem *s,const float eye[3],const float target[3],const float up[3],char *e,size_t cap)
+{
+ if(!s||!valid_position(eye)||!valid_position(target)||!valid_position(up))return error(e,cap,"Invalid particle camera.");
+ float n=up[0]*up[0]+up[1]*up[1]+up[2]*up[2];if(!(n>FLT_EPSILON))return error(e,cap,"Degenerate particle camera up vector.");
+ memmove(s->camera_eye,eye,sizeof s->camera_eye);memmove(s->camera_target,target,sizeof s->camera_target);memmove(s->camera_up,up,sizeof s->camera_up);s->camera_valid=1;
+ if(e&&cap)e[0]=0;
+ return 1;
+}
 int c3_particle_position(C3ParticleSystem *s,const float pos[3],char *e,size_t cap)
 {
  if(s&&s->bank.profile==C3_PARTICLE_PROFILE_TACKLE_V1)return error(e,cap,"Tackle POSITION is a one-shot snapshot.");
  if(s&&s->bank.profile==C3_PARTICLE_PROFILE_GREEN_DOWN_V1)return error(e,cap,"Green-down POSITION is a one-shot snapshot.");
  if(s&&s->bank.profile==C3_PARTICLE_PROFILE_RED_DOWN_V1)return red_constant_position(s,s->root_emitter_serial,pos,e,cap);
  if(!s||!s->position_attachment||s->failed||!valid_position(pos))return error(e,cap,"Invalid POSITION particle attachment.");
- if(!s->cancelled)for(unsigned i=0;i<C3_PARTICLE_MAX_EMITTERS;++i)if(s->emitters[i].serial==s->root_emitter_serial)memcpy(s->emitters[i].position,pos,sizeof s->emitters[i].position);
+ if(!s->cancelled)for(unsigned i=0;i<C3_PARTICLE_MAX_EMITTERS;++i)if(s->emitters[i].serial==s->root_emitter_serial){general_root_position(s,&s->emitters[i],pos);break;}
  if(e&&cap)e[0]=0;
  return 1;
 }
@@ -1000,7 +1071,7 @@ int c3_particle_position_root(C3ParticleSystem *s,uint32_t handle,const float po
  if(s&&s->bank.profile==C3_PARTICLE_PROFILE_GREEN_DOWN_V1)return error(e,cap,"Green-down POSITION is a one-shot snapshot.");
  if(s&&s->bank.profile==C3_PARTICLE_PROFILE_RED_DOWN_V1)return red_constant_position(s,handle,pos,e,cap);
  if(!s||!s->position_attachment||s->failed||s->cancelled||!handle||!valid_position(pos))return error(e,cap,"Invalid POSITION root handle/position.");
- for(unsigned i=0;i<C3_PARTICLE_MAX_EMITTERS;++i)if(s->emitters[i].serial==handle&&s->emitters[i].depth==0){memmove(s->emitters[i].position,pos,sizeof s->emitters[i].position);if(e&&cap)e[0]=0;return 1;}
+ for(unsigned i=0;i<C3_PARTICLE_MAX_EMITTERS;++i)if(s->emitters[i].serial==handle&&s->emitters[i].depth==0){general_root_position(s,&s->emitters[i],pos);if(e&&cap)e[0]=0;return 1;}
  return error(e,cap,"Expired or non-root POSITION handle.");
 }
 int c3_particle_begin_position(C3ParticleSystem *s,const C3ParticleBank *bank,unsigned gen,uint32_t seed,const float pos[3],float yaw,float scale,float radius_scale,char *e,size_t cap)
@@ -1041,11 +1112,53 @@ static int projected(const float m[16],const float p[3],float out[2])
  for(unsigned i=0;i<2;++i)out[i]=(m[4*i]*p[0]+m[4*i+1]*p[1]+m[4*i+2]*p[2]+m[4*i+3])/w;
  return isfinite(out[0])&&isfinite(out[1]);
 }
+/* psdisp.c calcTornadoLastPos in the particle's own (source or AppSRT-local) frame. */
+static void tornado_previous(const C3Particle *p,float prev[3])
+{
+ float vz=p->velocity[2]-p->tornado_speed,phase=p->velocity[0]-p->tornado_turn;
+ float rad=(fabsf(p->tornado_radius)+vz*tanf(fabsf(p->tornado_angle)))*p->velocity[1],x=rad*cosf(phase),y=rad*sinf(phase);
+ float sa=sinf(p->grav),ca=cosf(p->grav),sb=sinf(p->fric),cb=cosf(p->fric);
+ prev[0]=x*cb+vz*sb+p->tornado_origin[0];prev[1]=-x*sa*sb+y*ca+vz*sa*cb+p->tornado_origin[1];prev[2]=-x*ca*sb-y*sa+vz*ca*cb+p->tornado_origin[2];
+}
+int c3_particle_quad(const C3Particle *p,const float attachment[12],const C3ParticleCamera *camera,C3ParticleQuad *out,char *e,size_t cap);
+/* General AppSRT (psDispSubAppSRT, identity scale/rotation): world =
+ * translate + R*local, R = the inverse-view rotation (HSD_MtxGetRotationMtx
+ * 'z','x', expressed in the source frame through the attachment) while
+ * isGenerator, else identity. Tornado trails use the transformed previous
+ * position; billboard scale follows posFlags0x20 as psDispSubAppSRT does. */
+static int general_app_quad(const C3Particle *p,const float attachment[12],const C3ParticleCamera *camera,C3ParticleQuad *out,char *e,size_t cap)
+{
+ for(unsigned i=0;i<12;++i)if(!isfinite(attachment[i])){error(e,cap,"Nonfinite particle attachment.");return -1;}
+ float x[3]={1,0,0},y[3]={0,1,0},z[3]={0,0,1};
+ if(p->app_camera){
+  float sc=sqrtf(attachment[0]*attachment[0]+attachment[4]*attachment[4]+attachment[8]*attachment[8]),r[3],u[3];
+  if(!(sc>FLT_EPSILON)){error(e,cap,"Degenerate particle attachment.");return -1;}
+  for(unsigned j=0;j<3;++j){r[j]=(attachment[j]*camera->right[0]+attachment[4+j]*camera->right[1]+attachment[8+j]*camera->right[2])/sc;
+   u[j]=(attachment[j]*camera->up[0]+attachment[4+j]*camera->up[1]+attachment[8+j]*camera->up[2])/sc;}
+  float rr=sqrtf(r[0]*r[0]+r[1]*r[1]+r[2]*r[2]);
+  for(unsigned j=0;j<3;++j)z[j]=r[(j+1)%3]*u[(j+2)%3]-r[(j+2)%3]*u[(j+1)%3];
+  float zz=sqrtf(z[0]*z[0]+z[1]*z[1]+z[2]*z[2]);
+  if(!(rr>FLT_EPSILON)||!(zz>FLT_EPSILON)){error(e,cap,"Degenerate AppSRT camera basis.");return -1;}
+  for(unsigned j=0;j<3;++j){x[j]=r[j]/rr;z[j]/=zz;}
+  for(unsigned j=0;j<3;++j)y[j]=z[(j+1)%3]*x[(j+2)%3]-z[(j+2)%3]*x[(j+1)%3];
+  for(unsigned j=0;j<3;++j)x[j]=y[(j+1)%3]*z[(j+2)%3]-y[(j+2)%3]*z[(j+1)%3];
+ }
+ C3Particle c=*p;float prev[3];
+ if(p->kind&4)tornado_previous(p,prev);
+ for(unsigned j=0;j<3;++j){
+  c.position[j]=p->app_translate[j]+x[j]*p->position[0]+y[j]*p->position[1]+z[j]*p->position[2];
+  if(p->kind&4)c.velocity[j]=c.position[j]-(p->app_translate[j]+x[j]*prev[0]+y[j]*prev[1]+z[j]*prev[2]);
+  else c.velocity[j]=x[j]*p->velocity[0]+y[j]*p->velocity[1]+z[j]*p->velocity[2];
+  if(!isfinite(c.position[j])||!isfinite(c.velocity[j])){error(e,cap,"AppSRT geometry overflow.");return -1;}
+ }
+ c.kind&=~4u;c.app_srt_handle=0;c.source_flags=(uint16_t)((p->source_flags&~0x80u)|((p->source_flags&0x20)?0x80u:0u));
+ return c3_particle_quad(&c,attachment,camera,out,e,cap);
+}
 int c3_particle_quad(const C3Particle *p,const float attachment[12],const C3ParticleCamera *camera,C3ParticleQuad *out,char *e,size_t cap)
 {
  if(!p||!attachment||!camera||!out){error(e,cap,"Missing particle quad arguments.");return -1;}
  if(!p->active||p->size<FLT_EPSILON||(p->kind&0x20000000))return 0;
- if(p->app_srt_handle){error(e,cap,"AppSRT particles require the checked system-aware adapter.");return -1;}
+ if(p->app_srt_handle){if(p->general)return general_app_quad(p,attachment,camera,out,e,cap);error(e,cap,"AppSRT particles require the checked system-aware adapter.");return -1;}
  /* General banks approximate instead: lighting is drawn unlit, POINT as a
   * quad, and a non-PrimEnv trail with the prim-modulated texture. */
  if(!p->general&&(p->kind&(0x80000000u|0x40000000u))){error(e,cap,"Unqualified particle lighting/point render mode.");return -1;}
@@ -1060,10 +1173,7 @@ int c3_particle_quad(const C3Particle *p,const float attachment[12],const C3Part
  float position[3],velocity[3],r[3],u[3];transform(attachment,p->position,position,1);transform(attachment,p->velocity,velocity,0);
  if(p->kind&4){
   /* psdisp.c calcTornadoLastPos, using the owning source-generator snapshot. */
-  float vz=p->velocity[2]-p->tornado_speed,phase=p->velocity[0]-p->tornado_turn;
-  float rad=(fabsf(p->tornado_radius)+vz*tanf(fabsf(p->tornado_angle)))*p->velocity[1],x=rad*cosf(phase),y=rad*sinf(phase);
-  float sa=sinf(p->grav),ca=cosf(p->grav),sb=sinf(p->fric),cb=cosf(p->fric);
-  float prev[3]={x*cb+vz*sb+p->tornado_origin[0],-x*sa*sb+y*ca+vz*sa*cb+p->tornado_origin[1],-x*ca*sb-y*sa+vz*ca*cb+p->tornado_origin[2]},world[3];
+  float prev[3],world[3];tornado_previous(p,prev);
   transform(attachment,prev,world,1);for(unsigned j=0;j<3;++j)velocity[j]=position[j]-world[j];
  }
 
