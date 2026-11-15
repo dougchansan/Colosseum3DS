@@ -276,6 +276,8 @@ static void colour_at(const C3WzxNode *n, int32_t local, uint8_t rgb[3], int *ho
     rgb[0] = rgb[1] = rgb[2] = 128;
 }
 
+#include "battle_wzx_effects.inc"
+
 static int be_start(void *user, uint32_t i, const C3WzxNode *n)
 {
     WzxRun *r = run_of(user); C3BattleGeneralStage *s = wzx_stage; struct C3BattleWzxLayer *w = s->wzx;
@@ -310,7 +312,7 @@ static int be_start(void *user, uint32_t i, const C3WzxNode *n)
         return 1; }
     case C3_WZX_EFFECT: {
         uint32_t type = c3_wzx_payload_u32(n, 0);
-        if (type != 0) return 1; /* scheduled, not drawn yet */
+        if (type != 0) return wzx_effect_start(s, r, i, n);
         r->node_live[i] = 1; return 1; }
     case C3_WZX_SOUND:
         return sound(s, c3_wzx_payload_u32(n, 0), error, sizeof error) || 1;
@@ -345,7 +347,7 @@ static int be_update(void *user, uint32_t i, const C3WzxNode *n, uint32_t ticks,
         if (!c3_particle_step(&w->systems[sys], ticks * 1000u / 60u, 0, error, sizeof error)) return 0;
         return !c3_particle_finished(&w->systems[sys]); }
     case C3_WZX_EFFECT: {
-        if (c3_wzx_payload_u32(n, 0) != 0) return -1;
+        if (c3_wzx_payload_u32(n, 0) != 0) return wzx_effect_update(s, r, i, n, ticks, local);
         uint32_t target = c3_wzx_payload_u32(n, 0xC);
         uint8_t rgb[3]; int hold;
         colour_at(n, local, rgb, &hold);
@@ -361,11 +363,11 @@ static int be_update(void *user, uint32_t i, const C3WzxNode *n, uint32_t ticks,
 static void be_stop(void *user, uint32_t i, const C3WzxNode *n, int forced)
 {
     WzxRun *r = run_of(user); C3BattleGeneralStage *s = wzx_stage; struct C3BattleWzxLayer *w = s->wzx;
-    (void)forced;
     r->node_live[i] = 0;
     if (n->kind == C3_WZX_PARTICLE && r->node_system[i] >= 0) {
         c3_particle_cancel(&w->systems[r->node_system[i]]); w->system_used[r->node_system[i]] = 0; r->node_system[i] = -1;
     }
+    if (n->kind == C3_WZX_EFFECT && c3_wzx_payload_u32(n, 0) != 0) wzx_effect_stop(s, r, i, n, forced);
     if (n->kind == C3_WZX_EFFECT && c3_wzx_payload_u32(n, 0) == 0) {
         uint32_t target = c3_wzx_payload_u32(n, 0xC);
         if (target == 1) w->floor_tint = 0; else if (target == 2 && r->owner < 4) w->owner_tint[r->owner] = 0;
@@ -546,6 +548,7 @@ static void wzx_step(C3BattleGeneralStage *s, uint32_t ms)
         }
     }
     camera_step(s, ms);
+    wzx_effect_frame(s);
 }
 
 static int wzx_running(const C3BattleGeneralStage *s, unsigned kind)
