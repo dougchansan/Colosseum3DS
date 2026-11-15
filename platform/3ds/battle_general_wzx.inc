@@ -29,6 +29,10 @@ typedef struct {
     int32_t node_system[C3_WZX_MAX_NODES];
     uint8_t node_live[C3_WZX_MAX_NODES];
     uint64_t units;           /* ms*60 not yet turned into ticks */
+    /* A model node with `drive` carries the owner (Dig, Fly, Dive, balls):
+     * the owner follows that joint's motion from where it started. */
+    int32_t drive_node;
+    float drive_base[3], drive_ref[3];
     uint8_t active, kind;
 } WzxRun;
 struct C3BattleWzxLayer {
@@ -264,6 +268,20 @@ static void wzx_part_position(const C3BattleGeneralStage *s, unsigned slot, unsi
 static WzxRun *run_of(void *user) { return user; }
 static C3BattleGeneralStage *wzx_stage; /* the single live stage (backend callbacks) */
 
+/* World position (native) of a source joint of a node's effect model. */
+static int effect_joint(const C3BattleGeneralStage *s, int32_t m, const C3WzxNode *n, uint32_t joint, float out[3])
+{
+    unsigned bone = c3_wzx_node_joint(n, joint);
+    const C3Title *t = &s->models[m];
+    if (bone == 0xFFFF || bone >= t->bone_count) return 0;
+    const float *b = t->pose.matrices[bone], *x = s->transforms[m];
+    float co = cosf(x[3]), si = sinf(x[3]);
+    out[0] = x[0] + x[4] * (co * b[3] + si * b[11]);
+    out[1] = x[1] + x[4] * b[7];
+    out[2] = x[2] + x[4] * (-si * b[3] + co * b[11]);
+    return isfinite(out[0]) && isfinite(out[1]) && isfinite(out[2]);
+}
+
 static void colour_at(const C3WzxNode *n, int32_t local, uint8_t rgb[3], int *hold)
 {
     /* Type-0 keys: from RGBA, to RGBA, duration (-1 holds), interpolation. */
@@ -315,6 +333,13 @@ static int be_start(void *user, uint32_t i, const C3WzxNode *n)
         s->transforms[m][3] = om >= 0 ? s->transforms[om][3] : 0;
         s->transforms[m][4] = om >= 0 ? s->transforms[om][4] : 1;
         s->clocks[m] = 0; s->clips[m] = 0; r->node_live[i] = 1;
+        if (c3_wzx_payload_u32(n, 0x10) && om >= 0 && r->drive_node < 0) {
+            /* _wazaSequenceModelEntryStart: drive attaches the owner to joint drive_part. */
+            if (!c3_title_animate(&s->models[m], 0, 0)) return 1;
+            if (effect_joint(s, m, n, c3_wzx_payload_u32(n, 0x14), r->drive_ref)) {
+                memcpy(r->drive_base, s->transforms[om], 12); r->drive_node = (int32_t)i;
+            }
+        }
         return 1; }
     case C3_WZX_PARTICLE: {
         int32_t b = r->sequence->node_bank[i];
@@ -358,6 +383,11 @@ static int be_update(void *user, uint32_t i, const C3WzxNode *n, uint32_t ticks,
         if (m < 0) return 0;
         if (n->postype) wzx_part_position(s, r->owner, n->attach, s->transforms[m]);
         C3Title *t = &s->models[m];
+        if (r->drive_node == (int32_t)i) {
+            float now[3]; int om = model_for_slot(s, r->owner);
+            if (om >= 0 && effect_joint(s, m, n, c3_wzx_payload_u32(n, 0x14), now))
+                for (unsigned k = 0; k < 3; ++k) s->transforms[om][k] = r->drive_base[k] + now[k] - r->drive_ref[k];
+        }
         float length = t->clip_count ? (float)t->clips[0].frame_count / t->fps : 0;
         s->clocks[m] = (float)local / 60.f;
         uint32_t mflags = c3_wzx_payload_u32(n, 0x18);
@@ -389,6 +419,11 @@ static void be_stop(void *user, uint32_t i, const C3WzxNode *n, int forced)
 {
     WzxRun *r = run_of(user); C3BattleGeneralStage *s = wzx_stage; struct C3BattleWzxLayer *w = s->wzx;
     r->node_live[i] = 0;
+    if (r->drive_node == (int32_t)i) {
+        int om = model_for_slot(s, r->owner);
+        if (om >= 0) memcpy(s->transforms[om], r->drive_base, 12);
+        r->drive_node = -1;
+    }
     if (n->kind == C3_WZX_PARTICLE && r->node_system[i] >= 0) {
         c3_particle_cancel(&w->systems[r->node_system[i]]); w->system_used[r->node_system[i]] = 0; r->node_system[i] = -1;
     }
@@ -506,7 +541,7 @@ static WzxRun *wzx_begin_id(C3BattleGeneralStage *s, const char *name, unsigned 
     for (unsigned i = 0; i < WZX_PLAYERS; ++i) if (!w->runs[i].active) { r = &w->runs[i]; break; }
     if (!r) return NULL;
     memset(r, 0, sizeof *r);
-    r->sequence = q; r->owner = owner; r->target = target; r->kind = (uint8_t)kind;
+    r->sequence = q; r->owner = owner; r->target = target; r->kind = (uint8_t)kind; r->drive_node = -1;
     int32_t timing[16] = {0};
     unsigned entry = q->pack.entry < C3_BATTLE3D_ENTRIES ? q->pack.entry : 0;
     for (unsigned k = 0; k < 4; ++k) timing[k] = (int32_t)s->timing[owner][entry][k];
