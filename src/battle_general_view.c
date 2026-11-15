@@ -98,12 +98,13 @@ uint32_t c3_general_view_batch(C3GeneralView *v, const C3GeneralBattle *b,
             memcpy(e->hp, g->hp, sizeof e->hp);
             break;
         case C3_GB_EVENT_FAINT:
-            e->kind = C3_PREVIEW_EVENT_FAINT; e->target = e->actor;
+            e->kind = C3_PREVIEW_EVENT_FAINT; e->target = e->actor; e->effect = g->ball;
             if (e->target < 4) memset(v->stages[e->target], 0, sizeof v->stages[e->target]);
             break;
         case C3_GB_EVENT_SWITCH:
-            if (is_recall(b, i)) { e->kind = C3_PREVIEW_EVENT_MESSAGE; e->effect = 0x0A; /* the ball's in special */ break; }
+            if (is_recall(b, i)) { e->kind = C3_PREVIEW_EVENT_MESSAGE; e->effect = (uint16_t)(0x100u | g->ball); /* recall into this ball */ break; }
             e->kind = C3_PREVIEW_EVENT_SEND_OUT;
+            e->effect = g->ball; /* the ball it comes out of */
             if (e->actor < 4) {
                 e->target = e->actor; e->target_mask = (uint8_t)(1u << e->actor);
                 memset(v->stages[e->actor], 0, sizeof v->stages[e->actor]);

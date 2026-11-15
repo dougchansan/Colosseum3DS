@@ -62,6 +62,7 @@ typedef struct C3GeneralMon {
     uint8_t ivs[6];
     uint16_t evs[6];
     uint8_t nature, party_slot;
+    uint8_t ball;      /* catch ball item (PokemonBios +0x0F; opponents: Poke Ball 4) */
     uint32_t exp;
     char name[C3_GB_NAME];
 } C3GeneralMon;
@@ -84,6 +85,7 @@ typedef struct C3GeneralEvent {
     uint16_t species;   /* the Pokemon at `actor` when logged (0: none) */
     int8_t stat, stat_delta; /* a stage change: stat 0..6 and delta; stat -1 otherwise */
     uint8_t status;     /* a new status condition (C3_GB_SLEEP..), 0 otherwise */
+    uint8_t ball;       /* the ball of the Pokemon at `actor` (item id, 0 none) */
     char text[96];
 } C3GeneralEvent;
 

@@ -16,7 +16,8 @@
  * OUTCOME map directly; a send-out becomes SEND_OUT; a recall ("come back")
  * and other lines become MESSAGE; a stage change or a new status condition
  * becomes STATUS with the tracked stages, `move` the move that caused it and
- * `effect` the battle special (lbl_803727C8) the original plays for it. An HP event's
+ * `effect` the battle special (lbl_803727C8) the original plays for it. SEND_OUT
+ * and FAINT carry the Pokemon's ball item in `effect`, a recall 0x100|ball. An HP event's
  * actor is the move's user when it falls within that move's group. */
 typedef struct {
     uint32_t sequence, group, next, last_move_group;

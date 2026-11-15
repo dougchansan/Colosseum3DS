@@ -277,7 +277,7 @@ static void event(const C3BattlePreviewEvent *e,int finished,void *user)
     case C3_PREVIEW_EVENT_MESSAGE:case C3_PREVIEW_EVENT_MISS:case C3_PREVIEW_EVENT_CRITICAL:
         s->presentation.duration_ms=s->message_ms;
         /* A recall (fightOutPokemonModosuEffect): the ball's in special. */
-        if(e->kind==C3_PREVIEW_EVENT_MESSAGE&&e->effect==BALL_IN&&e->actor<4&&s->presentation.visible[e->actor]&&wzx_special(s,BALL_IN,e->actor,0,0)){
+        if(e->kind==C3_PREVIEW_EVENT_MESSAGE&&(e->effect&0xFF00)==0x100&&e->actor<4&&s->presentation.visible[e->actor]&&wzx_special(s,ball_special(e->effect&0xFF,0),e->actor,0,0)){
             s->wzx_attack_wait=1;c3_battle_presentation_wait(&s->presentation,1);s->presentation.duration_ms=0;
         }
         break;
@@ -287,7 +287,7 @@ static void event(const C3BattlePreviewEvent *e,int finished,void *user)
         s->presentation.duration_ms=s->message_ms;
         /* fightOutPokemonDasuEffect: ball open, then out with the cry. */
         {uint16_t voice=e->target<4?c3_battle_pack_species_voice(s->pack,s->cast.species[e->target]):0;
-         if(e->target<4&&wzx_special(s,BALL_OPEN,e->target,BALL_OUT,voice)){
+         if(e->target<4&&wzx_special(s,ball_special(e->effect,1),e->target,ball_special(e->effect,2),voice)){
              s->wzx_attack_wait=1;c3_battle_presentation_wait(&s->presentation,1);s->presentation.duration_ms=0;
          }else if(voice&&!sound(s,voice,s->error,sizeof s->error))return;}
         break;}
@@ -338,7 +338,7 @@ static void event(const C3BattlePreviewEvent *e,int finished,void *user)
         s->presentation.duration_ms=s->message_ms;
         if(m>=0&&s->roles[m][4]!=C3_BATTLE3D_NO_CLIP)start_clip(s,m,4,1);
         /* fightOutPokemonKizetuEffect: the ball's downin special. */
-        if(e->target<4&&wzx_special(s,BALL_DOWN,e->target,0,0)){s->wzx_attack_wait=1;c3_battle_presentation_wait(&s->presentation,1);s->presentation.duration_ms=0;}
+        if(e->target<4&&wzx_special(s,ball_special(e->effect,3),e->target,0,0)){s->wzx_attack_wait=1;c3_battle_presentation_wait(&s->presentation,1);s->presentation.duration_ms=0;}
         break;}
     case C3_PREVIEW_EVENT_OUTCOME:{
         int won=e->outcome==C3_PREVIEW_PLAYER_WON,lost=e->outcome==C3_PREVIEW_PLAYER_LOST;

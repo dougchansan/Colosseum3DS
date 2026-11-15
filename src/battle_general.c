@@ -138,7 +138,7 @@ static void species_fields(const C3BattlePack *p,C3GeneralMon *m)
 static int mon_from_trainer(const C3BattlePack *p,C3GeneralMon *m,const uint8_t *r)
 {
     memset(m,0,sizeof *m);
-    m->species=be16(r+10);m->level=r[4];
+    m->species=be16(r+10);m->level=r[4];m->ball=4; /* trainer records carry no ball: Poke Ball */
     if(!species_row(p,m->species)||!m->level||m->level>100)return 0;
     species_fields(p,m);
     m->nature=r[2]<25?r[2]:0;m->shadow=r[3];m->friendship=be16(r+8);m->held_item=(uint16_t)be32(r+0x10);
@@ -167,7 +167,7 @@ static int mon_from_trainer(const C3BattlePack *p,C3GeneralMon *m,const uint8_t 
 static int mon_from_party(const C3BattlePack *p,C3GeneralMon *m,const uint8_t *r,unsigned slot)
 {
     memset(m,0,sizeof *m);
-    m->species=be16(r);m->level=r[0x60];
+    m->species=be16(r);m->level=r[0x60];m->ball=r[0x0F]>=1&&r[0x0F]<=12?r[0x0F]:4; /* PokemonBios catchBallId */
     if(!species_row(p,m->species)||!m->level||m->level>100||r[0xcb])return 0;
     species_fields(p,m);
     m->party_slot=(uint8_t)slot;m->exp=be32(r+0x5c);m->held_item=be16(r+0x88);
@@ -193,7 +193,7 @@ static int say(C3GeneralBattle *b,C3GeneralEventKind kind,unsigned actor,unsigne
     C3GeneralEvent *e=&b->events[b->event_count++];
     memset(e,0,sizeof *e);e->kind=(uint8_t)kind;e->actor=(uint8_t)actor;e->target=(uint8_t)target;e->move=move;
     for(unsigned i=0;i<4;++i){const C3GeneralMon *m=cat(b,i);e->hp[i]=m?m->hp:0;e->max_hp[i]=m?m->max_hp:0;}
-    {const C3GeneralMon *m=actor<4?cat(b,actor):NULL;e->species=m?m->species:0;}
+    {const C3GeneralMon *m=actor<4?cat(b,actor):NULL;e->species=m?m->species:0;e->ball=m?m->ball:0;}
     e->stat=-1;
     va_list ap;va_start(ap,f);vsnprintf(e->text,sizeof e->text,f,ap);va_end(ap);
     return 1;

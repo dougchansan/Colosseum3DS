@@ -29,6 +29,7 @@ typedef struct {
     uint16_t trainer[2];   /* hero, opponent trainer ids */
     uint8_t active_per_side;
     uint16_t intro_wzx;    /* the battle floor's appear special (0: none) */
+    uint16_t ball_mask;    /* bit per ball item 1..12 in use (Poke Ball always) */
 } C3BattleGeneralCast;
 
 typedef struct {

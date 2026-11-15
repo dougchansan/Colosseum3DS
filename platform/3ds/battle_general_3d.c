@@ -25,6 +25,9 @@ static void opening_cast(const C3GeneralBattle *b, C3BattleGeneralCast *c)
     c->trainer[0] = HERO_TRAINER;
     c->trainer[1] = b->info.trainer_id;
     c->intro_wzx = (uint16_t)(b->info.intro_wzx <= 0xFFFF ? b->info.intro_wzx : 0);
+    c->ball_mask = 1u << 4;
+    for (unsigned side = 0; side < 2; ++side)
+        for (unsigned k = 0; k < b->party_count[side]; ++k) { unsigned ball = b->party[side][k].ball; if (ball >= 1 && ball <= 12) c->ball_mask |= (uint16_t)(1u << ball); }
     /* The species each position shows first: the log's first send-out there
      * (a turn log may switch a position), else the active Pokemon. */
     for (unsigned pos = 0; pos < 4; ++pos) {
