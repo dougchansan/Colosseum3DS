@@ -290,6 +290,17 @@ static void colour_at(const C3WzxNode *n, int32_t local, uint8_t rgb[3], int *ho
 
 #include "battle_wzx_effects.inc"
 
+/* Camera-basis generators face the current view (source units, x10). */
+static void particle_camera(C3BattleGeneralStage *s, C3ParticleSystem *sys)
+{
+    char error[96];
+    const C3TitleCamera *c = &s->camera;
+    float eye[3] = {10 * c->eye[0], 10 * c->eye[1], 10 * c->eye[2]};
+    float target[3] = {10 * c->target[0], 10 * c->target[1], 10 * c->target[2]};
+    static const float up[3] = {0, 1, 0};
+    (void)c3_particle_set_camera(sys, eye, target, up, error, sizeof error);
+}
+
 static int be_start(void *user, uint32_t i, const C3WzxNode *n)
 {
     WzxRun *r = run_of(user); C3BattleGeneralStage *s = wzx_stage; struct C3BattleWzxLayer *w = s->wzx;
@@ -320,6 +331,7 @@ static int be_start(void *user, uint32_t i, const C3WzxNode *n)
             if (s->trace) { fprintf(s->trace, "wzx_particle_refused node=%lu root=%lu error=%s\n", (unsigned long)i, (unsigned long)root, error); fflush(s->trace); }
             return 0;
         }
+        particle_camera(s, &w->systems[sys]);
         w->system_used[sys] = 1; r->node_system[i] = sys; r->node_live[i] = 1;
         return 1; }
     case C3_WZX_EFFECT: {
@@ -356,6 +368,7 @@ static int be_update(void *user, uint32_t i, const C3WzxNode *n, uint32_t ticks,
         if (sys < 0) return 0;
         if (n->postype) { float p[3]; wzx_part_position(s, r->owner, n->attach, p); float src[3] = {10 * p[0], 10 * p[1], 10 * p[2]};
             c3_particle_position(&w->systems[sys], src, error, sizeof error); }
+        particle_camera(s, &w->systems[sys]);
         if (!c3_particle_step(&w->systems[sys], ticks * 1000u / 60u, 0, error, sizeof error)) return 0;
         return !c3_particle_finished(&w->systems[sys]); }
     case C3_WZX_EFFECT: {
