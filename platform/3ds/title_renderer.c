@@ -272,6 +272,7 @@ static int validate_asset(const C3Title *title, char *error, size_t capacity)
 }
 
 #include "skin_renderer.inc"
+static void effect_pass_reset(void);
 
 int c3_stage_renderer_init(const C3Title *const *models, size_t count,
                           char *error, size_t capacity)
@@ -280,6 +281,7 @@ int c3_stage_renderer_init(const C3Title *const *models, size_t count,
     memset(&battle_hud, 0, sizeof battle_hud);
     memset(vertex_cache, 0, sizeof vertex_cache);
     memset(model_modulation, 0, sizeof model_modulation);
+    effect_pass_reset();
     hud_texture = UINT32_MAX;
     scene_drawn=false;
     if (!models || !count || count > C3_STAGE_MAX_MODELS)
@@ -996,6 +998,7 @@ static void draw_battle_hud(C3TitleRenderStats *stats)
 #include "particle_renderer.inc"
 #include "particle_line_renderer.inc"
 #include "confusion_renderer.inc"
+#include "effect_pass_renderer.inc"
 
 int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
                           const C3TitleCamera *authored_camera, float fade,
@@ -1179,6 +1182,10 @@ int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
                 C3D_BufInfo *buffers = C3D_GetBufInfo();
                 BufInfo_Init(buffers);
                 BufInfo_Add(buffers, vertices + binding->first_vertex, sizeof(*vertices), 5, 0x43210);
+                /* A general WZX effect may pre-transform this model. */
+                C3D_Mtx model_storage;
+                const C3D_Mtx *model_mvp = effect_model_mvp(model, pass_mvp, &model_storage);
+                C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, mvp_location, model_mvp);
                 /* GS flags0x3010: each model opaque, texture edge, translucent. */
                 for(unsigned model_pass=0;model_pass<(capture?3u:1u);++model_pass){
                 for (uint32_t i = 0; i < title->batch_count; ++i) {
@@ -1224,8 +1231,8 @@ int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
                      * this material's combiner does not sample that unit. */
                     C3D_TexBind(1, batch->flags & (C3_TITLE_DUAL_MODULATE | C3_TITLE_REFLECTION_BLEND) ?
                         &textures[binding->textures[batch->texture2]] : base_texture);
-                    if (skin_batch_gpu(title, i)) skin_draw(model, title, i, pass_mvp);
-                    else { skin_restore(binding, pass_mvp); C3D_DrawArrays(GPU_TRIANGLES, batch->first, batch->count); }
+                    if (skin_batch_gpu(title, i)) skin_draw(model, title, i, model_mvp);
+                    else { skin_restore(binding, model_mvp); C3D_DrawArrays(GPU_TRIANGLES, batch->first, batch->count); }
                     if (stats) { stats->draw_calls++; stats->vertices += batch->count; }
                     if (batch->flags & C3_TITLE_SPECULAR) {
                         /* Add the independent GX specular raster channel after
@@ -1268,6 +1275,7 @@ int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
     if(confusion_active&&!confusion_draw(&mvp,stats,error,capacity)){
         stage_frame_abort();return C3_RENDER_ERROR;
     }
+    effect_pass_draw(models,&mvp,stats);
     if(!draw_particles(camera,&mvp,stats,error,capacity)){
         stage_frame_abort();return C3_RENDER_ERROR;
     }
@@ -1339,6 +1347,7 @@ void c3_title_renderer_shutdown(void)
     /* Target deletion drains the linked GPU queue. Do not use FrameSync here:
      * HOME cancellation can shut down while VBlank callbacks are suspended. */
     confusion_shutdown();
+    effect_pass_shutdown();
     skin_shutdown();
     if (target) { C3D_RenderTargetDelete(target); target = NULL; }
     if (tv_target) { C3D_RenderTargetDelete(tv_target); tv_target = NULL; }

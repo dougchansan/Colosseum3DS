@@ -75,6 +75,27 @@ int c3_stage_renderer_set_tv(size_t model_index, size_t screen_model_index,
  * NULL state hides the effect. Allocation failure preserves the prior binding. */
 int c3_stage_renderer_confusion_program(const C3WzxConfusionProgram *,char *,size_t);
 int c3_stage_renderer_confusion(const C3ConfusionType12 *);
+/* General WZX effect passes (effect_pass_renderer.inc), set between frames
+ * after init; renderer init and shutdown clear them. A model matrix is a
+ * row-major 3x4 world pre-transform of that model in the main and capture
+ * passes (NULL clears). Instances redraw a model's current visible batches
+ * after the scene with `matrix` applied to its world vertices, colour times
+ * rgba, alpha-blended (additive 0), added (1) or the flat colour added over
+ * the model's coverage (2), without depth writes. Effect triangles
+ * are untextured world-space triangles drawn additively after the
+ * instances. Lists are copied; draws past the frame's command budget are
+ * skipped. Each returns 1, or 0 (previous state kept) for invalid input. */
+#define C3_STAGE_MAX_INSTANCES 72u
+#define C3_STAGE_MAX_EFFECT_VERTICES 6144u
+typedef struct { uint32_t model; float matrix[12]; float rgba[4]; uint8_t additive; } C3StageInstance;
+typedef struct { float pos[3]; float rgba[4]; } C3StageEffectVertex;
+int c3_stage_renderer_set_model_matrix(size_t model, const float matrix[12]);
+int c3_stage_renderer_set_instances(const C3StageInstance *, unsigned count);
+int c3_stage_renderer_set_effect_triangles(const C3StageEffectVertex *, unsigned count);
+/* c3_stage_renderer_confusion_program for a scene that has already drawn
+ * (allocates the capture target on first use, else swaps the borrowed CPU
+ * program). Pair with c3_stage_renderer_confusion. */
+int c3_stage_renderer_distortion_program(const C3WzxConfusionProgram *, char *, size_t);
 int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
                           const C3TitleCamera *camera, float fade,
                           C3TitleRenderStats *stats, char *error, size_t capacity);
