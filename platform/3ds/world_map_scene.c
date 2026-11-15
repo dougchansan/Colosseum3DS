@@ -4,6 +4,12 @@
 #include "n3ds_platform.h"
 #include "colosseum3ds/floor_profile.h"
 #include "colosseum3ds/world_map.h"
+#include "colosseum3ds/title.h"
+#include "colosseum3ds/field.h"
+#include "pack_loader.h"
+#include "render_recovery.h"
+#include "stage_renderer.h"
+#include <math.h>
 
 #include <3ds.h>
 #include <stdio.h>
@@ -106,6 +112,135 @@ static int pack_hit(const MapPack *pack, const C3WorldMap *map, int x, int y)
     return best;
 }
 
+/* Top screen: the highlighted destination's exterior map packs (already on
+ * the SD card for the field), loaded on the second core and orbited by a
+ * slow camera. A port presentation; the original shows a still snapshot. */
+#define PREVIEW_PACKS 12u
+#define PREVIEW_REST 0.35f   /* seconds the cursor rests before loading */
+#define PREVIEW_SPEED 0.30f  /* orbit, radians per second */
+typedef struct {
+    uint32_t floor, wanted;
+    C3Title titles[PREVIEW_PACKS];
+    const C3Title *models[PREVIEW_PACKS];
+    C3PackJob jobs[PREVIEW_PACKS];
+    unsigned count;
+    C3PackStream *stream;
+    int ready;
+    float center[3], radius, angle, clock, rest;
+    int walk_bounds; float walk_lo[3], walk_hi[3]; /* the area's walkable ground */
+} Preview;
+static Preview *preview;
+
+static void preview_release(FILE *trace)
+{
+    if (!preview) return;
+    if (preview->stream) { c3_pack_stream_finish(preview->stream); preview->stream = NULL; }
+    if (preview->ready) { (void)c3_render_recover(trace, "world-map-preview", 0, C3_RECOVER_DRAIN); preview->ready = 0; }
+    for (unsigned i = 0; i < PREVIEW_PACKS; ++i) c3_title_close(preview->titles + i);
+    preview->count = 0; preview->floor = 0;
+}
+
+static void preview_start(uint32_t floor, FILE *trace)
+{
+    const C3FloorProfile *profile = c3_floor_profile(floor);
+    preview_release(trace);
+    preview->floor = floor;
+    if (!profile) return;
+    {   /* Frame the orbit on the walkable ground (the collision file), not
+         * on the sky dome and far terrain that the map packs also hold. */
+        char path[160], error[128]; C3FieldMap field; memset(&field, 0, sizeof field);
+        snprintf(path, sizeof path, "sdmc:/3ds/Colosseum3DS/boot/%s.c3f", profile->prefix);
+        preview->walk_bounds = 0;
+        if (c3_field_load(&field, path, error, sizeof error) && field.walk_count) {
+            for (int k = 0; k < 3; ++k) { preview->walk_lo[k] = 1e30f; preview->walk_hi[k] = -1e30f; }
+            for (uint32_t i = 0; i < field.walk_count; ++i)
+                for (int v = 0; v < 3; ++v)
+                    for (int k = 0; k < 3; ++k) {
+                        float x = field.walk[i].vertices[v * 3 + k];
+                        if (x < preview->walk_lo[k]) preview->walk_lo[k] = x;
+                        if (x > preview->walk_hi[k]) preview->walk_hi[k] = x;
+                    }
+            preview->walk_bounds = 1;
+        }
+        c3_field_close(&field);
+    }
+    for (unsigned i = 0; i < PREVIEW_PACKS; ++i) {
+        char path[160]; FILE *f;
+        snprintf(path, sizeof path, "sdmc:/3ds/Colosseum3DS/boot/%s_map%u.c3t", profile->prefix, i);
+        if (!(f = fopen(path, "rb"))) break;
+        fclose(f);
+        memset(preview->jobs + preview->count, 0, sizeof preview->jobs[0]);
+        snprintf(preview->jobs[preview->count].path, sizeof preview->jobs[0].path, "%s", path);
+        preview->jobs[preview->count].title = preview->titles + preview->count;
+        ++preview->count;
+    }
+    if (preview->count) preview->stream = c3_pack_stream_start(preview->jobs, preview->count);
+    if (trace) { fprintf(trace, "world_map_preview floor=%03lx packs=%u\n", (unsigned long)floor, preview->count); fflush(trace); }
+}
+
+/* Once every pack arrived: bounds, first pose, renderer. */
+static void preview_poll(FILE *trace)
+{
+    if (!preview->stream || c3_pack_stream_done(preview->stream) < preview->count) return;
+    c3_pack_stream_finish(preview->stream); preview->stream = NULL;
+    float lo[3] = {1e30f, 1e30f, 1e30f}, hi[3] = {-1e30f, -1e30f, -1e30f};
+    unsigned loaded = 0;
+    for (unsigned i = 0; i < preview->count; ++i) {
+        C3Title *title = preview->titles + i;
+        if (!preview->jobs[i].ok || !c3_title_animate(title, 0, 0)) continue;
+        for (uint32_t v = 0; v < title->vertex_count; ++v)
+            for (int k = 0; k < 3; ++k) {
+                float x = title->vertices[v].pos[k];
+                if (x < lo[k]) lo[k] = x;
+                if (x > hi[k]) hi[k] = x;
+            }
+        title->retained = 1;
+        preview->models[loaded++] = title;
+    }
+    char error[192] = "";
+    if (!loaded || c3_stage_renderer_init(preview->models, loaded, error, sizeof error)) {
+        if (trace) { fprintf(trace, "world_map_preview floor=%03lx ready=0 error=%s\n", (unsigned long)preview->floor, error); fflush(trace); }
+        return;
+    }
+    preview->count = loaded;
+    if (preview->walk_bounds) for (int k = 0; k < 3; ++k) { lo[k] = preview->walk_lo[k]; hi[k] = preview->walk_hi[k]; }
+    for (int k = 0; k < 3; ++k) preview->center[k] = (lo[k] + hi[k]) * 0.5f;
+    float dx = hi[0] - lo[0], dz = hi[2] - lo[2];
+    preview->radius = 0.5f * sqrtf(dx * dx + dz * dz);
+    if (preview->radius < 1.0f) preview->radius = 1.0f;
+    preview->ready = 1;
+    if (trace) { fprintf(trace, "world_map_preview floor=%03lx ready=1 packs=%u radius=%.1f\n", (unsigned long)preview->floor, loaded, (double)preview->radius); fflush(trace); }
+}
+
+static void preview_frame(float seconds, FILE *trace)
+{
+    if (!preview) return;
+    preview->rest += seconds;
+    if (preview->wanted && preview->wanted != preview->floor && !preview->stream && preview->rest >= PREVIEW_REST)
+        preview_start(preview->wanted, trace);
+    preview_poll(trace);
+    if (!preview->ready) {
+        size_t done = preview->stream ? c3_pack_stream_done(preview->stream) : 0;
+        c3_n3ds_top_loading(preview->count ? (float)done / (float)preview->count : 0.0f);
+        return;
+    }
+    preview->angle += PREVIEW_SPEED * seconds;
+    preview->clock += seconds;
+    for (unsigned i = 0; i < preview->count; ++i) (void)c3_title_animate((C3Title *)preview->models[i], 0, preview->clock);
+    float r = preview->radius;
+    C3TitleCamera camera;memset(&camera,0,sizeof camera);
+    camera.target[0] = preview->center[0]; camera.target[1] = preview->center[1]; camera.target[2] = preview->center[2];
+    camera.eye[0] = preview->center[0] + sinf(preview->angle) * r * 1.4f;
+    camera.eye[1] = preview->center[1] + r * 0.9f;
+    camera.eye[2] = preview->center[2] + cosf(preview->angle) * r * 1.4f;
+    camera.fov_y_degrees = 40.0f; camera.near_plane = r * 0.02f; camera.far_plane = r * 8.0f; camera.aspect = 400.0f / 240.0f;
+    C3TitleRenderStats stats; char error[192] = "";
+    if (c3_stage_renderer_draw(preview->models, preview->count, &camera, 1.0f, &stats, error, sizeof error) && trace) {
+        fprintf(trace, "world_map_preview draw_error=%s\n", error); fflush(trace);
+        preview_release(trace);
+    }
+}
+
 static void draw_native(const MapPack *pack, const C3WorldMap *map, const char *note)
 {
     C3BottomUi *ui = c3_bottom_screen_begin();
@@ -155,6 +290,8 @@ int c3_world_map_scene_run(C3GameState *state, FILE *trace, char *error, size_t 
     const char *note = NULL;
     int dirty = 1, released = 0, armed = -1, stick_ready = 1;
     MapPack pack; int native = pack_load(&pack);
+    preview = calloc(1, sizeof *preview);
+    uint64_t preview_clock = c3_n3ds_time_us();
     if (!state || !c3_game_state_summary(state, &summary) || summary.floor != C3_FLOOR_WORLD_MAP_ID ||
         !c3_world_map_open(&map, summary.previous_floor, read_flag, state)) {
         snprintf(error, capacity, "The world map could not be opened from this state.");
@@ -195,7 +332,8 @@ int c3_world_map_scene_run(C3GameState *state, FILE *trace, char *error, size_t 
                * before choosing. */
               static unsigned shown; ++shown;
               if (shown == 30) (void)c3_n3ds_capture_bottom("sdmc:/3ds/Colosseum3DS/campaign/worldmap_bottom.bmp");
-              if (shown >= 45 && map.visible_count && choice < 0 && !(input.pressed & C3_PAD_B)) {
+              if (shown == 140) (void)c3_n3ds_capture_top("sdmc:/3ds/Colosseum3DS/campaign/worldmap_top.bmp");
+              if (shown >= 150 && map.visible_count && choice < 0 && !(input.pressed & C3_PAD_B)) {
                 shown = 0; choice = (int)(rotation++ % map.visible_count); } }
 #endif
             if (input.pressed & C3_PAD_B) choice = -1;
@@ -224,7 +362,7 @@ int c3_world_map_scene_run(C3GameState *state, FILE *trace, char *error, size_t 
             int travel = 0;
             if (!c3_world_map_choose(&map, choice, read_flag, state, &floor, &travel)) {
                 snprintf(error, capacity, "The world-map destination is invalid.");
-                free(pack.data);
+                free(pack.data);preview_release(trace);free(preview);preview=NULL;
                 return -1;
             }
             if (!c3_field_scene_supports(floor)) {
@@ -234,7 +372,7 @@ int c3_world_map_scene_run(C3GameState *state, FILE *trace, char *error, size_t 
                 /* floorLink(floor, 0): entrance 0, arriving from floor 0x38E. */
                 if (!c3_game_state_set_floor(state, floor, C3_FLOOR_WORLD_MAP_ID, 0)) {
                     snprintf(error, capacity, "The world-map destination could not be recorded.");
-                    free(pack.data);
+                    free(pack.data);preview_release(trace);free(preview);preview=NULL;
                 return -1;
                 }
                 if (trace) {
@@ -243,13 +381,24 @@ int c3_world_map_scene_run(C3GameState *state, FILE *trace, char *error, size_t 
                     fflush(trace);
                 }
                 c3_bottom_screen_notice(label(floor), "Travelling...", "Please wait...");
-                free(pack.data);
+                free(pack.data);preview_release(trace);free(preview);preview=NULL;
                 return 2;
             }
         }
-        if (dirty) { if (native) draw_native(&pack, &map, note); else draw(&map, note); dirty = 0; }
+        if (dirty) {
+            if (native) draw_native(&pack, &map, note); else draw(&map, note);
+            /* The highlighted destination becomes the top screen's preview. */
+            C3WorldMapEntry entry; int index = c3_world_map_visible(&map, map.cursor);
+            if (preview && index >= 0 && c3_world_map_entry((uint32_t)index, &entry) && entry.floor != preview->wanted) {
+                preview->wanted = entry.floor; preview->rest = 0;
+            }
+            dirty = 0;
+        }
+        { uint64_t now = c3_n3ds_time_us(); float seconds = (float)(now - preview_clock) / 1e6f; preview_clock = now;
+          if (seconds > 0.25f) seconds = 0.25f;
+          preview_frame(seconds, trace); }
         gspWaitForVBlank();
     }
-    free(pack.data);
+    free(pack.data);preview_release(trace);free(preview);preview=NULL;
     return 1;
 }
