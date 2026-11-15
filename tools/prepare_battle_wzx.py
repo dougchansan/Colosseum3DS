@@ -62,6 +62,54 @@ MODEL_FPS = 30.0            # GSmodelSetAnimRate 0.5 per 60 Hz tick (wazaSequenc
 CAMERA_RATE = 0.5           # GScameraSetAnimRate 0.5 (camera.c cameraPlayOffsetAnime)
 TASK_TIMEOUT = 900
 EFFECT_DAT_TYPES = (5, 11)
+# C3T batch flags (include/colosseum3ds/title.h) that valid_batch() checks.
+LIT, SPECULAR, TEV_LERP, DUAL_MODULATE, REFLECTION_BLEND = 16, 128, 256, 1024, 8192
+BLEND_FLAGS = 8 | 2048 | 4096  # ADDITIVE, SUBTRACT, ADDITIVE_ONE
+
+
+def batch_problem(batch, vertices, textures):
+    """None when a C3T3/C3T4 batch tuple passes title_renderer.c valid_batch()
+    (the stage renderer skips the whole pack otherwise), else the reason."""
+    first, count, texture, flags, color, alpha_mode = batch[:6]
+    shininess = batch[17]
+    ref0, ref1, compare0, compare1, alpha_op, depth, texture2 = batch[20:27]
+    blend = flags & BLEND_FLAGS
+    second_always = compare1 == 7 or (compare1 == 3 and ref1 == 255)
+    if alpha_op != 0 or not ((compare0 == 7 and second_always) or
+                             (compare0 == 4 and (second_always or (compare1 == 4 and ref1 <= ref0)))):
+        return "alpha test op %d compare %d/%d ref %d/%d" % (alpha_op, compare0, compare1, ref0, ref1)
+    if not count or count % 3 or first > vertices or count > vertices - first or texture >= textures:
+        return "geometry"
+    if color not in (0, 3, 4) or alpha_mode not in (0, 2, 3) or depth > 7 or ref0 > 255 or ref1 > 255:
+        return "texture/depth mode"
+    if blend & (blend - 1):
+        return "blend flags %#x" % blend
+    if flags & SPECULAR and (not flags & LIT or flags & (TEV_LERP | DUAL_MODULATE) or blend or
+                             not math.isfinite(shininess) or not 0 < shininess <= 512):
+        return "specular with flags %#x" % flags
+    if flags & REFLECTION_BLEND and (texture2 >= textures or color != 4 or alpha_mode != 0 or not flags & LIT or
+                                     flags & (TEV_LERP | DUAL_MODULATE) or not 0 <= batch[27] <= 1):
+        return "reflection blend with flags %#x" % flags
+    if flags & DUAL_MODULATE and (texture2 >= textures or color != 4 or alpha_mode != 0 or
+                                  not flags & TEV_LERP or flags & LIT):
+        return "dual modulate with flags %#x" % flags
+    return None
+
+
+def native_specular(meshes):
+    """The 3DS lit-specular pass has no TEV-lerp/dual/blend variant: drop the
+    specular highlight there (the texture/colour expression is kept)."""
+    dropped = 0
+    for mesh in meshes:
+        batch = mesh["batch"]
+        flags = batch[3]
+        if flags & SPECULAR and (not flags & LIT or flags & (TEV_LERP | DUAL_MODULATE | BLEND_FLAGS) or
+                                 not math.isfinite(batch[17]) or not 0 < batch[17] <= 512):
+            batch = list(batch)
+            batch[3] = flags & ~SPECULAR
+            mesh["batch"] = type(mesh["batch"])(batch)
+            dropped += 1
+    return dropped
 
 
 def be32(d, o):
@@ -380,6 +428,14 @@ def read_c3t_header(data):
         raise ValueError("C3T counts outside bounds")
     if list(offsets) != sorted(offsets) or offsets[-1] > total:
         raise ValueError("C3T section offsets outside pack")
+    next_vertex = 0
+    for i, batch in enumerate(struct.iter_unpack("<8I12f7If", raw[offsets[1]:offsets[1] + 112 * batches])):
+        problem = batch_problem(batch, vertices, textures) or (batch[0] != next_vertex and "partition")
+        if problem:
+            raise ValueError("C3T batch %d unsupported by the stage renderer: %s" % (i, problem))
+        next_vertex += batch[1]
+    if next_vertex != vertices:
+        raise ValueError("C3T batches do not partition the vertices")
     return dict(magic=magic.decode(), raw_bytes=len(raw), bones=bones, vertices=vertices, batches=batches,
                 textures=textures, clips=clips, frames=frames, lights=lights, fps=fps)
 
@@ -471,7 +527,33 @@ def worker_init(parser, approximate):
     if approximate:
         stages.install_singular_sampler(geometry)
     title.APPROXIMATE_HOOK = geometry.approximate if approximate else None
-    CTX.update(geometry=geometry, title=title, stages=stages, approximate=approximate)
+    CTX.update(geometry=geometry, title=title, stages=stages, approximate=approximate, shape_sets=0)
+    install_shape_set_reader()
+
+
+def install_shape_set_reader():
+    """The pinned parser's ShapeSet (POBJ shape animation) reader builds array
+    types bounded by field names its type parser cannot resolve ("Array field
+    with unknown variable name: shape_count"), failing the whole DAT. The
+    describe phase attaches SHAPEANIM POBJs rigidly and never reads the shape
+    targets, so keep the header fields only: the base shape is drawn (shape
+    blending is not converted) and each such PObj is counted per model.
+    Its ShapeAnimationJoint tree also skips HSD's ShapeAnimDObj level (it
+    reads the ShapeAnim pointer as an AObjDesc and follows garbage as a
+    Joint); nothing reads shape animations, so that pointer stays raw."""
+    from shared.Nodes.Classes.Shape.ShapeSet import ShapeSet
+    from shared.Nodes.Classes.Shape.ShapeAnimation import ShapeAnimation
+    from shared.Nodes.Node import Node
+    if getattr(ShapeSet, "_wzx_header_only", False):
+        return
+    ShapeAnimation.fields = [(n, "uint" if n == "animation" else t) for n, t in ShapeAnimation.fields]
+
+    def load(self, parser):
+        Node.loadFromBinary(self, parser)
+        self.vertex_set, self.normal_set = [], []
+        CTX["shape_sets"] = CTX.get("shape_sets", 0) + 1
+    ShapeSet.loadFromBinary = load
+    ShapeSet._wzx_header_only = True
 
 
 class Timeout(Exception):
@@ -551,7 +633,9 @@ def convert_model(task):
     from prepare_pda_models import omit_collapsed_meshes
     output = Path(task["output"])
     name = task["name"]
+    CTX["shape_sets"] = 0
     root, scene = parse_dat(task["dat"])
+    shape_sets = CTX["shape_sets"]
     if not scene.models:
         return dict(ok=False, status=2, reason="DAT has no model (cameras %d, lights %d)" % (
             len(scene.cameras), len(scene.lights)))
@@ -588,6 +672,8 @@ def convert_model(task):
     if model is None:
         raise ValueError("model rejected after channel fixes")
     approximations = collections.Counter(fixes)
+    if shape_sets:
+        approximations["shape_animation_base_shape_only"] += shape_sets
     held = stages.hold_texture_blend(model) if approximate else 0
     if held:
         approximations["texture_blend_animation_held_at_rest"] += held
@@ -616,6 +702,11 @@ def convert_model(task):
                 approximations[label] += 1
     if not built:
         return dict(ok=False, status=1, reason="no mesh could be built: " + "; ".join(material_notes[:3]))
+    specular = native_specular(built)
+    if specular:
+        if not approximate:
+            raise ValueError("specular material outside the native lit-specular subset")
+        approximations["specular_dropped_on_tev_lerp_or_blend"] += specular
     joint_end = model.ends[0] if model.ends else 0.
     end = max(joint_end, material_end(raw_model))
     camera, lights = task["camera"], task["lights"]
@@ -749,12 +840,32 @@ def joint_only_pack(task, model, raw_model, approximations, notes):
             break
     states = [model.world(0, f) for f in frames]
     joints = valid_joints(model, states)[:64]
+    tracks = [np.asarray([world[j] for world, _ in states])[:, :3, :].astype("<f4") for j in joints]
+    if not joints and CTX["approximate"]:
+        # Joints singular only in some samples (a scale-in from 0): those
+        # samples keep the nearest invertible sample's axes at 1/100 scale.
+        for j in range(len(model.joints)):
+            track = np.asarray([world[j] for world, _ in states])[:, :3, :].astype("<f8")
+            dets = np.abs(np.linalg.det(track[:, :, :3])) if np.isfinite(track).all() else None
+            if dets is None or np.max(np.abs(track)) >= 1e5 or not (dets >= 1e-9).any():
+                continue
+            good = np.flatnonzero(dets >= 1e-9)
+            for i in np.flatnonzero(dets < 1e-9):
+                nearest = good[np.argmin(np.abs(good - i))]
+                axes = track[nearest, :, :3]
+                track[i, :, :3] = axes * (0.01 / np.cbrt(abs(np.linalg.det(axes))))
+            joints.append(j)
+            tracks.append(track.astype("<f4"))
+            approximations["singular_joint_samples_scaled"] += len(frames) - len(good)
+            if len(joints) == 64:
+                break
     if not joints:
         return dict(ok=False, status=2, reason="no meshes and no invertible joint (%d joints)" % len(model.joints),
                     joints=len(model.joints), notes=notes)
-    tracks = [np.asarray([world[j] for world, _ in states])[:, :3, :].astype("<f4") for j in joints]
     vertex = (0., 0., 0., 0., 1., 0., 0., 0., 255, 255, 255, 0, 0, 0., 0.)
-    batch = (0, 3, 0, 0, 0, 0, 0, 0, 1., 1., 1., 1., 1., 1., 0., 0., 0., 0., 0., 1., 0, 0, 0, 0, 0, 0, 0, 0.)
+    # Alpha test ALWAYS/ALWAYS and LEQUAL depth (prepare_title's defaults): the
+    # stage renderer rejects a pack whose batch has an unsupported alpha test.
+    batch = (0, 3, 0, 0, 0, 0, 0, 0, 1., 1., 1., 1., 1., 1., 0., 0., 0., 0., 0., 1., 0, 0, 7, 7, 0, 3, 0, 0.)
     camera = struct.pack("<12f", *task["camera"])
     sampled = bytearray()
     for i in range(len(frames)):
