@@ -26,11 +26,14 @@ int c3_ui_assets_open(C3UiAssets *a,const void *memory,size_t size)
     const unsigned char *d=memory;
     C3UiAssets checked={0};
     if(!a||!d||size<PAYLOAD_MIN||size>PACK_MAX||memcmp(d,"C3UI",4))return 0;
-    /* Version 1: the ten original sprites. Version 2 appends C3_UI_BALL. */
-    uint32_t version=u32(d+4),count=version==1u?C3_UI_SPRITES_V1:version==2u?C3_UI_SPRITES:0u;
+    /* Version 1: the ten original sprites. Version 2 appends C3_UI_BALL.
+     * Version 3 adds the font's non-ASCII glyphs (count at +20): a table of
+     * {code, advance, offset, 0} sorted by code after the ASCII table. */
+    uint32_t version=u32(d+4),count=version==1u?C3_UI_SPRITES_V1:version>=2u&&version<=3u?C3_UI_SPRITES:0u;
+    uint32_t extra=version==3u?u32(d+20):0u;
     if(!count||u32(d+8)!=size||u32(d+12)!=count||u32(d+16)!=GLYPHS||
-       u32(d+20)||u32(d+24)||u32(d+28))return 0;
-    size_t payload=GLYPH_TABLE_AT(count)+GLYPHS*8u;
+       (version!=3u&&u32(d+20))||extra>1024u||u32(d+24)||u32(d+28))return 0;
+    size_t payload=GLYPH_TABLE_AT(count)+GLYPHS*8u+extra*16u;
     if(size<payload)return 0;
     size_t next=payload;
     for(unsigned i=0;i<count;++i){
@@ -46,8 +49,15 @@ int c3_ui_assets_open(C3UiAssets *a,const void *memory,size_t size)
         if(!advance||advance>16||offset!=next||offset>size||256u>size-offset)return 0;
         next+=256u;
     }
+    for(unsigned i=0,previous=126;i<extra;++i){
+        const unsigned char *e=d+GLYPH_TABLE_AT(count)+GLYPHS*8u+i*16u;
+        uint32_t code=u32(e),advance=u32(e+4),offset=u32(e+8);
+        if(code<=previous||code>0xffffu||!advance||advance>16||offset!=next||u32(e+12)||
+           offset>size||256u>size-offset)return 0;
+        previous=code;next+=256u;
+    }
     if(next!=size)return 0;
-    checked.data=d;checked.size=size;checked.sprites=count;*a=checked;return 1;
+    checked.data=d;checked.size=size;checked.sprites=count;checked.extra_glyphs=extra;*a=checked;return 1;
 }
 
 int c3_ui_sprite_pixels(const C3UiAssets *a,unsigned sprite,
@@ -363,49 +373,116 @@ static void panel_draw(C3BottomUi *ui,unsigned sprite,int x,int y,int w,int h)
 void c3_ui_panel(C3BottomUi *ui,int x,int y,int w,int h)
 {panel(ui,C3_UI_WINDOW,x,y,w,h);}
 
+/* Glyph pixels for a code point: the ASCII table, then the pack's sorted
+ * non-ASCII table (version 3). NULL when the font lacks the character. */
+static const unsigned char *glyph_pixels(const C3BottomUi *ui,unsigned c,unsigned *step)
+{
+    if(!ui->assets||!ui->assets->data)return NULL;
+    const unsigned char *d=ui->assets->data;
+    if(c>=32&&c<=126){*step=u32(d+GLYPH_TABLE+(c-32u)*8u);return d+u32(d+GLYPH_TABLE+(c-32u)*8u+4);}
+    unsigned lo=0,hi=ui->assets->extra_glyphs;
+    const unsigned char *table=d+GLYPH_TABLE+GLYPHS*8u;
+    while(lo<hi){
+        unsigned mid=(lo+hi)/2,code=u32(table+mid*16u);
+        if(code==c){*step=u32(table+mid*16u+4);return d+u32(table+mid*16u+8);}
+        if(code<c)lo=mid+1;else hi=mid;
+    }
+    return NULL;
+}
+
 static unsigned advance(const C3BottomUi *ui,unsigned c)
 {
-    if(c<32||c>126)c='?';
-    if(ui->assets&&ui->assets->data)return u32(ui->assets->data+GLYPH_TABLE+(c-32u)*8u);
+    unsigned step=0;
+    if(ui->assets&&ui->assets->data){
+        if(glyph_pixels(ui,c,&step))return step;
+        /* gs_msg.c: a code the font lacks advances by the font's cell
+         * width (22 at GameCube resolution) and draws nothing. */
+        if(c>126)return 11;
+        return u32(ui->assets->data+GLYPH_TABLE+('?'-32u)*8u);
+    }
     return 8;
 }
 
 static void glyph(C3BottomUi *ui,int x,int y,unsigned c,uint32_t color)
 {
     ++ui_perf.glyphs;
-    if(c<32||c>126)c='?';
+    unsigned step;
     if(ui->assets&&ui->assets->data){
-        const unsigned char *d=ui->assets->data,*p=d+u32(d+GLYPH_TABLE+(c-32u)*8u+4);
+        const unsigned char *p=glyph_pixels(ui,c,&step);
+        if(!p&&c<=126)p=glyph_pixels(ui,'?',&step);
+        if(!p)return;
         for(int yy=0;yy<16;++yy)for(int xx=0;xx<16;++xx){
             unsigned a=p[yy*16+xx];
             if(a){pixel(ui,x+xx+1,y+yy+1,0, a*3u/4u);pixel(ui,x+xx,y+yy,color,a);}
         }
     }else if(ui->fallback_font){
+        if(c<32||c>126)c='?';
         for(int yy=0;yy<8;++yy)for(int xx=0;xx<8;++xx)
             if(ui->fallback_font[c*8u+(unsigned)yy]&(0x80u>>(unsigned)xx))pixel(ui,x+xx,y+yy+3,color,255);
     }
+}
+
+/* msgctrlPalette's colours: the six-entry RGBA table common_rel registers
+ * (lbl_80478E8C = REL125 data+0, count at data+0x14A654). */
+static const uint32_t message_palette[6]={0xffffffu,0xdcb900u,0x47ff25u,0x005091u,0xffd200u,0x000000u};
+static unsigned hex_value(const char *text,unsigned digits,int *ok)
+{
+    unsigned value=0;
+    for(unsigned i=0;i<digits;++i){
+        char c=text[i];unsigned d;
+        if(c>='0'&&c<='9')d=(unsigned)(c-'0');else if(c>='a'&&c<='f')d=(unsigned)(c-'a'+10);
+        else if(c>='A'&&c<='F')d=(unsigned)(c-'A'+10);else{*ok=0;return 0;}
+        value=value<<4|d;
+    }
+    return value;
+}
+/* One character of field text: a UTF-8 code point, or an ESC markup
+ * sequence from the message decoder (C3_STORY_TEXT_MARKUP), which has no
+ * width. Colour sequences update *color (the original white entry of the
+ * palette resets it to the caller's colour). Returns the byte length. */
+static size_t next_char(const char *text,size_t pos,unsigned *code,uint32_t *color,uint32_t base)
+{
+    const unsigned char *s=(const unsigned char *)text+pos;
+    if(s[0]==0x1b){
+        static const unsigned char lengths[128]={['C']=8,['P']=2,['W']=2,['F']=2,['A']=2,['S']=1};
+        unsigned n=s[1]&&s[1]<128?lengths[s[1]]:0,k;int ok=1;
+        for(k=0;k<n&&s[2+k];++k){}
+        if(k==n&&color){
+            if(s[1]=='C'){unsigned rgba=hex_value((const char *)s+2,8,&ok);if(ok)*color=rgba==0xffffffffu?base:rgba>>8;}
+            else if(s[1]=='P'){unsigned i=hex_value((const char *)s+2,2,&ok);if(ok)*color=i==0||i>=6?base:message_palette[i];}
+        }
+        *code=0x1b;return 2u+k;
+    }
+    if(s[0]<0x80){*code=s[0];return 1;}
+    if((s[0]&0xe0)==0xc0&&(s[1]&0xc0)==0x80){*code=(unsigned)(s[0]&0x1f)<<6|(s[1]&0x3f);return 2;}
+    if((s[0]&0xf0)==0xe0&&(s[1]&0xc0)==0x80&&(s[2]&0xc0)==0x80){
+        *code=(unsigned)(s[0]&0x0f)<<12|(unsigned)(s[1]&0x3f)<<6|(s[2]&0x3f);return 3;}
+    *code='?';return 1;
 }
 
 static int text_width(const C3BottomUi *ui,const char *text)
 {
     unsigned cursor=0,width=0;
     if(!ui||!text)return 0;
-    for(unsigned i=0;i<128u&&text[i];++i){
-        unsigned c=(unsigned char)text[i],extent=0;
+    for(size_t i=0;i<256u&&text[i];){
+        unsigned c,extent=0;
+        i+=next_char(text,i,&c,NULL,0);
         if(c=='\n')return 0;
-        if(c<32||c>126)c='?';
+        if(c==0x1b){if(!text[i])return (int)width;continue;}
         if(ui->assets&&ui->assets->data){
-            const unsigned char *d=ui->assets->data,*p=d+u32(d+GLYPH_TABLE+(c-32u)*8u+4);
-            for(unsigned y=0;y<16;++y)for(unsigned x=0;x<16;++x)
+            unsigned step;const unsigned char *p=glyph_pixels(ui,c,&step);
+            if(!p&&c<=126)p=glyph_pixels(ui,'?',&step);
+            if(p)for(unsigned y=0;y<16;++y)for(unsigned x=0;x<16;++x)
                 if(p[y*16+x]&&x+2u>extent)extent=x+2u;
         }else if(ui->fallback_font){
+            unsigned f=c<32||c>126?'?':c;
             for(unsigned y=0;y<8;++y)for(unsigned x=0;x<8;++x)
-                if((ui->fallback_font[c*8u+y]&(0x80u>>x))&&x+1u>extent)extent=x+1u;
+                if((ui->fallback_font[f*8u+y]&(0x80u>>x))&&x+1u>extent)extent=x+1u;
         }
         if(extent&&cursor+extent>width)width=cursor+extent;
         cursor+=advance(ui,c);
         if(cursor>320u||width>320u)return 0;
-        if(!text[i+1])return (int)width;
+        if(!text[i])return (int)width;
     }
     return 0;
 }
@@ -434,30 +511,42 @@ static int text_right_draw(C3BottomUi *ui,int right,int y,int width,const char *
     if(right<0||right>320||y < -240||y>240||width<1||width>320)return 0;
     int measured=text_width(ui,text);
     if(!measured||measured>width)return 0;
-    int x=right-measured;
-    for(unsigned i=0;text[i];++i){glyph(ui,x,y,(unsigned char)text[i],color);x+=(int)advance(ui,(unsigned char)text[i]);}
+    int x=right-measured;uint32_t current=color;
+    for(size_t i=0;text[i];){
+        unsigned c;i+=next_char(text,i,&c,&current,color);
+        if(c==0x1b)continue;
+        glyph(ui,x,y,c,current);x+=(int)advance(ui,c);
+    }
     return measured;
 }
 
 static size_t text_draw(C3BottomUi *ui,int x,int y,int width,int lines,const char *text,uint32_t color)
 {
-    size_t pos=0;int cursor=0,line=0;
+    size_t pos=0;int cursor=0,line=0;uint32_t current=color;
     if(!ui||!text||width<16||width>320||lines<1||lines>15||x < -320||x>320||y < -240||y>240)return 0;
     /* All callers own NUL-terminated strings. Bound scanning even for large
      * unbroken words; never draw outside the requested text rectangle. */
     while(pos<4096u&&text[pos]&&line<lines){
-        unsigned c=(unsigned char)text[pos];
-        if(c=='\n'){++pos;++line;cursor=0;continue;}
-        if(c==' '){if(cursor)cursor+=(int)advance(ui,c);++pos;continue;}
+        unsigned c;size_t n=next_char(text,pos,&c,&current,color);
+        if(c=='\n'){pos+=n;++line;cursor=0;continue;}
+        if(c==' '){if(cursor)cursor+=(int)advance(ui,c);pos+=n;continue;}
+        if(c==0x1b){pos+=n;continue;}
         size_t end=pos;unsigned word=0;
-        while(end<4096u&&text[end]&&text[end]!=' '&&text[end]!='\n')word+=advance(ui,(unsigned char)text[end++]);
+        while(end<4096u&&text[end]){
+            unsigned w;size_t m=next_char(text,end,&w,NULL,0);
+            if(w==' '||w=='\n')break;
+            if(w!=0x1b)word+=advance(ui,w);
+            end+=m;
+        }
         if(cursor&&cursor+(int)word>width){++line;cursor=0;if(line>=lines)break;}
         while(pos<end){
-            unsigned step=advance(ui,(unsigned char)text[pos]);
+            unsigned g;size_t m=next_char(text,pos,&g,&current,color);
+            if(g==0x1b){pos+=m;continue;}
+            unsigned step=advance(ui,g);
             /* Reserve a glyph cell, even when its advance is narrower. */
             if(cursor+16>width){++line;cursor=0;if(line>=lines)return pos;}
-            glyph(ui,x+cursor,y+line*17,(unsigned char)text[pos],color);
-            cursor+=(int)step;++pos;
+            glyph(ui,x+cursor,y+line*17,g,current);
+            cursor+=(int)step;pos+=m;
         }
     }
     return pos;

@@ -75,8 +75,42 @@ static void ball_sprite(const C3UiAssets *v1)
     c3_ui_sprite(&ui,C3_UI_BALL,0,0,8,8);assert(pixels[0]==10*C3_UI_BALL);
     free(pixels);
     put32(d+4,1);assert(!c3_ui_assets_open(&a,d,size)); /* v1 must list ten */
-    put32(d+4,3);assert(!c3_ui_assets_open(&a,d,size));
+    put32(d+4,3);assert(c3_ui_assets_open(&a,d,size)&&a.extra_glyphs==0);
+    put32(d+4,4);assert(!c3_ui_assets_open(&a,d,size));
     put32(d+4,2);put32(d+12,C3_UI_SPRITES_V1);assert(!c3_ui_assets_open(&a,d,size));
+    free(d);
+}
+
+/* Version 3 appends non-ASCII glyphs; the text box decodes UTF-8 and the
+ * decoder's colour markup, which has no width. */
+static void extra_glyphs(void)
+{
+    const unsigned count=C3_UI_SPRITES,table=32u+count*16u+95u*8u+2u*16u,size=table+count*256u+97u*256u;
+    unsigned char *d=calloc(1,size);assert(d);
+    memcpy(d,"C3UI",4);put32(d+4,3);put32(d+8,size);put32(d+12,count);put32(d+16,95);put32(d+20,2);
+    unsigned next=table;
+    for(unsigned i=0;i<count;++i){unsigned char *e=d+32+i*16;put32(e,8);put32(e+4,8);put32(e+8,next);put32(e+12,256);next+=256;}
+    for(unsigned i=0;i<95;++i){unsigned char *e=d+32+count*16+i*8;put32(e,6);put32(e+4,next);next+=256;}
+    const unsigned codes[2]={0xe9,0x2642};
+    for(unsigned i=0;i<2;++i){
+        unsigned char *e=d+32+count*16+95*8+i*16;put32(e,codes[i]);put32(e+4,7);put32(e+8,next);
+        d[next]=255; /* one opaque texel at the glyph origin */
+        next+=256;
+    }
+    assert(next==size);
+    C3UiAssets a={0};assert(c3_ui_assets_open(&a,d,size)&&a.extra_glyphs==2);
+    unsigned char *pixels=calloc(1,BYTES);assert(pixels);C3BottomUi ui;
+    c3_ui_begin(&ui,pixels,0,&a,NULL);
+    /* "\xc3\xa9" is e-acute: one glyph with advance 7, drawn at x=10. */
+    size_t drawn=c3_ui_text(&ui,10,10,200,1,"\xc3\xa9\x1b" "C47ff25ff\xe2\x99\x82",0xffffff);
+    assert(drawn==strlen("\xc3\xa9\x1b" "C47ff25ff\xe2\x99\x82"));
+    /* RGB8 rows: e-acute's texel in white at (10,10); the gender sign
+     * after it (advance 7) in the palette green the markup selected. */
+    const unsigned char *p=pixels+((size_t)10*320u+10u)*3u,*q=pixels+((size_t)10*320u+17u)*3u;
+    assert(p[0]==0xff&&p[1]==0xff&&p[2]==0xff);
+    assert(q[0]==0x47&&q[1]==0xff&&q[2]==0x25);
+    free(pixels);
+    put32(d+32+count*16+95*8+16,0xe9);assert(!c3_ui_assets_open(&a,d,size)); /* codes must ascend */
     free(d);
 }
 
@@ -118,7 +152,7 @@ int main(void)
     spin_sprite();
     unsigned char *data=fixture();C3UiAssets a={0};assert(c3_ui_assets_open(&a,data,PACK));
     rgb565_screen(&a);
-    ball_sprite(&a);
+    ball_sprite(&a);extra_glyphs();
     C3UiAssets previous=a;
     assert(!c3_ui_assets_open(&a,data,PACK-1));assert(a.data==previous.data&&a.size==previous.size);
     put32(data+32+8,0);assert(!c3_ui_assets_open(&a,data,PACK));put32(data+32+8,TABLE);
