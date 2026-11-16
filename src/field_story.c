@@ -167,7 +167,7 @@ static int validate_native(const Impl *s,const C3StoryCall *c,char *error)
         {0xe7,3,0},{0x22,5,0},
         {0x78,1,0},{0x7c,0,0},{0xf1,0,0},{0xf2,0,0},{0xa8,2,0},{0xd6,2,0},{0x53,3,0},{0x9b,3,0},{0xc7,5,0},
         {0xc4,0,0},{0xdc,0,0},{0xc8,2,0},{0x80,3,0},{0xbd,0,0},{0x9e,1,0},{0x54,0,0},{0x55,0,0},{0x56,0,0},{0x57,0,0},
-        {0x86,0,0},{0xbc,1,0},{0xca,0,0},{0xeb,0,0},{0xd0,0,0},{0x62,1,0},{0x11,2,0},{0xdb,2,0},{0xcc,3,0},{0xcd,1,0},{0xcf,0,0},{0xb2,3,4},{0xbe,2,0},{0xbf,4,0},{0xc1,2,0},{0x85,1,0}
+        {0x86,0,0},{0xbc,1,0},{0xca,0,0},{0xeb,0,0},{0xd0,0,0},{0x62,1,0},{0x11,2,0},{0xdb,2,0},{0xcc,3,0},{0xcd,1,0},{0xcf,0,0},{0xb2,3,4},{0xbe,2,0},{0xbf,4,0},{0xc1,2,0},{0xf3,2,0},{0x85,1,0}
     };
     for(unsigned i=0;i<sizeof signature/sizeof signature[0];++i){
         if(signature[i].id!=c->native)continue;
@@ -851,6 +851,12 @@ static int run_native(Impl *s,RunTask *t,char *error)
      * wait for the end): the floor's animated lights are not rendered, so
      * an animation has ended at once. */
     case 0xbe:case 0xbf:case 0xc1:note_presentation(s,c->native,"light_animation_unrendered");value=0;break;
+    /* fn_801EE67C(row, value): record row of the common table lbl_80478F6C
+     * (data+0x1439D8, 0x38-byte rows; the PDA's notes): its order slot in
+     * the save, flag +0x0C set and flag +0x1C = value. The table is not
+     * prepared here; the call is recorded (the PDA notes are the systems
+     * lane's). */
+    case 0xf3:log_line(s,"story_pda_record row=%lu value=%lu status=unported_table",(unsigned long)a[0],(unsigned long)a[1]);break;
     /* fn_800190D8: register an item whose use from the pause menu runs a
      * script (eight entries; a ninth is ignored, as in the original). */
     case 0x11:
