@@ -79,6 +79,7 @@ typedef struct {
     uint16_t (*random16)(void *context);void *random_context;
     int (*species_name)(void *context,unsigned species,char *out,size_t capacity);void *species_context;
     C3FieldStoryReceive receive;void *receive_context;
+    C3FieldStoryItemChange item_change;void *item_change_context;
     C3FieldStoryAudio audio;void *audio_context;
     const C3AreaDoor *door_rows;C3StoryDoor doors[C3_AREA_MAX_DOORS];uint32_t door_count;
     C3FieldStoryRestore restore;void *restore_context;
@@ -139,7 +140,7 @@ static int validate_native(const Impl *s,const C3StoryCall *c,char *error)
         {0xe7,3,0},{0x22,5,0},
         {0x78,1,0},{0x7c,0,0},{0xf1,0,0},{0xf2,0,0},{0xa8,2,0},{0xd6,2,0},{0x53,3,0},{0x9b,3,0},{0xc7,5,0},
         {0xc4,0,0},{0xdc,0,0},{0xc8,2,0},{0x80,3,0},{0xbd,0,0},{0x9e,1,0},{0x54,0,0},{0x55,0,0},{0x56,0,0},{0x57,0,0},
-        {0x86,0,0},{0xbc,1,0},{0xca,0,0},{0xeb,0,0},{0x85,1,0}
+        {0xdb,2,0},{0x86,0,0},{0xbc,1,0},{0xca,0,0},{0xeb,0,0},{0x85,1,0}
     };
     for(unsigned i=0;i<sizeof signature/sizeof signature[0];++i){
         if(signature[i].id!=c->native)continue;
@@ -893,6 +894,19 @@ static int run_native(Impl *s,RunTask *t,char *error)
         for(unsigned i=0;i<3;++i){s->camera_from[i]=s->view.camera.eye[i];s->camera_to[i]=as_float(a[i+1])*s->map->scale;
             s->camera_direction[i]=s->view.camera.target[i]-s->view.camera.eye[i];}
         break;
+    case 0xdb:{
+        /* scriptAddItem (field_range_801CA7EC.c): a direct bag mutation,
+         * without native 77's jingle, message or PC-overflow handling.
+         * The retail ABI narrows itemId and the magnitude to u16. */
+        int32_t count=(int32_t)a[1];
+        if(!count)return fail(error,"Native DB zero item count has no defined retail result");
+        if(!s->item_change)return fail(error,"Native DB needs the signed item service, which this scene did not bind");
+        uint32_t item=(uint16_t)a[0],amount=(uint16_t)(count<0?0u-a[1]:a[1]);
+        int32_t signed_amount=count<0?-(int32_t)amount:(int32_t)amount;
+        int result=s->item_change(s->item_change_context,item,signed_amount);
+        value=(uint32_t)result;
+        log_line(s,"story_item_direct item=%lu count=%ld result=%d",(unsigned long)item,(long)signed_amount,result);
+        }break;
     case 0x77:
         /* scriptGetItem -> floorEventGetTresure(4,item,count): the item
          * jingle 0x3CA plays to its end first (a fixed wait here), then the
@@ -1385,6 +1399,10 @@ int c3_field_story_relive_pick(C3FieldStory *story,int slot,char *error)
         return resume(s,t,slot<0||slot>5?UINT32_MAX:(uint32_t)slot,error);
     }
     return fail(error,"No purification is waiting for a party choice");
+}
+void c3_field_story_set_item_change_service(C3FieldStory *story,C3FieldStoryItemChange change,void *context)
+{
+    Impl *s=story?story->impl:NULL;if(s){s->item_change=change;s->item_change_context=context;}
 }
 void c3_field_story_set_item_service(C3FieldStory *story,C3FieldStoryReceive receive,void *context)
 {
