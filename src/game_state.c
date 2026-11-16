@@ -495,12 +495,24 @@ int c3_game_state_set_partner(C3GameState *state, int present)
  * GScharLenCpy(hero + 0xAC2, name, 0xB), eleven 16-bit units. */
 int c3_game_state_set_partner_name(C3GameState *state, const char *name)
 {
+    /* UTF-8 in: the name entry's keys include the gender signs and
+     * typographic punctuation of the original font. */
     GameStateImpl *s=state?state->impl:NULL;
-    size_t length=name?strlen(name):0, i;
-    if (!s || !length || length>10) return 0;
-    for (i=0; i<length; ++i) if ((unsigned char)name[i]<32 || (unsigned char)name[i]>126) return 0;
+    uint16_t units[10];size_t count=0;
+    const unsigned char *p=(const unsigned char *)name;
+    if (!s || !p || !*p) return 0;
+    while (*p) {
+        uint16_t c;
+        if (p[0]<0x80) { c=p[0]; p+=1; }
+        else if ((p[0]&0xe0)==0xc0 && (p[1]&0xc0)==0x80) { c=(uint16_t)((p[0]&0x1f)<<6|(p[1]&0x3f)); p+=2; }
+        else if ((p[0]&0xf0)==0xe0 && (p[1]&0xc0)==0x80 && (p[2]&0xc0)==0x80) {
+            c=(uint16_t)((p[0]&0x0f)<<12|(p[1]&0x3f)<<6|(p[2]&0x3f)); p+=3; }
+        else return 0;
+        if (c<32 || c==0x7f || c==0xffff || count==10) return 0;
+        units[count++]=c;
+    }
     memset(s->body+HERO+0xac2,0,22);
-    for (i=0; i<length; ++i) put16(s->body+HERO+0xac2+i*2,(uint8_t)name[i]);
+    for (size_t i=0; i<count; ++i) put16(s->body+HERO+0xac2+i*2,units[i]);
     return 1;
 }
 
