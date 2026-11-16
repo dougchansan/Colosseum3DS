@@ -43,6 +43,10 @@ int c3_battle_general_3d_run_link(const C3BattlePack *pack, C3GeneralBattle *vie
  * the opponent policy; frames go to <shot_prefix>_<frame>_top/bottom.bmp.
  * on = 0 restores player control. */
 void c3_battle_general_3d_set_autoplay(int on, const char *shot_prefix);
+/* Whether story battles are unattended, and the probe hero's commands
+ * (also used by the bottom-screen fallback scene). */
+int c3_battle_general_autoplaying(void);
+void c3_battle_general_probe_commands(C3GeneralBattle *battle, const C3BattlePack *pack, C3GeneralCommand commands[2]);
 #ifdef C3_GENERAL_3D_PROBE
 int c3_battle_general_3d_probe_run(uint32_t encounter);
 #endif

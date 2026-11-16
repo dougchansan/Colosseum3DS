@@ -1,4 +1,5 @@
 #include "battle_general_scene.h"
+#include "battle_general_3d.h"
 #include "bottom_screen.h"
 #include "n3ds_platform.h"
 #include "music_player.h"
@@ -256,12 +257,23 @@ int c3_battle_general_scene_run(const C3BattlePack *pack, C3GeneralBattle *b, FI
                 }
             }
         } else if (ui.page == C3_GUI_RESULT) {
-            if (pressed & C3_PAD_A) {
+            if ((pressed & C3_PAD_A) || c3_battle_general_autoplaying()) {
                 if (trace) { fprintf(trace, "general_battle_end encounter=%lu outcome=%d turns=%lu\n",
                     (unsigned long)b->encounter, (int)b->outcome, (unsigned long)b->turn); fflush(trace); }
                 c3_battle_music_end(&music);
                 return 0;
             }
+        } else if (c3_battle_general_autoplaying()) {
+            /* Probe builds: the probe hero's commands, no input. */
+            C3GeneralCommand c[2]; char error[C3_GB_ERROR_SIZE];
+            c3_battle_general_probe_commands(b, pack, c);
+            if (!c3_general_battle_turn(b, pack, c, error)) {
+                if (trace) { fprintf(trace, "general_battle_error turn=%lu error=%s\n", (unsigned long)b->turn, error); fflush(trace); }
+                c3_battle_music_end(&music); return -1;
+            }
+            if (trace) { fprintf(trace, "general_battle_turn turn=%lu events=%lu outcome=%d autoplay=1 scene=2d\n",
+                (unsigned long)b->turn, (unsigned long)b->event_count, (int)b->outcome); fflush(trace); }
+            ui.page = C3_GUI_EVENTS; event = 0; event_start = now; dirty = 1;
         } else if (pressed) {
             dirty = 1;
             if (c3_general_ui_press(&ui, pack, b, pressed, trace)) { event = 0; event_start = now; }

@@ -94,6 +94,13 @@ static void probe_hero_command(C3GeneralBattle *b, const C3BattlePack *pack, uns
             if (c3_general_battle_can_snag(b, pack, a, order[k], t)) { c->kind = 2; c->slot = order[k]; c->target = (uint8_t)t; return; }
     c3_general_battle_choose(b, pack, a, c);
 }
+int c3_battle_general_autoplaying(void) { return autoplay != 0; }
+void c3_battle_general_probe_commands(C3GeneralBattle *b, const C3BattlePack *pack, C3GeneralCommand c[2])
+{
+    memset(c, 0, 2 * sizeof *c);
+    for (unsigned a = 0; a < b->active_count; ++a)
+        if (b->active[0][a] != 255 && b->party[0][b->active[0][a]].hp) probe_hero_command(b, pack, a, &c[a]);
+}
 
 static int silent(uint32_t cue, uint32_t sound, char *e, size_t n) { (void)cue; (void)sound; (void)e; (void)n; return 1; }
 

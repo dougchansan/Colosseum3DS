@@ -220,6 +220,12 @@ static int decode_owned(C3Title *title, char *error, size_t capacity)
         C3TitleBatch *b = title->batches+i;
         b->first=u32(p); b->count=u32(p+4); b->texture=u32(p+8); b->flags=u32(p+12);
         b->color_mode=u32(p+16); b->alpha_mode=u32(p+20);
+        /* Raw HSD TObj map modes: REPLACE (5) is what mode 0 draws; ALPHA_MASK
+         * (1) is drawn as MODULATE (4 colour, 3 alpha), an approximation the
+         * renderer has no stage for (four battle Pokemon packs use them). */
+        if (b->color_mode==5u) b->color_mode=0u;
+        else if (b->color_mode==1u) b->color_mode=4u;
+        if (b->alpha_mode==1u) b->alpha_mode=3u;
         b->render_mode=u32(p+24); b->texture_flags=u32(p+28);
         read_floats(b->diffuse,p+32,3); read_floats(b->ambient,p+44,3); read_floats(b->specular,p+56,3);
         b->shininess=f32(p+68); b->alpha=f32(p+72); b->texture_blend=f32(p+76);

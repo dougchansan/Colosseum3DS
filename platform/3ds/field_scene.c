@@ -317,20 +317,17 @@ static int play_story_battle(C3FieldStory *story,C3GameState *state,uint32_t enc
         else if(!problem[0])snprintf(problem,sizeof problem,"The party could not be read for the battle.");
         if(ok){
             int scene=-1;char why[192]="";
+#ifdef C3_ROUNDTRIP_PROBE
+            {char prefix[32];snprintf(prefix,sizeof prefix,"probe/battle_%lu",(unsigned long)encounter);
+             mkdir("sdmc:/3ds/Colosseum3DS/probe",0777);c3_battle_general_3d_set_autoplay(1,prefix);}
+#endif
             if(host&&c3_battle_general_3d_ready(battle,trace,why,sizeof why)){
                 /* On its original stage: the field's models make room first. */
                 int released=field_battle_release(host,trace,problem,sizeof problem);
                 if(released<0){free(battle);c3_battle_pack_free(&pack);return 2;}
                 if(!released){free(battle);c3_battle_pack_free(&pack);
                     snprintf(error,capacity,"%s",problem[0]?problem:"The field could not make room for the battle.");return -1;}
-#ifdef C3_ROUNDTRIP_PROBE
-                {char prefix[32];snprintf(prefix,sizeof prefix,"probe/battle_%lu",(unsigned long)encounter);
-                 mkdir("sdmc:/3ds/Colosseum3DS/probe",0777);c3_battle_general_3d_set_autoplay(1,prefix);}
-#endif
                 scene=c3_battle_general_3d_run(&pack,battle,trace);
-#ifdef C3_ROUNDTRIP_PROBE
-                c3_battle_general_3d_set_autoplay(0,NULL);
-#endif
                 int restored=field_battle_restore(host,scene==1,trace,problem,sizeof problem);
                 if(restored<0)scene=1;
                 else if(!restored){free(battle);c3_battle_pack_free(&pack);
@@ -339,6 +336,9 @@ static int play_story_battle(C3FieldStory *story,C3GameState *state,uint32_t enc
                 if(scene<0&&trace){fprintf(trace,"field_battle_3d_fallback encounter=%lu turn=%lu\n",(unsigned long)encounter,(unsigned long)battle->turn);fflush(trace);}
             }else if(trace&&host){fprintf(trace,"field_battle_3d_unavailable encounter=%lu reason=%s\n",(unsigned long)encounter,why);fflush(trace);}
             if(scene<0)scene=c3_battle_general_scene_run(&pack,battle,trace);
+#ifdef C3_ROUNDTRIP_PROBE
+            c3_battle_general_3d_set_autoplay(0,NULL);
+#endif
             if(scene==1)result=2;
             else if(scene<0){if(!problem[0])snprintf(problem,sizeof problem,"The battle engine failed (see the trace).");}
             else result=c3_battle_story_apply(story,state,battle,&pack,NULL,&rewards,problem)?1:-1;
