@@ -1426,7 +1426,11 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
             sampled&=c3_title_animate(storage+tv_index,0,elapsed);
             if(!pda_preview&&!c3_stage_renderer_set_tv(tv_index,1,1,view->tv_enabled,error,capacity)){result=-1;break;}
         }
-        if(lights_loaded)for(uint32_t i=0;i<count;++i)if(i!=tv_index)sampled&=c3_area_lights_apply(&lights,elapsed,storage+i);
+        /* The tail slots belong to the asynchronous people loader. Until
+         * attach completes they are zeroed or being written by that thread;
+         * sample only the same admitted models the renderer can draw. */
+        if(lights_loaded)for(uint32_t i=0;i<(npc.attached?count:npc.first);++i)if(i!=tv_index)
+            sampled&=c3_area_lights_apply(&lights,elapsed,storage+i);
         if(!sampled){snprintf(error,capacity,"An original area animation or light sample failed.");result=-1;break;}
         if(phase==FIELD_SETUP){fade=0;c3_field_camera(&map,&player,&camera);}
         else if(phase==FIELD_ARRIVAL||phase==FIELD_ARRIVAL_OUT){
