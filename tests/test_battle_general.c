@@ -154,6 +154,52 @@ static void synthetic(void)
         CHECK(g16(copy[0] + 0x64) == (nb.party[0][0].hp ? 6u : 0u));
     }
 
+    {   /* Snagging: no Snag Machine or no ball, no throw; a Master Ball snags
+         * the Shadow FOE (opponent 0), which then gives no experience. */
+        static C3GeneralBattle nb; C3GeneralCommand c[2] = {{0}}; C3ShadowInfo sh;
+        CHECK(c3_battle_pack_shadow(&pack, 1, &sh) && sh.catch_rate == 45 && sh.gauge == 30 && sh.snag_flag == 0x84e);
+        CHECK(c3_general_battle_begin(&nb, &pack, 0, party, 21, error));
+        CHECK(!c3_general_battle_can_snag(&nb, &pack, 0, 1, 2));
+        nb.snag = 1; CHECK(!c3_general_battle_can_snag(&nb, &pack, 0, 1, 2));
+        nb.balls[1] = 1; nb.balls[4] = 3;
+        CHECK(c3_general_battle_can_snag(&nb, &pack, 0, 1, 2) && !c3_general_battle_can_snag(&nb, &pack, 0, 1, 0));
+        CHECK(!c3_general_battle_can_snag(&nb, &pack, 0, 1, 3)); /* opponent 1 is not Shadow */
+        c[0].kind = 2; c[0].slot = 1; c[0].target = 2;
+        CHECK(c3_general_battle_choose(&nb, &pack, 1, &c[1]));
+        CHECK(c3_general_battle_turn(&nb, &pack, c, error));
+        CHECK(nb.caught[0] == 1 && nb.party[1][0].hp == 0 && nb.balls[1] == 0 && nb.balls_used[1] == 1);
+        int gotcha = 0; for (unsigned e = 0; e < nb.event_count; ++e) gotcha |= strstr(nb.events[e].text, "Gotcha!") != NULL;
+        CHECK(gotcha);
+        unsigned t = 0; CHECK(play(&nb, &pack, &t) == C3_GB_WON);
+        memcpy(copy, party, sizeof copy);
+        CHECK(c3_general_battle_writeback(&nb, &pack, copy, &rw) && rw.caught_count == 1 && rw.caught[0] == 0 && rw.balls_used[1] == 1);
+        /* Only opponent 1 (level 5, 50 base EXP) paid: 35 at most per hero. */
+        CHECK(rw.exp[0] + rw.exp[1] <= 2u * (50u * 5u / 7u * 3u / 2u));
+        C3SnagOwner owner; memset(&owner, 0, sizeof owner); owner.name[1] = 'W'; owner.trainer_id = 0x12345678u; owner.floor = 8; memcpy(owner.attest, "ATST", 4);
+        uint8_t rec[0x138];
+        CHECK(!c3_general_snag_record(&pack, &nb, 1, &owner, 30, 9, rec));
+        CHECK(c3_general_snag_record(&pack, &nb, 0, &owner, 30, 9, rec));
+        CHECK(g16(rec) == 2 && rec[0x60] == 5 && rec[0x0f] == 1 && g16(rec + 0xd8) == 1 && g32(rec + 0xdc) == 3000u);
+        CHECK(g32(rec + 0x14) == 0x12345678u && g16(rec + 0x0c) == 8 && !memcmp(rec + 8, "ATST", 4) && rec[0x19] == 'W');
+        CHECK(g32(rec + 4) % 25u == nb.party[1][0].nature && g16(rec + 0x8a) == g16(rec + 0x8c) && g16(rec + 0x78) == 1);
+        CHECK(g16(rec + 0x2e) == 'F' && g16(rec + 0x30) == 'O' && g16(rec + 0x32) == 'E' && !g16(rec + 0x34));
+        /* Poke Balls against a full-HP rate-45 Shadow: shakes follow the
+         * original formula; the throw always uses the ball up. */
+        unsigned caught = 0, thrown = 0;
+        for (uint32_t seed = 0; seed < 200; ++seed) {
+            CHECK(c3_general_battle_begin(&nb, &pack, 0, party, seed, error));
+            nb.snag = 1; nb.balls[4] = 1;
+            C3GeneralCommand d[2] = {{2, 4, 2}, {0}};
+            CHECK(c3_general_battle_choose(&nb, &pack, 1, &d[1]));
+            CHECK(c3_general_battle_turn(&nb, &pack, d, error));
+            ++thrown; caught += nb.caught[0] == 4;
+            CHECK(nb.balls[4] == 0 && nb.balls_used[4] == 1);
+        }
+        /* odds = 45*10/10*(3M-2M)/(3M) = 15: 0xFFFF0/sqrt(sqrt(0xFF0000/15)) = 0xFFFF0/32 = 32767.5 -> 32767,
+         * so each shake passes about half the time: four in a row ~ 1/16. */
+        CHECK(caught > 0 && caught < 40);
+        printf("battle-general: snag synthetic %u of %u Poke Balls caught\n", caught, thrown);
+    }
     /* Level up: a level-5 hero with almost enough experience. */
     make_party(party, 1, 5, 1, 0); p32(party[0] + 0x5c, 215); /* 6^3 = 216 */
     CHECK(c3_general_battle_begin(&b, &pack, 0, party, 3, error));
@@ -261,6 +307,49 @@ static void private_sweep(const char *pack_path, const char *newgame_dir, const 
         ++checked_writebacks;
         won += o == C3_GB_WON; lost += o == C3_GB_LOST; draw += o == C3_GB_DRAW;
     }
+    /* Snag pass: every encounter with a Shadow Pokemon again, the hero
+     * throwing Ultra Balls at it whenever it may; each snag becomes a record
+     * and is received into the save (party, else PC box). */
+    unsigned shadow_battles = 0, snagged = 0, stored_party = 0, stored_box = 0, full = 0, shadow_total = 0;
+    for (uint32_t e = 0; e < pack.encounters; ++e) {
+        C3BattleEncounterInfo info;
+        CHECK(c3_battle_pack_info(&pack, e, &info));
+        if (info.reason || !info.shadow_count) continue;
+        ++shadow_battles; shadow_total += info.shadow_count;
+        CHECK(c3_general_battle_begin(&b, &pack, e, party, 0x2000u + e, error));
+        b.snag = 1; b.balls[2] = 99;
+        while (b.outcome == C3_GB_RUNNING) {
+            C3GeneralCommand c[2] = {{0}};
+            for (unsigned a = 0; a < b.active_count; ++a) {
+                if (b.active[0][a] == 255 || !b.party[0][b.active[0][a]].hp) continue;
+                int thrown = 0;
+                for (unsigned t = 2; t < 2u + b.active_count && !thrown; ++t)
+                    if (c3_general_battle_can_snag(&b, &pack, a, 2, t)) { c[a].kind = 2; c[a].slot = 2; c[a].target = (uint8_t)t; thrown = 1; }
+                if (!thrown) CHECK(c3_general_battle_choose(&b, &pack, a, &c[a]));
+            }
+            CHECK(c3_general_battle_turn(&b, &pack, c, error));
+        }
+        uint8_t copy[6][0x138]; C3GeneralRewards rw;
+        memcpy(copy, party, sizeof copy);
+        CHECK(c3_general_battle_writeback(&b, &pack, copy, &rw));
+        check_writeback(&pack, &b, &info, party, copy, &rw);
+        C3SnagOwner owner; memset(&owner, 0, sizeof owner); owner.trainer_id = 1; owner.floor = info.floor_data_id;
+        for (unsigned k = 0; k < rw.caught_count; ++k) {
+            uint8_t rec[0x138]; unsigned where = 0; C3ShadowInfo sh;
+            const C3GeneralMon *m = &b.party[1][rw.caught[k]];
+            CHECK(c3_battle_pack_shadow(&pack, m->shadow, &sh) && sh.species == m->species);
+            CHECK(c3_general_snag_record(&pack, &b, rw.caught[k], &owner, sh.gauge, e, rec));
+            CHECK(g16(rec) == m->species && g16(rec + 0xd8) == m->shadow && g32(rec + 0xdc) == sh.gauge * 100u);
+            CHECK(g16(rec + 0x8a) == g16(rec + 0x8c) && rec[0x60] == m->level);
+            ++snagged;
+            if (!c3_game_state_receive_pokemon(&game, rec, rec, &where)) { ++full; continue; }
+            if (where < 6) ++stored_party; else ++stored_box;
+            printf("snag encounter=%lu species=%u shadow=%u level=%u rate=%u gauge=%u stored=%u\n", (unsigned long)e,
+                   m->species, m->shadow, m->level, sh.catch_rate, sh.gauge, where);
+        }
+    }
+    printf("battle-general: snag sweep %u Shadow battles (%u Shadow Pokemon): %u snagged, %u to the party, %u to boxes, %u with no room\n",
+           shadow_battles, shadow_total, snagged, stored_party, stored_box, full);
     printf("battle-general: view send_outs=%u hits_with_attacker=%u\n", send_outs, hits_with_actor);
     printf("battle-general: private sweep %u admitted (%u refused): %u won, %u lost, %u draw, %lu turns, %u writebacks checked\n",
            admitted, refused, won, lost, draw, total_turns, checked_writebacks);

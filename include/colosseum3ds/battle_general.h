@@ -29,6 +29,7 @@ typedef struct C3BattlePack {
     size_t size;
     uint32_t encounters, moves, species, types, growth;
     uint32_t species_at, types_at, growth_at, entries_at, names_at;
+    uint32_t shadow_at; /* version 2: the Shadow table (0x61 x 0x38-byte rows), else 0 */
 } C3BattlePack;
 
 typedef struct C3BattleEncounterInfo {
@@ -74,8 +75,8 @@ typedef struct C3GeneralMon {
 } C3GeneralMon;
 
 typedef struct C3GeneralCommand {
-    uint8_t kind;   /* 0 move, 1 switch */
-    uint8_t slot;   /* move slot 0..3, 4 = Struggle; or party index to switch in */
+    uint8_t kind;   /* 0 move, 1 switch, 2 throw a ball (snag) */
+    uint8_t slot;   /* move slot 0..3, 4 = Struggle; party index to switch in; or ball item 1..12 */
     uint8_t target; /* battle position 0..3 (side*2 + active index) */
 } C3GeneralCommand;
 
@@ -113,6 +114,13 @@ typedef struct C3GeneralBattle {
     uint8_t link, viewer, owner_split;
     uint8_t owner[2][C3_GB_PARTY];
     char side_name[2][C3_GB_NAME];
+    /* Snagging (the Snag Machine): with snag set, the hero may throw a ball
+     * from balls[] (bag counts by ball item 1..12) at a Shadow Pokemon of
+     * the opposing trainer. caught[] holds, per opponent party index, the
+     * ball that snagged it (0: not snagged). Never used in link battles. */
+    uint8_t snag;
+    uint16_t balls[13], balls_used[13];
+    uint8_t caught[C3_GB_PARTY];
     uint32_t event_count;
     C3GeneralEvent events[C3_GB_EVENT_LIMIT];
 } C3GeneralBattle;
@@ -128,6 +136,10 @@ typedef struct C3GeneralRewards {
      * needed the forget prompt (not ported: left unlearned and reported). */
     uint16_t learned[C3_GB_PARTY][4], skipped[C3_GB_PARTY][4];
     uint8_t learned_count[C3_GB_PARTY], skipped_count[C3_GB_PARTY];
+    /* Snagged Shadow Pokemon (opponent party index) and the balls thrown. */
+    uint8_t caught_count, caught[C3_GB_PARTY];
+    uint16_t balls_used[13];
+    unsigned stored[C3_GB_PARTY]; /* per caught: party slot 0..5, or 100 + box*30 + entry */
 } C3GeneralRewards;
 
 int c3_battle_pack_decode(C3BattlePack *pack, const void *bytes, size_t size, char *error);
@@ -145,6 +157,34 @@ typedef struct C3GeneralMoveInfo {
 int c3_battle_pack_move(const C3BattlePack *pack, uint16_t move, C3GeneralMoveInfo *info);
 /* The species' cry: its voice sound request (species row +14), 0 none. */
 uint16_t c3_battle_pack_species_voice(const C3BattlePack *pack, uint16_t species);
+
+/* Shadow table row (common_rel 0x1439D8, pack version 2): catch rate (+0),
+ * species (+2), level (+8 is fn_801EEF08's field08, the heart gauge the
+ * save's runtime table starts from) and the snag flag (+0x12). Returns 0
+ * for a version-1 pack or an id outside 1..0x60. */
+typedef struct C3ShadowInfo {
+    uint8_t catch_rate;
+    uint16_t species, gauge, snag_flag;
+} C3ShadowInfo;
+int c3_battle_pack_shadow(const C3BattlePack *pack, unsigned id, C3ShadowInfo *info);
+/* Whether the hero at `position` may throw `ball` at `target` now. */
+int c3_general_battle_can_snag(const C3GeneralBattle *battle, const C3BattlePack *pack,
+                               unsigned position, unsigned ball, unsigned target);
+/* The PokemonBios the hero receives for snagged opponent `index`: the
+ * battle Pokemon's species, level, moves/PP, IVs, effort, held item, HP and
+ * condition, catch metadata from owner, nickname = species name, and the
+ * Shadow state pokemonSetDarkPokemonStatus writes (data ID +0xD8, heart
+ * gauge +0xDC = gauge x 100, stored-up experience 0). The personality is
+ * drawn from `seed` until it gives the trainer row's nature. */
+typedef struct C3SnagOwner {
+    uint8_t name[0x16];   /* hero name, GSchar (save body hero +0) */
+    uint32_t trainer_id;  /* hero +0x2C */
+    uint8_t attest[4];    /* gamedata attest, as on the hero's own records */
+    uint16_t floor;
+} C3SnagOwner;
+int c3_general_snag_record(const C3BattlePack *pack, const C3GeneralBattle *battle, unsigned index,
+                           const C3SnagOwner *owner, uint16_t gauge, uint32_t seed,
+                           uint8_t record[C3_GB_POKEMON_SIZE]);
 
 /* Purification's experience payout (_expRecover); see battle_general.c. */
 #define C3_EXP_RECOVERY_MAX 16u

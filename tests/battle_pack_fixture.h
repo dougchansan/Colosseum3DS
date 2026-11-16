@@ -13,7 +13,7 @@ static inline unsigned g16(const uint8_t *p) { return (unsigned)p[0] << 8 | p[1]
 static inline uint32_t g32(const uint8_t *p) { return (uint32_t)p[0] << 24 | (uint32_t)p[1] << 16 | (uint32_t)p[2] << 8 | p[3]; }
 
 static inline size_t pack_size(void)
-{ return 128 + MOVES * 56 + SPECIES * 284 + 18 * 44 + 8 * 0x194 + ENCOUNTERS * ENTRY + (SPECIES + MOVES + 2 * ENCOUNTERS) * 16; }
+{ return 128 + MOVES * 56 + SPECIES * 284 + 18 * 44 + 8 * 0x194 + ENCOUNTERS * ENTRY + (SPECIES + MOVES + 2 * ENCOUNTERS) * 16 + 0x61 * 0x38; }
 
 /* opponent_level/species configure encounter 0's two-Pokemon party. */
 static inline uint8_t *make_pack(unsigned opponent_species, unsigned opponent_level, size_t *size)
@@ -22,7 +22,7 @@ static inline uint8_t *make_pack(unsigned opponent_species, unsigned opponent_le
     uint8_t *b = calloc(1, n);
     uint32_t moves = 128, species = moves + MOVES * 56, types = species + SPECIES * 284,
              growth = types + 18 * 44, entries = growth + 8 * 0x194, names = entries + ENCOUNTERS * ENTRY;
-    memcpy(b, "C3B2", 4); p32(b + 4, 1); p32(b + 8, (uint32_t)n); p32(b + 12, ENCOUNTERS);
+    memcpy(b, "C3B2", 4); p32(b + 4, 2); p32(b + 8, (uint32_t)n); p32(b + 12, ENCOUNTERS);
     p32(b + 16, MOVES); p32(b + 20, SPECIES); p32(b + 24, 18); p32(b + 28, 8);
     p32(b + 112, species); p32(b + 116, types); p32(b + 120, growth); p32(b + 124, entries);
     /* move 1 TACKLE (hit), 2 GROWL (Attack down, both foes), 3 EMBER-like
@@ -66,6 +66,10 @@ static inline uint8_t *make_pack(unsigned opponent_species, unsigned opponent_le
     strcpy((char *)b + names + (SPECIES + 1) * 16, "TACKLE");
     strcpy((char *)b + names + (SPECIES + MOVES) * 16, "WILLIE");
     strcpy((char *)b + names + (SPECIES + MOVES + 1) * 16, "RIDER");
+    {   /* version 2 Shadow table: id 1 is FOE, catch rate 45, gauge 30, snag flag 0x84E */
+        uint8_t *sh = b + n - 0x61 * 0x38 + 1 * 0x38;
+        sh[0] = 45; p16(sh + 2, 2); p16(sh + 8, 30); p16(sh + 0x12, 0x84e);
+    }
     c3_save_codec_sha1(b + 72, b + 128, n - 128);
     *size = n;
     return b;

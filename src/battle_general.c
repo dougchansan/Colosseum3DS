@@ -16,6 +16,8 @@
 #define MAGIC UINT32_C(0x43334742)
 #define NO_MON 255u
 #define STRUGGLE 165u
+#define SHADOW_ROWS 0x61u  /* common_rel 0x1439D8: Shadow data IDs 0..0x60 */
+#define SHADOW_ROW 0x38u
 
 static uint16_t be16(const uint8_t *p){return (uint16_t)((unsigned)p[0]<<8|p[1]);}
 static uint32_t be32(const uint8_t *p){return (uint32_t)p[0]<<24|(uint32_t)p[1]<<16|(uint32_t)p[2]<<8|p[3];}
@@ -41,13 +43,16 @@ int c3_battle_pack_decode(C3BattlePack *out,const void *bytes,size_t size,char *
     C3BattlePack k={0};
     k.encounters=be32(p+12);k.moves=be32(p+16);k.species=be32(p+20);k.types=be32(p+24);k.growth=be32(p+28);
     k.species_at=be32(p+112);k.types_at=be32(p+116);k.growth_at=be32(p+120);k.entries_at=be32(p+124);
-    if(memcmp(p,"C3B2",4)||be32(p+4)!=1||be32(p+8)!=size||!k.encounters||k.encounters>4096||
+    unsigned version=size>=8?be32(p+4):0;
+    if(memcmp(p,"C3B2",4)||(version!=1&&version!=2)||be32(p+8)!=size||!k.encounters||k.encounters>4096||
        k.moves<STRUGGLE+1||k.moves>1024||k.species<2||k.species>1024||k.types!=18||k.growth!=8)
         return fail(e,"Unsupported story-battle pack header.");
     k.names_at=k.entries_at+k.encounters*ENTRY;
+    k.shadow_at=version==2?k.names_at+(k.species+k.moves+2u*k.encounters)*C3_GB_NAME:0;
     if(k.species_at!=HEADER+k.moves*MOVE_ROW||k.types_at!=k.species_at+k.species*SPECIES_ROW||
        k.growth_at!=k.types_at+k.types*TYPE_ROW||k.entries_at!=k.growth_at+k.growth*GROWTH_ROW||
-       (uint64_t)k.names_at+(uint64_t)(k.species+k.moves+2u*k.encounters)*C3_GB_NAME!=size)
+       (uint64_t)k.names_at+(uint64_t)(k.species+k.moves+2u*k.encounters)*C3_GB_NAME+
+       (version==2?SHADOW_ROWS*SHADOW_ROW:0u)!=size)
         return fail(e,"Story-battle pack sections do not match its size.");
     c3_save_codec_sha1(digest,p+HEADER,size-HEADER);
     if(memcmp(digest,p+72,20))return fail(e,"Story-battle pack digest mismatch.");
@@ -92,6 +97,13 @@ uint16_t c3_battle_pack_species_voice(const C3BattlePack *p,uint16_t species)
 {
     const uint8_t *s=p&&p->bytes?species_row(p,species):NULL;
     return s?(uint16_t)be16(s+14):0;
+}
+int c3_battle_pack_shadow(const C3BattlePack *p,unsigned id,C3ShadowInfo *out)
+{
+    if(!p||!p->bytes||!p->shadow_at||!out||!id||id>=SHADOW_ROWS)return 0;
+    const uint8_t *r=p->bytes+p->shadow_at+id*SHADOW_ROW;
+    out->catch_rate=r[0];out->species=be16(r+2);out->gauge=be16(r+8);out->snag_flag=be16(r+0x12);
+    return out->species!=0;
 }
 int c3_battle_pack_info(const C3BattlePack *p,uint32_t id,C3BattleEncounterInfo *out)
 {
@@ -694,6 +706,63 @@ int c3_general_battle_choose_with(const C3GeneralBattle *cb,const C3BattlePack *
     if(!c3_battle_rng_next16(rng,&v))return 0;
     c->target=(uint8_t)foes[v%nf];return 1;
 }
+/* ---- snagging ------------------------------------------------------------ */
+
+static const char *const ball_name[13]={"","MASTER BALL","ULTRA BALL","GREAT BALL","POKE BALL",
+    "SAFARI BALL","NET BALL","DIVE BALL","NEST BALL","REPEAT BALL","TIMER BALL","LUXURY BALL","PREMIER BALL"};
+static int snag_allowed(C3GeneralBattle *b,const C3BattlePack *p,unsigned pos,unsigned ball,unsigned target)
+{
+    C3ShadowInfo sh;const C3GeneralMon *y=target<4?cat(b,target):NULL;
+    return !b->link&&b->snag&&pos/2==0&&target/2==1&&ball>=1&&ball<=12&&b->balls[ball]&&
+           y&&y->hp&&y->shadow&&c3_battle_pack_shadow(p,y->shadow,&sh);
+}
+int c3_general_battle_can_snag(const C3GeneralBattle *b,const C3BattlePack *p,unsigned pos,unsigned ball,unsigned target)
+{return b&&p&&b->magic==MAGIC&&pos<4&&alive((C3GeneralBattle *)b,pos)&&snag_allowed((C3GeneralBattle *)b,p,pos,ball,target);}
+static uint32_t isqrt(uint32_t v){uint32_t r=0;while((r+1u)*(r+1u)<=v)++r;return r;}
+/* fn_80213A78 (fightActionHokaku's catch): the Shadow table's catch rate,
+ * the ball multiplier in tenths, the HP factor, x2 asleep or frozen, x1.5
+ * poisoned, paralysed or burnt; 255 or more (or the Master Ball, or
+ * encounter 0x11) is a catch, else four shake checks against
+ * 0xFFFF0 / sqrt(sqrt(0xFF0000 / odds)) with the battle RNG. */
+static int throw_ball(C3GeneralBattle *b,const C3BattlePack *p,unsigned a,C3GeneralCommand c)
+{
+    static const char *const broke[4]={"Oh, no! The POKEMON broke free!","Aww! It appeared to be caught!",
+        "Aargh! Almost had it!","Shoot! It was so close, too!"};
+    unsigned ball=c.slot,t=c.target,shakes=0;C3ShadowInfo sh;
+    if(ball<1||ball>12)return 0;
+    if(!b->balls[ball])return say(b,C3_GB_EVENT_MESSAGE,a,255,0,"There are no %ss left!",ball_name[ball]);
+    --b->balls[ball];++b->balls_used[ball];
+    say(b,C3_GB_EVENT_MESSAGE,a,t,0,"You threw a %s!",ball_name[ball]);
+    C3GeneralMon *y=t<4?at(b,t):NULL;
+    if(!y||!y->hp||!y->shadow||!c3_battle_pack_shadow(p,y->shadow,&sh))return say(b,C3_GB_EVENT_MESSAGE,a,t,0,"But there was no target...");
+    if(ball==1||b->encounter==0x11)shakes=4;
+    else{
+        unsigned mult=10;
+        switch(ball){
+        case 2:mult=20;break;
+        case 3:mult=15;break;
+        case 6:mult=y->types[0]==11||y->types[1]==11||y->types[0]==6||y->types[1]==6?30:10;break;
+        case 8:mult=y->level<40?(40u-y->level<10u?10u:40u-y->level):10u;break;
+        case 10:mult=b->turn+9u>40u?40u:b->turn+9u;break; /* turns already taken + 10 */
+        default:break; /* Dive needs the battle floor's water status; Repeat a Shadow already snagged */
+        }
+        uint32_t mx=y->max_hp?y->max_hp:1u,hp=y->hp;
+        uint32_t odds=(uint32_t)sh.catch_rate*mult/10u*(mx*3u-hp*2u)/(mx*3u);
+        if(y->status==C3_GB_SLEEP||y->status==C3_GB_FREEZE)odds*=2u;
+        else if(y->status)odds=odds*15u/10u;
+        if(odds>=255u)shakes=4;
+        else if(odds){
+            uint32_t q=isqrt(isqrt(0xff0000u/odds)),limit=q?0xffff0u/q:0xffffu;
+            while(shakes<4){uint16_t v;if(!c3_battle_rng_next16(&b->rng,&v))return 0;if(v>=limit)break;++shakes;}
+        }
+    }
+    if(shakes<4)return say(b,C3_GB_EVENT_MESSAGE,a,t,0,"%s",broke[shakes]);
+    unsigned index=b->active[t/2][t%2];
+    y->ball=(uint8_t)ball;y->hp=0;y->participated=0;b->caught[index]=(uint8_t)ball;
+    return say(b,C3_GB_EVENT_FAINT,t,t,0,"Gotcha! %s was snagged!",y->name);
+}
+
+/* ---- turns --------------------------------------------------------------- */
 int c3_general_battle_choose(C3GeneralBattle *b,const C3BattlePack *p,unsigned pos,C3GeneralCommand *c)
 {
     if(!b||!c||b->magic!=MAGIC||!alive(b,pos))return 0;
@@ -717,6 +786,7 @@ static int command_valid(C3GeneralBattle *b,const C3BattlePack *p,unsigned pos,C
         for(unsigned a=0;a<b->active_count;++a)if(b->active[s][a]==c.slot)return 0;
         return 1;
     }
+    if(c.kind==2)return snag_allowed(b,p,pos,c.slot,c.target);
     if(c.kind!=0||c.target>=4)return 0;
     uint8_t mask=c3_general_battle_legal_moves(b,p,pos);
     return c.slot==4?!mask:c.slot<4&&(mask>>c.slot&1u);
@@ -726,7 +796,7 @@ static int replace_fainted(const C3BattlePack *p,C3GeneralBattle *b)
     for(unsigned s=0;s<2;++s)for(unsigned a=0;a<b->active_count;++a){
         uint8_t i=b->active[s][a];
         if(i!=NO_MON&&b->party[s][i].hp)continue;
-        if(s==1&&i!=NO_MON&&!b->link)award(p,b,i);
+        if(s==1&&i!=NO_MON&&!b->link&&!b->caught[i])award(p,b,i);
         int n=next_healthy(b,s,a);
         b->active[s][a]=n<0?NO_MON:(uint8_t)n;
         if(n>=0)announce_send(b,s,a,&b->party[s][n]);
@@ -792,7 +862,8 @@ static int turn_core(C3GeneralBattle *out,const C3BattlePack *p,const C3GeneralC
             C3GeneralMon *old=at(b,pos);if(old){memset(old->stages,0,sizeof old->stages);old->confusion=0;}
             b->active[pos/2][pos%2]=cmd[pos].slot;mark_faced(b);
             announce_send(b,pos/2,pos%2,&b->party[pos/2][cmd[pos].slot]);
-        }else if(!use_move(b,p,pos,cmd[pos],acted))goto failed;
+        }else if(cmd[pos].kind==2){if(!throw_ball(b,p,pos,cmd[pos]))goto failed;}
+        else if(!use_move(b,p,pos,cmd[pos],acted))goto failed;
         acted[pos]=1;
         check_outcome(b);if(b->outcome!=C3_GB_RUNNING)break;
     }
@@ -883,6 +954,8 @@ int c3_general_battle_writeback(const C3GeneralBattle *b,const C3BattlePack *p,
     C3GeneralRewards out;memset(&out,0,sizeof out);
     out.result_code=b->outcome==C3_GB_WON?2u:3u;
     out.wipeout=b->outcome!=C3_GB_WON&&b->info.wipeout;
+    memcpy(out.balls_used,b->balls_used,sizeof out.balls_used);
+    for(unsigned i=0;i<b->party_count[1];++i)if(b->caught[i])out.caught[out.caught_count++]=(uint8_t)i;
     for(unsigned i=0;i<b->party_count[0];++i)
         if(be16(party[b->party[0][i].party_slot])!=b->party[0][i].species)return 0;
     /* backSaveDataFlag clear: the hero copy (party, money) is discarded. */
@@ -934,6 +1007,35 @@ int c3_general_battle_writeback(const C3GeneralBattle *b,const C3BattlePack *p,
         }
     }
     *rw=out;return 1;
+}
+
+/* pokemonCreate's PokemonBios for a snagged opponent, then
+ * pokemonSetDarkPokemonStatus (pokemon_range_8011F77C.c). */
+int c3_general_snag_record(const C3BattlePack *p,const C3GeneralBattle *b,unsigned index,
+                           const C3SnagOwner *o,uint16_t gauge,uint32_t seed,uint8_t r[C3_GB_POKEMON_SIZE])
+{
+    if(!p||!b||!o||!r||b->magic!=MAGIC||index>=b->party_count[1]||!b->caught[index])return 0;
+    const C3GeneralMon *m=&b->party[1][index];
+    if(!species_row(p,m->species)||!m->shadow)return 0;
+    memset(r,0,C3_GB_POKEMON_SIZE);
+    C3BattleRng rng;c3_battle_rng_init(&rng,seed);uint32_t pid=0;
+    for(unsigned tries=0;tries<4096;++tries){uint16_t hi,lo;
+        if(!c3_battle_rng_next16(&rng,&lo)||!c3_battle_rng_next16(&rng,&hi))return 0;
+        pid=(uint32_t)hi<<16|lo;if(pid%25u==m->nature)break;}
+    put16(r,m->species);put32(r+4,pid);memcpy(r+8,o->attest,4);
+    put16(r+0x0c,o->floor);r[0x0e]=m->level;r[0x0f]=b->caught[index];
+    put32(r+0x14,o->trainer_id);memcpy(r+0x18,o->name,0x16);
+    for(unsigned i=0;i<10&&m->name[i]&&m->name[i]!='?';++i){put16(r + 0x2e + (2*i),(uint8_t)m->name[i]);put16(r + 0x44 + (2*i),(uint8_t)m->name[i]);}
+    put32(r+0x5c,exp_for(p,m->growth,m->level));r[0x60]=m->level;
+    {unsigned id=status_to_record(m->status);if(id)put16(r+0x64,id);}
+    for(unsigned j=0;j<4;++j)if(m->moves[j]){put16(r+0x78+4*j,m->moves[j]);r[0x7a+4*j]=m->pp[j];}
+    put16(r+0x88,m->held_item);
+    put16(r+0x8c,m->max_hp);for(unsigned j=1;j<6;++j)put16(r+0x8c+2*j,m->stats[j]);
+    put16(r+0x8a,m->max_hp);
+    for(unsigned j=0;j<6;++j){put16(r+0x98+2*j,m->evs[j]);put16(r+0xa4+2*j,m->ivs[j]);}
+    put16(r+0xb0,m->friendship);
+    put16(r+0xd8,m->shadow);put32(r+0xdc,(uint32_t)gauge*100u);put32(r+0xe0,0);
+    return 1;
 }
 
 /* _expRecover (pokemon_relive.c): pay `add` experience into one party

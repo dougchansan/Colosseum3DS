@@ -89,6 +89,15 @@ int c3_game_state_pokemon(const C3GameState *state,unsigned slot,uint8_t record[
 /* Battle writeback: replace party slot's record. The slot must already hold
  * the same species; level 1..100 and HP within the record's maximum. */
 int c3_game_state_set_pokemon(C3GameState *state,unsigned slot,const uint8_t record[0x138]);
+/* A received Pokemon (a snag): the first empty party slot gets `record`,
+ * else the first free PC box entry gets `restored` (pcboxAddPokemon heals).
+ * where: 0..5 party slot, 100 + box*30 + entry. Returns 0 when all are full. */
+int c3_game_state_receive_pokemon(C3GameState *state,const uint8_t record[0x138],
+                                  const uint8_t restored[0x138],unsigned *where);
+int c3_game_state_box_pokemon(const C3GameState *state,unsigned box,unsigned slot,uint8_t record[0x138]);
+/* Remove count of item id from bag pocket (0 normal, 1 key, 2 balls, 3 TMs,
+ * 4 berries, 5 colognes); returns 0, changing nothing, when there are fewer. */
+int c3_game_state_take_item(C3GameState *state,unsigned pocket,unsigned id,unsigned count);
 /* A traded Pokemon replaces the occupied party slot it was traded from
  * (docs/link-play.md): any species, not an egg, level 1..100, HP within its
  * maximum. Memory only; the explicit Save writes it. */

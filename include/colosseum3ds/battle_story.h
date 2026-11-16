@@ -11,12 +11,19 @@
  *  - loss without the encounter's wipeout flag: result 3, script resumes;
  *  - loss with it: money halved, party restored (restore_party, when given),
  *    then c3_field_story_battle_whiteout.
+ * Snagged Shadow Pokemon go to the party (else the PC box) with their snag
+ * flag; thrown balls leave the bag. Nothing is written when the fight kind
+ * has no backSaveDataFlag.
  * Returns 1 on success; on failure the save may hold the party writeback
  * but the story is left waiting. */
 int c3_battle_story_apply(C3FieldStory *story, C3GameState *state,
                           const C3GeneralBattle *battle, const C3BattlePack *pack,
                           int (*restore_party)(void *context),
                           C3GeneralRewards *rewards, char *error);
+
+/* Before the first turn: the Snag Machine is ready and the bag's ball
+ * pocket (pocket 2) supplies the throwable balls. */
+int c3_battle_story_prepare(const C3GameState *state, C3GeneralBattle *battle);
 
 /* Unattended battle (both sides use the opponent policy), then apply. For
  * headless runs and the warp tour; never used for the player's own battles. */
