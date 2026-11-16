@@ -6,7 +6,7 @@
 /* Borrowed, validated private asset pack; no GPU or frame ownership.
  * sprites: entries in the pack's sprite table (version 1: 10, version 2:
  * 11, adding C3_UI_BALL). Older packs keep working without the extras. */
-typedef struct { const unsigned char *data; size_t size; unsigned sprites; } C3UiAssets;
+typedef struct { const unsigned char *data; size_t size; unsigned sprites, extra_glyphs; } C3UiAssets;
 typedef struct {
     unsigned char *pixels;
     const C3UiAssets *assets;

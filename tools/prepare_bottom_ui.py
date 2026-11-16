@@ -36,7 +36,9 @@ SPRITES = (
     # indicator spins it.
     ("common.fsys", 0x00EE1200, (198, 4, 16, 16)),
 )
-PACK_VERSION = 2
+# Version 3 appends the font's non-ASCII glyphs (Latin-1 letters, symbols,
+# kana, full-width forms) as a code-sorted table after the ASCII font.
+PACK_VERSION = 3
 
 
 def decode_texture(data):
@@ -128,16 +130,14 @@ def extract_font(dol):
     pixels = struct.unpack_from(">I", dol, bank + 4)[0]
     if (font_id, width, height, count) != (0, 22, 22, 408):
         raise ValueError("Original main font header differs")
-    glyphs = {}
+    glyphs, extra = {}, {}
     for i in range(count):
         code, w, h, packed = struct.unpack_from(">HBBI", dol, bank + 16 + i * 8)
-        if not 32 <= code <= 126:
-            continue
         bearing = struct.unpack("b", bytes((packed >> 24,)))[0]
         offset = bank + pixels + (packed & 0xFFFFFF)
         stride = (w + 1) // 2
         if not 1 <= w <= 22 or h != 22 or bearing < 0 or bearing + h > 48 or offset + stride * h > len(dol):
-            raise ValueError("Original ASCII glyph exceeds bounds")
+            raise ValueError("Original glyph exceeds bounds")
         # Area-average 2x2 coverage. Preserve original advance and top bearing
         # at half GameCube resolution, with one native pixel letter spacing.
         out = bytearray(256)
@@ -152,7 +152,7 @@ def extract_font(dol):
                             value = dol[offset + sy * stride + sx // 2]
                             total += ((value & 15) if sx & 1 else value >> 4) * 17
                 out[y * 16 + x] = (total + 2) // 4
-        glyphs[code] = ((w + 1) // 2 + 1, bytes(out))
+        (glyphs if 32 <= code <= 126 else extra)[code] = ((w + 1) // 2 + 1, bytes(out))
     # The source has no curly braces. Current text packs use reviewed ASCII;
     # unknown printable punctuation is explicitly represented by source '?'.
     for code in (123, 125):
@@ -160,14 +160,14 @@ def extract_font(dol):
             glyphs[code] = glyphs[63]
     if len(glyphs) != 95:
         raise ValueError("Original printable ASCII font is incomplete")
-    return [glyphs[code] for code in range(32, 127)]
+    return [glyphs[code] for code in range(32, 127)], sorted(extra.items())
 
 
-def encode_pack(sprites, glyphs):
+def encode_pack(sprites, glyphs, extra=()):
     if len(sprites) != len(SPRITES) or len(glyphs) != 95:
         raise ValueError("Unexpected UI resource count")
-    start = 32 + 16 * len(sprites) + 8 * len(glyphs)
-    table, font_table, payload = bytearray(), bytearray(), bytearray()
+    start = 32 + 16 * len(sprites) + 8 * len(glyphs) + 16 * len(extra)
+    table, font_table, extra_table, payload = bytearray(), bytearray(), bytearray(), bytearray()
     for w, h, pixels in sprites:
         if not 8 <= w <= 512 or not 8 <= h <= 512 or len(pixels) != w * h * 4:
             raise ValueError("Invalid UI sprite")
@@ -178,10 +178,16 @@ def encode_pack(sprites, glyphs):
             raise ValueError("Invalid UI glyph")
         font_table.extend(struct.pack("<II", advance, start + len(payload)))
         payload.extend(pixels)
+    for code, (advance, pixels) in extra:
+        if not 127 <= code <= 0xFFFF or not 1 <= advance <= 16 or len(pixels) != 256:
+            raise ValueError("Invalid UI glyph")
+        extra_table.extend(struct.pack("<IIII", code, advance, start + len(payload), 0))
+        payload.extend(pixels)
     size = start + len(payload)
     if size > 1024 * 1024:
         raise ValueError("UI pack exceeds memory budget")
-    return struct.pack("<4s7I", b"C3UI", PACK_VERSION, size, len(sprites), 95, 0, 0, 0) + table + font_table + payload
+    return (struct.pack("<4s7I", b"C3UI", PACK_VERSION, size, len(sprites), 95, len(extra), 0, 0)
+            + table + font_table + extra_table + payload)
 
 
 def prepare(main_dol, files):
@@ -207,12 +213,13 @@ def prepare(main_dol, files):
         if key not in images:
             images[key] = decode_texture(read_member(archives[name], member, 1024 * 1024))
         sprites.append(crop(images[key], rect))
-    data = encode_pack(sprites, extract_font(dol))
+    ascii_glyphs, extra = extract_font(dol)
+    data = encode_pack(sprites, ascii_glyphs, extra)
     return data, {"format": "C3UI", "version": PACK_VERSION, "main_dol_sha1": MAIN_DOL_SHA1,
         "archives": provenance, "sprites": [{"archive": n, "member": hex(m), "crop": r} for n, m, r in SPRITES],
-        "font": {"address": "0x8027A500", "id": 0, "characters": "ASCII 32..126; absent source braces display '?'", "resampling": "2x2 area average; original top bearing and half-width advance plus 1px spacing"},
+        "font": {"address": "0x8027A500", "id": 0, "characters": "ASCII 32..126 (absent source braces display '?') plus %d non-ASCII glyphs" % len(extra), "resampling": "2x2 area average; original top bearing and half-width advance plus 1px spacing"},
         "sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data),
-        "scope": "Original art/font with native 320x240 layout. GS window animations and non-ASCII controls are not ported."}
+        "scope": "Original art/font with native 320x240 layout. GS window animations are not ported."}
 
 
 def main():
