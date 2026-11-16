@@ -241,9 +241,32 @@ python tools/compress_packs.py <boot> --codec zlib
 
 The exterior links to building 1F (0x84) by two doors; 1F links to 2F
 (0x85) and 2F to 3F (0x86), all three already prepared by the earlier tour
-run. Floors 0x87 and 0x89 (the exterior's other story states) and 0x81-0x83
-(hallway, Snatch room, boss room) have no collision or entrance tables in
-the survey and are not prepared.
+run.
+
+The other `S2_*` floors are the opening's cutscene sets, not walkable
+areas: 0x87 (`S2_out_1`), 0x89 (`S2_out_3`), 0x81 hallway, 0x82 Snatch
+room and 0x83 boss room hold the `opening_characters_*` models,
+`cam_opening_*` cameras, explosion and room-smoke particles and the
+airship, and none has a collision member or an entrance table. No floor's
+door (`05960004`) links to them, and the retail opening is
+`openingdemo.thp` followed by `floorLink(1, 0)` (`movie.c`), which the port
+plays already. There is nothing walkable to prepare.
+
+Text: the exterior's bank has no message native (07, e0, 36 or c8) and its
+one person has no talk script or name, so it shows no floor text; its
+common-script calls use the common groups every pack carries. For 1F, 2F
+and 3F every message ID their banks can show (24, 10 and 6) is in their
+story packs; their people's names are in the common names group.
+
+Doors: the round-trip probe takes an optional route
+(`sdmc:/3ds/Colosseum3DS/probe-route.txt`: `start <floor>`, then
+`<floor> <door source>` lines) and fires each door's original transition
+script. On Azahar it walked exterior -> 1F (entrance 1) -> 2F (0) -> 3F (0)
+-> 2F (4) -> 1F (2) -> exterior (1) -> world map, each door's script choosing
+the floor and entrance, with no entrance fallbacks or script errors.
+`used_bytes` rose once from 2.02 to 2.12 MB on the first 1F visit and then
+stayed exactly there through every later area (a one-time allocation, not a
+per-visit leak).
 
 Azahar, completed save: Outskirt -> Snagem Hideout played row 0 (route 5,
 `0C761800`), its two map packs loaded during the ride and the field took

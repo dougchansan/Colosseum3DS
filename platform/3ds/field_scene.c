@@ -467,6 +467,28 @@ static int field_renderer_init(C3Title *storage,const C3Title *const *models,uin
     return 0;
 }
 
+#ifdef C3_ROUNDTRIP_PROBE
+/* Optional door route (sdmc:/3ds/Colosseum3DS/probe-route.txt): a first
+ * line "start <floor>" and then lines "<floor> <door source>", hex, taken
+ * in order. In a listed floor the probe fires that door's transition (the
+ * original door script picks the target floor and entrance); other floors
+ * leave for the world map as before. */
+static struct { uint32_t start, floor[32], source[32]; unsigned count, next; int loaded; } probe_route;
+static void probe_route_load(void)
+{
+    if(probe_route.loaded)return;
+    probe_route.loaded=1;
+    FILE *f=fopen("sdmc:/3ds/Colosseum3DS/probe-route.txt","r");char line[64];
+    if(!f)return;
+    while(fgets(line,sizeof line,f)){
+        unsigned long a,b;
+        if(sscanf(line,"start %lx",&a)==1)probe_route.start=(uint32_t)a;
+        else if(sscanf(line,"%lx %lx",&a,&b)==2&&probe_route.count<32){
+            probe_route.floor[probe_route.count]=(uint32_t)a;probe_route.source[probe_route.count++]=(uint32_t)b;}
+    }
+    fclose(f);
+}
+#endif
 /* Return 2 only after a real source doorway and its post callback finish. */
 static int run_area(C3GameState *state,int new_game,const char *save_path,
                     FILE *trace,char *error,size_t capacity)
@@ -1341,15 +1363,28 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
 #ifdef C3_ROUNDTRIP_PROBE
         /* Leave for the world map once the people have joined; keep the
          * last frame of each area for review (the capture lags one frame). */
-        if(npc.attached&&frames>=90u){
-            char shot[80];
-            mkdir("sdmc:/3ds/Colosseum3DS/probe",0777);
-            snprintf(shot,sizeof shot,"sdmc:/3ds/Colosseum3DS/probe/area_%03lx_top.bmp",(unsigned long)map.floor);
-            (void)c3_n3ds_capture_top(shot);
-            snprintf(shot,sizeof shot,"sdmc:/3ds/Colosseum3DS/probe/area_%03lx_bottom.bmp",(unsigned long)map.floor);
-            (void)c3_n3ds_capture_bottom(shot);
-            if(!c3_game_state_set_floor(state,C3_FLOOR_WORLD_MAP_ID,map.floor,0)){result=-1;break;}
-            result=2;break;
+        {   static int door_fired;
+            if(frames<=1u)door_fired=0;
+            if(npc.attached&&frames>=90u&&!door_fired){
+                char shot[80];
+                mkdir("sdmc:/3ds/Colosseum3DS/probe",0777);
+                snprintf(shot,sizeof shot,"sdmc:/3ds/Colosseum3DS/probe/area_%03lx_top.bmp",(unsigned long)map.floor);
+                (void)c3_n3ds_capture_top(shot);
+                snprintf(shot,sizeof shot,"sdmc:/3ds/Colosseum3DS/probe/area_%03lx_bottom.bmp",(unsigned long)map.floor);
+                (void)c3_n3ds_capture_bottom(shot);
+                probe_route_load();
+                if(probe_route.next<probe_route.count&&probe_route.floor[probe_route.next]==map.floor){
+                    uint32_t source=probe_route.source[probe_route.next++];
+                    if(trace){fprintf(trace,"probe_door floor=%03lx source=%lu\n",(unsigned long)map.floor,(unsigned long)source);fflush(trace);}
+                    door_fired=1;
+                    if(!c3_field_story_transition(&story,source,story_error))goto story_failed;
+                }else{
+                    if(!c3_game_state_set_floor(state,C3_FLOOR_WORLD_MAP_ID,map.floor,0)){result=-1;break;}
+                    result=2;break;
+                }
+            }
+            /* A fired door that never links: give up after 20 s. */
+            if(door_fired&&frames>=1290u){snprintf(error,capacity,"probe door did not link");result=-1;break;}
         }
 #endif
 #ifdef C3_WARP_TOUR
@@ -1455,7 +1490,9 @@ int c3_field_scene_roundtrip_probe(C3GameState *state,FILE *trace,char *error,si
      * came from, as when a save sits in a building), else Phenac; the world
      * map then visits the unlocked destinations in turn. */
     uint32_t start=3;
-    {   C3GameSummary s;
+    probe_route_load();
+    if(probe_route.start)start=probe_route.start;
+    else {   C3GameSummary s;
         if(c3_game_state_summary(state,&s))
             for(uint32_t i=0;i<c3_world_map_entry_count();++i){C3WorldMapEntry e;
                 if(!c3_world_map_entry(i,&e)||!c3_field_scene_supports(e.floor))continue;
@@ -1469,6 +1506,8 @@ int c3_field_scene_roundtrip_probe(C3GameState *state,FILE *trace,char *error,si
         snprintf(stage,sizeof stage,"roundtrip_%u_field_%03lx_end",i,(unsigned long)floor);
         c3_n3ds_log_memory(trace,stage);
         if(result!=2||i+1==AREAS)break;
+        /* A door led to another field floor: no world-map visit. */
+        if(c3_game_state_summary(state,&summary)&&summary.floor!=C3_FLOOR_WORLD_MAP_ID)continue;
         result=c3_world_map_scene_run(state,trace,error,capacity);
         snprintf(stage,sizeof stage,"roundtrip_%u_worldmap_end",i);
         c3_n3ds_log_memory(trace,stage);
