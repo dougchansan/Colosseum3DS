@@ -215,7 +215,21 @@ camera and the messages call the other side "Foe".
   multi 2, all 6 with rule 0.
 - The port applies the same rule checks to each console's own party before
   the battle (`c3_link_rules_check`) and refuses an illegal team with the
-  original's reason.
+  original's reason; the refusal reaches every console.
+- Team choice: the original lets each player pick which Pokemon to bring in
+  its team-order menu (disc menu data the decompilation lacks). The port
+  takes the party's first legal members in party order
+  (`c3_link_pick_team`); reorder the party in Story Mode to choose.
+
+### The title menu
+
+`fn_800210F0`'s choices 2 and 3 (COLOSSEUM BATTLE, BATTLE NOW), which said
+"not available" before, now open a lobby (`platform/3ds/link_lobby.c`):
+HOST A BATTLE / JOIN A BATTLE (and HOST A TRADE / JOIN A TRADE under
+Colosseum Battle). The host sees who has joined, picks SINGLE, DOUBLE or
+MULTI (MULTI needs four players) and, for Colosseum Battle, the rule preset
+with L/R, then starts; every joined console follows. Colosseum Battle and
+trading need a Story Mode save, as the original needs a memory card save.
 
 ### Trading
 
@@ -298,3 +312,25 @@ Colosseum floor (encounter row on battle floor 26) and its trainer model
 stands in for the opponent players; turn rules are the port's general engine
 (see `include/colosseum3ds/battle_general.h`), not the original battle
 scripts.
+
+### Colosseum Battle (stage 4)
+
+| run | consoles | saves (copies) | turns | hashes | evidence |
+|---|---|---|---|---|---|
+| double, rule 0, 3D stage | 2 Azahar | console save, campaign save | 25 | all 26 equal, final 8203A059 | `private/evidence/colosseum-2p-double-3d/` |
+| single, rule 0, headless | 2 Azahar | console save (2 Pokemon, Lv25-26), downloaded save (6 Pokemon, Lv100) | 3 | all 4 equal, final 5EA5A0E8 | `private/evidence/colosseum-2p-rule0/` |
+| single, rule 1 (Lv50) | 2 Azahar | as above | - | refused on both: "Choose 3 Pokemon." | `private/evidence/colosseum-2p-lv50-refused/` |
+| title-menu lobby, scripted presses | 2 Azahar | console save, campaign save | 16 | all 17 equal, final 164E2928 | `private/evidence/lobby-colosseum-2p/` |
+
+The headless run is the documented fallback: the Lv100 team's lead species
+has no prepared 3D model (`tools/prepare_battle_stages.py` covers the story
+encounters' species), so both consoles played the same lockstep turns
+without the stage. The saves on the emulated SD cards were byte-identical
+after every run (`saves.txt` records each source's SHA-256).
+
+Original: rule presets and the team-size table, the legality checks, the
+whole-party case for rule 0, player 1 hosting (controller 1). Approximation:
+team choice is the party's first legal members; the eight-match CPU
+Colosseum and Mt. Battle (single player against the CPU) are not part of
+link play and are not ported; Poke Coupons are not paid.
+

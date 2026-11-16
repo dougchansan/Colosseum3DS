@@ -10,6 +10,7 @@
 typedef struct C3LinkProbeConfig {
     char role[8], name[C3_LINK_NAME_SIZE], mode[16], type[8];
     unsigned players, rule, slot, turn_limit;
+    char script[128];
     uint32_t seed;
 } C3LinkProbeConfig;
 extern C3LinkProbeConfig c3_link_probe_config;

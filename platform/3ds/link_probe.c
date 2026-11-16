@@ -12,6 +12,9 @@
 #include "link_uds.h"
 #include "n3ds_platform.h"
 #include "colosseum3ds/link_protocol.h"
+#include "colosseum3ds/game_state.h"
+#include "link_play.h"
+#include "bottom_screen.h"
 #include <3ds.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -51,6 +54,7 @@ static void read_config(C3LinkProbeConfig *c)
         else if (!strcmp(key, "slot")) c->slot = (unsigned)atoi(value);
         else if (!strcmp(key, "turns")) c->turn_limit = (unsigned)atoi(value);
         else if (!strcmp(key, "seed")) c->seed = (uint32_t)strtoul(value, NULL, 0);
+        else if (!strcmp(key, "script")) snprintf(c->script, sizeof c->script, "%.*s", (int)sizeof c->script - 1, value);
     }
     fclose(f);
     if (c->players < 2) c->players = 2;
@@ -154,6 +158,24 @@ int c3_link_probe_run(void)
     read_config(&c3_link_probe_config);
     FILE *log = fopen(ROOT "link-probe.log", "w");
     probe_uds = &uds;
+    if (!strncmp(c3_link_probe_config.mode, "lobby-", 6)) {
+        /* The title menu's lobby, driven by scripted pad presses. */
+        static C3GameState state;
+        char error[C3_GAME_ERROR_SIZE] = "";
+        int loaded = c3_game_state_load(&state, ROOT "saves/pokemon_colosseum.gci", ROOT "boot/newgame.c3g", error);
+        c3_link_probe_log(log, "link_lobby_probe mode=%s script=%s save_loaded=%d error=%s writes=0", c3_link_probe_config.mode,
+                          c3_link_probe_config.script, loaded, error);
+        extern int c3_link_lobby_single_session;
+        c3_link_lobby_single_session = 1;
+        c3_n3ds_set_script(c3_link_probe_config.script, 30);
+        int mode = !strcmp(c3_link_probe_config.mode, "lobby-battle-now") ? C3_LINK_MODE_BATTLE_NOW : C3_LINK_MODE_COLOSSEUM;
+        /* save_path points nowhere real: a probe never saves. */
+        result = c3_link_lobby_run(mode, loaded ? &state : NULL, ROOT "probe-unused.gci", log);
+        c3_link_probe_log(log, "link_probe_end result=%d", result);
+        if (log) fclose(log);
+        if (loaded) c3_game_state_free(&state);
+        return result;
+    }
     if (c3_link_probe_open(&uds, &session, &t, log)) {
         const char *mode = c3_link_probe_config.mode;
         if (!strcmp(mode, "echo")) result = echo(&session, log);

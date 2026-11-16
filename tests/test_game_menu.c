@@ -91,9 +91,9 @@ int main(void)
     CHECK(event.kind == C3_MENU_EVENT_NEW_GAME && !event.replace_authorized && !strcmp(event.name, "aaaaaa"));
 
     c3_game_menu_init(&menu, &save, &options);
-    tap(&menu, C3_PAD_RIGHT); tap(&menu, C3_PAD_UP); tap(&menu, C3_PAD_A);
-    CHECK(menu.page == C3_MENU_NOTICE);
-    CHECK(tap(&menu, C3_PAD_A).kind == C3_MENU_EVENT_NONE && menu.page == C3_MENU_MAIN && menu.selection == 2);
+    tap(&menu, C3_PAD_RIGHT); tap(&menu, C3_PAD_UP);
+    CHECK(menu.selection == 2);
+    CHECK(tap(&menu, C3_PAD_A).kind == C3_MENU_EVENT_COLOSSEUM_BATTLE && menu.page == C3_MENU_MAIN && menu.selection == 2);
     tap(&menu, C3_PAD_LEFT); down(&menu, 2); tap(&menu, C3_PAD_A);
     CHECK(menu.page == C3_MENU_OPTIONS);
     tap(&menu, C3_PAD_LEFT); tap(&menu, C3_PAD_DOWN); tap(&menu, C3_PAD_RIGHT);
