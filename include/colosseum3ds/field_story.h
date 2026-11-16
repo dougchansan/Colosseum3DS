@@ -18,6 +18,15 @@ typedef struct C3StoryActor {
     uint32_t index, clip, flags;
     int visible, loop, playing;
 } C3StoryActor;
+/* One treasure person of the floor (floor.c _floorInitTresure): kind 1 is a
+ * chest (people info 0x03770400), 2 and 3 items (0x03780400 / 0x03790400);
+ * type is floorEventGetTresure's gift type (1 item, 2 money, 3 special,
+ * 4 item without the first message). */
+typedef struct C3StoryTreasure {
+    uint32_t index, kind, type, item, count, taken_flag, hide_flag;
+    float position[3], yaw;
+    int visible, taken;
+} C3StoryTreasure;
 typedef struct C3FieldStoryView {
     char message[C3_STORY_MESSAGE];
     char blocked[C3_STORY_ERROR];
@@ -29,6 +38,7 @@ typedef struct C3FieldStoryView {
     uint32_t menu_floor; /* native 62 menu floor (0x391 PC box ...) while the scene shows it */
     uint32_t unported_menu; /* last native whose menu step is not ported (took the decline branch) */
     int relive_pick;        /* native C2 waits for a party choice (c3_field_story_relive_pick) */
+    int item_menu;          /* native D0 waits while the scene shows the pause menu's Items */
     float fade, camera_seconds;
     C3TitleCamera camera;
 } C3FieldStoryView;
@@ -75,12 +85,40 @@ int c3_field_story_menu_floor_done(C3FieldStory *story,char *error);
  * the scene's menus; name answers value controls 32/36. 0 when absent. */
 int c3_field_story_text(C3FieldStory *story,uint32_t id,const char *name,char *out,size_t capacity);
 int c3_field_story_shop_done(C3FieldStory *story,char *error);
+/* Native D0 (fn_801C8628) opens the pause menu on Items so the player can
+ * use a key item. Enabled, the script waits with view.item_menu set until
+ * the scene reports the item used (0: menu closed). An item registered by
+ * native 11 queues its script, which runs once the current event ends;
+ * items_menu_items lists those registered items. Disabled, the menu
+ * closes at once. */
+void c3_field_story_enable_item_menu(C3FieldStory *story,int enabled);
+/* Treasure: <prefix>.c3r (tools/prepare_story.py --doors-only). A missing
+ * file means the floor has none. Interact takes a visible treasure in
+ * front of the hero with the original messages; native CB's row changes
+ * last for the session. Needs the item service. */
+int c3_field_story_load_treasure(C3FieldStory *story,const char *path,char *error);
+/* Diagnostics: the x/z boxes (x0,z0,x1,z1 in field units) the floor's
+ * scripts have tested the hero against with native 3A so far. */
+unsigned c3_field_story_hero_regions(const C3FieldStory *story,float out[][4],unsigned max);
+unsigned c3_field_story_treasure_count(const C3FieldStory *story);
+const C3StoryTreasure *c3_field_story_treasure(const C3FieldStory *story,unsigned index);
+unsigned c3_field_story_item_menu_items(const C3FieldStory *story,uint32_t items[8]);
+int c3_field_story_item_menu_result(C3FieldStory *story,uint32_t item,char *error);
 /* Item gifts (script native 77). receive adds `count` of `item` to the bag
  * as heroItemAddItemDataId does and writes the item's display name: 0 when
  * everything was added, a positive amount that did not fit, negative when
  * the item is invalid. Unbound, native 77 fails. */
 typedef int (*C3FieldStoryReceive)(void *context,uint32_t item,uint32_t count,char *name,size_t capacity);
 void c3_field_story_set_item_service(C3FieldStory *story,C3FieldStoryReceive receive,void *context);
+/* Direct scriptAddItem (DB): signed add/remove, returning the unmet count
+ * or a negative invalid-request result. No item window or jingle. */
+typedef int (*C3FieldStoryItemChange)(void *context,uint32_t item,int32_t count);
+void c3_field_story_set_item_change_service(C3FieldStory *story,C3FieldStoryItemChange change,void *context);
+/* Item removal (native DB with a negative count, heroItemDecItemDataId):
+ * removes `count` of `item`; returns 0 when all were removed, the amount
+ * missing otherwise, negative when invalid. Unbound, those natives fail. */
+typedef int (*C3FieldStoryTake)(void *context,uint32_t item,uint32_t count);
+void c3_field_story_set_item_take_service(C3FieldStory *story,C3FieldStoryTake take,void *context);
 /* Full party restore (script native D8 mode 0, pokemonAllKaihuku). Returns
  * the number of members restored or a negative value. Unbound, D8 fails. */
 typedef int (*C3FieldStoryRestore)(void *context);

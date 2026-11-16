@@ -102,6 +102,19 @@ int main(int argc,char **argv){char directory[]="/tmp/c3-inventory-XXXXXX",path[
   CHECK(c3_inventory_receive(&state,&a,2,99)==99&&r16(bag+0x7f6)==1);
   CHECK(c3_inventory_receive(&state,&a,999,1)==-1&&c3_inventory_receive(&state,&a,1,0)==-1);
   CHECK(c3_inventory_receive(NULL,&a,1,1)==-1&&c3_inventory_receive(&state,NULL,1,1)==-1);}
+ /* Script removal consumes important items too, compacts emptied slots,
+  * and reports the unmet quantity after a partial removal. */
+ {uint8_t *bag=(uint8_t*)c3_game_state_body(&state,NULL);memset(bag+0x7f0,0,80);
+  CHECK(c3_inventory_receive(&state,&a,1,3)==0&&c3_inventory_receive(&state,&a,2,1)==0);
+  CHECK(c3_inventory_remove(&state,&a,1,2)==0&&r16(bag+0x7f2)==1);
+  CHECK(c3_inventory_remove(&state,&a,1,5)==4&&r16(bag+0x7f0)==2&&r16(bag+0x7f2)==1&&!r16(bag+0x7f4));
+  CHECK(c3_inventory_remove(&state,&a,1,1)==1);
+  CHECK(c3_inventory_receive(&state,&a,4,1)==0&&r16(bag+0x840)==4);
+  CHECK(c3_inventory_remove(&state,&a,4,1)==0&&!r16(bag+0x840));
+  CHECK(c3_inventory_remove(&state,&a,2,1)==0&&!r16(bag+0x7f0));
+  CHECK(c3_inventory_remove(NULL,&a,1,1)==-1&&c3_inventory_remove(&state,NULL,1,1)==-1);
+  CHECK(c3_inventory_remove(&state,&a,999,1)==-1);
+ }
  /* Party restore: HP, PP of valid moves and a status condition record. */
  {uint8_t *q0=(uint8_t*)c3_game_state_body(&state,NULL)+PARTY;unsigned members=0;
   for(unsigned i=0;i<6;++i)members+=r16(q0+i*312)!=0;

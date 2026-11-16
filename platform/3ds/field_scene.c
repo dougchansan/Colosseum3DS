@@ -100,6 +100,14 @@ static int receive_item(void *context,uint32_t item,uint32_t count,char *name,si
     }
     free(data);return result;
 }
+/* scriptAddItem bypasses the bag menu's key-item toss guard. */
+static int change_item(void *context,uint32_t item,int32_t count)
+{
+    C3PdaAssets assets={0};uint8_t *data=open_pda(&assets);int result=-1;
+    if(data)result=count<0?c3_inventory_remove(context,&assets,item,(unsigned)-count):
+        c3_inventory_receive(context,&assets,item,(unsigned)count);
+    free(data);return result;
+}
 /* Names the message controls print (msgctrlItem/Item2, msgctrlPokemonID)
  * from the PDA pack's item and species tables. Moves and trainer classes
  * are not in that pack yet; such a message fails with the control named. */
@@ -907,6 +915,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     c3_field_story_enable_shop(&story,1);
     c3_field_story_enable_menu_floor(&story,0x391,1); /* the PC (pc_menu.h) */
     c3_field_story_set_item_service(&story,receive_item,state);
+    c3_field_story_set_item_change_service(&story,change_item,state);
     c3_field_story_set_namer(&story,story_namer,state);
     c3_field_story_set_party_service(&story,restore_party,state);
     purify_trace=trace;c3_field_story_set_purify_service(&story,purify_party,state);

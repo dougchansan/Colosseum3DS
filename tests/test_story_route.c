@@ -1,5 +1,6 @@
 #define _POSIX_C_SOURCE 200809L
 #include "colosseum3ds/field_story.h"
+#include "colosseum3ds/inventory.h"
 #include "colosseum3ds/pda.h"
 
 #include <math.h>
@@ -40,6 +41,15 @@
  *   mail <id>                 read a received PDA mail: its original read
  *                             transaction (flags, hints) from the PDA pack
  *                             named by C3_ROUTE_PDA (tools/prepare_pda.py)
+ *   inspect <surface>         press A at a surface (event kind 3): stand half a
+ *                             unit in front of its first enabled triangle
+ *   press <x> <z> <yaw>       press A from a source position facing yaw degrees
+ *   use <item>                when a script next opens the pause menu at Items
+ *                             (native D0), use this key item (0 closes the menu)
+ *                             (talk scripts that check where the hero stands)
+ * door and touch refuse a surface whose CCD objects are all disabled. Item
+ * and species names in messages come from the C3_ROUTE_PDA pack; native DB
+ * (direct bag change) is reported as a "route_item_change" line.
  * Each step ends in one "route" line; flag writes, messages, battles and
  * floor changes are "route_flag", "route_message", "route_battle" and
  * "route_floor" lines. Without arguments nothing private is checked. */
@@ -65,7 +75,7 @@ static const char *newgame, *root;
 static C3GameState game;
 static uint32_t shadow[FLAG_LAST];
 static uint8_t valid[FLAG_LAST];
-static uint32_t result_id = 2, last_message;
+static uint32_t result_id = 2, last_message, use_item;
 static Scene *scene;
 static C3PdaAssets pda;
 static uint8_t *pda_data;
@@ -77,6 +87,19 @@ static int receive(void *c, uint32_t item, uint32_t count, char *name, size_t ca
 { (void)c; fprintf(report, "route_item item=%lu count=%lu\n", (unsigned long)item, (unsigned long)count);
   snprintf(name, capacity, "ITEM"); return 0; }
 static int restore(void *c) { (void)c; return 6; }
+static int item_change(void *c, uint32_t item, int32_t count)
+{ (void)c; fprintf(report, "route_item_change item=%lu count=%ld\n", (unsigned long)item, (long)count); return 0; }
+/* Item and species names for message controls, from the PDA pack's tables
+ * (platform/3ds/field_scene.c story_namer). */
+static int namer(void *c, unsigned kind, uint32_t id, C3StoryValue *value)
+{
+    static char text[64]; C3InventoryItem item; C3PdaSpecies species; int ok = 0; (void)c;
+    if (!pda_data) return 0;
+    if (kind == C3_STORY_NAME_ITEM && c3_inventory_item(&pda, id, &item)) ok = c3_pda_text(&pda, item.name, "WES", "RUI", text, sizeof text);
+    else if (kind == C3_STORY_NAME_SPECIES && c3_pda_species(&pda, id, &species)) ok = c3_pda_text(&pda, species.name, "", "", text, sizeof text);
+    if (ok) value->text = text;
+    return ok;
+}
 
 static void le32(uint8_t *p, uint32_t v) { p[0]=(uint8_t)v; p[1]=(uint8_t)(v>>8); p[2]=(uint8_t)(v>>16); p[3]=(uint8_t)(v>>24); }
 static uint32_t bits(float f) { uint32_t v; memcpy(&v, &f, 4); return v; }
@@ -148,6 +171,9 @@ static int load(uint32_t floor, uint32_t entrance, uint32_t previous)
     c3_field_story_enable_name_entry(&scene->story, 1);
     c3_field_story_set_item_service(&scene->story, receive, NULL);
     c3_field_story_set_party_service(&scene->story, restore, NULL);
+    c3_field_story_set_item_change_service(&scene->story, item_change, NULL);
+    c3_field_story_set_namer(&scene->story, namer, NULL);
+    c3_field_story_enable_item_menu(&scene->story, 1);
     if (!c3_field_story_prepare(&scene->story, error)) return 0;
     for (unsigned frame = 0; frame < 3600 && !c3_field_story_view(&scene->story)->prepared; ++frame)
         if (!c3_field_story_tick(&scene->story, 1.0f/60.0f, 0, error)) return 0;
@@ -156,7 +182,18 @@ static int load(uint32_t floor, uint32_t entrance, uint32_t previous)
     fprintf(report, "route_floor floor=%03lx entrance=%lu previous=%03lx actors=%lu links=%lu\n", (unsigned long)floor,
             (unsigned long)entrance, (unsigned long)previous, (unsigned long)scene->area.actor_count,
             (unsigned long)scene->area.link_count);
-    return run(6000, 1);
+    int arrived = run(6000, 1);
+    /* Where each person stands after the arrival (for writing routes). */
+    if (scene->loaded && scene->floor == floor)
+        for (uint32_t i = 0; i < scene->area.actor_count; ++i) {
+            C3StoryActor *a = c3_field_story_actor(&scene->story, scene->area.actors[i].index);
+            if (a) fprintf(trace, "route_actor floor=%03lx person=%lu talk=%08lx visible=%d x=%.2f z=%.2f yaw=%.0f\n",
+                           (unsigned long)floor, (unsigned long)scene->area.actors[i].index,
+                           (unsigned long)scene->area.actors[i].talk_script, a->visible,
+                           (double)(a->pose.position[0] / scene->map.scale), (double)(a->pose.position[2] / scene->map.scale),
+                           (double)(a->pose.yaw * 57.29578f));
+        }
+    return arrived;
 }
 
 /* Tick until the hero has control again (until_control) or for `frames`.
@@ -193,6 +230,11 @@ static int run(unsigned frames, int until_control)
             if (!c3_field_story_battle_result(&scene->story, result_id, error)) return 0;
         }
         if (v->shop && !c3_field_story_shop_done(&scene->story, error)) return 0;
+        if (v->item_menu) {
+            fprintf(report, "route_item_menu floor=%03lx use=%lu\n", (unsigned long)scene->floor, (unsigned long)use_item);
+            uint32_t item = use_item; use_item = 0;
+            if (!c3_field_story_item_menu_result(&scene->story, item, error)) return 0;
+        }
         if (v->name_entry && !c3_field_story_name_result(&scene->story, "RUI", error)) return 0;
         if (v->relive_pick && !c3_field_story_relive_pick(&scene->story, -1, error)) return 0;
         if (!c3_field_story_tick(&scene->story, 1.0f/60.0f, pressed, error) || !c3_field_story_sample(&scene->story, error)) return 0;
@@ -201,6 +243,14 @@ static int run(unsigned frames, int until_control)
     if (until_control) { char waits[512]; c3_field_story_describe_waits(&scene->story, waits, sizeof waits);
         snprintf(error, sizeof error, "no control after %u frames: %.150s", frames, waits); return 0; }
     return 1;
+}
+
+/* A surface the player can reach: one triangle of it on an enabled object. */
+static int reachable(const C3FieldTriangle *t, uint32_t count, uint32_t source)
+{
+    for (uint32_t i = 0; i < count; ++i)
+        if (t[i].source_id == source && c3_field_object_enabled(&scene->map, t[i].object)) return 1;
+    return 0;
 }
 
 static int step(char *line)
@@ -328,14 +378,48 @@ static int step(char *line)
         if (!c3_field_story_interact(&scene->story, error)) return 0;
         return run(30000, 1);
     }
+    if (!strcmp(word, "use")) { CHECK(sscanf(line, "%li", (long *)&a) == 1); use_item = (uint32_t)a; return 1; }
+    if (!strcmp(word, "press")) {
+        float yaw;
+        CHECK(sscanf(line, "%f %f %f", &x, &z, &yaw) == 3);
+        scene->hero.position[0] = x * scene->map.scale; scene->hero.position[2] = z * scene->map.scale;
+        scene->hero.yaw = yaw * 3.14159265f / 180.0f;
+        memcpy(scene->hero.proposed, scene->hero.position, sizeof scene->hero.position);
+        if (!c3_field_story_interact(&scene->story, error)) return 0;
+        return run(30000, 1);
+    }
+    if (!strcmp(word, "inspect")) {
+        CHECK(sscanf(line, "%li", (long *)&a) == 1);
+        const C3FieldTriangle *t = NULL;
+        for (uint32_t i = 0; i < scene->area.interaction_count && !t; ++i)
+            if (scene->area.interactions[i].source_id == a && c3_field_object_enabled(&scene->map, scene->area.interactions[i].object))
+                t = scene->area.interactions + i;
+        if (!t) { snprintf(error, sizeof error, "surface %lu has no enabled A-button triangle", a); return 0; }
+        float c[3], d[2];
+        for (unsigned k = 0; k < 3; ++k) c[k] = (t->vertices[k] + t->vertices[3 + k] + t->vertices[6 + k]) / 3.0f;
+        d[0] = t->normal[0]; d[1] = t->normal[2];
+        float len = sqrtf(d[0] * d[0] + d[1] * d[1]);
+        if (len < 1e-4f) { d[0] = 0; d[1] = 1; } else { d[0] /= len; d[1] /= len; }
+        scene->hero.position[0] = c[0] + d[0] * 0.5f; scene->hero.position[1] = c[1] - 0.5f;
+        scene->hero.position[2] = c[2] + d[1] * 0.5f; scene->hero.yaw = atan2f(-d[0], -d[1]);
+        memcpy(scene->hero.proposed, scene->hero.position, sizeof scene->hero.position);
+        if (!c3_field_story_interact(&scene->story, error)) return 0;
+        return run(30000, 1);
+    }
     if (!strcmp(word, "touch")) {
         CHECK(sscanf(line, "%li", (long *)&a) == 1);
+        if (!reachable(scene->area.transitions, scene->area.transition_count, (uint32_t)a)) {
+            snprintf(error, sizeof error, "touch surface %lu is on a disabled CCD object", a); return 0;
+        }
         int started = c3_field_story_touch(&scene->story, (uint32_t)a, error);
         if (started <= 0) { if (!started) snprintf(error, sizeof error, "touch %lu did not start", a); return 0; }
         return run(30000, 1);
     }
     if (!strcmp(word, "door")) {
         CHECK(sscanf(line, "%li", (long *)&a) == 1);
+        if (!reachable(scene->area.transitions, scene->area.transition_count, (uint32_t)a)) {
+            snprintf(error, sizeof error, "door surface %lu is on a disabled CCD object", a); return 0;
+        }
         if (!c3_field_story_transition(&scene->story, (uint32_t)a, error)) return 0;
         return run(30000, 1);
     }

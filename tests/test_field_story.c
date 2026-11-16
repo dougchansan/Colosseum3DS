@@ -103,6 +103,12 @@ static void door(Scene *s,uint32_t source,uint32_t floor,uint32_t spawn)
     CHECK(frame<3600&&c3_field_story_view(&s->story)->next_floor==floor&&c3_field_story_view(&s->story)->next_spawn==spawn);
 }
 static uint16_t counting_random(void *context){unsigned *draws=context;return (uint16_t)(0x1234u+(*draws)++);}
+typedef struct {unsigned calls;uint32_t item;int32_t count;int result;} ItemProbe;
+static int probe_item(void *context,uint32_t item,int32_t count)
+{
+    ItemProbe *probe=context;++probe->calls;probe->item=item;probe->count=count;
+    return probe->result;
+}
 static int accept_world_map(uint32_t floor){return floor==1||floor==2||floor==0x38e;}
 static void unchanged_party(C3GameState *game,const C3GameSummary *original)
 {
@@ -294,6 +300,26 @@ static void synthetic_regressions(void)
     CHECK(!c3_field_story_actor(&s->story,3)->playing&&!c3_field_story_actor(&s->story,3)->loop);
     CHECK(c3_field_story_tick(&s->story,.5f,0,error));
     CHECK(c3_field_story_actor(&s->story,3)->pose.animation_seconds==0);close_scene(s);
+    /* Native 97 (peopleSetShadowVisible) hides the shadow, not the person. */
+    memset(code,0,sizeof code);args[0]=29;args[1]=3;args[2]=0;native(code+2,0x97,3,args,1);
+    synthetic_load(s,&game,file,code,0,0x1000002,0);
+    CHECK(c3_field_story_actor(&s->story,3)->visible);close_scene(s);
+    /* Opcode 23 (fn_800F16C0, a developer-log print) returns no value and
+     * the script goes on: the following native 64 hides the person. */
+    memset(code,0,sizeof code);push(code+2,0x1234);raw(code+2,0x23);raw(code+2,0);raw(code+2,1);raw(code+2,0);raw(code+2,1);
+    args[0]=3;args[1]=0;native(code+2,0x64,2,args,1);synthetic_load(s,&game,file,code,0,0x1000002,0);
+    CHECK(!c3_field_story_actor(&s->story,3)->visible);close_scene(s);
+    /* B5 with three words (Pyrite windmill): the zero fourth word is admitted. */
+    memset(code,0,sizeof code);args[0]=29;args[1]=3;args[2]=3;native(code+2,0xb5,3,args,1);
+    args[0]=3;args[1]=0;native(code+2,0x64,2,args,1);synthetic_load(s,&game,file,code,0,0x1000002,0);
+    CHECK(!c3_field_story_actor(&s->story,3)->visible);close_scene(s);
+    /* heroMoveInitEvent/TermEvent do not nest: 20, 20, 21 gives control back
+     * (Pyrite cave: Miror B.'s event returns without 21, main then wraps the
+     * next event in 20/21). */
+    memset(code,0,sizeof code);native(code+3,0x20,0,NULL,1);native(code+3,0x20,0,NULL,1);native(code+3,0x21,0,NULL,1);native(code+3,0x1f,0,NULL,1);
+    synthetic_load(s,&game,file,code,0,0,0x1000003);CHECK(c3_field_story_enter(&s->story,error));
+    for(unsigned i=0;i<20&&!c3_field_story_view(&s->story)->control;++i)CHECK(c3_field_story_tick(&s->story,.1f,0,error));
+    CHECK(c3_field_story_view(&s->story)->control);close_scene(s);
     /* Menu callbacks queue work without running it inside the paused menu. */
     memset(code,0,sizeof code);native(code+3,0x1f,0,NULL,1);args[0]=3;args[1]=0;native(code+5,0x64,2,args,1);
     synthetic_load(s,&game,file,code,0,0,0x1000003);CHECK(c3_field_story_enter(&s->story,error));
@@ -562,6 +588,32 @@ static void synthetic_regressions(void)
     synthetic_load(s,&game,file,code,0,0,0x1000003);CHECK(!c3_game_state_partner(&game));CHECK(c3_field_story_enter(&s->story,error));
     CHECK(c3_field_story_tick(&s->story,0,0,error));CHECK(!c3_field_story_actor(&s->story,3)->visible&&c3_game_state_partner(&game));
     CHECK(c3_game_state_set_partner(&game,0)&&!c3_game_state_partner(&game));close_scene(s);
+    /* DB directly mutates the bag once, including ABI u16 narrowing;
+     * unlike 77 it neither opens a message nor waits for a jingle. */
+    memset(code,0,sizeof code);args[0]=0x10042;args[1]=0x10003;native(code+3,0xdb,2,args,1);
+    args[0]=3;args[1]=0;native(code+3,0x64,2,args,1);
+    synthetic_load(s,&game,file,code,0,0,0x1000003);CHECK(c3_field_story_enter(&s->story,error));
+    CHECK(!c3_field_story_tick(&s->story,0,0,error)&&strstr(error,"needs the signed item service"));close_scene(s);
+    for(int result=-1;result<=2;++result){
+        ItemProbe probe={0,0,0,result};synthetic_load(s,&game,file,code,0,0,0x1000003);
+        c3_field_story_set_item_change_service(&s->story,probe_item,&probe);CHECK(c3_field_story_enter(&s->story,error));
+        CHECK(c3_field_story_tick(&s->story,0,0,error));
+        CHECK(probe.calls==1&&probe.item==0x42&&probe.count==3);
+        CHECK(!c3_field_story_view(&s->story)->dialogue&&!c3_field_story_actor(&s->story,3)->visible);
+        CHECK(c3_field_story_tick(&s->story,1,0,error)&&probe.calls==1);close_scene(s);
+    }
+    memset(code,0,sizeof code);args[0]=0x42;args[1]=(uint32_t)-65537;native(code+3,0xdb,2,args,1);
+    synthetic_load(s,&game,file,code,0,0,0x1000003);ItemProbe probe={0};
+    c3_field_story_set_item_change_service(&s->story,probe_item,&probe);CHECK(c3_field_story_enter(&s->story,error));
+    CHECK(c3_field_story_tick(&s->story,0,0,error)&&probe.calls==1&&probe.count==-1&&probe.item==0x42);close_scene(s);
+    memset(code,0,sizeof code);args[0]=0x42;args[1]=0;native(code+3,0xdb,2,args,1);
+    synthetic_load(s,&game,file,code,0,0,0x1000003);probe.calls=0;
+    c3_field_story_set_item_change_service(&s->story,probe_item,&probe);CHECK(c3_field_story_enter(&s->story,error));
+    CHECK(!c3_field_story_tick(&s->story,0,0,error)&&strstr(error,"no defined retail result")&&!probe.calls);close_scene(s);
+    memset(code,0,sizeof code);native(code+3,0xdb,1,args,1);
+    synthetic_load(s,&game,file,code,0,0,0x1000003);
+    c3_field_story_set_item_change_service(&s->story,probe_item,&probe);CHECK(c3_field_story_enter(&s->story,error));
+    CHECK(!c3_field_story_tick(&s->story,0,0,error)&&strstr(error,"expects 2 arguments")&&!probe.calls);close_scene(s);
     /* Native 02 needs the bound game RNG and draws twice, low half first. */
     memset(code,0,sizeof code);args[0]=7;native(code+3,0x02,1,args,1);args[0]=3;args[1]=0;native(code+3,0x64,2,args,1);
     synthetic_load(s,&game,file,code,0,0,0x1000003);CHECK(c3_field_story_enter(&s->story,error));
@@ -602,9 +654,30 @@ static void synthetic_regressions(void)
     free(s);c3_game_state_free(&game);CHECK(!unlink(file));CHECK(!rmdir(directory));
     printf("field-story synthetic regressions: %u checks passed\n",checks);
 }
+/* Original flag metadata is needed to exercise BB's paired BC setter and
+ * prove the returned value reaches its script caller, rather than merely
+ * accepting the native. Uses synthetic bytecode with the real game pack. */
+static void premium_regressions(const char *prepared)
+{
+    char directory[]="/tmp/c3-premium-XXXXXX",file[1024];CHECK(mkdtemp(directory));path(file,directory,"premium.c3s");
+    C3GameState game={0};CHECK(c3_game_state_new(&game,"WES",7,prepared,error));
+    Scene *s=calloc(1,sizeof(*s));CHECK(s);
+    for(unsigned premium=0;premium<=1;++premium){
+        Program code[8]={0};uint32_t args[1]={premium};native(code+3,0xbc,1,args,1);
+        /* actorSetVisible(3, scriptGetPremium()). */
+        push(code+3,0);push(code+3,0x64);push(code+3,3);
+        native(code+3,0xbb,0,NULL,0);call_end(code+3,2,1);
+        synthetic_load(s,&game,file,code,0,0,0x1000003);CHECK(c3_field_story_enter(&s->story,error));
+        CHECK(c3_field_story_tick(&s->story,0,0,error));
+        CHECK(flag(&game,0xa9e)==premium&&c3_field_story_actor(&s->story,3)->visible==(int)premium);close_scene(s);
+    }
+    free(s);c3_game_state_free(&game);CHECK(!unlink(file));CHECK(!rmdir(directory));
+    puts("premium native BC/BB original flag roundtrip passed");
+}
 int main(int argc,char **argv)
 {
     synthetic_regressions();
+    if(argc==3&&!strcmp(argv[1],"--premium")){premium_regressions(argv[2]);return 0;}
     if(argc<2){puts("field-story private integration skipped: supply privately prepared boot directory");return 0;}
     trace=argc>2?fopen(argv[2],"w+"):tmpfile();CHECK(trace!=NULL);
     fprintf(trace,"integration_scope=headless_actual_runtime private_original_data=1 visual_evidence=0 battle_backend=0\n");
