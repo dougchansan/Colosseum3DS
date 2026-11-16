@@ -1,0 +1,36 @@
+# Resume after original Under opening flags through Venus and subway unlock.
+floor 037 02f 0
+ticks 1800 0
+talk 3 0
+ticks 3600 0
+flag 044a 1
+flag 044c 1
+floor 039 037 0
+ticks 1800 0
+floor 03a 039 0
+ticks 1800 0
+talk 1 0
+ticks 3600 0
+talk 2 0
+ticks 3600 0
+talk 3 0
+ticks 3600 0
+talk 4 0
+ticks 3600 0
+flag 044e 1
+floor 03c 03a 0
+ticks 3600 0
+flag 044f 1
+floor 03d 03c 0
+ticks 1800 0
+door 0
+ticks 1800 0
+next 03c
+floor 03c 03d 0
+ticks 3600 0
+flag 0afb 1
+floor 03a 03c 0
+ticks 1800 0
+pos -76.57 0 -52.17
+# The next assertion is the original visible subway-key pickup, not a grant.
+item 01fc 1
