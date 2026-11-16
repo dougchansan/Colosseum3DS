@@ -73,6 +73,7 @@ typedef struct {
     Person *camera_person;
     int target_moving,camera_returning;
     uint32_t sound_id, previous_floor, pending_floor, pending_spawn, arrival_spawn;
+    uint16_t tick_pressed; /* this tick's newly pressed buttons (native 6F) */
     uint32_t fight_result; /* fn_801EF634: last original fight result ID */
     uint32_t whiteout_floor,whiteout_previous,whiteout_spawn;int whiteout_valid;
     int name_entry_enabled;
@@ -133,7 +134,7 @@ static int validate_native(const Impl *s,const C3StoryCall *c,char *error)
         /* Phenac City exterior bank 013E0E00 (native table lbl_802E1CF0). */
         {0x02,1,0},{0x16,2,0},{0x23,1,0},{0x31,0,0},{0x66,1,0},{0x7e,2,0},
         {0x82,3,0},{0x83,3,0},{0x89,3,0},{0xa1,3,0},{0xa4,6,0x3c},{0xa5,5,0x10},
-        {0x77,2,0},{0x84,2,0},{0x60,3,0},{0x73,4,0},{0x75,2,0},{0x8d,5,0x1e},{0x9a,5,0},{0xa0,1,0},{0xb5,4,0},{0xa9,2,0},{0xb1,6,0x10},{0xb2,3,4},{0xb4,0,0},{0xd8,1,0},{0xda,1,0},{0xe8,2,0},
+        {0x77,2,0},{0x84,2,0},{0x60,3,0},{0x73,4,0},{0x75,2,0},{0x8d,5,0x1e},{0x9a,5,0},{0xa0,1,0},{0xb5,4,0},{0xa9,2,0},{0xb1,6,0x10},{0x6f,0,0},{0xb2,3,4},{0xb4,0,0},{0xd8,1,0},{0xda,1,0},{0xe8,2,0},
         /* Whole-game survey (tests/test_world_story.c), table lbl_802E1CF0. */
         {0x97,3,0},{0xaa,7,0x3c},{0xab,1,0},{0xad,1,0},{0xe1,0,0},
         {0xa2,0,0},{0xac,3,0},{0xcb,3,0},{0xd4,0,0},{0x61,5,0},{0xe2,0,0},{0x90,2,0},{0x7b,0,0},{0xc5,4,0},
@@ -641,6 +642,12 @@ static int run_native(Impl *s,RunTask *t,char *error)
     case 0xa2:break;
     /* GbaMisc_HasActiveContextState: no Game Boy Advance is connected. */
     case 0xd4:value=0;break;
+    /* scriptIsMoveButtonPush: 1 while the D-pad (pad mask 0xF) is pushed
+     * or the control stick is deflected past 2. The scene turns the stick
+     * into hero motion, so a walking or running hero counts as the stick;
+     * the D-pad is this tick's pressed directions. Eagun's house (floor
+     * 02C) waits on it after his talk before telling Wes about the lab. */
+    case 0x6f:value=(s->tick_pressed&PAD_DIRECTIONS)||(s->view.control&&s->hero->motion!=0);break;
     case 0xc3:value=s->arrival_spawn;break; /* floorGetNextPosIndex: the entrance used */
     case 0xd9:
         /* fn_801CADA8(kind): the hero receives a gift Pokemon (1..6; 3 at
@@ -1692,6 +1699,7 @@ int c3_field_story_tick(C3FieldStory *story,float seconds,uint16_t pressed,char 
 {
     Impl *s=story?story->impl:NULL;
     if(!s||!isfinite(seconds)||seconds<0)return fail(error,"Invalid field story tick");
+    s->tick_pressed=pressed;
     /* Animation, camera, waits and fades share active elapsed time. Only
      * collision-sensitive translation retains a bounded movement step. */
     if(!advance_people(s,seconds,error))return 0;
