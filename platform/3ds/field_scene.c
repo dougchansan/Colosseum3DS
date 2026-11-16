@@ -105,6 +105,24 @@ static int change_item(void *context,uint32_t item,int32_t count)
         c3_inventory_receive(context,&assets,item,(unsigned)count);
     free(data);return result;
 }
+/* Names the message controls print (msgctrlItem/Item2, msgctrlPokemonID)
+ * from the PDA pack's item and species tables. Moves and trainer classes
+ * are not in that pack yet; such a message fails with the control named. */
+static int story_namer(void *context,unsigned kind,uint32_t id,C3StoryValue *value)
+{
+    static char text[64];
+    C3GameState *state=context;C3GameSummary summary;C3PdaAssets assets={0};C3InventoryItem item;C3PdaSpecies species;
+    uint8_t *data=open_pda(&assets);int ok=0;
+    if(data&&c3_game_state_summary(state,&summary)){
+        if(kind==C3_STORY_NAME_ITEM&&c3_inventory_item(&assets,id,&item))
+            ok=c3_pda_text(&assets,item.name,summary.name,summary.partner,text,sizeof text);
+        else if(kind==C3_STORY_NAME_SPECIES&&c3_pda_species(&assets,id,&species))
+            ok=c3_pda_text(&assets,species.name,"","",text,sizeof text);
+    }
+    free(data);
+    if(ok)value->text=text;
+    return ok;
+}
 /* Script music natives 68/69/6A/6D -> the streamed MusyX player. */
 static int story_audio(void *context,unsigned op,uint32_t a,uint32_t b,uint32_t c)
 {
@@ -820,6 +838,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     c3_field_story_enable_shop(&story,1);
     c3_field_story_set_item_service(&story,receive_item,state);
     c3_field_story_set_item_change_service(&story,change_item,state);
+    c3_field_story_set_namer(&story,story_namer,state);
     c3_field_story_set_party_service(&story,restore_party,state);
     purify_trace=trace;c3_field_story_set_purify_service(&story,purify_party,state);
     c3_field_story_set_audio_service(&story,story_audio,NULL);
