@@ -1,5 +1,6 @@
 #define _POSIX_C_SOURCE 200809L
 #include "colosseum3ds/field_story.h"
+#include "colosseum3ds/inventory.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -66,6 +67,7 @@ static int receive(void *c, uint32_t item, uint32_t count, char *name, size_t ca
     fprintf(report, "crawl_item item=%lu count=%lu\n", (unsigned long)item, (unsigned long)count);
     return 0;
 }
+static int clear_poison(void *c) { return c3_inventory_clear_party_poison(c); }
 static int restore(void *c) { (void)c; return 6; }
 static int species_name(void *c, unsigned species, char *out, size_t capacity)
 { (void)c; snprintf(out, capacity, "SPECIES %u", species); return 1; }
@@ -228,6 +230,7 @@ static int load(Scene *s, uint32_t floor, uint32_t spawn, uint32_t *next, uint32
     c3_field_story_set_item_change_service(&s->story, change, NULL);
     c3_field_story_set_species_namer(&s->story, species_name, NULL);
     c3_field_story_set_party_service(&s->story, restore, NULL);
+    c3_field_story_set_poison_service(&s->story, clear_poison, &game);
     c3_field_story_set_random(&s->story, c3_game_state_random16, &game);
     if (!c3_field_story_prepare(&s->story, error)) return 0;
     for (unsigned f = 0; f < 3600 && !c3_field_story_view(&s->story)->prepared; ++f)

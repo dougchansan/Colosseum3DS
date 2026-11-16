@@ -86,6 +86,7 @@ static int any_floor(uint32_t floor) { return floor >= 1 && floor <= 0xffff; }
 static int receive(void *c, uint32_t item, uint32_t count, char *name, size_t capacity)
 { (void)c; fprintf(report, "route_item item=%lu count=%lu\n", (unsigned long)item, (unsigned long)count);
   snprintf(name, capacity, "ITEM"); return 0; }
+static int clear_poison(void *c) { return c3_inventory_clear_party_poison(c); }
 static int restore(void *c) { (void)c; return 6; }
 static int item_change(void *c, uint32_t item, int32_t count)
 { (void)c; fprintf(report, "route_item_change item=%lu count=%ld\n", (unsigned long)item, (long)count); return 0; }
@@ -171,6 +172,7 @@ static int load(uint32_t floor, uint32_t entrance, uint32_t previous)
     c3_field_story_enable_name_entry(&scene->story, 1);
     c3_field_story_set_item_service(&scene->story, receive, NULL);
     c3_field_story_set_party_service(&scene->story, restore, NULL);
+    c3_field_story_set_poison_service(&scene->story, clear_poison, &game);
     c3_field_story_set_item_change_service(&scene->story, item_change, NULL);
     c3_field_story_set_namer(&scene->story, namer, NULL);
     c3_field_story_enable_item_menu(&scene->story, 1);

@@ -1,6 +1,7 @@
 #define _POSIX_C_SOURCE 200809L
 #include "colosseum3ds/battle_story.h"
 #include "colosseum3ds/field_story.h"
+#include "colosseum3ds/inventory.h"
 
 #include <dirent.h>
 #include <math.h>
@@ -58,6 +59,7 @@ static int receive(void *c, uint32_t item, uint32_t count, char *name, size_t ca
 { (void)c; (void)item; (void)count; snprintf(name, capacity, "ITEM"); return 0; }
 /* The party service (native D8, whiteout): HP to maximum and the
  * persistent condition cleared, as pokemonAllKaihuku does (PP is left). */
+static int clear_poison(void *c) { return c3_inventory_clear_party_poison(c); }
 static int restore(void *c)
 {
     C3GameState *g = c; int n = 0;
@@ -159,6 +161,7 @@ static void event(const char *prefix, uint32_t floor, int kind, uint32_t id, uin
     c3_field_story_enable_name_entry(&s->story, 1);
     c3_field_story_set_item_service(&s->story, receive, NULL);
     c3_field_story_set_party_service(&s->story, restore, s->game);
+    c3_field_story_set_poison_service(&s->story, clear_poison, s->game);
     if (!c3_field_story_prepare(&s->story, error)) goto done;
     for (frames = 0; frames < 3600 && !c3_field_story_view(&s->story)->prepared; ++frames)
         if (!c3_field_story_tick(&s->story, 1.0f/60.0f, 0, error)) goto done;
