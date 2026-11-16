@@ -960,6 +960,14 @@ static void draw_battle_hud(C3TitleRenderStats *stats)
     C3D_TexEnv *env=C3D_GetTexEnv(0);
     C3D_TexEnvSrc(env,C3D_Both,GPU_PRIMARY_COLOR,GPU_PRIMARY_COLOR,GPU_PRIMARY_COLOR);
     C3D_TexEnvFunc(env,C3D_Both,GPU_REPLACE);
+    float text_y=170;
+    if(battle_hud.layout==1){
+        unsigned rows=0,cols=0;
+        for(unsigned row=0;row<8;++row){unsigned n=(unsigned)strlen(battle_hud.lines[row]);if(n){rows=row+1;if(n>cols)cols=n;}}
+        if(cols>48)cols=48;
+        hud_quad(&count,2,2,cols*8+8,rows*8+6,0,0,0,0,0,0,0,.6f);
+        text_y=5;
+    }else{
     hud_quad(&count,0,166,400,74,0,0,0,0,.02f,.04f,.08f,.9f);
     for(unsigned i=0;i<4;++i){
         float x=(i&1u)?292:8,y=i<2?146:8;
@@ -967,12 +975,13 @@ static void draw_battle_hud(C3TitleRenderStats *stats)
         float f=battle_hud.maximum_hp[i]?(float)battle_hud.hp[i]/battle_hud.maximum_hp[i]:0;
         hud_quad(&count,x,y,100*clamp01(f),5,0,0,0,0,.1f,.85f,.3f,1);
     }
+    }
     uint32_t background_count=count;
     C3D_TexBind(0,&textures[hud_texture]);
     for(unsigned row=0;row<8;++row)for(unsigned col=0;col<48&&battle_hud.lines[row][col];++col){
         unsigned c=(unsigned char)battle_hud.lines[row][col];if(c<32||c>=128)c='?';
         if(c==' ')continue;
-        hud_quad(&count,8+col*8,170+row*8,8,8,(c%16)/16.f,(c/16)/8.f,1/16.f,1/8.f,1,1,1,1);
+        hud_quad(&count,(battle_hud.layout==1?6:8)+col*8,text_y+row*8,8,8,(c%16)/16.f,(c/16)/8.f,1/16.f,1/8.f,1,1,1,1);
     }
     /* Own one stable linear arena until the scene's GPU drain. Bind it through
      * the same proven attribute layout as authored geometry, with two bounded

@@ -9,6 +9,7 @@
 #include "pack_loader.h"
 #include "pack_cache.h"
 #include "area_prefetch.h"
+#include "debug_overlay.h"
 #include "render_recovery.h"
 #include "stage_renderer.h"
 #include <math.h>
@@ -225,7 +226,12 @@ static void preview_frame(float seconds, FILE *trace)
     camera.eye[1] = preview->center[1] + r * 0.9f;
     camera.eye[2] = preview->center[2] + cosf(preview->angle) * r * 1.4f;
     camera.fov_y_degrees = 40.0f; camera.near_plane = r * 0.02f; camera.far_plane = r * 8.0f; camera.aspect = 400.0f / 240.0f;
-    C3TitleRenderStats stats; char error[192] = "";
+    static C3TitleRenderStats stats; char error[192] = "";
+    if (c3_debug_overlay_enabled()) {
+        char l1[64];
+        snprintf(l1, sizeof l1, "preview %03lx radius %.1f", (unsigned long)preview->floor, (double)preview->radius);
+        c3_debug_overlay_frame("worldmap", &camera, 40.0f, &stats, l1, NULL, NULL);
+    }
     if (c3_stage_renderer_draw(preview->models, preview->count, &camera, 1.0f, &stats, error, sizeof error) && trace) {
         fprintf(trace, "world_map_preview draw_error=%s\n", error); fflush(trace);
         preview_release(trace);
@@ -406,6 +412,8 @@ static int journey_play(const MapPack *pack, const C3WorldMap *map, uint32_t flo
     uint64_t previous = c3_n3ds_active_time_us();
     unsigned frames = 0, prefetched = 0;
     int result = 1;
+    C3TitleRenderStats stats;
+    memset(&stats, 0, sizeof stats);
     C3N3dsInput input = {0};
     if (trace) {
         fprintf(trace, "world_map_journey ready=1 load_us=%llu route_seconds=%.3f prefetch=%u/%u\n",
@@ -415,6 +423,7 @@ static int journey_play(const MapPack *pack, const C3WorldMap *map, uint32_t flo
     }
     for (;;) {
         if (!c3_n3ds_poll(&input)) { result = -1; break; }
+        c3_debug_overlay_input(&input);
         uint64_t now = c3_n3ds_active_time_us();
         float delta = (float)(now - previous) / 1e6f; previous = now;
         if (delta > 0.1f) delta = 0.1f; /* a stall does not skip the ride */
@@ -430,7 +439,14 @@ static int journey_play(const MapPack *pack, const C3WorldMap *map, uint32_t flo
             sampled &= c3_title_animate(journey->bike + i, 0, t < route_end ? t : route_end);
         if (!sampled) { if (trace) { fprintf(trace, "world_map_journey sample_error=1\n"); fflush(trace); } break; }
         C3TitleCamera camera = rider->pose.camera;
-        C3TitleRenderStats stats;
+        if (c3_debug_overlay_enabled()) {
+            char l1[64], l2[64];
+            snprintf(l1, sizeof l1, "row %lu route %lu cam %08lx %s", (unsigned long)row, (unsigned long)anim,
+                     (unsigned long)camera_id, rui ? "rui" : "pkmn");
+            snprintf(l2, sizeof l2, "t %.2f fade %.2f load %u/%u", (double)t, (double)fade, prefetched,
+                     c3_area_prefetch_count());
+            c3_debug_overlay_frame("journey", &camera, 0, &stats, l1, l2, NULL);
+        }
         int drawn = c3_stage_renderer_draw(models, count, &camera, fade, &stats, error, sizeof error);
         if (drawn == C3_RENDER_BUSY) {
             C3RenderRecoveryResult recovery = c3_render_recover(trace, "world-map-journey", frames, C3_RECOVER_WAIT);
@@ -500,6 +516,7 @@ int c3_world_map_scene_run(C3GameState *state, FILE *trace, char *error, size_t 
         fflush(trace);
     }
     while (c3_n3ds_poll(&input)) {
+        c3_debug_overlay_input(&input);
         int choice = -2; /* -2 none, -1 cancel, otherwise visible index */
         if (!input.held && !input.touch_held) released = 1;
         if (released) {

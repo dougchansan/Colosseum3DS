@@ -4,6 +4,7 @@
 #include "ingame_menu.h"
 #include "pack_cache.h"
 #include "area_prefetch.h"
+#include "debug_overlay.h"
 #include "pack_loader.h"
 #include "battle_general_scene.h"
 #include "battle_general_3d.h"
@@ -708,6 +709,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         (unsigned long)area.actor_count,(unsigned long)count,arrival!=NULL,(double)arrival_seconds);fflush(trace);}
     previous=c3_n3ds_active_time_us();result=1;
     while(c3_n3ds_poll(&input)){
+        c3_debug_overlay_input(&input);
         if(!npc.attached&&!npc_stream_attach(&npc,0,storage,models,actor_models,model_paths,&story,count,skin_actors,
                                              tv_index,view?view->tv_enabled:1,frames,trace,error,capacity)){result=-1;break;}
 #ifdef C3_CAMPAIGN
@@ -1317,6 +1319,13 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
             pda_seconds+=delta;
             c3_pda_preview_control(pda_preview,abs(input.cstick_x)>20?input.cstick_x/128.f:0,
                                    abs(input.cstick_y)>20?input.cstick_y/128.f:0,delta);
+        }
+        if(!pda_preview&&c3_debug_overlay_enabled()){
+            char l1[64],l2[64];
+            snprintf(l1,sizeof l1,"floor %03lx xyz %.1f %.1f %.1f",(unsigned long)map.floor,
+                     (double)player.position[0],(double)player.position[1],(double)player.position[2]);
+            snprintf(l2,sizeof l2,"orbit zoom %.2f yaw %.2f pitch %.2f",(double)orbit.zoom,(double)orbit.yaw,(double)orbit.pitch);
+            c3_debug_overlay_frame("field",&camera,0,&stats,l1,l2,NULL);
         }
         int draw_result=pda_preview?c3_pda_preview_draw(pda_preview,pda_seconds,&stats,error,capacity):
             c3_stage_renderer_draw(models,npc.attached?count:npc.first,&camera,fade,&stats,error,capacity);

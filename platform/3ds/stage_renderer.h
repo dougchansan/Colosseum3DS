@@ -42,6 +42,9 @@ typedef struct {
     char lines[8][49];
     uint16_t hp[4], maximum_hp[4];
     uint8_t enabled;
+    /* 0: battle panel (bottom band, HP bars). 1: debug overlay, a
+     * translucent box behind the text in the top-left corner. */
+    uint8_t layout;
 } C3StageBattleHud;
 int c3_stage_renderer_set_battle_hud(const C3StageBattleHud *hud, char *error, size_t capacity);
 
