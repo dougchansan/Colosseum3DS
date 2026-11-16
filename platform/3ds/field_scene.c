@@ -97,6 +97,14 @@ static int receive_item(void *context,uint32_t item,uint32_t count,char *name,si
     }
     free(data);return result;
 }
+/* scriptAddItem bypasses the bag menu's key-item toss guard. */
+static int change_item(void *context,uint32_t item,int32_t count)
+{
+    C3PdaAssets assets={0};uint8_t *data=open_pda(&assets);int result=-1;
+    if(data)result=count<0?c3_inventory_remove(context,&assets,item,(unsigned)-count):
+        c3_inventory_receive(context,&assets,item,(unsigned)count);
+    free(data);return result;
+}
 /* Script music natives 68/69/6A/6D -> the streamed MusyX player. */
 static int story_audio(void *context,unsigned op,uint32_t a,uint32_t b,uint32_t c)
 {
@@ -811,6 +819,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     c3_field_story_set_species_namer(&story,field_species_name,ingame);
     c3_field_story_enable_shop(&story,1);
     c3_field_story_set_item_service(&story,receive_item,state);
+    c3_field_story_set_item_change_service(&story,change_item,state);
     c3_field_story_set_party_service(&story,restore_party,state);
     purify_trace=trace;c3_field_story_set_purify_service(&story,purify_party,state);
     c3_field_story_set_audio_service(&story,story_audio,NULL);

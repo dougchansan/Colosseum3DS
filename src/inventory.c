@@ -174,6 +174,26 @@ int c3_inventory_receive(C3GameState *state,const C3PdaAssets *assets,unsigned i
     free(before);free(after);return result;
 }
 
+int c3_inventory_remove(C3GameState *state,const C3PdaAssets *assets,unsigned id,unsigned count)
+{
+    size_t bytes=0;const uint8_t *body=c3_game_state_body(state,&bytes);C3InventoryItem info;
+    if(!body||!assets||count>65535||!c3_inventory_item(assets,id,&info)||pocket(info.kind)<0)return -1;
+    unsigned p=(unsigned)pocket(info.kind),remaining=count;
+    uint8_t *before=malloc(bytes),*after=malloc(bytes);int result=-1;
+    if(before&&after){
+        memcpy(before,body,bytes);memcpy(after,body,bytes);
+        for(unsigned slot=0;slot<capacities[p]&&remaining;){
+            uint8_t *entry=bag(after,p,slot);unsigned held=r16(entry+2);
+            if(r16(entry)!=id||!held){++slot;continue;}
+            unsigned taken=held<remaining?held:remaining;
+            remove_item(after,p,slot,taken);remaining-=taken;
+            if(taken<held)++slot;
+        }
+        result=c3_game_state_inventory_commit(state,before,after,bytes)?(int)remaining:-1;
+    }
+    free(before);free(after);return result;
+}
+
 int c3_inventory_restore_party(C3GameState *state,const C3PdaAssets *assets)
 {
     size_t bytes=0;const uint8_t *body=c3_game_state_body(state,&bytes);

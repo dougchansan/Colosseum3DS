@@ -103,6 +103,12 @@ static void door(Scene *s,uint32_t source,uint32_t floor,uint32_t spawn)
     CHECK(frame<3600&&c3_field_story_view(&s->story)->next_floor==floor&&c3_field_story_view(&s->story)->next_spawn==spawn);
 }
 static uint16_t counting_random(void *context){unsigned *draws=context;return (uint16_t)(0x1234u+(*draws)++);}
+typedef struct {unsigned calls;uint32_t item;int32_t count;int result;} ItemProbe;
+static int probe_item(void *context,uint32_t item,int32_t count)
+{
+    ItemProbe *probe=context;++probe->calls;probe->item=item;probe->count=count;
+    return probe->result;
+}
 static int accept_world_map(uint32_t floor){return floor==1||floor==2||floor==0x38e;}
 static void unchanged_party(C3GameState *game,const C3GameSummary *original)
 {
@@ -490,6 +496,32 @@ static void synthetic_regressions(void)
     synthetic_load(s,&game,file,code,0,0,0x1000003);CHECK(!c3_game_state_partner(&game));CHECK(c3_field_story_enter(&s->story,error));
     CHECK(c3_field_story_tick(&s->story,0,0,error));CHECK(!c3_field_story_actor(&s->story,3)->visible&&c3_game_state_partner(&game));
     CHECK(c3_game_state_set_partner(&game,0)&&!c3_game_state_partner(&game));close_scene(s);
+    /* DB directly mutates the bag once, including ABI u16 narrowing;
+     * unlike 77 it neither opens a message nor waits for a jingle. */
+    memset(code,0,sizeof code);args[0]=0x10042;args[1]=0x10003;native(code+3,0xdb,2,args,1);
+    args[0]=3;args[1]=0;native(code+3,0x64,2,args,1);
+    synthetic_load(s,&game,file,code,0,0,0x1000003);CHECK(c3_field_story_enter(&s->story,error));
+    CHECK(!c3_field_story_tick(&s->story,0,0,error)&&strstr(error,"needs the signed item service"));close_scene(s);
+    for(int result=-1;result<=2;++result){
+        ItemProbe probe={0,0,0,result};synthetic_load(s,&game,file,code,0,0,0x1000003);
+        c3_field_story_set_item_change_service(&s->story,probe_item,&probe);CHECK(c3_field_story_enter(&s->story,error));
+        CHECK(c3_field_story_tick(&s->story,0,0,error));
+        CHECK(probe.calls==1&&probe.item==0x42&&probe.count==3);
+        CHECK(!c3_field_story_view(&s->story)->dialogue&&!c3_field_story_actor(&s->story,3)->visible);
+        CHECK(c3_field_story_tick(&s->story,1,0,error)&&probe.calls==1);close_scene(s);
+    }
+    memset(code,0,sizeof code);args[0]=0x42;args[1]=(uint32_t)-65537;native(code+3,0xdb,2,args,1);
+    synthetic_load(s,&game,file,code,0,0,0x1000003);ItemProbe probe={0};
+    c3_field_story_set_item_change_service(&s->story,probe_item,&probe);CHECK(c3_field_story_enter(&s->story,error));
+    CHECK(c3_field_story_tick(&s->story,0,0,error)&&probe.calls==1&&probe.count==-1&&probe.item==0x42);close_scene(s);
+    memset(code,0,sizeof code);args[0]=0x42;args[1]=0;native(code+3,0xdb,2,args,1);
+    synthetic_load(s,&game,file,code,0,0,0x1000003);probe.calls=0;
+    c3_field_story_set_item_change_service(&s->story,probe_item,&probe);CHECK(c3_field_story_enter(&s->story,error));
+    CHECK(!c3_field_story_tick(&s->story,0,0,error)&&strstr(error,"no defined retail result")&&!probe.calls);close_scene(s);
+    memset(code,0,sizeof code);native(code+3,0xdb,1,args,1);
+    synthetic_load(s,&game,file,code,0,0,0x1000003);
+    c3_field_story_set_item_change_service(&s->story,probe_item,&probe);CHECK(c3_field_story_enter(&s->story,error));
+    CHECK(!c3_field_story_tick(&s->story,0,0,error)&&strstr(error,"expects 2 arguments")&&!probe.calls);close_scene(s);
     /* Native 02 needs the bound game RNG and draws twice, low half first. */
     memset(code,0,sizeof code);args[0]=7;native(code+3,0x02,1,args,1);args[0]=3;args[1]=0;native(code+3,0x64,2,args,1);
     synthetic_load(s,&game,file,code,0,0,0x1000003);CHECK(c3_field_story_enter(&s->story,error));
