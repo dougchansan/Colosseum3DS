@@ -288,10 +288,16 @@ static int step(char *line)
             }
             char sub[32]; snprintf(sub, sizeof sub, "talk %lu", (unsigned long)index);
             error[0] = 0; ++talked;
+            uint32_t menu_before = c3_field_story_view(&scene->story)->unported_menu;
             int ok = step(sub);
             if (scene->loaded) flag_writes();
-            fprintf(report, "route_talk floor=%03lx person=%lu script=%08lx status=%s next=%03lx reason=%s\n",
-                    (unsigned long)floor, (unsigned long)index, (unsigned long)script, ok ? "ok" : "failed",
+            /* A menu the port lacks took the original cancel branch (the
+             * view keeps the last such native, so a change marks this talk). */
+            uint32_t menu = scene->loaded && scene->floor == floor ? c3_field_story_view(&scene->story)->unported_menu : 0;
+            if (menu == menu_before) menu = 0;
+            fprintf(report, "route_talk floor=%03lx person=%lu script=%08lx status=%s unported_menu=%02lx next=%03lx reason=%s\n",
+                    (unsigned long)floor, (unsigned long)index, (unsigned long)script, ok ? (menu ? "partial" : "ok") : "failed",
+                    (unsigned long)menu,
                     (unsigned long)(scene->loaded && scene->floor != floor ? scene->floor : 0), ok ? "" : error);
             if (!ok) { ++failed; unload(); }
         }
