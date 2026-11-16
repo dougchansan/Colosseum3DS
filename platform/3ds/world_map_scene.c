@@ -9,6 +9,7 @@
 #include "pack_loader.h"
 #include "pack_cache.h"
 #include "area_prefetch.h"
+#include "save_codec.h"
 #include "debug_overlay.h"
 #include "render_recovery.h"
 #include "stage_renderer.h"
@@ -328,10 +329,140 @@ static uint8_t *journey_capture_top(void)
         }
     return rgba;
 }
+/* The bike's particles (bike_effect_poke, linked by
+ * GSmodelLinkToGSparticleBank in fn_80025F84): at frame 0 of every loop of
+ * the bike's animation each callback starts its generator at its joint
+ * (fn_80119BD0), and with attach mode 4 the emitter follows the joint. The
+ * port starts each loop's callbacks as one particle system, moves every
+ * root along its joint's baked path (journey_<bike>_aNN.c3j, C3J2) and draws
+ * up to DUST_SYSTEMS loops at once. */
+#define DUST_SYSTEMS 4u
+#define DUST_MAX_EMITTERS 32u
+typedef struct {
+    uint8_t *bank; size_t bank_size; C3ParticlePack pack; int pack_ok;
+    uint8_t *emit; size_t emit_size;
+    uint32_t samples, count, loop;
+    const uint32_t *roots; const float *frames; /* per sample: origin[3], rotation[9], local[emitters][3] */
+    C3ParticleSystem *systems; /* DUST_SYSTEMS */
+    uint32_t handles[DUST_SYSTEMS][DUST_MAX_EMITTERS];
+    uint8_t live[DUST_SYSTEMS];
+    unsigned next, loops_started;
+} Dust;
+
+static int dust_read(const char *path, uint8_t **data, size_t *size)
+{
+    FILE *f = fopen(path, "rb");
+    long n = -1;
+    *data = NULL; *size = 0;
+    if (!f) return 0;
+    if (fseek(f, 0, SEEK_END) == 0) n = ftell(f);
+    if (n <= 0 || n > 4 * 1024 * 1024 || fseek(f, 0, SEEK_SET) != 0) { fclose(f); return 0; }
+    *data = malloc((size_t)n);
+    if (!*data || fread(*data, 1, (size_t)n, f) != (size_t)n) { fclose(f); free(*data); *data = NULL; return 0; }
+    fclose(f); *size = (size_t)n;
+    return 1;
+}
+
+static void dust_free(Dust *d)
+{
+    free(d->bank); free(d->emit); free(d->systems);
+    memset(d, 0, sizeof *d);
+}
+
+/* The bank, when the map opens. */
+static void dust_open(Dust *d)
+{
+    uint8_t sha[20]; char error[96];
+    memset(d, 0, sizeof *d);
+    if (!dust_read("sdmc:/3ds/Colosseum3DS/boot/journey_dust.c3p", &d->bank, &d->bank_size)) return;
+    c3_save_codec_sha1(sha, d->bank, (uint32_t)d->bank_size);
+    d->pack_ok = c3_particle_pack_decode_general(&d->pack, d->bank, d->bank_size, sha, error, sizeof error);
+}
+
+/* The chosen bike and route's emitter paths. */
+static int dust_emitters(Dust *d, const char *bike, uint32_t anim)
+{
+    char path[96];
+    if (!d->pack_ok) return 0;
+    snprintf(path, sizeof path, "sdmc:/3ds/Colosseum3DS/boot/journey_%s_a%02lu.c3j", bike, (unsigned long)anim);
+    if (!dust_read(path, &d->emit, &d->emit_size) || d->emit_size < 16 || memcmp(d->emit, "C3J2", 4)) return 0;
+    memcpy(&d->samples, d->emit + 4, 4); memcpy(&d->count, d->emit + 8, 4); memcpy(&d->loop, d->emit + 12, 4);
+    if (!d->samples || !d->count || d->count > DUST_MAX_EMITTERS || !d->loop ||
+        d->emit_size != 16u + 8u * d->count + (size_t)d->samples * (12u + 3u * d->count) * 4u) return 0;
+    d->roots = (const uint32_t *)(d->emit + 16);
+    d->frames = (const float *)(d->emit + 16 + 8 * d->count);
+    d->systems = calloc(DUST_SYSTEMS, sizeof *d->systems);
+    return d->systems != NULL;
+}
+
+/* Sample's block: the reference joint's origin and rotation, then every
+ * emitter in that joint's frame. */
+static const float *dust_block(const Dust *d, uint32_t sample)
+{
+    if (sample >= d->samples) sample = d->samples - 1;
+    return d->frames + (size_t)sample * (12u + 3u * d->count);
+}
+
+/* Per frame: start the loops that began by ride time t, follow the bike,
+ * face the camera, step, and bind renderer slots 1..DUST_SYSTEMS.
+ * Attach mode 4 carries the particles with the joint: each system is
+ * simulated in the first callback joint's frame and drawn through that
+ * joint's current transform. */
+static void dust_frame(Dust *d, float t, float delta, const C3TitleCamera *camera, FILE *trace)
+{
+    char error[96];
+    if (!d->systems) return;
+    uint32_t sample = (uint32_t)(t * 60.0f);
+    if (sample >= d->samples) sample = d->samples - 1;
+    while (d->loops_started * d->loop <= sample && d->loops_started * d->loop < d->samples) {
+        unsigned k = d->next; d->next = (d->next + 1u) % DUST_SYSTEMS;
+        C3ParticleSystem *sys = d->systems + k;
+        const float *b = dust_block(d, d->loops_started * d->loop);
+        d->live[k] = 0;
+        if (c3_particle_begin_position_flags(sys, &d->pack.bank, d->roots[0], 0xD0570000u ^ d->loops_started,
+                                             b + 12, 0, 1.f, 1.f, 0, error, sizeof error)) {
+            d->live[k] = 1;
+            for (uint32_t e = 1; e < d->count; ++e)
+                if (!c3_particle_append_position_flags(sys, &d->pack.bank, d->roots[e * 2], b + 12 + 3 * e, 0, 1.f, 1.f,
+                                                       0, &d->handles[k][e], error, sizeof error))
+                    d->handles[k][e] = UINT32_MAX;
+        } else if (trace) { fprintf(trace, "world_map_dust begin_error=%s\n", error); fflush(trace); }
+        ++d->loops_started;
+    }
+    const float *b = dust_block(d, sample), *o = b, *r = b + 3;
+    float follow[12], eye[3], target[3], up[3], de[3], dt[3];
+    for (int i = 0; i < 3; ++i) {
+        for (int j = 0; j < 3; ++j) follow[i * 4 + j] = .1f * r[i * 3 + j];
+        follow[i * 4 + 3] = .1f * o[i];
+        de[i] = 10 * camera->eye[i] - o[i]; dt[i] = 10 * camera->target[i] - o[i];
+    }
+    for (int j = 0; j < 3; ++j) { /* into the joint's frame: R^T v */
+        eye[j] = r[0 * 3 + j] * de[0] + r[1 * 3 + j] * de[1] + r[2 * 3 + j] * de[2];
+        target[j] = r[0 * 3 + j] * dt[0] + r[1 * 3 + j] * dt[1] + r[2 * 3 + j] * dt[2];
+        up[j] = r[1 * 3 + j];
+    }
+    for (unsigned k = 0; k < DUST_SYSTEMS; ++k) {
+        C3ParticleSystem *sys = d->systems + k;
+        if (d->live[k]) {
+            for (uint32_t e = 1; e < d->count; ++e)
+                if (d->handles[k][e] != UINT32_MAX)
+                    (void)c3_particle_position_root(sys, d->handles[k][e], b + 12 + 3 * e, error, sizeof error);
+            (void)c3_particle_set_camera(sys, eye, target, up, error, sizeof error);
+            uint32_t ms = (uint32_t)(delta * 1000.0f + 0.5f);
+            if (!c3_particle_step(sys, ms, 0, error, sizeof error)) {
+                if (trace) { fprintf(trace, "world_map_dust step_error=%s\n", error); fflush(trace); }
+                d->live[k] = 0;
+            } else if (c3_particle_finished(sys)) d->live[k] = 0;
+        }
+        (void)c3_stage_renderer_particles_set(k + 1, d->live[k] ? sys : NULL, d->live[k] ? follow : NULL);
+    }
+}
+
 typedef struct {
     C3Title maps[JOURNEY_PARTS]; C3PackJob map_jobs[JOURNEY_PARTS]; unsigned map_count;
     C3PackStream *map_stream;
     C3Title bike[JOURNEY_PARTS]; C3PackJob bike_jobs[JOURNEY_PARTS]; unsigned bike_count;
+    Dust dust;
 } Journey;
 static Journey *journey;
 static C3WorldMapJourney journey_rows; /* lbl_8047A394/398: kept for the session */
@@ -351,6 +482,7 @@ static void journey_open(FILE *trace)
         job->title = journey->maps + journey->map_count++;
     }
     if (journey->map_count) journey->map_stream = c3_pack_stream_start(journey->map_jobs, journey->map_count);
+    dust_open(&journey->dust);
     if (trace) { fprintf(trace, "world_map_journey_packs maps=%u\n", journey->map_count); fflush(trace); }
 }
 
@@ -359,6 +491,7 @@ static void journey_close(void)
     if (!journey) return;
     if (journey->map_stream) c3_pack_stream_finish(journey->map_stream);
     for (unsigned i = 0; i < JOURNEY_PARTS; ++i) { c3_title_close(journey->maps + i); c3_title_close(journey->bike + i); }
+    dust_free(&journey->dust);
     free(journey); journey = NULL;
 }
 
@@ -512,6 +645,12 @@ static int journey_play(const MapPack *pack, const C3WorldMap *map, uint32_t flo
 #else
     (void)skin;
 #endif
+    {   /* The bike's particles: the bank is registered before the first draw. */
+        int dust = dust_emitters(&journey->dust, bike, anim) &&
+                   c3_stage_renderer_particle_pack(&journey->dust.pack, error, sizeof error) == C3_RENDER_OK;
+        if (!dust) { free(journey->dust.systems); journey->dust.systems = NULL; }
+        if (trace) { fprintf(trace, "world_map_journey dust=%d emitters=%lu\n", dust, (unsigned long)journey->dust.count); fflush(trace); }
+    }
     if (capture) {
         if (!c3_stage_renderer_set_overlay_image(capture, 512, 256, 400, 240, error, sizeof error) && trace) {
             fprintf(trace, "world_map_journey dissolve=0 error=%s\n", error); fflush(trace);
@@ -557,6 +696,7 @@ static int journey_play(const MapPack *pack, const C3WorldMap *map, uint32_t flo
             sampled &= c3_title_animate(journey->bike + i, 0, t < route_end ? t : route_end);
         if (!sampled) { if (trace) { fprintf(trace, "world_map_journey sample_error=1\n"); fflush(trace); } break; }
         C3TitleCamera camera = rider->pose.camera;
+        dust_frame(&journey->dust, t < route_end ? t : route_end, delta, &camera, trace);
         if (!journey_shadow(first_bike, count, &camera) && frames == 0 && trace) {
             fprintf(trace, "world_map_journey shadow=0\n"); fflush(trace);
         }

@@ -103,9 +103,24 @@ destination name) through the journey and the following load; the old
   the ride with `c3_stage_renderer_set_overlay`: opacity falls linearly to
   0 in 0.67 s while it zooms to 2x, as the reference shows.
 
+### Bike particles
+
+`fn_80025F84` links `bike_effect_poke` (`0C831400`) to the bike
+(`GSmodelLinkToGSparticleBank`, attach mode 4). The bike's animation 0
+fires a callback at frame 0 of every loop on several joints (key value
+`generator << 6 | 12`: generators 6, 7, 8 on `bike_hizuki`, 0, 2, 4, 12 on
+`bike_pokemon`); `fn_80119BD0` starts that generator at the joint and attach
+mode 4 carries the particles with it. The port converts the bank
+(`journey_dust.c3p`, C3PT v2), bakes each callback joint per sample into
+`journey_<bike>_aNN.c3j` (C3J2: the first callback joint's frame and every
+emitter in it), starts each loop's callbacks as one particle system in that
+joint's frame and draws it through the joint's current transform (renderer
+slots 1-4). Debris and exhaust come off the rear wheel and pipes as in the
+reference; the large soft dust cloud behind the rear wheel is much fainter
+than the original's.
+
 ### Not drawn (recorded in `journey-manifest.json`)
 
-- `bike_effect_poke` (`0C831400`) dust particles; their callbacks are listed.
 - The engine sound `0x449` (no sound pack carries it yet).
 - The second, smaller capture quad of `fn_80025A80` (the menu at the cursor).
 - The scenery's 2999-frame loop is sampled sparsely (600 samples).
@@ -119,8 +134,9 @@ python tools/prepare_world_journey.py --disc <extracted GC6E01 disc> --output pr
 python tools/compress_packs.py private/journey --codec zlib
 ```
 
-Copy the 63 `journey_*.c3t` files (about 50 MB compressed) to
-`sdmc:/3ds/Colosseum3DS/boot/`. Without them the world map links straight
+Copy the 63 `journey_*.c3t` files (about 50 MB compressed), `journey_dust.c3p`
+and the 30 `journey_*_aNN.c3j` files to `sdmc:/3ds/Colosseum3DS/boot/`
+(`--emitters-only` writes just the last two kinds). Without them the world map links straight
 to the floor (`journey_presented=0`).
 
 ## Memory across world-map round trips
@@ -163,4 +179,5 @@ frames), so the reference was aligned at 30 frames per second.
   the port's fade was 1.0 s and is now 2.0 s.
 - The shadow and the opening dissolve were then added and compared again
   at the same times: shadow shape, direction and darkness and the map
-  dissolve match. The wheel dust is the remaining difference.
+  dissolve match. The wheel particles were added last: placement and
+  debris match; the soft dust cloud is fainter than the original's.
