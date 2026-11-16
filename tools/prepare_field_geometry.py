@@ -758,7 +758,11 @@ def build_mesh(model, mesh_index, max_envelope_weights=3, source_materials=False
         batch[3] = pixel_engine_flags(pe, batch[3])
         batch[20:26] = [pe.reference_0,pe.reference_1,pe.alpha_component_0,
                        pe.alpha_component_1,pe.alpha_op,pe.z_comp]
-    if dual or reflection or source_blend or source_normal_pair or blend_modulate:
+    # A source reflection BLEND with factor zero returns the incoming RGB
+    # exactly. Omit that inert stage, including its normal-generated texture,
+    # so unlit vertex-color geometry need not satisfy a lit reflection path.
+    # Keep the source reflection classification above for base-stage handling.
+    if dual or (reflection and raw_textures[1].blending != 0) or source_blend or source_normal_pair or blend_modulate:
         textures.append(_texture(raw_textures[1],mesh.material.texture_layers[0 if source_reflection_only else 1].image))
         batch[3] |= DUAL_MODULATE | title.TEV_LERP if blend_modulate else DUAL_MODULATE if dual else REFLECTION_BLEND
         if source_blend:batch[3] |= 16384
