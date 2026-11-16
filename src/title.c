@@ -160,14 +160,17 @@ static int decode_owned(C3Title *title, char *error, size_t capacity)
     title->light_count = u32(data+36);
     title->fps = f32(data+40);
     if (!title->bone_count || title->bone_count > C3_TITLE_MAX_BONES ||
-        !title->vertex_count || title->vertex_count > C3_TITLE_MAX_VERTICES || title->vertex_count%3u ||
-        !title->batch_count || title->batch_count > C3_TITLE_MAX_BATCHES ||
-        !title->texture_count || title->texture_count > C3_TITLE_MAX_TEXTURES ||
+        title->vertex_count > C3_TITLE_MAX_VERTICES || title->vertex_count%3u ||
+        title->batch_count > C3_TITLE_MAX_BATCHES ||
+        title->texture_count > C3_TITLE_MAX_TEXTURES ||
         !title->clip_count || title->clip_count > C3_TITLE_MAX_CLIPS ||
         !title->frame_count || title->frame_count > C3_TITLE_MAX_FRAMES ||
         !title->light_count || title->light_count > C3_TITLE_MAX_LIGHTS ||
         !isfinite(title->fps) || title->fps < 1.0f || title->fps > 120.0f)
         return fail(error, capacity, "Title section count or timing exceeds limits");
+    if ((!title->vertex_count || !title->batch_count || !title->texture_count) &&
+        (title->vertex_count || title->batch_count || title->texture_count))
+        return fail(error, capacity, "Transform-only titles require all geometry sections empty");
     /* Byte 112 is the texture encoding: 0 = RGBA8 rows, 1 = GPU-native
      * (tools/pack_textures.py). The rest stays reserved. */
     if (data[112] > 1u) return fail(error, capacity, "Unknown title texture encoding");
@@ -192,10 +195,10 @@ static int decode_owned(C3Title *title, char *error, size_t capacity)
     expected += (uint64_t)title->frame_count*title->frame_bytes;
     if (offsets[6] != expected || expected+u32(data+76u) != title->file_bytes)
         return fail(error, capacity, "Title section extents exceed file bounds");
-    title->vertices = (C3TitleVertex *)calloc(title->vertex_count, sizeof *title->vertices);
-    title->draw_vertices = (C3TitleDrawVertex *)calloc(title->vertex_count, sizeof *title->draw_vertices);
-    title->batches = (C3TitleBatch *)calloc(title->batch_count, sizeof *title->batches);
-    title->textures = (C3TitleTexture *)calloc(title->texture_count, sizeof *title->textures);
+    title->vertices = (C3TitleVertex *)calloc(title->vertex_count?title->vertex_count:1, sizeof *title->vertices);
+    title->draw_vertices = (C3TitleDrawVertex *)calloc(title->vertex_count?title->vertex_count:1, sizeof *title->draw_vertices);
+    title->batches = (C3TitleBatch *)calloc(title->batch_count?title->batch_count:1, sizeof *title->batches);
+    title->textures = (C3TitleTexture *)calloc(title->texture_count?title->texture_count:1, sizeof *title->textures);
     if (!title->vertices || !title->draw_vertices || !title->batches || !title->textures)
         return fail(error, capacity, "Not enough memory for title geometry");
     title->resident_bytes = sizeof *title + title->file_bytes +
@@ -346,9 +349,9 @@ void c3_title_close(C3Title *title)
 int c3_title_instance(C3Title *instance, const C3Title *owner, char *error, size_t capacity)
 {
     if (!instance || !owner || instance == owner || owner->borrowed_storage ||
-        !owner->file_data || !owner->draw_vertices || !owner->vertex_count)
+        !owner->file_data || !owner->draw_vertices)
         return fail(error, capacity, "Invalid scene instance owner");
-    C3TitleDrawVertex *sampled = malloc(owner->vertex_count * sizeof *sampled);
+    C3TitleDrawVertex *sampled = malloc((owner->vertex_count?owner->vertex_count:1) * sizeof *sampled);
     if (!sampled) return fail(error, capacity, "Scene instance allocation failed");
     memcpy(sampled, owner->draw_vertices, owner->vertex_count * sizeof *sampled);
     c3_title_close(instance);

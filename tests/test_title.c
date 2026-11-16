@@ -271,6 +271,29 @@ static void gpu_skinned_batches(void)
     c3_title_close(&cpu);c3_title_close(&gpu);free(p);
 }
 
+static void transform_only_checks(void)
+{
+    unsigned char *source=fixture(),carrier[496]={0};C3Title title={0},instance={0};char error[256];
+    memcpy(carrier,source,128);put32(carrier+8,sizeof carrier);
+    for(unsigned i=0;i<3;++i)put32(carrier+16+i*4,0);
+    const uint32_t offsets[]={128,128,128,128,144,208,496};
+    for(unsigned i=0;i<7;++i)put32(carrier+44+i*4,offsets[i]);
+    put32(carrier+72,96);put32(carrier+76,0);
+    memcpy(carrier+128,source+CLIP_OFFSET,16);memcpy(carrier+144,source+LIGHT_OFFSET,64);
+    for(unsigned i=0;i<3;++i){
+        memcpy(carrier+208+i*96,source+FRAME_OFFSET+i*FRAME_BYTES,48);
+        memcpy(carrier+256+i*96,source+FRAME_OFFSET+i*FRAME_BYTES+96,48);
+    }
+    assert(c3_title_parse(&title,carrier,sizeof carrier,error,sizeof error));
+    assert(!title.vertex_count&&!title.batch_count&&!title.texture_count);
+    assert(c3_title_animate(&title,0,.25f));near_value(title.pose.matrices[0][3],2);
+    assert(c3_title_instance(&instance,&title,error,sizeof error));
+    assert(c3_title_animate(&instance,0,.5f));near_value(instance.pose.matrices[0][3],4);
+    near_value(title.pose.matrices[0][3],2);c3_title_close(&instance);c3_title_close(&title);
+    for(unsigned i=0;i<3;++i){put32(carrier+16+i*4,1);rejects(carrier,sizeof carrier);put32(carrier+16+i*4,0);}
+    free(source);
+}
+
 int main(void)
 {
     unsigned char *p=fixture();
@@ -431,6 +454,7 @@ int main(void)
     putf(p+FRAME_OFFSET+FRAME_BYTES+68,1);
     rejects(p,FILE_BYTES);
     free(p);
+    transform_only_checks();
     extended_checks();
     actor_clip_checks();
     puts("Native title bounds, ownership, animation and normal checks passed");

@@ -243,10 +243,16 @@ static uint32_t specular_light_mask(const C3Title *title)
 
 static int validate_asset(const C3Title *title, char *error, size_t capacity)
 {
+    /* Original ending carriers have animated joints and no mesh at all.
+     * Keep their source transforms in the scene without inventing geometry;
+     * the existing zero-count loops allocate no textures and submit no draws. */
+    bool transform_only = title && !title->vertex_count && !title->batch_count &&
+                          !title->texture_count && title->bone_count && title->clip_count && title->file_data;
     if (!title || !title->draw_vertices || !title->batches || !title->textures ||
-        !title->vertex_count || title->vertex_count > C3_TITLE_MAX_VERTICES ||
-        !title->batch_count || title->batch_count > C3_TITLE_MAX_BATCHES ||
-        !title->texture_count || title->texture_count > C3_TITLE_MAX_TEXTURES ||
+        (!transform_only && (!title->vertex_count || !title->batch_count || !title->texture_count)) ||
+        title->vertex_count > C3_TITLE_MAX_VERTICES ||
+        title->batch_count > C3_TITLE_MAX_BATCHES ||
+        title->texture_count > C3_TITLE_MAX_TEXTURES ||
         title->light_count > C3_TITLE_MAX_LIGHTS)
         return fail(error, capacity, "Title renderer needs a valid bounded title asset.");
     uint32_t next_vertex = 0;
@@ -298,6 +304,8 @@ int c3_stage_renderer_init(const C3Title *const *models, size_t count,
             return fail(error, capacity, "Combined stage vertex arena exceeds its bound.");
         total_vertices += models[i]->vertex_count;
     }
+    if (!total_vertices)
+        return fail(error, capacity, "A stage needs visible geometry beside transform-only carriers.");
     /* Citro3D retains its current shaderProgram pointer across C3D_Fini/Init.
      * Recreating our static program at that same address could skip the next
      * bind's shader upload, or leave the context referring to freed storage.
