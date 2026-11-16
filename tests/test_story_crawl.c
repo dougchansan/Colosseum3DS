@@ -384,7 +384,7 @@ int main(int argc, char **argv)
                 if (l->kind != 1 && !moves(l)) continue;
                 /* A door whose destination (the common door script's first
                  * argument) has no packs would only come straight back. */
-                if (moves(l) && l->args[0] && l->args[0] != 0x38e && !prepared(l->args[0])) continue;
+                if (l->script == 0x05960004u && l->args[0] && l->args[0] != 0x38e && !prepared(l->args[0])) continue;
                 ++tried;
                 int r = event(s, l->kind == 1 ? DOOR : TOUCH, l->source_id, &next, &next_spawn);
                 if (r < 0) { fprintf(report, "crawl_fail floor=%03lx step=door id=%lu reason=%s\n", (unsigned long)floor, (unsigned long)l->source_id, error); stop = 1; break; }
