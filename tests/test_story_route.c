@@ -323,8 +323,10 @@ static int step(char *line)
     if (!scene->loaded) { snprintf(error, sizeof error, "no floor is loaded"); return 0; }
     if (!strcmp(word, "pad")) {
         CHECK(sscanf(line, "%li", (long *)&a) == 1);
+        c3_field_story_set_move_input(&scene->story, (uint16_t)a, 0, 0);
         for (unsigned held = 0; held < 10 && scene->loaded; ++held)
             if (!c3_field_story_tick(&scene->story, 1.0f/60.0f, (uint16_t)a, error) || !c3_field_story_sample(&scene->story, error)) return 0;
+        c3_field_story_set_move_input(&scene->story, 0, 0, 0);
         return run(30000, 1);
     }
     if (!strcmp(word, "run")) { CHECK(sscanf(line, "%li", (long *)&a) == 1); return run((unsigned)a, 0); }
