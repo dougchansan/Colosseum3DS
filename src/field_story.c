@@ -1205,10 +1205,28 @@ static int run_native(Impl *s,RunTask *t,char *error)
     case 0xd8:{
         /* fn_801C852C: nothing unless flag value 08AE is zero. Mode 0 is
          * fn_801D0AFC(0): pokemonAllKaihuku on every valid party member.
-         * Mode 1 clears two per-member attributes that are not identified. */
+         * Mode 1 cures poison and bad poison (conditions 3 and 4). */
         uint32_t battle_mode=0;
         if(!flag(s,0x8ae,&battle_mode,error))return 0;
         if(battle_mode)break;
+        if(a[0]==1){
+            /* Mode 1: for each valid party member, fn_80121ADC/fn_80121B4C
+             * remove condition 3 (poison) and 4 (bad poison), the
+             * conditions pokemonGetJoutaiMsgId reads from the status entry
+             * at record +0xE8 (src/relive_purify.c clears 0x3E there the
+             * same way). */
+            C3GameSummary party;uint8_t record[0x138];unsigned cured=0;
+            if(!c3_game_state_summary(s->game,&party))return fail(error,"Native D8 needs the party");
+            for(unsigned i=0;i<party.party_count&&i<6;++i){
+                if(!c3_game_state_pokemon(s->game,i,record)||!(record[0]|record[1]))continue;
+                uint16_t id=(uint16_t)(record[0xe8]<<8|record[0xe9]);
+                if(id!=3&&id!=4)continue;
+                memset(record+0xe8,0,7);memset(record+0xf0,0,6);
+                if(!c3_game_state_set_pokemon(s->game,i,record))return fail(error,"Native D8 could not cure party slot %u",i);
+                ++cured;
+            }
+            log_line(s,"story_party_cure mode=1 conditions=3,4 cured=%u",cured);break;
+        }
         if(a[0]!=0)return fail(error,"Native D8 mode %lu is not ported",(unsigned long)a[0]);
         if(!s->restore)return fail(error,"Native D8 needs the party service, which this scene did not bind");
         int restored=s->restore(s->restore_context);
