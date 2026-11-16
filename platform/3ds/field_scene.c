@@ -118,16 +118,10 @@ static int restore_party(void *context)
     free(data);return restored;
 }
 /* A party record's nickname (PokemonBios +0x2E, big-endian UTF-16, 11
- * characters): ASCII is kept, anything else becomes '?'. */
+ * characters), for the ASCII font. */
 static void record_nickname(const uint8_t *r,char *out,size_t capacity)
 {
-    size_t n=0;
-    for(unsigned i=0;i<11&&n+1<capacity;++i){
-        unsigned c=(unsigned)r[0x2e + i*2]<<8|r[0x2f + i*2];
-        if(!c)break;
-        out[n++]=c>=0x20&&c<0x7f?(char)c:'?';
-    }
-    out[n]=0;
+    c3_game_text_ascii(r+0x2e,11,out,capacity);
 }
 /* Native C2 (preReliveMain -> reliveCeremonyAll): purify party `slot` with
  * the original rules (src/relive_purify.c) in the game state; the next save

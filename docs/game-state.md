@@ -147,10 +147,20 @@ holds `C3_GAME_ERROR_SIZE` bytes. Calls on one state must be serialized.
 | `c3_game_state_save` | Encode full body and recoverably store; commit memory/counts only on success |
 
 Loading without a prepared pack allows inspection and typed edits to known
-fields. Flags require original definitions. Validation rejects unsupported
-region attestation, invalid trainer/options/time fields and invalid present
+fields. Flags require original definitions. Validation rejects zero
+region/language bytes, invalid trainer/options/time fields and invalid present
 party records; it does not validate every opaque subsystem. Intact unknown
 fields are preserved.
+
+Body bytes 1-3 are the generation, region (1 Japan, 2 America, 3 Europe) and
+language (1 Japanese, 2 English, 3 German, 4 French, 5 Italian, 6 Spanish);
+`c3_game_state_summary` reports region and language. As retail
+`gamedataAttestCheckValid` (80135530) does, they only have to be nonzero, so
+saves from every version load (the body layout is the same; checked on 14
+GameFAQs saves, 2026-11-16). Money above the game's cap of 9,999,999, found in
+edited saves, is brought to the cap on load. Names and nicknames are shown
+through `c3_game_text_ascii`: fullwidth ASCII as ASCII, accented letters
+without accents, kana as upper-case romaji (`アプソーズ` -> `APUSO-ZU`).
 
 Save increments the inner game count and outer rotating-slot generation,
 retains older slots, and uses the `.tmp`/`.bak` protocol in

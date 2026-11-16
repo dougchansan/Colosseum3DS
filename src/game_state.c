@@ -76,13 +76,15 @@ static int valid_body(const uint8_t *b)
 {
     unsigned i, party=0;
     float seconds;
-    /* The generation byte is provenance, not a save-layout version. Retail
-     * gamedataAttestCheckValid (80135530) accepts any nonzero generation;
-     * imported US cards can legitimately retain 02 instead of our freshly
-     * created 03. Keep the admitted Colosseum/US language and region here. */
-    if (b[0]!=0x0b || !b[1] || b[2]!=2 || b[3]!=2 ||
+    /* Bytes 1-3 are the generation, region (1 Japan, 2 America, 3 Europe)
+     * and language (1 Japanese, 2 English, 3 German, 4 French, 5 Italian,
+     * 6 Spanish). Retail gamedataAttestCheckValid (80135530) only requires
+     * them nonzero, and the Japanese, American and European games share
+     * this body layout, so any version's game loads. Money above the
+     * game's cap (edited saves) is capped by install. */
+    if (b[0]!=0x0b || !b[1] || !b[2] || !b[3] ||
         !terminated_name(b+HERO,11,1) || b[HERO+0xa80]>1 ||
-        be32(b+HERO+0xa84)>9999999u || b[0x29]>1 || b[0x2a]>1 ||
+        b[0x29]>1 || b[0x2a]>1 ||
         !be32(b+0x1c) || be32(b+0x1c)>65535u || be32(b+0x24)>65535u)
         return 0;
     seconds=read_float(b+0x20);
@@ -178,8 +180,11 @@ static int load_pack(GameStateImpl *s, const char *path, char *error)
 static int install(C3GameState *state, GameStateImpl *s, char *error)
 {
     if (!valid_body(s->body)) {
-        release(s); return fail(error,"Saved body is not a supported GC6E01 game state");
+        release(s); return fail(error,"Saved body is not a supported Colosseum game state");
     }
+    /* heroAddMoney keeps money at most 9,999,999; an edited save above it
+     * is brought to the cap (the shop and rewards assume it). */
+    if (be32(s->body+HERO+0xa84)>9999999u) put32(s->body+HERO+0xa84,9999999u);
     s->play_time=read_float(s->body+0x20);
     release(state->impl); state->impl=s;
     if (error) error[0]=0;
@@ -369,15 +374,53 @@ int c3_game_state_new(C3GameState *state, const char *name, uint32_t seed,
     return install(state,s,error);
 }
 
+/* Kana -> romaji, indexed from U+3041 (hiragana) or U+30A1 (katakana):
+ * small vowels, then the gojuon order of the Unicode block. */
+static const char *const kana_romaji[86]={
+    "a","a","i","i","u","u","e","e","o","o","ka","ga","ki","gi","ku","gu","ke","ge","ko","go",
+    "sa","za","shi","ji","su","zu","se","ze","so","zo","ta","da","chi","ji","",  "tsu","zu","te","de","to","do",
+    "na","ni","nu","ne","no","ha","ba","pa","hi","bi","pi","fu","bu","pu","he","be","pe","ho","bo","po",
+    "ma","mi","mu","me","mo","ya","ya","yu","yu","yo","yo","ra","ri","ru","re","ro","wa","wa","wi","we","wo","n","vu"};
+
+size_t c3_game_text_ascii(const uint8_t *text, unsigned units, char *out, size_t capacity)
+{
+    size_t n=0; unsigned i; int double_next=0;
+    if (!out || !capacity) return 0;
+    for (i=0; i<units && text; ++i) {
+        uint16_t c=be16(text+2u*i);
+        const char *piece=NULL; char one[2]={0,0};
+        if (!c) break;
+        if (c>=0xff01 && c<=0xff5e) c=(uint16_t)(c-0xff01+0x21); /* fullwidth ASCII */
+        else if (c==0x3000) c=' ';
+        if (c>=32 && c<=126) { one[0]=(char)c; piece=one; }
+        else if (c>=0xc0 && c<=0xff) { /* Latin-1 letters without accents */
+            static const char latin[]="AAAAAAACEEEEIIIIDNOOOOOxOUUUUYTsaaaaaaaceeeeiiiidnooooo/ouuuuyty";
+            one[0]=latin[c-0xc0]; piece=one;
+        } else if (c==0x30fc || c==0x2015 || c==0x2212) piece="-";
+        else if (c==0x3063 || c==0x30c3) { double_next=1; continue; } /* small tsu */
+        else if ((c>=0x3041 && c<=0x3094) || (c>=0x30a1 && c<=0x30f4)) {
+            unsigned k=c-(c>=0x30a1?0x30a1u:0x3041u);
+            /* Small ya/yu/yo after an -i syllable: kya, sha, cho ... */
+            if ((k==66||k==68||k==70) && n>=1 && out[n-1]=='I') {
+                const char *y=kana_romaji[k];
+                if (n>=2 && (out[n-2]=='H' || out[n-2]=='J')) { out[n-1]=(char)(y[1]-32); continue; }
+                --n; piece=y;
+            } else piece=k<86?kana_romaji[k]:"?";
+            if (double_next && piece[0] && piece[0]!='a' && piece[0]!='i' && piece[0]!='u' && piece[0]!='e' && piece[0]!='o' && n+1<capacity)
+                out[n++]=(char)((piece[0]=='c'?'t':piece[0])-32);
+        } else { one[0]='?'; piece=one; }
+        double_next=0;
+        for (; *piece && n+1<capacity; ++piece) out[n++]=(char)((*piece>='a'&&*piece<='z'&&c>=0x3041&&c<=0x30ff)?*piece-32:*piece);
+    }
+    out[n]=0;
+    return n;
+}
+
 static void display_name(char out[32], const uint8_t *name)
 {
-    unsigned i;
-    for (i=0; i<10; ++i) {
-        uint16_t c=be16(name+2u*i);
-        if (!c) break;
-        out[i]=(c>=32 && c<=126)?(char)c:'?';
-    }
-    out[i]=0;
+    /* The name buffer holds 10 characters and a terminator; romaji may be
+     * longer than the kana it spells. */
+    c3_game_text_ascii(name,10,out,32);
 }
 
 int c3_game_state_summary(const C3GameState *state, C3GameSummary *summary)
@@ -395,6 +438,7 @@ int c3_game_state_summary(const C3GameState *state, C3GameSummary *summary)
     summary->floor=be32(b+0x1c); summary->previous_floor=be32(b+0x24);
     summary->spawn=b[0x28]; summary->rumble_disabled=b[0x29]; summary->sound_mono=b[0x2a];
     summary->used_backup=(uint8_t)s->used_backup;
+    summary->region=b[2]; summary->language=b[3];
     for (i=0; i<6; ++i) {
         const uint8_t *p=b+PARTY+i*POKEMON_SIZE;
         C3GamePokemon *q=&summary->party[i];
