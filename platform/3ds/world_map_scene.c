@@ -287,11 +287,12 @@ static void draw(const C3WorldMap *map, const char *note)
  * one row of lbl_3_data_270 picked by direction and a session-long index.
  * The bike is bike_hizuki (Wes with Rui) once flag 0x3E5 is set, else
  * bike_pokemon. 0xAE frames after the camera starts, the world map's exit
- * (fn_800255A4) fades for one second. The port holds the fade until the
+ * (fn_800255A4) fades out over two seconds (fadeSet(2.0f, 3); the Dolphin
+ * reference reaches black about 1.9 s after the fade starts). The port holds the fade until the
  * destination's map packs (the area prefetch) have arrived, so the ride
  * covers the load; the last route frame holds if the load is longer. */
 #define JOURNEY_PARTS 4u
-#define JOURNEY_FADE 1.0f
+#define JOURNEY_FADE 2.0f
 #define JOURNEY_MAX_WAIT 12.0f /* seconds; the prefetch cannot outlast it in practice */
 typedef struct {
     C3Title maps[JOURNEY_PARTS]; C3PackJob map_jobs[JOURNEY_PARTS]; unsigned map_count;
@@ -458,13 +459,16 @@ static int journey_play(const MapPack *pack, const C3WorldMap *map, uint32_t flo
         ++frames;
 #ifdef C3_ROUNDTRIP_PROBE
         {   /* Review frames of each ride (the capture reads the previous frame). */
-            static unsigned ride; char shot[96];
-            if (frames == 1) { ++ride; mkdir("sdmc:/3ds/Colosseum3DS/probe", 0777); }
-            if (frames == 40 || frames == 100 || frames == 160) {
-                snprintf(shot, sizeof shot, "sdmc:/3ds/Colosseum3DS/probe/journey%u_%03u.bmp", ride, frames);
+            static unsigned ride, mark; char shot[96];
+            if (frames == 1) { ++ride; mark = 1; mkdir("sdmc:/3ds/Colosseum3DS/probe", 0777); }
+            /* One top capture per half second of ride time (named in ms),
+             * to line up with an original-game reference at 60 Hz. */
+            if (t >= 0.5f * (float)mark && mark <= 8) {
+                snprintf(shot, sizeof shot, "sdmc:/3ds/Colosseum3DS/probe/journey%u_t%04u.bmp", ride, mark * 500u);
                 (void)c3_n3ds_capture_top(shot);
+                ++mark;
             }
-            if (frames == 100) {
+            if (frames == 60) {
                 snprintf(shot, sizeof shot, "sdmc:/3ds/Colosseum3DS/probe/journey%u_bottom.bmp", ride);
                 (void)c3_n3ds_capture_bottom(shot);
             }

@@ -67,7 +67,7 @@ uint32_t c3_world_map_journey_pick(C3WorldMapJourney *journey, int west,
  * bike_pokemon (0x0C6C1000). */
 #define C3_WORLD_MAP_JOURNEY_RUI_FLAG 0x3E5u
 /* The journey lasts 0xAE frames at 60 Hz after the camera starts, then the
- * world map's exit (fn_800255A4) fades for one second. */
+ * world map's exit (fn_800255A4) fades out over two seconds. */
 #define C3_WORLD_MAP_JOURNEY_FRAMES 0xAEu
 
 #endif

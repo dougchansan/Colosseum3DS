@@ -64,7 +64,7 @@ from the user's own `world_map.fsys`:
 | Bike `0xC6B1000` (`bike_hizuki`, Wes with Rui) when flag `0x3E5` is set, else `0xC6C1000` (`bike_pokemon`); attached to joint 0 of `0xC6A1000` (`fn_801CB61C`), animation 0 looping (`fn_801CB834(bike, 0, 0, 1)`) | `journey_<hizuki|pokemon>_aNN_0-1.c3t`: the bike sampled on route animation NN with the path joint as its attachment, as the Outskirt arrival is prepared |
 | Route animation `frame_a` on `0xC6A1000` and camera `frame_b` (`cam_move_demo_01-15`, `0x0C6D1800-0x0C7B1800`) from REL table `lbl_3_data_270` | the camera curve is sampled into each bike pack; `c3_world_map_journey_pick` picks the row |
 | Row: `lbl_8047A380` (set by `fn_80023E60` on each cursor move: destination left of the origin on the map) picks rows 0-9 (west) or 10-19 (east); `lbl_8047A394`/`398` advance per journey and wrap after 9, for the whole session | `c3_world_map_journey_west`, `c3_world_map_journey_pick` (`tests/test_world_map.c`) |
-| `0xAE` frames after the camera starts, then the map's exit (`fn_800255A4`) fades for one second | same; the fade waits until the destination's map packs have loaded (below) |
+| `0xAE` frames after the camera starts, then the map's exit (`fn_800255A4`) fades out over two seconds (`fadeSet(2.0f, 3)`) | same; the fade waits until the destination's map packs have loaded (below) |
 
 The trace records `world_map_journey row= route= camera= bike= west=`,
 `world_map_journey ready=1 load_us= route_seconds= prefetch=done/total`,
@@ -128,3 +128,26 @@ and alternates area and world map with no input, logging
 | before the fix | 44.96, 54.02, 55.92 MB | the fourth load fails: `Not enough memory for title file` |
 | with the fix | 2.12, 2.12, 2.12 MB | 2.12 MB through the seventh area |
 | with the fix and the journey | 2.02, 2.02, 2.02 MB | 2.02 MB through the seventh area; each journey played and the field took the prefetched packs |
+
+## Original-game reference (Dolphin A/B, 2026-11-15)
+
+Same save on both sides: the console's `saves/pokemon_colosseum.gci` (read
+over FTP, SHA256 `eb88bb99…`; Phenac City entrance 4, flag `0x3E5` set).
+The original ran in an isolated Dolphin session (`docs/dolphin-reference-capture.md`):
+continue, walk out of Phenac to the world map, cursor RIGHT to Outskirt
+Stand, A. The port ran the round-trip probe on Azahar with the same save
+(`probe-save.gci`), exiting Phenac to the world map and choosing Outskirt.
+Both played the session's first eastward ride: row 10, route 0, camera
+`0C7B1800`, `bike_hizuki`.
+
+Dolphin dumps one frame per rendered frame: 60 per second in the menus but
+30 per second in the field and the ride (618 s of dumped audio held 22,599
+frames), so the reference was aligned at 30 frames per second.
+
+- Camera, route and bike match at every half second from 1.0 s to 3.5 s:
+  same shots, same cuts, same framing.
+- The original fades out over about 1.9 s after the ride (`fadeSet(2.0f, 3)`);
+  the port's fade was 1.0 s and is now 2.0 s.
+- Differences that remain: the original cross-fades from the world-map
+  capture for about the first second (`fn_80025A80`), and draws the bike's
+  projected shadow and the wheel dust; the port draws neither.
