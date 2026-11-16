@@ -79,7 +79,7 @@ typedef struct {
     uint16_t (*random16)(void *context);void *random_context;
     int (*species_name)(void *context,unsigned species,char *out,size_t capacity);void *species_context;
     C3FieldStoryReceive receive;void *receive_context;
-    C3FieldStoryTake take;void *take_context;
+    C3FieldStoryItemChange item_change;void *item_change_context;
     C3FieldStoryAudio audio;void *audio_context;
     const C3AreaDoor *door_rows;C3StoryDoor doors[C3_AREA_MAX_DOORS];uint32_t door_count;
     C3FieldStoryRestore restore;void *restore_context;
@@ -167,7 +167,7 @@ static int validate_native(const Impl *s,const C3StoryCall *c,char *error)
         {0xe7,3,0},{0x22,5,0},
         {0x78,1,0},{0x7c,0,0},{0xf1,0,0},{0xf2,0,0},{0xa8,2,0},{0xd6,2,0},{0x53,3,0},{0x9b,3,0},{0xc7,5,0},
         {0xc4,0,0},{0xdc,0,0},{0xc8,2,0},{0x80,3,0},{0xbd,0,0},{0x9e,1,0},{0x54,0,0},{0x55,0,0},{0x56,0,0},{0x57,0,0},
-        {0x86,0,0},{0xbc,1,0},{0xca,0,0},{0xeb,0,0},{0xd0,0,0},{0x62,1,0},{0x11,2,0},{0xdb,2,0},{0xcc,3,0},{0xcd,1,0},{0xcf,0,0},{0xb2,3,4},{0xbe,2,0},{0xbf,4,0},{0xc1,2,0},{0xf3,2,0},{0x85,1,0}
+        {0xdb,2,0},{0x86,0,0},{0xbc,1,0},{0xca,0,0},{0xeb,0,0},{0xd0,0,0},{0x62,1,0},{0x11,2,0},{0xcc,3,0},{0xcd,1,0},{0xcf,0,0},{0xb2,3,4},{0xbe,2,0},{0xbf,4,0},{0xc1,2,0},{0xf3,2,0},{0x85,1,0}
     };
     for(unsigned i=0;i<sizeof signature/sizeof signature[0];++i){
         if(signature[i].id!=c->native)continue;
@@ -792,19 +792,6 @@ static int run_native(Impl *s,RunTask *t,char *error)
      * Those menu floors are not ported here; it returns at once. */
     case 0x62:s->view.unported_menu=0x62;
         log_line(s,"story_menu_floor floor=%03lx status=unported_returned",(unsigned long)a[0]);break;
-    /* scriptAddItem(item, count): heroItemAddItemDataId for a positive
-     * count, heroItemDecItemDataId for a negative one; no message. */
-    case 0xdb:{
-        int32_t count=(int32_t)a[1];int result=0;
-        if(count>0){
-            if(!s->receive)return fail(error,"Native DB needs the item service, which this scene did not bind");
-            char name[64];result=s->receive(s->receive_context,a[0]&0xffffu,(uint32_t)count,name,sizeof name);
-        }else if(count<0){
-            if(!s->take)return fail(error,"Native DB needs the item take service, which this scene did not bind");
-            result=s->take(s->take_context,a[0]&0xffffu,(uint32_t)-count);
-        }
-        log_line(s,"story_item_add item=%lu count=%ld result=%d",(unsigned long)(a[0]&0xffffu),(long)count,result);
-        value=(uint32_t)result;break;}
     /* fn_801C8688(item, item, item): the three DNA disc items (0x200-0x211,
      * each pair one species) must all name species of the 3x3 grid
      * lbl_8026F488; then gbaConvCheckIds pushes floor 0x387 (the disc
@@ -828,10 +815,9 @@ static int run_native(Impl *s,RunTask *t,char *error)
         unsigned sp=disc_species(a[0]&0xffffu);value=sp;
         if(!sp)break;
         if(s->area->floor==0x43)note_presentation(s,0xcd,"dna_hologram_menu_d8");
-        if((a[0]&1u)==0){
-            if(!s->take||!s->receive)return fail(error,"Native CD needs the item services, which this scene did not bind");
-            char name[64];
-            if(s->take(s->take_context,a[0]&0xffffu,1)<0||s->receive(s->receive_context,(a[0]&0xffffu)+1u,1,name,sizeof name)<0)
+        if((a[0]&1u)==0){ /* gsAddItem(item,-1); gsAddItem(item+1,1) */
+            if(!s->item_change)return fail(error,"Native CD needs the signed item service, which this scene did not bind");
+            if(s->item_change(s->item_change_context,a[0]&0xffffu,-1)<0||s->item_change(s->item_change_context,(a[0]&0xffffu)+1u,1)<0)
                 return fail(error,"DNA disc %lu could not be exchanged",(unsigned long)a[0]);
         }
         log_line(s,"story_dna_disc item=%lu species=%u",(unsigned long)(a[0]&0xffffu),sp);
@@ -1031,6 +1017,19 @@ static int run_native(Impl *s,RunTask *t,char *error)
         for(unsigned i=0;i<3;++i){s->camera_from[i]=s->view.camera.eye[i];s->camera_to[i]=as_float(a[i+1])*s->map->scale;
             s->camera_direction[i]=s->view.camera.target[i]-s->view.camera.eye[i];}
         break;
+    case 0xdb:{
+        /* scriptAddItem (field_range_801CA7EC.c): a direct bag mutation,
+         * without native 77's jingle, message or PC-overflow handling.
+         * The retail ABI narrows itemId and the magnitude to u16. */
+        int32_t count=(int32_t)a[1];
+        if(!count)return fail(error,"Native DB zero item count has no defined retail result");
+        if(!s->item_change)return fail(error,"Native DB needs the signed item service, which this scene did not bind");
+        uint32_t item=(uint16_t)a[0],amount=(uint16_t)(count<0?0u-a[1]:a[1]);
+        int32_t signed_amount=count<0?-(int32_t)amount:(int32_t)amount;
+        int result=s->item_change(s->item_change_context,item,signed_amount);
+        value=(uint32_t)result;
+        log_line(s,"story_item_direct item=%lu count=%ld result=%d",(unsigned long)item,(long)signed_amount,result);
+        }break;
     case 0x77:
         /* scriptGetItem -> floorEventGetTresure(4,item,count): the item
          * jingle 0x3CA plays to its end first (a fixed wait here), then the
@@ -1622,10 +1621,6 @@ unsigned c3_field_story_treasure_count(const C3FieldStory *story)
 {const Impl *s=story?story->impl:NULL;return s?s->treasure_count:0;}
 const C3StoryTreasure *c3_field_story_treasure(const C3FieldStory *story,unsigned index)
 {const Impl *s=story?story->impl:NULL;return s&&index<s->treasure_count?s->treasure+index:NULL;}
-void c3_field_story_set_item_take_service(C3FieldStory *story,C3FieldStoryTake take,void *context)
-{
-    Impl *s=story?story->impl:NULL;if(s){s->take=take;s->take_context=context;}
-}
 void c3_field_story_enable_item_menu(C3FieldStory *story,int enabled)
 {
     Impl *s=story?story->impl:NULL;if(s)s->item_menu_enabled=enabled!=0;
@@ -1682,6 +1677,10 @@ int c3_field_story_relive_pick(C3FieldStory *story,int slot,char *error)
         return resume(s,t,slot<0||slot>5?UINT32_MAX:(uint32_t)slot,error);
     }
     return fail(error,"No purification is waiting for a party choice");
+}
+void c3_field_story_set_item_change_service(C3FieldStory *story,C3FieldStoryItemChange change,void *context)
+{
+    Impl *s=story?story->impl:NULL;if(s){s->item_change=change;s->item_change_context=context;}
 }
 void c3_field_story_set_item_service(C3FieldStory *story,C3FieldStoryReceive receive,void *context)
 {

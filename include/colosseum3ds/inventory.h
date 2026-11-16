@@ -17,14 +17,13 @@ int c3_inventory_item(const C3PdaAssets *assets,unsigned id,C3InventoryItem *ite
  * were added, `count` when they do not fit (nothing is added) and -1 for an
  * unknown item or an invalid request. Owned memory only; Save persists. */
 int c3_inventory_receive(C3GameState *state,const C3PdaAssets *assets,unsigned id,unsigned count);
+/* Scripted removal, including key items: removes what is present and returns
+ * the unmet count (0 on full success), or -1 for invalid requests. */
+int c3_inventory_remove(C3GameState *state,const C3PdaAssets *assets,unsigned id,unsigned count);
 /* pokemonAllKaihuku on every party member with a species: HP to maximum,
  * each valid move's PP to its maximum (base PP and PP Ups from the move
  * table) and the persistent condition record cleared when it holds one of
  * conditions 3..8. Returns the number of members restored, or -1. */
-/* heroItemDecItemDataId: removes `count` of the item from its pocket.
- * Returns 0 when all were removed, the amount missing (nothing removed)
- * when the bag holds fewer, -1 for an unknown item. Owned memory only. */
-int c3_inventory_take(C3GameState *state,const C3PdaAssets *assets,unsigned id,unsigned count);
 int c3_inventory_restore_party(C3GameState *state,const C3PdaAssets *assets);
 C3InventoryCode c3_inventory_apply(C3GameState *state,const C3PdaAssets *assets,const C3InventoryRequest *request,C3InventoryResult *result);
 #endif

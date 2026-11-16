@@ -94,11 +94,10 @@ int c3_field_story_item_menu_result(C3FieldStory *story,uint32_t item,char *erro
  * the item is invalid. Unbound, native 77 fails. */
 typedef int (*C3FieldStoryReceive)(void *context,uint32_t item,uint32_t count,char *name,size_t capacity);
 void c3_field_story_set_item_service(C3FieldStory *story,C3FieldStoryReceive receive,void *context);
-/* Item removal (native DB with a negative count, heroItemDecItemDataId):
- * removes `count` of `item`; returns 0 when all were removed, the amount
- * missing otherwise, negative when invalid. Unbound, those natives fail. */
-typedef int (*C3FieldStoryTake)(void *context,uint32_t item,uint32_t count);
-void c3_field_story_set_item_take_service(C3FieldStory *story,C3FieldStoryTake take,void *context);
+/* Direct scriptAddItem (DB): signed add/remove, returning the unmet count
+ * or a negative invalid-request result. No item window or jingle. */
+typedef int (*C3FieldStoryItemChange)(void *context,uint32_t item,int32_t count);
+void c3_field_story_set_item_change_service(C3FieldStory *story,C3FieldStoryItemChange change,void *context);
 /* Full party restore (script native D8 mode 0, pokemonAllKaihuku). Returns
  * the number of members restored or a negative value. Unbound, D8 fails. */
 typedef int (*C3FieldStoryRestore)(void *context);

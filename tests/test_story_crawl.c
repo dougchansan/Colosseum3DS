@@ -69,12 +69,14 @@ static int receive(void *c, uint32_t item, uint32_t count, char *name, size_t ca
 static int restore(void *c) { (void)c; return 6; }
 static int species_name(void *c, unsigned species, char *out, size_t capacity)
 { (void)c; snprintf(out, capacity, "SPECIES %u", species); return 1; }
-static int take(void *c, uint32_t item, uint32_t count)
+/* scriptAddItem (native DB) and the DNA disc exchange: signed change. */
+static int change(void *c, uint32_t item, int32_t count)
 {
     (void)c;
-    for (unsigned i = 0; i < received_count; ++i)
+    if (count > 0) { if (received_count < 256) received[received_count++] = item; }
+    else for (unsigned i = 0; i < received_count; ++i)
         if (received[i] == item) { received[i] = received[--received_count]; break; }
-    fprintf(report, "crawl_item_take item=%lu count=%lu\n", (unsigned long)item, (unsigned long)count);
+    fprintf(report, "crawl_item_change item=%lu count=%ld\n", (unsigned long)item, (long)count);
     return 0;
 }
 static int holds(uint32_t id)
@@ -223,7 +225,7 @@ static int load(Scene *s, uint32_t floor, uint32_t spawn, uint32_t *next, uint32
     c3_field_story_enable_name_entry(&s->story, 1);
     c3_field_story_enable_item_menu(&s->story, 1);
     c3_field_story_set_item_service(&s->story, receive, NULL);
-    c3_field_story_set_item_take_service(&s->story, take, NULL);
+    c3_field_story_set_item_change_service(&s->story, change, NULL);
     c3_field_story_set_species_namer(&s->story, species_name, NULL);
     c3_field_story_set_party_service(&s->story, restore, NULL);
     c3_field_story_set_random(&s->story, c3_game_state_random16, &game);
