@@ -239,7 +239,13 @@ trading need a Story Mode save, as the original needs a memory card save.
   non-negative heart gauge at +0xDC, the same test as `src/inventory.c`).
   Both received Pokemon get friendship 70.
 - The trade changes the console's game state in memory only. **Only the
-  explicit Save writes the card**, as everywhere else in the port.
+  explicit Save writes the card**, as everywhere else in the port: after a
+  trade the screen offers SAVE THE GAME or NOT NOW (the next Save, e.g. in
+  Story Mode, then keeps the new party). `c3_game_state_trade_pokemon` puts
+  the received record into the slot that was given away.
+- Each side's CONFIRM carries the hashes of both records it agreed to, so a
+  changed offer needs a new yes and neither side can swap something the
+  other did not see.
 
 ## Testing
 
@@ -333,4 +339,50 @@ whole-party case for rule 0, player 1 hosting (controller 1). Approximation:
 team choice is the party's first legal members; the eight-match CPU
 Colosseum and Mt. Battle (single player against the CPU) are not part of
 link play and are not ported; Poke Coupons are not paid.
+
+### Trading (stage 5)
+
+| run | consoles | saves (copies) | result | evidence |
+|---|---|---|---|---|
+| probe trade | 2 Azahar | console save, downloaded Lv100 save | slot 0 Umbreon Lv26 <-> slot 0 #404 Lv100; record hashes C955B011 / BFDAAA83 match across consoles; friendship 70 on both; no save written | `private/evidence/trade-2p/` |
+| title-menu lobby trade + SAVE, scripted presses | 2 Azahar | as above | the same swap; SAVE wrote `link-probe-save.gci` on each console, which reloads with the received Pokemon (held item kept); `saves/pokemon_colosseum.gci` byte-identical before and after | `private/evidence/lobby-trade-2p/` |
+
+Host: `test_link_trade` (synthetic records, 20% loss) and, with the private
+arguments, a trade between the two saves followed by the explicit Save into
+a scratch file that reloads with the traded Pokemon.
+
+Original: refusing eggs, Shadow Pokemon (until purified), the last healthy
+Pokemon and items that cannot be traded; friendship 70 on completion; the
+312-byte record unchanged otherwise. Approximation:
+`itemDataBiosCheckImportable` is reduced to "item ID below 0x15D" (items
+that exist in Ruby/Sapphire); the partner is another Colosseum3DS save
+rather than Ruby/Sapphire, so no GBA conversion (`fn_8008BBDC` /
+`fn_8008AE18`) is needed.
+
+## What is still missing
+
+- **Real hardware**: everything above ran on Azahar; UDS on two physical
+  3DS consoles has not been tried (`udsSetNewConnectionsBlocked` and the
+  10-byte frame workaround may behave differently there).
+- **Battle rules**: link battles use the port's general battle engine (a
+  documented Gen-3 approximation in `src/battle_general.c`), not the
+  original battle scripts. Lockstep holds whatever the rules are, because
+  every console runs the same code on the same inputs.
+- **Team choice**: no team-order menu; each player brings the first legal
+  members of their party. The rule fields for item mode, the item-disable
+  table, the time limit and the Mew/Deoxys event-flag check are not applied.
+- **Single-player Battle Mode**: the CPU Colosseum (8 matches per venue) and
+  Mt. Battle (100 matches) are not ported; Battle Now against the CPU is
+  replaced by Battle Now between players.
+- **Presentation**: the opponent players are shown with the stage
+  encounter's trainer model, not their own player characters; the stage is a
+  story Colosseum floor, not the Battle Mode floor 0x397.
+- **Trading**: no trade evolution check (`stateFunctionEvolution`), no
+  strategy-memo update (`memoDataSet`), no GBA (Ruby/Sapphire) partner, no
+  trade animation; trades are between two players only.
+- **Four-player Colosseum** was proved in the host tests (synthetic pack)
+  and four-player Battle Now on Azahar; a four-instance Colosseum run with
+  four saves was not done.
+- **Lobby UI** was driven only by scripted presses in the probe build, not
+  by a person at the console.
 

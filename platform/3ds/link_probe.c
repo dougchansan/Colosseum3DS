@@ -169,8 +169,8 @@ int c3_link_probe_run(void)
         c3_link_lobby_single_session = 1;
         c3_n3ds_set_script(c3_link_probe_config.script, 30);
         int mode = !strcmp(c3_link_probe_config.mode, "lobby-battle-now") ? C3_LINK_MODE_BATTLE_NOW : C3_LINK_MODE_COLOSSEUM;
-        /* save_path points nowhere real: a probe never saves. */
-        result = c3_link_lobby_run(mode, loaded ? &state : NULL, ROOT "probe-unused.gci", log);
+        /* A trade's explicit Save goes here, never to saves/pokemon_colosseum.gci. */
+        result = c3_link_lobby_run(mode, loaded ? &state : NULL, ROOT "link-probe-save.gci", log);
         c3_link_probe_log(log, "link_probe_end result=%d", result);
         if (log) fclose(log);
         if (loaded) c3_game_state_free(&state);

@@ -596,6 +596,15 @@ int c3_game_state_set_pokemon(C3GameState *state,unsigned slot,const uint8_t rec
        !be16(record+0x8c)||be16(record+0x8a)>be16(record+0x8c))return 0;
     memcpy(p,record,POKEMON_SIZE);return 1;
 }
+int c3_game_state_trade_pokemon(C3GameState *state,unsigned slot,const uint8_t record[0x138])
+{
+    GameStateImpl *s=state?state->impl:NULL;uint8_t *p;
+    if(!s||!record||slot>=6)return 0;
+    p=s->body+PARTY+slot*POKEMON_SIZE;
+    if(!be16(p)||!be16(record)||record[0xcb]||!record[0x60]||record[0x60]>100||
+       !be16(record+0x8c)||be16(record+0x8a)>be16(record+0x8c))return 0;
+    memcpy(p,record,POKEMON_SIZE);return 1;
+}
 int c3_game_state_mail_settings(const C3GameState *state,unsigned *sort,unsigned *tone)
 {
     const GameStateImpl *s=state?state->impl:NULL;if(!s||!sort||!tone)return 0;

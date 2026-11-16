@@ -17,3 +17,14 @@ all: build/test_link_battle
 link-battle-check: build/test_link_battle
 	./build/test_link_battle
 test: link-battle-check
+
+# Trading (synthetic records; the private part takes <newgame.c3g> <save A>
+# <save B> <out.gci> and writes only <out.gci>).
+LINK_TRADE_SOURCES = src/link_trade.c src/link_protocol.c src/game_state.c src/save.c src/decomp_pokemon.c build/save_codec.c
+build/test_link_trade: tests/test_link_trade.c tests/battle_pack_fixture.h $(LINK_TRADE_SOURCES) include/colosseum3ds/link_trade.h $(HEADERS)
+	$(CC) $(CPPFLAGS) -Ibuild -Isrc $(CFLAGS) tests/test_link_trade.c $(LINK_TRADE_SOURCES) $(LDFLAGS) -lm -o $@
+all: build/test_link_trade
+.PHONY: link-trade-check
+link-trade-check: build/test_link_trade
+	./build/test_link_trade
+test: link-trade-check

@@ -83,6 +83,10 @@ int c3_game_state_pokemon(const C3GameState *state,unsigned slot,uint8_t record[
 /* Battle writeback: replace party slot's record. The slot must already hold
  * the same species; level 1..100 and HP within the record's maximum. */
 int c3_game_state_set_pokemon(C3GameState *state,unsigned slot,const uint8_t record[0x138]);
+/* A traded Pokemon replaces the occupied party slot it was traded from
+ * (docs/link-play.md): any species, not an egg, level 1..100, HP within its
+ * maximum. Memory only; the explicit Save writes it. */
+int c3_game_state_trade_pokemon(C3GameState *state,unsigned slot,const uint8_t record[0x138]);
 /* Native mail read transaction follows mailMain fn_801D228C; original flag
  * metadata comes from the admitted private PDA pack. No disk I/O. */
 int c3_game_state_mail_read(C3GameState *state,const C3GameMailRead *action,int commit);
