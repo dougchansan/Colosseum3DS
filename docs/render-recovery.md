@@ -34,8 +34,12 @@ HOME is already available for normal app switching through `tools/luma_input.py`
 with `--button HOME --duration 0.15` and a fresh `--evidence` filename. It is a
 system action; during a known GPU wedge it can block in the suspend hook below.
 
-The loop sleeps between polls, updates the screen periodically and flushes
-trace heartbeats. It performs no gameplay updates or save writes. Once a
+The loop sleeps between polls (2 ms while a queue is merely late; until the
+next counted VBlank, at most 16 ms, once the watchdog view is shown), updates
+the screen periodically and flushes trace heartbeats. A draw normally acquires
+the following frame itself before returning
+([render-performance.md](render-performance.md)), so this loop is entered only
+when the GPU has not released the queue within 100 ms. It performs no gameplay updates or save writes. Once a
 watchdog-paused scene resumes, its delta-time baseline resets, avoiding a
 simulation jump. Ordinary short GPU waits still count toward elapsed game time;
 menu button edges consumed during those waits are replayed once.

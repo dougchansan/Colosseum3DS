@@ -7,6 +7,9 @@
 typedef struct StatusIdTable7 {u16 id[7];} StatusIdTable7;
 typedef struct C3OutEnemy {u8 bytes[12];} C3OutEnemy;
 static atomic_flag in_use=ATOMIC_FLAG_INIT;
+/* 10 KiB staging copy shared by the in_use-guarded entry points: kept off
+ * the stack, because a battle runs inside the field loop's frame. */
+static u8 staged[C3_BATTLE_RUNTIME_TRAINER_BYTES];
 static int boundary_error;
 static u16 be16(const u8 *p){return (u16)((u16)p[0]<<8|p[1]);}
 static u32 be32(const u8 *p){return (u32)p[0]<<24|(u32)p[1]<<16|(u32)p[2]<<8|p[3];}
@@ -145,7 +148,7 @@ int c3_battle_runtime_trainer_init(u8 backing[C3_BATTLE_RUNTIME_TRAINER_BYTES])
 {
     if(!backing)return 1;
     if(atomic_flag_test_and_set_explicit(&in_use,memory_order_acquire))return 0;
-    u8 staged[C3_BATTLE_RUNTIME_TRAINER_BYTES];memcpy(staged,backing,sizeof(staged));boundary_error=0;
+    memcpy(staged,backing,sizeof(staged));boundary_error=0;
     c3r_src_fightTrainerInit(staged,1);
     int ok=!boundary_error;if(ok)memcpy(backing,staged,sizeof(staged));
     boundary_error=0;atomic_flag_clear_explicit(&in_use,memory_order_release);return ok;
@@ -157,7 +160,7 @@ int c3_battle_runtime_trainer_create(u8 backing[C3_BATTLE_RUNTIME_TRAINER_BYTES]
     uintptr_t x=(uintptr_t)backing,y=(uintptr_t)hero;
     if(x>=y?x-y<C3_BATTLE_TRAINER_BYTES:y-x<C3_BATTLE_RUNTIME_TRAINER_BYTES)return 0;
     if(atomic_flag_test_and_set_explicit(&in_use,memory_order_acquire))return 0;
-    u8 staged[C3_BATTLE_RUNTIME_TRAINER_BYTES];memcpy(staged,backing,sizeof(staged));boundary_error=0;
+    memcpy(staged,backing,sizeof(staged));boundary_error=0;
     c3r_src_fightTrainerCreate(staged,(void*)hero,trainer,controller,sequence);
     int ok=!boundary_error;if(ok)memcpy(backing,staged,sizeof(staged));
     boundary_error=0;atomic_flag_clear_explicit(&in_use,memory_order_release);return ok;

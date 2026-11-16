@@ -6,10 +6,20 @@
 #include "colosseum3ds/particle_pack.h"
 #include "colosseum3ds/wzx_confusion.h"
 
-#define C3_STAGE_MAX_MODELS 16u
-#define C3_STAGE_MAX_VERTICES 131072u
-#define C3_STAGE_MAX_TEXTURES 128u
-#define C3_STAGE_MAX_PARTICLE_BANKS 8u
+/* Sized for Phenac City's exterior: 8 map packs, Wes and 26 people are 35
+ * models, 128,358 vertices and 75 unique textures (7.19 MB of arena plus
+ * 8.79 MB of RGBA8, 15.98 MB of the 32 MiB linear heap). A model is only a
+ * range of the shared arena plus a texture remap, so the model bound costs
+ * static bookkeeping (about 6 KiB per model), not GPU objects. The arena is
+ * allocated for the scene's actual vertex total; at the bound it is 11.0 MB. */
+#define C3_STAGE_MAX_MODELS 48u
+#define C3_STAGE_MAX_VERTICES 196608u
+/* Texture slots: scene + HUD + every registered particle bank (a converted
+ * C3PT v2 bank holds at most 32 RGBA8 textures of at most 64x64). */
+#define C3_STAGE_MAX_TEXTURES 512u
+#define C3_STAGE_MAX_PARTICLE_BANKS 32u
+/* Live particle systems drawn per frame: slot 0 is the legacy binding. */
+#define C3_STAGE_MAX_PARTICLE_SYSTEMS 16u
 
 /* Pinned SDK steady particle draw uses 114 words; 192 also bounds setup.
  * Leave room for the subsequent HUD/fade and command-list finalization. */
@@ -32,8 +42,20 @@ typedef struct {
     char lines[8][49];
     uint16_t hp[4], maximum_hp[4];
     uint8_t enabled;
+    /* 0: battle panel (bottom band, HP bars). 1: debug overlay, a
+     * translucent box behind the text in the top-left corner. */
+    uint8_t layout;
 } C3StageBattleHud;
 int c3_stage_renderer_set_battle_hud(const C3StageBattleHud *hud, char *error, size_t capacity);
+/* A full-screen image drawn over the scene (before the HUD), scaled about
+ * the screen centre and blended by alpha: e.g. a captured frame dissolving
+ * into the scene. Upload once after init while idle; rgba is top-down,
+ * width x height a power of two, the image in its top-left used area. Init
+ * and shutdown clear it. Returns 1, or 0 with error. */
+int c3_stage_renderer_set_overlay_image(const uint8_t *rgba, unsigned width, unsigned height,
+                                        unsigned used_width, unsigned used_height, char *error, size_t capacity);
+/* Per frame: alpha 0 hides it. */
+void c3_stage_renderer_set_overlay(float alpha, float scale);
 
 /* Implemented by the shared renderer in title_renderer.c. Packs retain their
  * independent animation clocks and bounded C3Title storage. All packs must
@@ -42,6 +64,16 @@ int c3_stage_renderer_set_battle_hud(const C3StageBattleHud *hud, char *error, s
  * It cannot coexist with an initialized title renderer. */
 int c3_stage_renderer_init(const C3Title *const *models, size_t count,
                           char *error, size_t capacity);
+/* Before init: models (bit per index) that may get a GPU skin stream. Each
+ * costs 48 bytes of linear memory per vertex; the request applies to the
+ * next init only. */
+void c3_stage_renderer_request_gpu_skin(uint64_t models);
+/* 1 when init would admit this pack's materials and batches (no GPU work). */
+int c3_stage_renderer_validate(const C3Title *title, char *error, size_t capacity);
+/* After init: the batches of model the GPU can skin and light
+ * (colosseum3ds/skin_uniforms.h). A caller may copy it into that retained
+ * title's gpu_batches; zero when nothing qualifies. */
+uint64_t c3_stage_renderer_gpu_skin_mask(size_t model);
 /* Source field-camera texture entry0, fixed 256x256 RGBA8 plus depth. Call
  * after init and before the first draw. The TV model stays excluded from the
  * main camera even when disabled. Repeated calls may toggle enabled but may
@@ -55,6 +87,30 @@ int c3_stage_renderer_set_tv(size_t model_index, size_t screen_model_index,
  * NULL state hides the effect. Allocation failure preserves the prior binding. */
 int c3_stage_renderer_confusion_program(const C3WzxConfusionProgram *,char *,size_t);
 int c3_stage_renderer_confusion(const C3ConfusionType12 *);
+/* General WZX effect passes (effect_pass_renderer.inc), set between frames
+ * after init; renderer init and shutdown clear them. A model matrix is a
+ * row-major 3x4 world pre-transform of that model in the main and capture
+ * passes (NULL clears). Instances redraw a model's current visible batches
+ * after the scene with `matrix` applied to its world vertices, colour times
+ * rgba, alpha-blended (additive 0), added (1) or the flat colour added over
+ * the model's coverage (2), without depth writes. Effect triangles
+ * are untextured world-space triangles drawn additively after the
+ * instances. Lists are copied; draws past the frame's command budget are
+ * skipped. Each returns 1, or 0 (previous state kept) for invalid input. */
+#define C3_STAGE_MAX_INSTANCES 72u
+#define C3_STAGE_MAX_EFFECT_VERTICES 6144u
+/* additive 3: projected shadow. rgba is the shadow colour (texture alpha
+ * still cuts it out); the draw writes depth and passes only nearer, so a
+ * flattened model's coplanar overlaps blend once. */
+typedef struct { uint32_t model; float matrix[12]; float rgba[4]; uint8_t additive; } C3StageInstance;
+typedef struct { float pos[3]; float rgba[4]; } C3StageEffectVertex;
+int c3_stage_renderer_set_model_matrix(size_t model, const float matrix[12]);
+int c3_stage_renderer_set_instances(const C3StageInstance *, unsigned count);
+int c3_stage_renderer_set_effect_triangles(const C3StageEffectVertex *, unsigned count);
+/* c3_stage_renderer_confusion_program for a scene that has already drawn
+ * (allocates the capture target on first use, else swaps the borrowed CPU
+ * program). Pair with c3_stage_renderer_confusion. */
+int c3_stage_renderer_distortion_program(const C3WzxConfusionProgram *, char *, size_t);
 int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
                           const C3TitleCamera *camera, float fade,
                           C3TitleRenderStats *stats, char *error, size_t capacity);
@@ -73,11 +129,21 @@ int c3_stage_renderer_get_modulation(size_t model_index, uint8_t rgb[3], int *en
 /* Upload once before first draw. Borrowed pack/system outlive guarded teardown.
  * Updating the live attachment only copies CPU state; GPU buffers are written
  * after the sole nonblocking FrameBegin completion barrier. */
-/* Register up to eight borrowed banks (including qualified move profiles)
- * before first draw. Re-registering the
+/* Register up to C3_STAGE_MAX_PARTICLE_BANKS (32) borrowed banks (including
+ * qualified move profiles) after the scene is initialized and before its first
+ * draw (scene_count != 0, nothing drawn yet); later registration fails. Re-registering the
  * same pack pointer is idempotent. Binding selects by bank.bytes identity. */
 int c3_stage_renderer_particle_pack(const C3ParticlePack *,char *,size_t);
 int c3_stage_renderer_particles(const C3ParticleSystem *,const float attachment[12]);
+/* Bind slot `index` (0..C3_STAGE_MAX_PARTICLE_SYSTEMS-1) for the following
+ * frames; index 0 is exactly c3_stage_renderer_particles. Slots 1..15 draw
+ * after slot 0 with c3_particle_quad only (no AppSRT/source-order/POINT line
+ * adapters; such particles are skipped), in slot then particle order, and
+ * only as many quads as the frame's command budget still admits after slot 0
+ * (the rest are skipped, never a frame error). The system's bank must be a
+ * registered pack's bank (bank.bytes identity). NULL system clears the slot.
+ * Returns 1 bound/cleared, 0 rejected (previous binding kept). */
+int c3_stage_renderer_particles_set(unsigned index,const C3ParticleSystem *,const float attachment[12]);
 /* Explicit source-world Growl adapter. Only AppSRT render caches may change;
  * simulation coordinates, clocks and cosmetic RNG remain independent of draws. */
 int c3_stage_renderer_particles_app_srt(C3ParticleSystem *);

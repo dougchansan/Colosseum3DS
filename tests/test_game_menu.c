@@ -36,7 +36,18 @@ int main(void)
     C3GameMenuEvent event;
     c3_game_menu_init(&menu, &save, &options);
     CHECK(menu.selection == 1);
-    tap(&menu, C3_PAD_UP);
+    /* CONTINUE sits above NEW GAME and left of COLOSSEUM BATTLE. */
+    tap(&menu, C3_PAD_UP);CHECK(menu.selection == 1);
+    tap(&menu, C3_PAD_LEFT);CHECK(menu.selection == 1);
+    tap(&menu, C3_PAD_RIGHT);CHECK(menu.selection == 2);
+    tap(&menu, C3_PAD_DOWN);CHECK(menu.selection == 3);
+    tap(&menu, C3_PAD_DOWN);CHECK(menu.selection == 5);
+    tap(&menu, C3_PAD_LEFT);CHECK(menu.selection == 4);
+    tap(&menu, C3_PAD_UP);CHECK(menu.selection == 0);
+    tap(&menu, C3_PAD_RIGHT);CHECK(menu.selection == 3);
+    tap(&menu, C3_PAD_UP);CHECK(menu.selection == 2);
+    tap(&menu, C3_PAD_LEFT);CHECK(menu.selection == 1);
+    tap(&menu, C3_PAD_DOWN);CHECK(menu.selection == 0);
     CHECK(tap(&menu, C3_PAD_A).kind == C3_MENU_EVENT_NONE);
     CHECK(menu.page == C3_MENU_NEW_CONFIRM && !menu.confirm_yes);
     CHECK(tap(&menu, C3_PAD_A).kind == C3_MENU_EVENT_NONE);
@@ -80,10 +91,10 @@ int main(void)
     CHECK(event.kind == C3_MENU_EVENT_NEW_GAME && !event.replace_authorized && !strcmp(event.name, "aaaaaa"));
 
     c3_game_menu_init(&menu, &save, &options);
-    down(&menu, 2); tap(&menu, C3_PAD_A);
+    tap(&menu, C3_PAD_RIGHT); tap(&menu, C3_PAD_UP); tap(&menu, C3_PAD_A);
     CHECK(menu.page == C3_MENU_NOTICE);
-    CHECK(tap(&menu, C3_PAD_A).kind == C3_MENU_EVENT_NONE && menu.page == C3_MENU_MAIN);
-    down(&menu, 2); tap(&menu, C3_PAD_A);
+    CHECK(tap(&menu, C3_PAD_A).kind == C3_MENU_EVENT_NONE && menu.page == C3_MENU_MAIN && menu.selection == 2);
+    tap(&menu, C3_PAD_LEFT); down(&menu, 2); tap(&menu, C3_PAD_A);
     CHECK(menu.page == C3_MENU_OPTIONS);
     tap(&menu, C3_PAD_LEFT); tap(&menu, C3_PAD_DOWN); tap(&menu, C3_PAD_RIGHT);
     CHECK(menu.options.sound_mono && menu.options.rumble_disabled);
@@ -98,7 +109,7 @@ int main(void)
     save.can_continue = 0;
     snprintf(save.reason, sizeof(save.reason), "This saved floor is not implemented.");
     c3_game_menu_init(&menu, &save, &options);
-    down(&menu, 1); tap(&menu, C3_PAD_A);
+    tap(&menu, C3_PAD_UP); tap(&menu, C3_PAD_A);
     CHECK(menu.page == C3_MENU_NOTICE && strstr(menu.notice, "floor"));
     tap(&menu, C3_PAD_B);
     save.can_continue = 1;
@@ -110,17 +121,32 @@ int main(void)
     tap(&menu, C3_PAD_A);
     CHECK(tap(&menu, C3_PAD_A).kind == C3_MENU_EVENT_CONTINUE && menu.page == C3_MENU_PENDING);
 
+    /* A held direction repeats after a delay: OPTIONS -> NEW GAME -> CONTINUE. */
     c3_game_menu_init(&menu, NULL, NULL);
-    C3N3dsInput held = {.held = C3_PAD_DOWN, .pressed = C3_PAD_DOWN};
+    menu.selection = 4;
+    C3N3dsInput held = {.held = C3_PAD_UP, .pressed = C3_PAD_UP};
     c3_game_menu_update(&menu, &held, 0.01f);
-    CHECK(menu.selection == 1);
+    CHECK(menu.selection == 0);
     held.pressed = 0;
     c3_game_menu_update(&menu, &held, NAN);
-    CHECK(menu.selection == 1);
+    CHECK(menu.selection == 0);
     for (unsigned i = 0; i < 12; ++i) c3_game_menu_update(&menu, &held, 0.02f);
-    CHECK(menu.selection == 1);
+    CHECK(menu.selection == 0);
     for (unsigned i = 0; i < 15; ++i) c3_game_menu_update(&menu, &held, 0.02f);
-    CHECK(menu.selection >= 2 && menu.selection <= 3);
+    CHECK(menu.selection == 1);
+
+    /* Stylus: a tap selects and confirms the entry under it. */
+    save.present = save.valid = save.can_continue = 1;
+    c3_game_menu_init(&menu, &save, &options);
+    {C3N3dsInput touch = {.touch_held = true, .touch_pressed = true, .touch_x = 60, .touch_y = 120};
+     c3_game_menu_update(&menu, &touch, 0.01f);
+     CHECK(menu.selection == 0 && menu.page == C3_MENU_NEW_CONFIRM);
+     tap(&menu, C3_PAD_B);CHECK(menu.page == C3_MENU_MAIN);
+     touch.touch_x = 60; touch.touch_y = 60;c3_game_menu_update(&menu, &touch, 0.01f);
+     CHECK(menu.selection == 1 && menu.page == C3_MENU_CONTINUE_CONFIRM);
+     tap(&menu, C3_PAD_B);CHECK(menu.page == C3_MENU_MAIN);
+     touch.touch_x = 300; touch.touch_y = 235;c3_game_menu_update(&menu, &touch, 0.01f);
+     CHECK(menu.selection == 1 && menu.page == C3_MENU_MAIN);}
 
     /* A valid private pack is replaced only after complete validation. */
     char path[] = "/tmp/c3-menu-test-XXXXXX", error[128];

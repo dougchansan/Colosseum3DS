@@ -48,6 +48,14 @@ int main(int argc,char **argv)
     word(p+184,7);CHECK(!c3_field_parse(&map,p,bytes,error,sizeof error));
     CHECK(map.arrival_pack_count==0);
     word(p+184,1);CHECK(c3_field_parse(&map,p,bytes,error,sizeof error));
+    /* Developer floors split large maps; Wes keeps the last stage slot. */
+    word(p+180,C3_FIELD_MAX_MODEL_PACKS-1u);CHECK(c3_field_parse(&map,p,bytes,error,sizeof error));
+    CHECK(map.map_pack_count==C3_FIELD_MAX_MODEL_PACKS-1u && map.arrival_pack_count==1);
+    word(p+180,C3_FIELD_MAX_MODEL_PACKS);CHECK(!c3_field_parse(&map,p,bytes,error,sizeof error));
+    word(p+184,0);CHECK(c3_field_parse(&map,p,bytes,error,sizeof error));
+    word(p+180,C3_FIELD_MAX_MODEL_PACKS+1u);CHECK(!c3_field_parse(&map,p,bytes,error,sizeof error));
+    CHECK(map.map_pack_count==C3_FIELD_MAX_MODEL_PACKS);
+    word(p+180,1);word(p+184,1);CHECK(c3_field_parse(&map,p,bytes,error,sizeof error));
     CHECK(map.floor==1 && map.spawn_count==1 && map.wall_count==2 && map.object_count==1);
     CHECK(c3_field_spawn(&map,0,&player));CHECK(!c3_field_spawn(&map,1,&player));
     CHECK(c3_field_move(&map,&player,0,127,0,0,1.0f/60));
@@ -85,6 +93,14 @@ int main(int argc,char **argv)
     CHECK(player.position[0]>2.5f && player.collision_count==0);
     CHECK(!c3_field_set_object_enabled(&map,2,0));
     CHECK(!c3_field_set_object_enabled(&map,256,0));
+    /* An event-only CCD object past the walk/wall rows: covered, it starts
+     * enabled and can be switched; the count never shrinks or passes 256. */
+    {C3FieldMap covered=map;
+     CHECK(!c3_field_object_enabled(&covered,3));
+     CHECK(c3_field_cover_objects(&covered,4)&&covered.object_count==4&&c3_field_object_enabled(&covered,3));
+     CHECK(c3_field_set_object_enabled(&covered,3,0)&&!c3_field_object_enabled(&covered,3));
+     CHECK(c3_field_cover_objects(&covered,1)&&covered.object_count==4);
+     CHECK(!c3_field_cover_objects(&covered,257)&&!c3_field_cover_objects(NULL,1));}
     CHECK(!c3_field_set_object_enabled(NULL,0,0));
     CHECK(c3_field_set_object_enabled(&map,0,1));
     CHECK(c3_field_object_enabled(&map,0));

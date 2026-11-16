@@ -24,10 +24,15 @@ class RendererTextureBindingTests(unittest.TestCase):
         source = (ROOT / "platform/3ds/title_renderer.c").read_text()
         validate = source[source.index("static bool valid_batch("):
                           source.index("/* HSD reserves a ninth")]
+        normalize = source[source.index("static float normalize("):
+                           source.index("static unsigned morton8(")]
+        staging = source[source.index("static float attenuation("):
+                         source.index("typedef struct { float position[3], half_direction[3], color[3]; } SpecularLight;")]
         draw = source[source.index("int c3_stage_renderer_draw("):
                       source.index("int c3_title_renderer_draw(")]
         shutdown = source[source.index("void c3_title_renderer_shutdown("):]
-        (cls.directory / "title_renderer_draw.inc").write_text(validate + draw + shutdown)
+        (cls.directory / "title_renderer_draw.inc").write_text(
+            validate + normalize + staging + draw + shutdown)
         cls.executable = cls.directory / "binding-test"
         result = subprocess.run(cls.compiler + cls.cflags + [
             "-I", str(ROOT / "include"), "-I", str(ROOT / "platform/3ds"),

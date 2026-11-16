@@ -1,4 +1,7 @@
 #include "colosseum3ds/title.h"
+#include <zlib.h>
+#define ZSTD_STATIC_LINKING_ONLY /* ZSTD_d_stableOutBuffer: no window buffer */
+#include <zstd.h>
 
 #include <math.h>
 #include <stdio.h>
@@ -30,6 +33,13 @@ static int fail(char *error, size_t capacity, const char *message)
         (void)snprintf(error, capacity, "%s", message);
     }
     return 0;
+}
+
+size_t c3_title_texture_bytes(uint32_t width, uint32_t height, uint32_t gpu_format, uint32_t levels)
+{
+    size_t level = (size_t)width * height * (gpu_format == C3_TITLE_GPU_RGB565 ? 2u : 4u), total = 0;
+    for (uint32_t i = 0; i < levels; ++i, level >>= 2) total += level;
+    return total;
 }
 
 static int bounded(float value, float magnitude)
@@ -86,13 +96,9 @@ static void read_floats(float *out, const uint8_t *p, uint32_t count)
  * neighboring visible sample interpolates toward the authored collapse. */
 static int bone_hidden(const C3Title *title, const uint8_t *materials, uint32_t bone)
 {
-    for(uint32_t batch=0;batch<title->batch_count;++batch){
-        const C3TitleBatch *b=title->batches+batch;
-        if(f32(materials+batch*title->material_frame_bytes+20u)!=0.0f){
-            for(uint32_t i=b->first;i<b->first+b->count;++i)
-                if(title->vertices[i].bone==bone)return 0;
-        }
-    }
+    for(uint32_t batch=0;batch<title->batch_count;++batch)
+        if(f32(materials+batch*title->material_frame_bytes+20u)!=0.0f&&
+           ((title->batch_bones[batch]>>bone)&1u))return 0;
     return 1;
 }
 
@@ -162,7 +168,10 @@ static int decode_owned(C3Title *title, char *error, size_t capacity)
         !title->light_count || title->light_count > C3_TITLE_MAX_LIGHTS ||
         !isfinite(title->fps) || title->fps < 1.0f || title->fps > 120.0f)
         return fail(error, capacity, "Title section count or timing exceeds limits");
-    for (i = 112u; i < HEADER_BYTES; ++i) if (data[i]) return fail(error, capacity, "Reserved title header bytes must be zero");
+    /* Byte 112 is the texture encoding: 0 = RGBA8 rows, 1 = GPU-native
+     * (tools/pack_textures.py). The rest stays reserved. */
+    if (data[112] > 1u) return fail(error, capacity, "Unknown title texture encoding");
+    for (i = 113u; i < HEADER_BYTES; ++i) if (data[i]) return fail(error, capacity, "Reserved title header bytes must be zero");
     for (i = 0; i < 7u; ++i) offsets[i] = u32(data+44u+i*4u);
     title->frame_offset = offsets[5];
     title->frame_bytes = u32(data+72u);
@@ -247,15 +256,39 @@ static int decode_owned(C3Title *title, char *error, size_t capacity)
         next_vertex += b->count;
     }
     if (next_vertex != title->vertex_count) return fail(error,capacity,"Title batches do not cover vertices");
+    for (i = 0; i < title->batch_count; ++i) {
+        const C3TitleBatch *b = title->batches+i;
+        uint64_t bones = 0;
+        uint8_t unit_normals = 1;
+        for (j = b->first; j < b->first+b->count; ++j) {
+            const C3TitleVertex *v = title->vertices+j;
+            float squared = v->normal[0]*v->normal[0]+v->normal[1]*v->normal[1]+v->normal[2]*v->normal[2];
+            bones |= UINT64_C(1) << v->bone;
+            if (!(fabsf(squared-1.0f) <= C3_TITLE_UNIT_TOLERANCE)) unit_normals = 0;
+        }
+        title->batch_bones[i] = bones;
+        title->batch_unit_normals[i] = unit_normals;
+    }
     next_pixel=offsets[6];
     for (i=0; i<title->texture_count; ++i) {
         const uint8_t *p=data+offsets[2]+i*TEXTURE_BYTES;
         C3TitleTexture *t=title->textures+i;
         uint32_t pixel_offset=u32(p+8),pixel_bytes=u32(p+12);
-        t->width=u32(p); t->height=u32(p+4); t->wrap_s=u32(p+16); t->wrap_t=u32(p+20);
+        uint32_t wrap_word=u32(p+16);
+        t->width=u32(p); t->height=u32(p+4); t->wrap_s=wrap_word&0xFFu; t->wrap_t=u32(p+20);
+        t->gpu_native=data[112]; t->gpu_format=C3_TITLE_GPU_RGBA8; t->levels=1u;
+        if (t->gpu_native) {
+            uint32_t smaller=t->width<t->height?t->width:t->height, max_levels=1u;
+            while (smaller>8u) { smaller>>=1; ++max_levels; }
+            t->gpu_format=(wrap_word>>8)&0xFFu; t->levels=((wrap_word>>16)&0xFFu)+1u;
+            if (wrap_word>>24 || (t->gpu_format!=C3_TITLE_GPU_RGBA8 && t->gpu_format!=C3_TITLE_GPU_RGB565) ||
+                t->levels>max_levels)
+                return fail(error,capacity,"Invalid GPU-native title texture format or levels");
+        } else if (wrap_word>2u) return fail(error,capacity,"Invalid title texture extent or wrapping");
         if (t->width<8u || t->width>1024u || t->height<8u || t->height>1024u ||
             (t->width&(t->width-1u)) || (t->height&(t->height-1u)) ||
-            t->wrap_s>2u || t->wrap_t>2u || pixel_bytes!=t->width*t->height*4u ||
+            t->wrap_s>2u || t->wrap_t>2u ||
+            pixel_bytes!=c3_title_texture_bytes(t->width,t->height,t->gpu_format,t->levels) ||
             pixel_offset!=next_pixel || (uint64_t)pixel_offset+pixel_bytes>title->file_bytes)
             return fail(error,capacity,"Invalid title texture extent or wrapping");
         t->pixels=data+pixel_offset; t->size=pixel_bytes; next_pixel+=pixel_bytes;
@@ -322,6 +355,10 @@ int c3_title_instance(C3Title *instance, const C3Title *owner, char *error, size
     *instance = *owner;
     instance->draw_vertices = sampled;
     instance->borrowed_storage = 1;
+    /* The copied vertices match the owner's pose and skinned placement; the
+     * instance starts with the legacy contract and no placement of its own. */
+    instance->retained = instance->hidden = 0;
+    memset(&instance->placement, 0, sizeof instance->placement);
     instance->resident_bytes = sizeof *instance + owner->vertex_count * sizeof *sampled;
     if (error && capacity) error[0] = '\0';
     return 1;
@@ -343,6 +380,107 @@ int c3_title_parse(C3Title *title, const void *data, size_t bytes, char *error, 
     return 1;
 }
 
+int c3_title_is_compressed(const void *data, size_t bytes, size_t *raw_bytes)
+{
+    const uint8_t *p=(const uint8_t *)data;
+    if (!p || bytes<8u || (memcmp(p,"C3Z1",4)!=0 && memcmp(p,"C3Z2",4)!=0)) return 0;
+    if (raw_bytes) *raw_bytes=(size_t)p[4]|(size_t)p[5]<<8|(size_t)p[6]<<16|(size_t)p[7]<<24;
+    return 1;
+}
+
+/* Inflate one zlib stream (fed by `more`) into exactly `raw` bytes. */
+typedef size_t (*InflateFeed)(void *context, const uint8_t **chunk);
+static int inflate_exact(uint8_t *out, size_t raw, InflateFeed more, void *context)
+{
+    z_stream z; memset(&z,0,sizeof z);
+    if (inflateInit(&z)!=Z_OK) return 0;
+    z.next_out=out; z.avail_out=(uInt)raw;
+    int status=Z_OK;
+    while (status==Z_OK) {
+        if (!z.avail_in) {
+            const uint8_t *chunk=NULL; size_t n=more(context,&chunk);
+            if (!n) break;
+            z.next_in=(Bytef *)chunk; z.avail_in=(uInt)n;
+        }
+        status=inflate(&z,Z_NO_FLUSH);
+    }
+    int ok=status==Z_STREAM_END && z.total_out==raw;
+    inflateEnd(&z);
+    return ok;
+}
+/* Decompress one zstd frame (fed by `more`) into exactly `raw` bytes. The
+ * whole output buffer is stable, so zstd keeps no separate window. */
+static int unzstd_exact(uint8_t *out, size_t raw, InflateFeed more, void *context)
+{
+    ZSTD_DCtx *z=ZSTD_createDCtx(); if (!z) return 0;
+    int ok=!ZSTD_isError(ZSTD_DCtx_setParameter(z,ZSTD_d_stableOutBuffer,1));
+    ZSTD_outBuffer o={out,raw,0}; size_t status=1;
+    while (ok && status) {
+        const uint8_t *chunk=NULL; size_t n=more(context,&chunk);
+        if (!n) break;
+        ZSTD_inBuffer in={chunk,n,0};
+        while (in.pos<in.size && status) {
+            status=ZSTD_decompressStream(z,&o,&in);
+            if (ZSTD_isError(status)) { ok=0; break; }
+        }
+    }
+    ZSTD_freeDCtx(z);
+    return ok && !status && o.pos==raw;
+}
+static int unpack_exact(int zstd, uint8_t *out, size_t raw, InflateFeed more, void *context)
+{ return zstd ? unzstd_exact(out,raw,more,context) : inflate_exact(out,raw,more,context); }
+typedef struct { FILE *file; uint8_t buffer[65536]; } FileFeed;
+static size_t feed_file(void *context, const uint8_t **chunk)
+{
+    FileFeed *f=(FileFeed *)context; size_t n=fread(f->buffer,1,sizeof f->buffer,f->file);
+    *chunk=f->buffer; return n;
+}
+typedef struct { const uint8_t *data; size_t left; } MemoryFeed;
+static size_t feed_memory(void *context, const uint8_t **chunk)
+{
+    MemoryFeed *m=(MemoryFeed *)context; size_t n=m->left; *chunk=m->data; m->data+=n; m->left=0; return n;
+}
+
+static uint64_t (*perf_clock)(void);
+static uint64_t last_unpack_us, last_decode_us;
+static uint64_t load_now(void) { return perf_clock ? perf_clock() : 0; }
+void c3_title_last_load(uint64_t *unpack_us, uint64_t *decode_us)
+{
+    if (unpack_us) *unpack_us=last_unpack_us;
+    if (decode_us) *decode_us=last_decode_us;
+}
+static int adopt(C3Title *title, C3Title *temporary, char *error, size_t capacity)
+{
+    uint64_t started=load_now();
+    int decoded=decode_owned(temporary,error,capacity);
+    last_decode_us=load_now()-started;
+    if (!decoded) { c3_title_close(temporary); free(temporary); return 0; }
+    c3_title_close(title); *title=*temporary; free(temporary);
+    return 1;
+}
+
+int c3_title_load_memory(C3Title *title, const void *data, size_t bytes, char *error, size_t capacity)
+{
+    size_t raw=bytes; int packed;
+    if (!title || !data) return fail(error,capacity,"Invalid title load arguments");
+    packed=c3_title_is_compressed(data,bytes,&raw);
+    if (raw<HEADER_BYTES || raw>C3_TITLE_MAX_FILE_BYTES) return fail(error,capacity,"Invalid title file size");
+    C3Title *temporary=(C3Title *)calloc(1,sizeof *temporary);
+    if (!temporary) return fail(error,capacity,"Not enough memory for title state");
+    temporary->file_data=(uint8_t *)malloc(raw); temporary->file_bytes=raw;
+    if (!temporary->file_data) { free(temporary); return fail(error,capacity,"Not enough memory for title file"); }
+    if (packed) {
+        MemoryFeed feed={(const uint8_t *)data+8,bytes-8u};
+        uint64_t started=load_now();
+        int unpacked=unpack_exact(((const uint8_t *)data)[3]=='2',temporary->file_data,raw,feed_memory,&feed);
+        last_unpack_us=load_now()-started;
+        if (!unpacked) {
+            c3_title_close(temporary); free(temporary); return fail(error,capacity,"Compressed title data is invalid");
+        }
+    } else memcpy(temporary->file_data,data,raw);
+    return adopt(title,temporary,error,capacity);
+}
+
 int c3_title_load(C3Title *title, const char *path, char *error, size_t capacity)
 {
     C3Title *temporary;
@@ -351,6 +489,28 @@ int c3_title_load(C3Title *title, const char *path, char *error, size_t capacity
     if (!title || !path) return fail(error,capacity,"Invalid title load arguments");
     file=fopen(path,"rb");
     if (!file) return fail(error,capacity,"Cannot open title.c3t");
+    {
+        /* Compressed pack: inflate straight from the file in 64 KiB reads,
+         * so the compressed bytes are never held whole. */
+        uint8_t head[8]; size_t raw=0;
+        if (fread(head,1,sizeof head,file)==sizeof head && c3_title_is_compressed(head,sizeof head,&raw)) {
+            if (raw<HEADER_BYTES || raw>C3_TITLE_MAX_FILE_BYTES) { fclose(file); return fail(error,capacity,"Invalid title file size"); }
+            temporary=(C3Title *)calloc(1,sizeof *temporary);
+            FileFeed *feed=(FileFeed *)malloc(sizeof *feed);
+            if (!temporary || !feed) { fclose(file); free(temporary); free(feed); return fail(error,capacity,"Not enough memory for title state"); }
+            temporary->file_data=(uint8_t *)malloc(raw); temporary->file_bytes=raw;
+            if (!temporary->file_data) { fclose(file); free(temporary); free(feed); return fail(error,capacity,"Not enough memory for title file"); }
+            feed->file=file;
+            uint64_t started=load_now();
+            int ok=unpack_exact(head[3]=='2',temporary->file_data,raw,feed_file,feed);
+            last_unpack_us=load_now()-started;
+            free(feed);
+            if (fclose(file)!=0) ok=0;
+            if (!ok) { c3_title_close(temporary); free(temporary); return fail(error,capacity,"Compressed title read failed"); }
+            return adopt(title,temporary,error,capacity);
+        }
+        if (fseek(file,0,SEEK_SET)!=0) { fclose(file); return fail(error,capacity,"Invalid title file size"); }
+    }
     if (fseek(file,0,SEEK_END)!=0 || (bytes=ftell(file))<(long)HEADER_BYTES ||
         bytes>(long)C3_TITLE_MAX_FILE_BYTES || fseek(file,0,SEEK_SET)!=0) {
         fclose(file); return fail(error,capacity,"Invalid title file size");
@@ -374,16 +534,112 @@ static float interpolate(const uint8_t *a, const uint8_t *b, uint32_t index, flo
     return first+(last-first)*fraction;
 }
 
-int c3_title_animate(C3Title *title, uint32_t clip_index, float seconds)
+static uint64_t (*perf_clock)(void);
+static C3TitlePerf perf;
+
+void c3_title_perf_clock(uint64_t (*now_us)(void))
 {
-    C3TitlePose pose;
-    float normals[C3_TITLE_MAX_BONES][9];
+    perf_clock=now_us;
+}
+
+void c3_title_perf_take(C3TitlePerf *out)
+{
+    if (out) *out=perf;
+    memset(&perf,0,sizeof perf);
+}
+
+uint64_t c3_title_perf_animate_us(void)
+{
+    return perf.animate_us;
+}
+
+/* One model is sampled at a time on the main thread. Keeping the per-bone and
+ * per-batch scratch out of the frame keeps the 32 KiB stack shallow. */
+static float scratch_sampled[C3_TITLE_MAX_BONES][12];
+static float scratch_placed[C3_TITLE_MAX_BONES][12];
+static float scratch_normals[C3_TITLE_MAX_BONES][9];
+static uint8_t scratch_rigid[C3_TITLE_MAX_BONES];
+static C3TitleMaterialState scratch_materials[C3_TITLE_MAX_BATCHES];
+
+static int placement_skins_alike(const C3TitlePlacement *a, const C3TitlePlacement *b)
+{
+    if (!a->enabled || !b->enabled) return !a->enabled && !b->enabled;
+    return !memcmp(a->matrix,b->matrix,sizeof a->matrix) && !memcmp(a->normal,b->normal,sizeof a->normal);
+}
+
+/* N * transpose(N) within tolerance of identity: lengths are preserved. */
+static int orthonormal(const float *n)
+{
+    const float tolerance=C3_TITLE_UNIT_TOLERANCE;
+    float aa=n[0]*n[0]+n[1]*n[1]+n[2]*n[2],bb=n[3]*n[3]+n[4]*n[4]+n[5]*n[5],cc=n[6]*n[6]+n[7]*n[7]+n[8]*n[8];
+    float ab=n[0]*n[3]+n[1]*n[4]+n[2]*n[5],ac=n[0]*n[6]+n[1]*n[7]+n[2]*n[8],bc=n[3]*n[6]+n[4]*n[7]+n[5]*n[8];
+    return fabsf(aa-1.0f)<=tolerance && fabsf(bb-1.0f)<=tolerance && fabsf(cc-1.0f)<=tolerance &&
+           fabsf(ab)<=tolerance && fabsf(ac)<=tolerance && fabsf(bc)<=tolerance;
+}
+
+/* Positions and UVs keep the original expressions. Normals are normalised in
+ * single precision, or not at all when both the source normals and the bone's
+ * normal matrix are unit within C3_TITLE_UNIT_TOLERANCE. */
+static void skin_batch(const C3Title *title, const C3TitleBatch *b, const C3TitleMaterialState *state,
+                       const float (*matrices)[12], int unit_normals)
+{
+    const C3TitleVertex *restrict source=title->vertices+b->first;
+    const C3TitleVertex *end=source+b->count;
+    C3TitleDrawVertex *restrict target=title->draw_vertices+b->first;
+    const float us=state->uv_scale[0],uc=state->uv_cross[0],uo=state->uv_offset[0];
+    const float vc=state->uv_cross[1],vs=state->uv_scale[1],vo=state->uv_offset[1];
+    const float u2s=state->uv2_scale[0],u2c=state->uv2_cross[0],u2o=state->uv2_offset[0];
+    const float v2c=state->uv2_cross[1],v2s=state->uv2_scale[1],v2o=state->uv2_offset[1];
+    for (;source<end;++source,++target) {
+        const float *m=matrices[source->bone],*n=scratch_normals[source->bone];
+        const float px=source->pos[0],py=source->pos[1],pz=source->pos[2];
+        const float sx=source->normal[0],sy=source->normal[1],sz=source->normal[2];
+        const float u=source->uv[0],v=source->uv[1],u2=source->uv2[0],v2=source->uv2[1];
+        const float x=m[0]*px+m[1]*py+m[2]*pz+m[3];
+        const float y=m[4]*px+m[5]*py+m[6]*pz+m[7];
+        const float z=m[8]*px+m[9]*py+m[10]*pz+m[11];
+        float nx=n[0]*sx+n[1]*sy+n[2]*sz;
+        float ny=n[3]*sx+n[4]*sy+n[5]*sz;
+        float nz=n[6]*sx+n[7]*sy+n[8]*sz;
+        if (!(unit_normals && scratch_rigid[source->bone])) {
+            float squared=nx*nx+ny*ny+nz*nz;
+            if (squared>1e-30f) {
+                float scale=1.0f/sqrtf(squared);
+                nx*=scale; ny*=scale; nz*=scale;
+            } else {
+                /* Degenerate lengths keep the original double-precision rule. */
+                double length=sqrt((double)nx*nx+(double)ny*ny+(double)nz*nz);
+                if (length>0.0) { nx=(float)(nx/length); ny=(float)(ny/length); nz=(float)(nz/length); }
+            }
+        }
+        target->pos[0]=x; target->pos[1]=y; target->pos[2]=z;
+        target->normal[0]=nx; target->normal[1]=ny; target->normal[2]=nz;
+        target->uv[0]=u*us+v*uc+uo;
+        target->uv[1]=u*vc+v*vs+vo;
+        target->uv2[0]=u2*u2s+v2*u2c+u2o;
+        target->uv2[1]=u2*v2c+v2*v2s+v2o;
+        memcpy(target->rgba,source->rgba,4);
+    }
+}
+
+static int animate(C3Title *title, uint32_t clip_index, float seconds)
+{
     const C3TitleClip *clip;
-    const uint8_t *first,*last;
-    uint32_t index,next,bone,batch,i,j;
+    const C3TitlePlacement *placement;
+    const uint8_t *first,*last,*material_first;
+    const float (*skin)[12];
+    C3TitleCamera camera;
+    uint64_t changed=0,needed=0,skinned=0,stale=0,gpu=0,gpu_bones=0;
+    uint32_t index,next,bone,batch,i;
     double frame;
     float fraction;
+    int all;
     if (!title || !title->file_data || !title->draw_vertices || clip_index>=title->clip_count || !isfinite(seconds)) return 0;
+    placement=&title->placement;
+    if (placement->enabled) {
+        for (i=0;i<12;++i) if (!bounded(placement->matrix[i],1e12f)) return 0;
+        for (i=0;i<9;++i) if (!bounded(placement->normal[i],1e6f)) return 0;
+    }
     clip=title->clips+clip_index;
     frame=seconds>0 ? (double)seconds*(double)title->fps : 0.0;
     if (clip->loop && clip->frame_count>1u) frame=fmod(frame,(double)(clip->frame_count-1u));
@@ -393,17 +649,20 @@ int c3_title_animate(C3Title *title, uint32_t clip_index, float seconds)
     fraction=(float)(frame-(double)index);
     first=title->file_data+title->frame_offset+(clip->first_frame+index)*title->frame_bytes;
     last=title->file_data+title->frame_offset+(clip->first_frame+next)*title->frame_bytes;
-    memset(&pose,0,sizeof pose);
+    /* The legacy contract rewrites everything. A retained model rewrites a
+     * batch only when a bone it uses, its UV state or the placement differs
+     * from what its sampled vertices were last built from. */
+    all=!title->retained || !placement_skins_alike(placement,&title->skinned_placement);
     for (bone=0; bone<title->bone_count; ++bone,first+=48u,last+=48u) {
-        for (i=0;i<12;++i) pose.matrices[bone][i]=interpolate(first,last,i,fraction);
-        if (!normal_matrix(pose.matrices[bone],normals[bone])) {
-            if(!bone_hidden(title,first+(title->bone_count-bone)*48u,bone))return 0;
-            memset(normals[bone],0,sizeof normals[bone]);
-            normals[bone][0]=normals[bone][4]=normals[bone][8]=1.0f;
-        }
+        float *m=scratch_sampled[bone];
+        for (i=0;i<12;++i) m[i]=interpolate(first,last,i,fraction);
+        if (all || memcmp(m,title->pose.matrices[bone],sizeof scratch_sampled[bone])) changed|=UINT64_C(1)<<bone;
     }
+    material_first=first;
     for (batch=0;batch<title->batch_count;++batch,first+=title->material_frame_bytes,last+=title->material_frame_bytes) {
-        C3TitleMaterialState *state=pose.materials+batch;
+        C3TitleMaterialState *state=scratch_materials+batch;
+        const C3TitleMaterialState *prior=title->pose.materials+batch;
+        int differs;
         for (i=0;i<2;++i) {
             state->uv_scale[i]=interpolate(first,last,i,fraction);
             state->uv_offset[i]=interpolate(first,last,i+2u,fraction);
@@ -415,34 +674,94 @@ int c3_title_animate(C3Title *title, uint32_t clip_index, float seconds)
         for (i=0;i<3;++i) state->specular_origin[i]=title->format_version>=3u ? interpolate(first,last,i+20u,fraction):0.0f;
         state->alpha=interpolate(first,last,4u,fraction); state->visible=f32(first+20u);
         for (i=0;i<3;++i) { state->tev0[i]=f32(first+24u+i*4u); state->konst[i]=f32(first+36u+i*4u); }
+        differs=!title->batch_current[batch] || (changed&title->batch_bones[batch]) ||
+            memcmp(state->uv_scale,prior->uv_scale,sizeof state->uv_scale) ||
+            memcmp(state->uv_offset,prior->uv_offset,sizeof state->uv_offset) ||
+            memcmp(state->uv2_scale,prior->uv2_scale,sizeof state->uv2_scale) ||
+            memcmp(state->uv2_offset,prior->uv2_offset,sizeof state->uv2_offset) ||
+            memcmp(state->uv_cross,prior->uv_cross,sizeof state->uv_cross) ||
+            memcmp(state->uv2_cross,prior->uv2_cross,sizeof state->uv2_cross);
+        if (title->retained && ((title->gpu_batches>>batch)&1u)) {
+            /* The GPU skins this batch from pose.skin every draw. Its sampled
+             * vertices are not maintained, so a later CPU draw must rebuild. */
+            if (!title->hidden && state->visible>=0.5f) { gpu|=UINT64_C(1)<<batch; gpu_bones|=title->batch_bones[batch]; }
+            stale|=UINT64_C(1)<<batch;
+        } else if (!title->retained || (differs && !title->hidden && state->visible>=0.5f)) {
+            skinned|=UINT64_C(1)<<batch;
+            needed|=title->batch_bones[batch];
+        } else if (differs) stale|=UINT64_C(1)<<batch;
     }
-    for (i=0;i<3;++i) { pose.camera.eye[i]=interpolate(first,last,i,fraction); pose.camera.target[i]=interpolate(first,last,i+3u,fraction); }
-    pose.camera.roll=interpolate(first,last,6u,fraction);
-    pose.camera.fov_y_degrees=interpolate(first,last,7u,fraction);
-    pose.camera.near_plane=interpolate(first,last,8u,fraction);
-    pose.camera.far_plane=interpolate(first,last,9u,fraction);
-    pose.camera.aspect=interpolate(first,last,10u,fraction);
-    for (batch=0;batch<title->batch_count;++batch) {
-        const C3TitleBatch *b=title->batches+batch;
-        const C3TitleMaterialState *state=pose.materials+batch;
-        for (i=b->first;i<b->first+b->count;++i) {
-            const C3TitleVertex *source=title->vertices+i;
-            C3TitleDrawVertex *target=title->draw_vertices+i;
-            const float *m=pose.matrices[source->bone],*n=normals[source->bone];
-            double length;
-            for (j=0;j<3;++j) {
-                target->pos[j]=m[j*4u]*source->pos[0]+m[j*4u+1u]*source->pos[1]+m[j*4u+2u]*source->pos[2]+m[j*4u+3u];
-                target->normal[j]=n[j*3u]*source->normal[0]+n[j*3u+1u]*source->normal[1]+n[j*3u+2u]*source->normal[2];
-            }
-            length=sqrt((double)target->normal[0]*target->normal[0]+(double)target->normal[1]*target->normal[1]+(double)target->normal[2]*target->normal[2]);
-            if (length>0.0) for (j=0;j<3;++j) target->normal[j]=(float)(target->normal[j]/length);
-            target->uv[0]=source->uv[0]*state->uv_scale[0]+source->uv[1]*state->uv_cross[0]+state->uv_offset[0];
-            target->uv[1]=source->uv[0]*state->uv_cross[1]+source->uv[1]*state->uv_scale[1]+state->uv_offset[1];
-            target->uv2[0]=source->uv2[0]*state->uv2_scale[0]+source->uv2[1]*state->uv2_cross[0]+state->uv2_offset[0];
-            target->uv2[1]=source->uv2[0]*state->uv2_cross[1]+source->uv2[1]*state->uv2_scale[1]+state->uv2_offset[1];
-            memcpy(target->rgba,source->rgba,4);
+    for (i=0;i<3;++i) { camera.eye[i]=interpolate(first,last,i,fraction); camera.target[i]=interpolate(first,last,i+3u,fraction); }
+    camera.roll=interpolate(first,last,6u,fraction);
+    camera.fov_y_degrees=interpolate(first,last,7u,fraction);
+    camera.near_plane=interpolate(first,last,8u,fraction);
+    camera.far_plane=interpolate(first,last,9u,fraction);
+    camera.aspect=interpolate(first,last,10u,fraction);
+    skin=placement->enabled ? (const float (*)[12])scratch_placed : (const float (*)[12])scratch_sampled;
+    for (bone=0; bone<title->bone_count; ++bone) {
+        float *n=scratch_normals[bone];
+        if (!(((needed|gpu_bones)>>bone)&1u)) continue;
+        if (!normal_matrix(scratch_sampled[bone],n)) {
+            if(!bone_hidden(title,material_first,bone))return 0;
+            memset(n,0,sizeof scratch_normals[bone]);
+            n[0]=n[4]=n[8]=1.0f;
         }
+        if (placement->enabled) {
+            const float *p=placement->matrix,*q=placement->normal,*m=scratch_sampled[bone];
+            float *out=scratch_placed[bone],rotated[9];
+            for (i=0;i<3;++i) {
+                uint32_t column;
+                for (column=0;column<4;++column)
+                    out[i*4u+column]=p[i*4u]*m[column]+p[i*4u+1u]*m[4u+column]+p[i*4u+2u]*m[8u+column]+(column==3u ? p[i*4u+3u]:0.0f);
+                for (column=0;column<3;++column)
+                    rotated[i*3u+column]=q[i*3u]*n[column]+q[i*3u+1u]*n[3u+column]+q[i*3u+2u]*n[6u+column];
+            }
+            memcpy(n,rotated,sizeof rotated);
+        }
+        scratch_rigid[bone]=(uint8_t)orthonormal(n);
     }
-    title->pose=pose; title->active_clip=clip_index; title->active_frame=(float)frame;
+    /* Nothing below can fail: commit the pose, then the changed vertices. */
+    memcpy(title->pose.matrices,scratch_sampled,title->bone_count*sizeof scratch_sampled[0]);
+    for (bone=0; bone<title->bone_count; ++bone) {
+        if (!((gpu_bones>>bone)&1u)) continue;
+        memcpy(title->pose.skin[bone],skin[bone],sizeof title->pose.skin[bone]);
+        memcpy(title->pose.skin_normal[bone],scratch_normals[bone],sizeof title->pose.skin_normal[bone]);
+    }
+    for (batch=0;batch<title->batch_count;++batch) {
+        C3TitleMaterialState *state=scratch_materials+batch;
+        const C3TitleBatch *b=title->batches+batch;
+        if ((gpu>>batch)&1u) {
+            title->batch_current[batch]=0;
+            perf.vertices_gpu+=b->count;
+        } else if ((skinned>>batch)&1u) {
+            skin_batch(title,b,state,skin,title->batch_unit_normals[batch]);
+            ++title->batch_revision[batch];
+            /* A legacy caller may rewrite these vertices after this call. */
+            title->batch_current[batch]=title->retained;
+            perf.vertices_animated+=b->count;
+        } else {
+            if ((stale>>batch)&1u) title->batch_current[batch]=0;
+            perf.vertices_retained+=b->count;
+        }
+        if (placement->enabled && placement->origin) {
+            const float *p=placement->matrix;
+            float x=state->specular_origin[0],y=state->specular_origin[1],z=state->specular_origin[2];
+            for (i=0;i<3;++i) state->specular_origin[i]=p[i*4u]*x+p[i*4u+1u]*y+p[i*4u+2u]*z+p[i*4u+3u];
+        }
+        if (title->hidden) state->visible=0.0f;
+        title->pose.materials[batch]=*state;
+    }
+    title->pose.camera=camera;
+    title->skinned_placement=*placement;
+    title->active_clip=clip_index; title->active_frame=(float)frame;
     return 1;
+}
+
+int c3_title_animate(C3Title *title, uint32_t clip_index, float seconds)
+{
+    uint64_t started=perf_clock ? perf_clock() : 0;
+    int result=animate(title,clip_index,seconds);
+    ++perf.calls;
+    if (perf_clock) perf.animate_us+=perf_clock()-started;
+    return result;
 }

@@ -7,6 +7,7 @@ static const unsigned capacities[]={20,43,16,64,46,3};
 static uint16_t r16(const uint8_t *p){return c3_pda_be16(p);}
 static void w16(uint8_t *p,unsigned v){p[0]=(uint8_t)(v>>8);p[1]=(uint8_t)v;}
 unsigned c3_inventory_capacity(unsigned p){return p<6?capacities[p]:0;}
+int c3_inventory_slot(const C3GameState *state,unsigned p,unsigned s,unsigned *item,unsigned *count){const uint8_t *b=state?c3_game_state_body(state,NULL):NULL;if(!b||p>=6||s>=capacities[p])return 0;const uint8_t *d=b+offsets[p]+s*4;unsigned at=(unsigned)d[0]<<8|d[1],q=(unsigned)d[2]<<8|d[3];if(item)*item=at;if(count)*count=q;return at!=0&&q!=0;}
 int c3_inventory_item(const C3PdaAssets *a,unsigned id,C3InventoryItem *out){size_t n;const uint8_t *d=c3_pda_entry(a,7,id,&n);if(!out||!id||!d||n!=40)return 0;memset(out,0,sizeof *out);out->id=(uint16_t)id;out->kind=d[0];out->important=d[1];out->param=d[4];out->name=c3_pda_be32(d+16);out->description=c3_pda_be32(d+20);out->field_function=c3_pda_be32(d+28);return 1;}
 static int pocket(unsigned kind){static const int map[]={-1,2,0,4,3,1,5};return kind<7?map[kind]:-1;}
 static uint8_t *bag(uint8_t *b,unsigned p,unsigned s){return b+offsets[p]+s*4;}
@@ -156,4 +157,42 @@ C3InventoryCode c3_inventory_apply(C3GameState *state,const C3PdaAssets *a,const
  else code=use_item(after,a,q,r,&item);
  if(code==C3_INVENTORY_OK){if(item.field_function!=0x80022e54u&&!memcmp(before+0xa0,after+0xa0,6*312)){code=C3_INVENTORY_NO_EFFECT;goto done;}if(r->evolved_species&&(!memo_evolution(after,p)||(item.field_function==0x800232f0u&&!evolution_extra(after,before,a,q,p)))){code=C3_INVENTORY_FULL;goto done;}size_t item_n;const uint8_t *definition=c3_pda_entry(a,7,id,&item_n);int hm=item.kind==4&&definition&&item_n==40&&(uint8_t)c3_pda_be32(definition+24)>=50;int flute=item.field_function==0x80023b9cu&&id>=39&&id<=43;if(!hm&&!flute)remove_item(after,q->pocket,q->slot,1);}
  done:if(code==C3_INVENTORY_NEED_MOVE||code==C3_INVENTORY_NEED_REPLACEMENT||code==C3_INVENTORY_NEED_EVOLUTION)memcpy(r->pokemon,p,312);if(code==C3_INVENTORY_OK&&!c3_game_state_inventory_commit(state,before,after,n))code=C3_INVENTORY_CONFLICT;r->code=code;free(before);free(after);return code;
+}
+
+int c3_inventory_receive(C3GameState *state,const C3PdaAssets *assets,unsigned id,unsigned count)
+{
+    size_t bytes=0;const uint8_t *body=c3_game_state_body(state,&bytes);C3InventoryItem info;
+    if(!body||!assets||!count||count>999||!c3_inventory_item(assets,id,&info)||pocket(info.kind)<0)return -1;
+    uint8_t *before=malloc(bytes),*after=malloc(bytes);int result=-1;
+    if(before&&after){
+        unsigned added=0;
+        memcpy(before,body,bytes);memcpy(after,body,bytes);
+        while(added<count&&add_item(after,assets,id))++added;
+        if(added!=count)result=(int)count;
+        else result=c3_game_state_inventory_commit(state,before,after,bytes)?0:-1;
+    }
+    free(before);free(after);return result;
+}
+
+int c3_inventory_restore_party(C3GameState *state,const C3PdaAssets *assets)
+{
+    size_t bytes=0;const uint8_t *body=c3_game_state_body(state,&bytes);
+    if(!body||!assets)return -1;
+    uint8_t *before=malloc(bytes),*after=malloc(bytes);int restored=-1;
+    if(before&&after){
+        memcpy(before,body,bytes);memcpy(after,body,bytes);restored=0;
+        for(unsigned slot=0;slot<6;++slot){
+            uint8_t *p=after+0xa0+slot*312;unsigned status=r16(p+0x64);
+            if(!r16(p))continue;
+            w16(p+0x8a,r16(p+0x8c));
+            for(unsigned i=0;i<4;++i){uint8_t *m=p+0x78+i*4;unsigned maximum;
+                if(!valid_move(r16(m))||!(maximum=max_pp(assets,m)))continue;
+                m[2]=(uint8_t)maximum;
+            }
+            if(status>=3&&status<=8){memset(p+0x64,0,7);memset(p+0x6c,0,6);}
+            ++restored;
+        }
+        if(!c3_game_state_inventory_commit(state,before,after,bytes))restored=-1;
+    }
+    free(before);free(after);return restored;
 }

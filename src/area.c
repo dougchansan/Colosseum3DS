@@ -174,3 +174,123 @@ const C3FieldTriangle *c3_area_transition_active(const C3Area *area,const C3Fiel
     }
     return NULL;
 }
+
+/* GScolsys2Thru.c getCpPointPoly / getCpPointLine / getCpPointPoint: the
+ * face, the flagged edges and the flagged corners of one event triangle
+ * against a sphere centre on the triangle's front side. */
+static int touch_pass(const C3FieldTriangle *t,const double point[3],double radius_sq,unsigned pass)
+{
+    static const uint16_t masks[3]={1,2,4};
+    double v[3][3],n[3],offset[3];
+    for(unsigned i=0;i<3;++i)for(unsigned j=0;j<3;++j)v[i][j]=t->vertices[i*3+j];
+    for(unsigned j=0;j<3;++j){n[j]=t->normal[j];offset[j]=point[j]-v[0][j];}
+    double side=dot(offset,n),nn=dot(n,n);
+    if(side<0||nn<=0)return 0;
+    if(pass==0){
+        double cp[3],a[3],u[3],w[3];
+        if(side*side/nn>=radius_sq)return 0;
+        for(unsigned j=0;j<3;++j){cp[j]=point[j]-n[j]*side/nn;a[j]=cp[j]-v[0][j];u[j]=v[1][j]-v[0][j];w[j]=v[2][j]-v[0][j];}
+        double uu=dot(u,u),uw=dot(u,w),ww=dot(w,w),d=uu*ww-uw*uw;
+        if(d<=1e-14)return 0;
+        double s=(dot(a,u)*ww-dot(a,w)*uw)/d,r=(dot(a,w)*uu-dot(a,u)*uw)/d;
+        return s>=0&&r>=0&&s+r<=1;
+    }
+    for(unsigned i=0;i<3;++i){
+        if(pass==1){
+            unsigned next=i+1<3?i+1:0;double edge[3],to[3],cp[3];
+            if(!(t->flags&masks[i]))continue;
+            for(unsigned j=0;j<3;++j){edge[j]=v[next][j]-v[i][j];to[j]=point[j]-v[i][j];}
+            double length=dot(edge,edge);if(length<=0)continue;
+            double at=dot(to,edge)/length;if(at<0||at>1)continue;
+            for(unsigned j=0;j<3;++j)cp[j]=point[j]-(v[i][j]+edge[j]*at);
+            if(dot(cp,cp)<radius_sq)return 1;
+        }else{
+            unsigned prev=i+2<3?i+2:i-1;double to[3];
+            if(!(t->flags&masks[i])||!(t->flags&masks[prev]))continue;
+            for(unsigned j=0;j<3;++j)to[j]=point[j]-v[i][j];
+            if(dot(to,to)<radius_sq)return 1;
+        }
+    }
+    return 0;
+}
+
+unsigned c3_area_touch_events(const C3Area *area,const C3FieldMap *map,const float before[3],
+                              const float after[3],float radius,uint16_t ids[4])
+{
+    unsigned count=0;double direction[3];
+    if(!area||!before||!after||!ids||!isfinite(radius)||radius<=0)return 0;
+    for(unsigned j=0;j<3;++j){
+        if(!isfinite(before[j])||!isfinite(after[j]))return 0;
+        direction[j]=(double)after[j]-before[j];
+    }
+    double length=sqrt(dot(direction,direction));
+    if(!(length>0))return 0;
+    /* GScolsys2ThruGetEventID: sample the step every `radius` along it. */
+    double step=radius/length,position=0;if(step>1)step=1;
+    while(position<1&&count<4){
+        double sample=position+step,point[3];if(sample>1)sample=1;
+        for(unsigned j=0;j<3;++j)point[j]=before[j]+direction[j]*sample;
+        for(unsigned pass=0;pass<3&&count<4;++pass)for(uint32_t i=0;i<area->transition_count&&count<4;++i){
+            const C3FieldTriangle *t=area->transitions+i;double n[3]={t->normal[0],t->normal[1],t->normal[2]};unsigned k;
+            if(map&&!c3_field_object_enabled(map,t->object))continue;
+            if(pass&&!(t->flags&7u))continue;
+            for(k=0;k<count;++k)if(ids[k]==t->source_id)break;
+            if(k<count||dot(n,direction)>=0)continue;
+            if(touch_pass(t,point,(double)radius*radius,pass))ids[count++]=t->source_id;
+        }
+        position+=step;
+    }
+    return count;
+}
+
+static uint32_t door_word(const unsigned char *p)
+{ return (uint32_t)p[0]|(uint32_t)p[1]<<8|(uint32_t)p[2]<<16|(uint32_t)p[3]<<24; }
+static int door_fail(char *error,size_t capacity,const char *message)
+{ if(error&&capacity)snprintf(error,capacity,"%s",message);return 0; }
+
+int c3_area_doors_parse(C3AreaDoors *doors,const void *data,size_t bytes,char *error,size_t capacity)
+{
+    const unsigned char *p=data;C3AreaDoors next;
+    if(!doors||!p||bytes<32u||memcmp(p,"C3D1",4)||door_word(p+4)!=1u||door_word(p+8)!=bytes||door_word(p+20)!=64u)
+        return door_fail(error,capacity,"Invalid door pack header.");
+    memset(&next,0,sizeof next);next.floor=door_word(p+12);next.count=door_word(p+16);
+    for(unsigned i=24;i<32;++i)if(p[i])return door_fail(error,capacity,"Invalid door pack header.");
+    if(!next.floor||next.floor>65535u||next.count>C3_AREA_MAX_DOORS||bytes!=32u+(size_t)next.count*64u)
+        return door_fail(error,capacity,"Invalid door pack extent.");
+    for(uint32_t i=0;i<next.count;++i){
+        const unsigned char *r=p+32u+i*64u;C3AreaDoor *d=next.rows+i;int terminated=0;
+        d->index=door_word(r);
+        d->open_anim=(int8_t)r[4];d->close_anim=(int8_t)r[5];d->open_end_anim=(int8_t)r[6];d->close_end_anim=(int8_t)r[7];
+        d->alternate_a=(int8_t)r[8];d->alternate_b=(int8_t)r[9];d->door_type=r[10];d->part_index=r[11];
+        d->collision_id=(int16_t)(r[12]|r[13]<<8);d->open_flag=(uint16_t)(r[14]|r[15]<<8);
+        d->close_flag=(uint16_t)(r[16]|r[17]<<8);d->part_bone_plus_one=(uint16_t)(r[18]|r[19]<<8);
+        d->resource=door_word(r+20);memcpy(d->file,r+24,40);
+        if(i&&d->index<=next.rows[i-1].index)return door_fail(error,capacity,"Door pack rows are not in table order.");
+        if(d->open_anim<-1||d->close_anim<-1||d->open_end_anim<-1||d->close_end_anim<-1||
+           d->alternate_a<-1||d->alternate_b<-1||d->open_anim>=(int)C3_TITLE_MAX_CLIPS||d->close_anim>=(int)C3_TITLE_MAX_CLIPS||
+           d->open_end_anim>=(int)C3_TITLE_MAX_CLIPS||d->close_end_anim>=(int)C3_TITLE_MAX_CLIPS||
+           d->alternate_a>=(int)C3_TITLE_MAX_CLIPS||d->alternate_b>=(int)C3_TITLE_MAX_CLIPS||
+           d->collision_id<-1||d->part_bone_plus_one>C3_TITLE_MAX_BONES)
+            return door_fail(error,capacity,"Invalid door pack row.");
+        for(unsigned j=0;j<40;++j){
+            char c=d->file[j];
+            if(!c){terminated=1;continue;}
+            if(terminated||!((c>='a'&&c<='z')||(c>='0'&&c<='9')||c=='_'||c=='.'))
+                return door_fail(error,capacity,"Invalid door pack file name.");
+        }
+        if(!terminated||d->file[0]=='.'||strstr(d->file,".."))return door_fail(error,capacity,"Invalid door pack file name.");
+    }
+    *doors=next;if(error&&capacity)error[0]=0;return 1;
+}
+
+int c3_area_doors_load(C3AreaDoors *doors,const char *path,char *error,size_t capacity)
+{
+    unsigned char data[32u+C3_AREA_MAX_DOORS*64u+1u];size_t bytes;FILE *file;
+    if(!doors||!path)return door_fail(error,capacity,"Invalid door pack arguments.");
+    file=fopen(path,"rb");
+    if(!file)return door_fail(error,capacity,"Prepared door pack was not found.");
+    bytes=fread(data,1,sizeof data,file);
+    if(ferror(file)||!feof(file)){fclose(file);return door_fail(error,capacity,"Invalid door pack file size.");}
+    fclose(file);
+    return c3_area_doors_parse(doors,data,bytes,error,capacity);
+}

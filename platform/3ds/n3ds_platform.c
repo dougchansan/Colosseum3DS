@@ -6,8 +6,10 @@
 #include <stdio.h>
 #include <malloc.h>
 #include <string.h>
+#include <math.h>
 
 static bool graphics_started;
+static bool console_is_new;
 static uint16_t previous_buttons;
 static uint16_t deferred_buttons;
 static aptHookCookie clock_hook;
@@ -81,10 +83,10 @@ int c3_n3ds_init(char *error, size_t capacity)
         snprintf(error, capacity, "New 3DS detection failed: 0x%08lX", (unsigned long)result);
         return -1;
     }
-    if (!is_new) {
-        snprintf(error, capacity, "A New 3DS/XL or New 2DS XL is required.");
-        return -1;
-    }
+    /* An original 3DS/2DS runs too: slower (268 MHz, no L2) and with less
+     * application memory, so the 30 fps target applies to New models only.
+     * The model is recorded in every memory trace line. */
+    console_is_new = is_new;
     /* This is a request to the system; it is not a measured clock-rate claim. */
     osSetSpeedupEnable(true);
     c3_bottom_screen_init();
@@ -92,6 +94,19 @@ int c3_n3ds_init(char *error, size_t capacity)
     return 0;
 }
 
+static uint16_t previous_touch_x, previous_touch_y, stick_armed_direction;
+static bool previous_touch;
+
+#ifdef C3_CAMPAIGN
+static int autopress_enabled;
+static uint64_t autopress_interval_us, autopress_next_us;
+void c3_n3ds_autopress(int enabled, float interval)
+{
+    autopress_enabled = enabled;
+    autopress_interval_us = (uint64_t)(interval > 0.1f ? interval * 1000000.0f : 1600000.0f);
+    autopress_next_us = c3_n3ds_time_us() + autopress_interval_us;
+}
+#endif
 bool c3_n3ds_poll(C3N3dsInput *input)
 {
     uint32_t keys;
@@ -108,11 +123,39 @@ bool c3_n3ds_poll(C3N3dsInput *input)
     previous_buttons = input->held;
     input->stick_x = normalize_axis(circle.dx);
     input->stick_y = normalize_axis(circle.dy);
+    /* Menus read direction edges from `pressed`. A Circle Pad push past 80
+     * of 127 adds one D-pad edge; it re-arms below 40. `held` is unchanged,
+     * so field movement still reads the stick itself. */
+    {
+        uint16_t stick = 0;
+        int x = input->stick_x, y = input->stick_y, ax = x < 0 ? -x : x, ay = y < 0 ? -y : y;
+        if (ax >= ay && ax > 80) stick = x > 0 ? C3_PAD_RIGHT : C3_PAD_LEFT;
+        else if (ay > ax && ay > 80) stick = y > 0 ? C3_PAD_UP : C3_PAD_DOWN;
+        if (stick && !stick_armed_direction) input->pressed |= stick;
+        if (stick) stick_armed_direction = stick;
+        else if (ax < 40 && ay < 40) stick_armed_direction = 0;
+    }
     input->cstick_x = normalize_axis(cstick.dx);
     input->cstick_y = normalize_axis(cstick.dy);
     input->trigger_l = (keys & KEY_L) ? 255 : 0;
     input->trigger_r = (keys & KEY_R) ? 255 : 0;
+    if (keys & KEY_TOUCH) {
+        touchPosition touch;
+        hidTouchRead(&touch);
+        previous_touch_x = touch.px; previous_touch_y = touch.py;
+        input->touch_held = true;
+    }
+    input->touch_x = previous_touch_x; input->touch_y = previous_touch_y;
+    input->touch_pressed = input->touch_held && !previous_touch;
+    input->touch_released = !input->touch_held && previous_touch;
+    previous_touch = input->touch_held;
     input->exit_requested = (keys & (KEY_START | KEY_SELECT)) == (KEY_START | KEY_SELECT);
+#ifdef C3_CAMPAIGN
+    if (autopress_enabled && c3_n3ds_time_us() >= autopress_next_us) {
+        input->pressed |= C3_PAD_A;
+        autopress_next_us = c3_n3ds_time_us() + autopress_interval_us;
+    }
+#endif
     return !input->exit_requested;
 }
 
@@ -140,12 +183,116 @@ uint64_t c3_n3ds_active_time_us(void)
     return now - paused;
 }
 
+int c3_n3ds_capture_top(const char *path)
+{
+    u16 width = 0, height = 0;
+    const u8 *fb = gfxGetFramebuffer(GFX_TOP, GFX_LEFT, &width, &height);
+    /* Top screen memory is 240 (width) x 400 (height) columns, BGR8,
+     * rotated: screen pixel (x, y) is at ((x * 240) + (239 - y)) * 3. */
+    if (!fb || width != 240 || height < 400 || gfxGetScreenFormat(GFX_TOP) != GSP_BGR8_OES) return -1;
+    FILE *file = fopen(path, "wb");
+    if (!file) return -1;
+    static u8 row[400 * 3];
+    u8 header[54] = {'B', 'M'};
+    u32 image = 400u * 240u * 3u, total = 54u + image;
+    memcpy(header + 2, &total, 4);
+    header[10] = 54; header[14] = 40;
+    u32 w = 400, h = 240; memcpy(header + 18, &w, 4); memcpy(header + 22, &h, 4);
+    header[26] = 1; header[28] = 24;
+    memcpy(header + 34, &image, 4);
+    int ok = fwrite(header, 1, sizeof header, file) == sizeof header;
+    /* BMP rows run bottom to top; the BGR byte order matches. */
+    for (int y = 239; ok && y >= 0; --y) {
+        for (int x = 0; x < 400; ++x) memcpy(row + x * 3, fb + ((size_t)x * 240u + (239u - (unsigned)y)) * 3u, 3);
+        ok = fwrite(row, 1, sizeof row, file) == sizeof row;
+    }
+    if (fclose(file) != 0) ok = 0;
+    return ok ? 0 : -1;
+}
+
+int c3_n3ds_capture_bottom(const char *path)
+{
+    /* Bottom screen: 240 x 320 columns, rotated like the top screen, in
+     * BGR8 or RGB565 (bottom_screen.c chooses). Written as a 24-bit BMP. */
+    u16 width = 0, height = 0;
+    const u8 *fb = gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, &width, &height);
+    int format = gfxGetScreenFormat(GFX_BOTTOM);
+    if (!fb || width != 240 || height < 320 || (format != GSP_BGR8_OES && format != GSP_RGB565_OES)) return -1;
+    FILE *file = fopen(path, "wb");
+    if (!file) return -1;
+    static u8 row[320 * 3];
+    u8 header[54] = {'B', 'M'};
+    u32 image = 320u * 240u * 3u, total = 54u + image;
+    memcpy(header + 2, &total, 4);
+    header[10] = 54; header[14] = 40;
+    u32 w = 320, h = 240; memcpy(header + 18, &w, 4); memcpy(header + 22, &h, 4);
+    header[26] = 1; header[28] = 24;
+    memcpy(header + 34, &image, 4);
+    int ok = fwrite(header, 1, sizeof header, file) == sizeof header;
+    for (int y = 239; ok && y >= 0; --y) {
+        for (int x = 0; x < 320; ++x) {
+            size_t at = (size_t)x * 240u + (239u - (unsigned)y);
+            if (format == GSP_BGR8_OES) memcpy(row + x * 3, fb + at * 3u, 3);
+            else {
+                u16 p = (u16)(fb[at * 2u] | fb[at * 2u + 1u] << 8);
+                row[x * 3] = (u8)((p & 31u) << 3);
+                row[x * 3 + 1] = (u8)(((p >> 5) & 63u) << 2);
+                row[x * 3 + 2] = (u8)((p >> 11) << 3);
+            }
+        }
+        ok = fwrite(row, 1, sizeof row, file) == sizeof row;
+    }
+    if (fclose(file) != 0) ok = 0;
+    return ok ? 0 : -1;
+}
+
+static void top_dot(u8 *fb, int cx, int cy, int radius, u8 level)
+{
+    for (int dy = -radius; dy <= radius; ++dy)
+        for (int dx = -radius; dx <= radius; ++dx) {
+            if (dx * dx + dy * dy > radius * radius) continue;
+            int x = cx + dx, y = cy + dy;
+            if (x < 0 || x >= 400 || y < 0 || y >= 240) continue;
+            u8 *p = fb + ((size_t)x * 240u + (239u - (unsigned)y)) * 3u;
+            p[0] = level; p[1] = level; p[2] = level;
+        }
+}
+void c3_n3ds_top_loading(float fraction)
+{
+    u16 width = 0, height = 0;
+    if (gfxGetScreenFormat(GFX_TOP) != GSP_BGR8_OES) return;
+    u8 *fb = gfxGetFramebuffer(GFX_TOP, GFX_LEFT, &width, &height);
+    if (!fb || width != 240 || height < 400) return;
+    if (!(fraction >= 0.0f)) fraction = 0.0f;
+    if (fraction > 1.0f) fraction = 1.0f;
+    memset(fb, 0, 400u * 240u * 3u);
+    /* Ring of eight dots; the bright one advances with time. */
+    unsigned lead = (unsigned)(svcGetSystemTick() / (SYSCLOCK_ARM11 / 10u)) % 8u;
+    for (unsigned i = 0; i < 8; ++i) {
+        float angle = (float)i * 0.785398163f;
+        int x = 200 + (int)lroundf(sinf(angle) * 26.0f), y = 104 - (int)lroundf(cosf(angle) * 26.0f);
+        unsigned age = (lead + 8u - i) % 8u;
+        top_dot(fb, x, y, 6, (u8)(age == 0 ? 255 : age < 3 ? 160 - 40 * age : 50));
+    }
+    /* Progress bar. */
+    for (int x = 100; x < 300; ++x)
+        for (int y = 164; y < 172; ++y) {
+            int edge = y == 164 || y == 171 || x == 100 || x == 299;
+            int filled = x - 101 < (int)(fraction * 198.0f);
+            u8 *p = fb + ((size_t)x * 240u + (239u - (unsigned)y)) * 3u;
+            u8 level = edge ? 110 : filled ? 230 : 0;
+            p[0] = level; p[1] = level; p[2] = level;
+        }
+    gfxFlushBuffers();
+    gfxScreenSwapBuffers(GFX_TOP, false);
+}
+
 void c3_n3ds_log_memory(FILE *trace, const char *stage)
 {
     if (!trace) return;
     struct mallinfo memory = mallinfo();
-    fprintf(trace, "platform_memory stage=%s heap_bytes=%lu linear_heap_bytes=%lu linear_free_bytes=%lu\n",
-            stage ? stage : "unspecified",
+    fprintf(trace, "platform_memory stage=%s console=%s heap_bytes=%lu linear_heap_bytes=%lu linear_free_bytes=%lu\n",
+            stage ? stage : "unspecified", console_is_new ? "new3ds" : "old3ds",
             (unsigned long)envGetHeapSize(), (unsigned long)envGetLinearHeapSize(),
             (unsigned long)linearSpaceFree());
     fprintf(trace, "platform_allocator stage=%s arena_bytes=%lu used_bytes=%lu free_in_arena_bytes=%lu\n",

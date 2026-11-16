@@ -227,6 +227,12 @@ int c3_game_state_load(C3GameState *state, const char *path,
  * original global pointer. Unsigned wrap and its full 16-bit result matter. */
 static uint32_t random16(uint32_t *seed)
 { *seed=*seed*214013u+2531011u; return *seed>>16; }
+uint16_t c3_game_state_random16(void *state)
+{
+    C3GameState *game=state;
+    if (!game || !game->impl) return 0;
+    return (uint16_t)random16(&((GameStateImpl*)game->impl)->random);
+}
 
 static uint32_t random_low_first(uint32_t *seed)
 {
@@ -432,6 +438,34 @@ int c3_game_state_set_floor(C3GameState *state, uint32_t floor,
     return 1;
 }
 
+/* heroSetStatus selector 0x18 -> heroBiosSetHizukiFlag: hero record +0xA98. */
+int c3_game_state_set_partner(C3GameState *state, int present)
+{
+    GameStateImpl *s=state?state->impl:NULL;
+    if (!s) return 0;
+    s->body[HERO+0xa98]=present?1:0;
+    return 1;
+}
+
+/* heroSetStatus selector 0x17 -> heroBiosSetHizukiNamePtr:
+ * GScharLenCpy(hero + 0xAC2, name, 0xB), eleven 16-bit units. */
+int c3_game_state_set_partner_name(C3GameState *state, const char *name)
+{
+    GameStateImpl *s=state?state->impl:NULL;
+    size_t length=name?strlen(name):0, i;
+    if (!s || !length || length>10) return 0;
+    for (i=0; i<length; ++i) if ((unsigned char)name[i]<32 || (unsigned char)name[i]>126) return 0;
+    memset(s->body+HERO+0xac2,0,22);
+    for (i=0; i<length; ++i) put16(s->body+HERO+0xac2+i*2,(uint8_t)name[i]);
+    return 1;
+}
+
+int c3_game_state_partner(const C3GameState *state)
+{
+    const GameStateImpl *s=state?state->impl:NULL;
+    return s && s->body[HERO+0xa98]!=0;
+}
+
 int c3_game_state_set_options(C3GameState *state, uint8_t sound_mono,
                               uint8_t rumble_disabled)
 {
@@ -451,6 +485,18 @@ int c3_game_state_add_play_time(C3GameState *state, double seconds)
     stored=(float)next;
     if (!isfinite(next) || next>UINT32_MAX || (double)stored>UINT32_MAX) return 0;
     s->play_time=next; put_float(s->body+0x20,stored);
+    return 1;
+}
+
+int c3_game_state_add_money(C3GameState *state, int64_t delta)
+{
+    GameStateImpl *s=state?state->impl:NULL;
+    int64_t next;
+    if (!s) return 0;
+    next=(int64_t)be32(s->body+HERO+0xa84)+delta;
+    /* The save's validation bound (summary/decode reject more than this). */
+    if (next<0 || next>9999999) return 0;
+    put32(s->body+HERO+0xa84,(uint32_t)next);
     return 1;
 }
 
@@ -541,10 +587,42 @@ int c3_game_state_pokemon(const C3GameState *state,unsigned slot,uint8_t record[
     const GameStateImpl *s=state?state->impl:NULL;if(!s||!record||slot>=6)return 0;
     memcpy(record,s->body+PARTY+slot*POKEMON_SIZE,POKEMON_SIZE);return 1;
 }
+int c3_game_state_set_pokemon(C3GameState *state,unsigned slot,const uint8_t record[0x138])
+{
+    GameStateImpl *s=state?state->impl:NULL;uint8_t *p;
+    if(!s||!record||slot>=6)return 0;
+    p=s->body+PARTY+slot*POKEMON_SIZE;
+    if(!be16(p)||be16(record)!=be16(p)||!record[0x60]||record[0x60]>100||
+       !be16(record+0x8c)||be16(record+0x8a)>be16(record+0x8c))return 0;
+    memcpy(p,record,POKEMON_SIZE);return 1;
+}
 int c3_game_state_mail_settings(const C3GameState *state,unsigned *sort,unsigned *tone)
 {
     const GameStateImpl *s=state?state->impl:NULL;if(!s||!sort||!tone)return 0;
     *sort=s->body[0x7d20+0x442];*tone=s->body[0x7d20+0x443];return *sort<4&&*tone<10;
+}
+int c3_game_state_mail_add(C3GameState *state,unsigned id)
+{
+    GameStateImpl *s=state?state->impl:NULL;unsigned count;C3GameMail mail;
+    if(!s||id>=512||!c3_game_state_mail_count(state,&count))return -1;
+    for(unsigned i=0;i<count;++i)if(c3_game_state_mail(state,i,&mail)&&mail.id==id)return 0;
+    if(count>=512)return -1;
+    put16(s->body+0x7d20+count*2,(uint16_t)id);put16(s->body+0x7d20+0x400,(uint16_t)(count+1));
+    s->body[0x7d20+0x402+id/8]&=(uint8_t)~(0x80u>>(id%8));
+    return 1;
+}
+int c3_game_state_memo_mark_seen(C3GameState *state)
+{
+    GameStateImpl *s=state?state->impl:NULL;unsigned count;int was_new=0;
+    if(!s||!c3_game_state_memo_count(state,&count))return -1;
+    for(unsigned i=0;i<count;++i){uint8_t *p=s->body+MEMO+4+i*12;uint16_t raw=be16(p);
+        if(raw&0x8000u)was_new=1;
+        put16(p,(uint16_t)(raw&0x3fffu));}
+    return was_new;
+}
+int c3_game_state_daycare_occupied(const C3GameState *state)
+{
+    const GameStateImpl *s=state?state->impl:NULL;return s?s->body[0x8168]!=0:0;
 }
 int c3_game_state_mail_preferences(C3GameState *state,int sort,int tone)
 {

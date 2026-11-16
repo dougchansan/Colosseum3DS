@@ -7,7 +7,7 @@ int main(int argc,char **argv){
     assert(argc==4);FILE *f=fopen(argv[1],"rb");assert(f);unsigned char source[34848];assert(fread(source,1,sizeof source,f)==sizeof source);fclose(f);
     unsigned char *pixels=malloc(65536),*expected=malloc(65536);assert(pixels&&expected);
     for(unsigned i=0;i<16384;++i){unsigned v=source[32+i*2]|(unsigned)source[33+i*2]<<8;pixels[i*4]=(v>>11)*8;pixels[i*4+1]=((v>>5)&63)*4;pixels[i*4+2]=(v&31)*8;pixels[i*4+3]=255;}
-    unsigned char untouched[4]={1,2,3,4};C3TitleTexture tex[2]={{128,128,1,1,pixels,65536},{1,1,0,0,untouched,4}};
+    unsigned char untouched[4]={1,2,3,4};C3TitleTexture tex[2]={{.width=128,.height=128,.wrap_s=1,.wrap_t=1,.pixels=pixels,.size=65536},{.width=1,.height=1,.pixels=untouched,.size=4}};
     C3Title model={0};model.file_data=pixels;model.file_bytes=65536;model.textures=tex;model.texture_count=2;char error[128];
     char bad[1024];assert(snprintf(bad,sizeof bad,"%s.bad",argv[2])<(int)sizeof bad);
     source[32]^=1;f=fopen(bad,"wb");assert(f);assert(fwrite(source,1,sizeof source,f)==sizeof source);fclose(f);

@@ -17,6 +17,7 @@ static ParticleLineMaterial particle_line_materials[C3_PARTICLE_MAX_PARTICLES];
 
 static void particle_line_shutdown(void)
 {
+ particle_extras_shutdown(); /* renderer shutdown also releases slots 1..15 */
  if(particle_line_vertices){linearFree(particle_line_vertices);particle_line_vertices=NULL;gpu_buffer_bytes-=C3_PARTICLE_MAX_PARTICLES*6u*sizeof *particle_line_vertices;}
 }
 /* Call after C3D_Fini, preserving Citro3D's borrowed shader pointer lifetime. */

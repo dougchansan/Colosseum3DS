@@ -205,12 +205,80 @@ static void actor_clip_checks(void)
     free(base); free(p);
 }
 
+/* tools/pack_textures.py packs: header byte 112 = 1, wrap_s word carries the
+ * PICA format (bits 8..15) and levels-1 (bits 16..23). */
+static void gpu_native_textures(void)
+{
+    unsigned char *p=fixture();
+    C3Title title={0};
+    char error[80];
+    p[112]=1;
+    assert(c3_title_parse(&title,p,FILE_BYTES,error,sizeof error));
+    assert(title.textures[0].gpu_native==1 && title.textures[0].gpu_format==C3_TITLE_GPU_RGBA8 &&
+           title.textures[0].levels==1 && title.textures[0].wrap_s==0 && title.textures[0].wrap_t==1 &&
+           title.textures[0].size==256);
+    c3_title_close(&title);
+    put32(p+TEXTURE_OFFSET+16,C3_TITLE_GPU_RGB565<<8); rejects(p,FILE_BYTES); /* 565 is 128 bytes */
+    put32(p+TEXTURE_OFFSET+16,5u<<8); rejects(p,FILE_BYTES);                 /* unsupported format */
+    put32(p+TEXTURE_OFFSET+16,1u<<16); rejects(p,FILE_BYTES);                /* 8x8 has one level */
+    put32(p+TEXTURE_OFFSET+16,1u<<24); rejects(p,FILE_BYTES);                /* reserved top byte */
+    put32(p+TEXTURE_OFFSET+16,3u); rejects(p,FILE_BYTES);                    /* wrap mode 3 */
+    put32(p+TEXTURE_OFFSET+16,0); p[112]=2; rejects(p,FILE_BYTES);
+    p[112]=1; p[113]=1; rejects(p,FILE_BYTES);
+    p[113]=0; p[112]=0; put32(p+TEXTURE_OFFSET+16,C3_TITLE_GPU_RGB565<<8); rejects(p,FILE_BYTES);
+    /* A 565 image is half the bytes: shrink the pixel section to match. */
+    p[112]=1; put32(p+TEXTURE_OFFSET+12,128); put32(p+8,FILE_BYTES-128); put32(p+76,128);
+    assert(c3_title_parse(&title,p,FILE_BYTES-128,error,sizeof error));
+    assert(title.textures[0].gpu_format==C3_TITLE_GPU_RGB565 && title.textures[0].size==128);
+    c3_title_close(&title);
+    assert(c3_title_texture_bytes(1024,1024,C3_TITLE_GPU_RGB565,8)==2796160u);
+    assert(c3_title_texture_bytes(64,8,C3_TITLE_GPU_RGBA8,1)==2048u);
+    free(p);
+}
+
+/* gpu_batches: animate leaves the batch's sampled vertices alone and exposes
+ * the placed bone matrix that reproduces the CPU skin. */
+static void gpu_skinned_batches(void)
+{
+    unsigned char *p=fixture();
+    C3Title cpu={0},gpu={0};
+    char error[80];
+    assert(c3_title_parse(&cpu,p,FILE_BYTES,error,sizeof error)&&c3_title_parse(&gpu,p,FILE_BYTES,error,sizeof error));
+    float position[3]={1.5f,-2,3};
+    c3_title_place_yaw(&cpu,position,0.6f,0.8f,2,0);gpu.placement=cpu.placement;
+    assert(c3_title_animate(&cpu,0,.25f));
+    memset(gpu.draw_vertices,0x5a,gpu.vertex_count*sizeof *gpu.draw_vertices);
+    gpu.retained=1;gpu.gpu_batches=1;
+    C3TitlePerf perf;c3_title_perf_take(NULL);
+    assert(c3_title_animate(&gpu,0,.25f));
+    c3_title_perf_take(&perf);
+    assert(perf.vertices_gpu==3&&perf.vertices_animated==0&&!gpu.batch_current[0]);
+    for(uint32_t v=0;v<gpu.vertex_count;++v){
+        const unsigned char *raw=(const unsigned char *)&gpu.draw_vertices[v];
+        for(size_t k=0;k<sizeof gpu.draw_vertices[v];++k)assert(raw[k]==0x5a);
+        const float *m=gpu.pose.skin[gpu.vertices[v].bone],*s=gpu.vertices[v].pos;
+        for(unsigned r=0;r<3;++r)
+            near_value(m[r*4]*s[0]+m[r*4+1]*s[1]+m[r*4+2]*s[2]+m[r*4+3],cpu.draw_vertices[v].pos[r]);
+        const float *n=gpu.pose.skin_normal[gpu.vertices[v].bone],*q=gpu.vertices[v].normal;
+        float out[3],length=0;
+        for(unsigned r=0;r<3;++r){out[r]=n[r*3]*q[0]+n[r*3+1]*q[1]+n[r*3+2]*q[2];length+=out[r]*out[r];}
+        length=sqrtf(length);
+        for(unsigned r=0;r<3;++r)near_value(out[r]/length,cpu.draw_vertices[v].normal[r]);
+    }
+    /* Dropping the GPU flag makes the next retained call rebuild the batch. */
+    gpu.gpu_batches=0;assert(c3_title_animate(&gpu,0,.25f));
+    for(unsigned r=0;r<3;++r)near_value(gpu.draw_vertices[0].pos[r],cpu.draw_vertices[0].pos[r]);
+    c3_title_close(&cpu);c3_title_close(&gpu);free(p);
+}
+
 int main(void)
 {
     unsigned char *p=fixture();
     C3Title title={0};
     char error[80];
     size_t i;
+    gpu_native_textures();
+    gpu_skinned_batches();
     assert(c3_title_parse(&title,p,FILE_BYTES,error,sizeof error));
     assert(!error[0] && title.bone_count==1 && title.vertex_count==3 && title.frame_count==3);
     assert(title.textures[0].pixels>=title.file_data && title.resident_bytes>FILE_BYTES);
@@ -308,7 +376,7 @@ int main(void)
     putf(p+FRAME_OFFSET+64,1.1f); rejects(p,FILE_BYTES); putf(p+FRAME_OFFSET+64,.25f);
     putf(p+FRAME_OFFSET+68,.5f); rejects(p,FILE_BYTES); putf(p+FRAME_OFFSET+68,1);
     putf(p+FRAME_OFFSET+96+32,-1); rejects(p,FILE_BYTES); putf(p+FRAME_OFFSET+96+32,.1f);
-    p[112]=1; rejects(p,FILE_BYTES); p[112]=0;
+    p[127]=1; rejects(p,FILE_BYTES); p[127]=0; /* byte 112 is the texture encoding */
     /* Tiny near-uniform authored scales remain invertible at intermediate
      * samples, including a sign change between adjacent valid endpoints. */
     for(i=0;i<3;++i){

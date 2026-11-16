@@ -14,6 +14,11 @@ BUILD := build-3ds-boot
 else
 BUILD := build-3ds
 endif
+# C3_DEV_FLOOR=1 adds the labelled developer floor loader (Y at PRESS START).
+# It is off by default and uses a separate object directory.
+ifeq ($(C3_DEV_FLOOR),1)
+BUILD := $(BUILD)-devfloor
+endif
 SOURCES := platform/3ds src build $(BUILD)/gekko vendor/gekkoctr/runtime
 INCLUDES := $(BUILD)/gekko/include include compat/include vendor/colosseum/include platform/3ds src build \
             vendor/gekkoctr/include vendor/gekkoctr/platform/ctr/include
@@ -32,12 +37,18 @@ CFLAGS += -DC3_BUILD_ID=\"$(C3_BUILD_ID)\"
 ifeq ($(C3_BOOT_ONLY),1)
 CFLAGS += -DC3_BOOT_ONLY
 endif
+ifeq ($(C3_DEV_FLOOR),1)
+CFLAGS += -DC3_DEV_FLOOR
+endif
 ASFLAGS := -g $(ARCH)
 LDFLAGS = -specs=3dsx.specs -g $(ARCH) -Wl,--gc-sections,-Map,$(notdir $*.map)
-LIBS := -lcitro3d -lctru -lm
-LIBDIRS := $(CTRULIB)
+LIBS := -lcitro3d -lctru -lzstd -lz -lm
+LIBDIRS := $(CTRULIB) $(PORTLIBS)
 
 export APP_TITLE := Colosseum3DS
+ifeq ($(C3_DEV_FLOOR),1)
+export APP_TITLE := Colosseum3DS DEV FLOOR
+endif
 export APP_DESCRIPTION := Native boot and first-area checkpoint
 export APP_AUTHOR := Colosseum3DS contributors
 
@@ -140,6 +151,12 @@ battle_trainer.o: $(TOPDIR)/build/battle_trainer_original.inc
 battle_fight_pokemon.o: $(TOPDIR)/build/battle_fight_pokemon_original.inc
 battle_party_sort.o: $(TOPDIR)/build/battle_party_sort_original.inc
 battle_runtime_trainer.o: $(TOPDIR)/build/battle_runtime_trainer_original.inc
+
+# The GPU skin program is a second DVLE of the title shader binary, so both
+# programs share one code blob (no shader code upload when switching).
+title_shader.shbin: title_shader.v.pica title_skin_shader.pica
+	@echo $(notdir $^)
+	@picasso -o $@ $^
 
 %.shbin.o %_shbin.h: %.shbin
 	$(bin2o)

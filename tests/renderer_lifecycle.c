@@ -25,7 +25,7 @@ static C3ParticleSystem *particle_srt_system;
 static C3ParticleSystem *particle_order_system;
 static uint64_t particle_render_frame;
 static TitleGPUVertex *particle_vertices;
-static bool scene_drawn;
+static bool scene_drawn, frame_acquired;
 static SceneBinding scenes[C3_STAGE_MAX_MODELS];
 static C3StageVertexCache vertex_cache[C3_STAGE_MAX_MODELS];
 static uint8_t model_modulation[C3_STAGE_MAX_MODELS][4];
@@ -115,6 +115,9 @@ static void install_completion_counters(void) { completion_hooks = true; }
 #define gspSetEventCallback(...) ((void)0)
 
 static void confusion_shutdown(void){}
+static int skin_init(const C3Title *const *m,size_t c,char *e,size_t n){(void)m;(void)c;(void)e;(void)n;return 1;}
+static void skin_shutdown(void){}
+static void skin_fini(void){}
 static void particle_line_shutdown(void){}
 static void particle_line_fini(void){}
 #include "renderer_lifecycle.inc"

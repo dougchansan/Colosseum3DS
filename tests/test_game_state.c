@@ -176,6 +176,16 @@ int main(int argc,char **argv)
     write_file(packpath,pack,PACK_SIZE);
     CHECK(c3_game_state_new(&state,NULL,0x12345678,packpath,error));
     CHECK(c3_game_state_summary(&state,&summary) && !strcmp(summary.name,"WES"));
+    {   /* mailAddMailbox: append once, unread; reject IDs past the box. */
+        C3GameState mailbox={0};unsigned count=0,before_count;C3GameMail mail;
+        CHECK(c3_game_state_new(&mailbox,NULL,0x12345678,packpath,error));
+        CHECK(c3_game_state_mail_count(&mailbox,&before_count));
+        CHECK(c3_game_state_mail_add(&mailbox,10)==1&&c3_game_state_mail_count(&mailbox,&count)&&count==before_count+1);
+        CHECK(c3_game_state_mail(&mailbox,count-1,&mail)&&mail.id==10&&!mail.read);
+        CHECK(c3_game_state_mail_add(&mailbox,10)==0&&c3_game_state_mail_count(&mailbox,&count)&&count==before_count+1);
+        CHECK(c3_game_state_mail_add(&mailbox,512)==-1&&c3_game_state_mail_add(NULL,1)==-1);
+        c3_game_state_free(&mailbox);
+    }
     CHECK(summary.party[0].experience==0x4a6fu && summary.party[1].experience==0x3ff4u);
     CHECK(!summary.party[0].shadow_id && !summary.party[1].shadow_id);
     uint32_t exp_progress,exp_range;

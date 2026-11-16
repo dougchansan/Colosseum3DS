@@ -21,6 +21,7 @@ typedef struct {
     C3IngamePage page,parent;
     unsigned selection,hub_selection,pda_selection,pocket,sort,tab,detail,option_mono,option_rumble;
     unsigned count,order[512],active,dirty,preview;
+    unsigned idle; /* hub shown as the field bottom screen: no cursor */
     unsigned filter_types[2],filter_color,saved_filters[3];
     C3InventoryRequest inventory;
     C3InventoryResult inventory_result;
@@ -43,6 +44,8 @@ C3IngameEvent c3_ingame_update(C3IngameMenu *menu,C3GameState *state,const C3N3d
 void c3_ingame_draw_to(C3IngameMenu *menu,const C3GameState *state,C3BottomUi *ui);
 void c3_ingame_error(C3IngameMenu *menu,const char *message);
 /* Resolve the displayed model from the current live record; no save mutation. */
+/* Hub item (0..7) under a touch on the bottom screen, or -1. */
+int c3_ingame_hub_hit(int x,int y);
 int c3_ingame_preview_identity(const C3IngameMenu *menu,const C3GameState *state,
                               uint16_t *species,uint32_t *personality,uint32_t *trainer);
 #endif

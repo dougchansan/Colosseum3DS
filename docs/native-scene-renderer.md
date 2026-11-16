@@ -15,9 +15,14 @@ vertex/texture storage. The current GPU vertex is 56 bytes. Split packs reuse
 a GPU texture only when its dimensions, sampler state, and full pixel contents
 match. The caller keeps all packs alive until renderer shutdown.
 
-Each draw owns one `C3D_FrameBegin` / `C3D_FrameEnd`. The synchronous frame begin
-drains the previous queue before the CPU rewrites the single linear vertex
-arena. Different packs have disjoint ranges. Every model/pass reacquires
+Each draw submits one `C3D_FrameBegin` / `C3D_FrameEnd` pair. The nonblocking
+frame begin proves the previous queue drained before the CPU writes the single
+linear vertex arena; a successful draw then paces presentation to two VBlanks
+and acquires the next frame before returning. The arena persists across
+frames: batches of retained models are lit and staged again only when their
+inputs change. [render-performance.md](render-performance.md) describes the
+retained path, the pacing and the trace counters.
+Different packs have disjoint ranges. Every model/pass reacquires
 `C3D_GetBufInfo` to mark its binding dirty; changing a previously acquired
 buffer-info structure without doing so can silently retain the previous pack's
 GPU vertex binding. The shader byte array is embedded static storage and
@@ -26,7 +31,8 @@ outlives `DVLB_Free`.
 Shutdown deletes the render target before freeing textures, vertices, or the
 shader; the target deletion drains its linked queue. It does not wait on
 `C3D_FrameSync`, whose VBlank counters may stop while the application is
-suspended. These ownership choices follow Citro3D's
+suspended; the pacing waits poll those counters with a time bound for the same
+reason. These ownership choices follow Citro3D's
 [render-queue implementation](https://github.com/devkitPro/citro3d/blob/master/source/renderqueue.c)
 and [context implementation](https://github.com/devkitPro/citro3d/blob/master/source/base.c).
 

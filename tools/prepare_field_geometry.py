@@ -12,9 +12,26 @@ import struct
 
 import numpy as np
 
+import pack_textures
 import prepare_title as title
 
 DUAL_MODULATE, SUBTRACT, ADDITIVE_ONE, REFLECTION_BLEND = 1024, 2048, 4096, 8192
+# Surveyed floors without a reviewed profile (the warp tour) may be prepared
+# with recorded approximations instead of stopping: an unsupported second
+# texture layer is drawn without that layer, animated lights keep their
+# first values, chained/spot lights drop the unsupported part and an
+# unreviewed blend state takes the nearest supported one. Reviewed floors
+# never enable this. Each use is counted in APPROXIMATIONS.
+import collections as _collections
+APPROXIMATE = {"enabled": False}
+APPROXIMATIONS = _collections.Counter()
+
+
+def approximate(reason):
+    if not APPROXIMATE["enabled"]:
+        return False
+    APPROXIMATIONS[reason] += 1
+    return True
 UNITS = 0.1
 
 
@@ -44,9 +61,36 @@ def load_scene(archive, identity):
     return data, sections[0].root_node, describe_scene(sections, options)
 
 
+JOBJ_INSTANCE = 1 << 12
+
+
+def base_descriptor(descriptor):
+    """The structural descriptor whose rest pose an instance copy reuses."""
+    return descriptor[3] if descriptor[0] == "instance" else descriptor
+
+
+def joint_nodes(root):
+    """Joint order of HSD_JObjResolveRefsAll and the pinned importer.
+
+    An instance joint's child pointer names a shared subtree that is already
+    present elsewhere in the sibling chain; it is not a structural child.
+    Without instances this is exactly prepare_title.tree_nodes.
+    """
+    result, stack = [], [root]
+    while stack:
+        node = stack.pop()
+        if node is None:
+            continue
+        result.append(node)
+        stack.append(node.next)
+        if not node.flags & JOBJ_INSTANCE:
+            stack.append(node.child)
+    return result
+
+
 def raw_meshes(raw_model):
     result = []
-    for index, joint in enumerate(title.tree_nodes(raw_model.root_joint)):
+    for index, joint in enumerate(joint_nodes(raw_model.root_joint)):
         dobj = joint.property
         while dobj is not None and hasattr(dobj, "pobject"):
             pobj = dobj.pobject
@@ -115,6 +159,96 @@ def solve_ik_lower(upper, target, upper_length, scale):
     return result
 
 
+def admitted_spline(node):
+    """Reviewed HSD path spline: the cardinal type with its arc-length tables.
+
+    spline.c names the fields type/numcv/tension/cv/totalLength/segLength/
+    segPoly. A cardinal spline of n points stores n+2 control points, n
+    cumulative normalised lengths and n-1 quartic arc-length polynomials.
+    """
+    if type(node).__name__ != "Spline":
+        raise ValueError("HSD path track has no spline object")
+    kind, count = node.flags >> 8, node.n
+    cv, lengths, poly = node.s1, node.s2, node.s3
+    if kind != 3:
+        raise ValueError("Unreviewed HSD path spline type")
+    if (not 2 <= count <= 64 or not isinstance(cv, list) or len(cv) != count + 2 or
+            not isinstance(lengths, list) or len(lengths) != count or
+            not isinstance(poly, list) or len(poly) != count - 1):
+        raise ValueError("Malformed HSD cardinal path spline")
+    values = [node.f0, node.f1, *lengths, *(v for row in cv for v in row), *(v for row in poly for v in row)]
+    if any(not math.isfinite(v) for v in values) or any(len(row) != 3 for row in cv) or any(len(row) != 5 for row in poly):
+        raise ValueError("Nonfinite HSD path spline")
+    if lengths[0] != 0 or any(b < a for a, b in zip(lengths, lengths[1:])) or node.f1 <= 0:
+        raise ValueError("HSD path spline lengths are not cumulative")
+    return {"count": count, "tension": node.f0, "total": node.f1, "cv": [tuple(row) for row in cv],
+            "lengths": list(lengths), "poly": [tuple(row) for row in poly]}
+
+
+def _spline_speed(coefficients, t):
+    """spline.c:splArcLengthPolynomial."""
+    result = (((coefficients[0]*t + coefficients[1])*t + coefficients[2])*t + coefficients[3])*t + coefficients[4]
+    if -0.001 < result < 0:
+        result = 0.0
+    if result < 0:
+        raise ValueError("Negative HSD path arc-length integrand")
+    return math.sqrt(result)
+
+
+def _spline_simpson(coefficients, start, end):
+    """spline.c:fn_801B1AD0, the eight-interval Simpson step."""
+    dx = (end - start) / 8.0
+    t, middle = start + dx, 0.0
+    for i in range(2, 9):
+        middle += (4.0 if not i & 1 else 2.0) * _spline_speed(coefficients, t)
+        t += dx
+    return dx * (middle + _spline_speed(coefficients, start) + _spline_speed(coefficients, end)) / 3.0
+
+
+def spline_parameter(spline, distance):
+    """spline.c:fn_801B18D8 (splArcLengthGetParameter) for a cardinal spline."""
+    if distance <= 0:
+        return 0.0
+    if distance >= 1:
+        return 1.0
+    lengths, index = spline["lengths"], 0
+    while lengths[index + 1] < distance:
+        index += 1
+    remaining = spline["total"] * (distance - lengths[index])
+    start, end, result = 0.0, 1.0, 0.0
+    while abs(start - end) >= 0.00001:
+        result = (start + end) / 2.0
+        step = _spline_simpson(spline["poly"][index], start, result)
+        if remaining < 0.00001 + step:
+            end = result
+        else:
+            start = result
+            remaining -= step
+    return (result + index) / (spline["count"] - 1.0)
+
+
+def spline_point(spline, u):
+    """spline.c:fn_801B2038 (splGetSplinePoint), cardinal case."""
+    cv, count = spline["cv"], spline["count"]
+    if not 0 <= u <= 1:
+        raise ValueError("HSD path parameter outside the spline")
+    if u >= 1:
+        return cv[count]
+    u *= count - 1
+    index = int(u)
+    u -= index
+    t, u2 = spline["tension"], u * u
+    u3 = u2 * u
+    weights = (t * (-u3 + 2.0*u2 - u), (2.0 - t)*u3 + (t - 3.0)*u2 + 1.0,
+               (t - 2.0)*u3 + (3.0 - 2.0*t)*u2 + t*u, t * (u3 - u2))
+    return tuple(sum(cv[index + k][axis] * weights[k] for k in range(4)) for axis in range(3))
+
+
+def path_point(spline, value):
+    """JObjUpdateFunc HSD_A_J_PATH: clamp to 0..1, then splArcLengthPoint."""
+    return spline_point(spline, spline_parameter(spline, min(1.0, max(0.0, value))))
+
+
 def constant_material_byte(keys):
     if not keys or any(not math.isfinite(k.value) or k.value != keys[0].value or
                        (getattr(k, "slope_in", 0) or 0) != 0 or
@@ -124,14 +258,30 @@ def constant_material_byte(keys):
 
 
 class Model:
-    def __init__(self, model, raw, allow_image_swaps=False, constant_material_colors=False):
+    def __init__(self, model, raw, allow_image_swaps=False, constant_material_colors=False,
+                 allow_instances=False, allow_paths=False, frozen_material_colors=False):
         self.model, self.raw = model, raw
-        self.joints = title.tree_nodes(raw.root_joint)
+        self.joints = joint_nodes(raw.root_joint)
         self.meshes = raw_meshes(raw)
         if len(self.joints) != len(model.bones) or len(self.meshes) != len(model.meshes):
             raise ValueError("Raw and IR field topology differ")
-        if any(b.flags & ((1 << 12) | (1 << 17)) for b in model.bones):
-            raise ValueError("Instanced/quaternion field joints are unsupported")
+        if any(b.flags & (1 << 17) for b in model.bones):
+            raise ValueError("Quaternion field joints are unsupported")
+        self.instances = []
+        for index, (bone, joint) in enumerate(zip(model.bones, self.joints)):
+            if not bone.flags & JOBJ_INSTANCE:
+                continue
+            if not allow_instances:
+                raise ValueError("Instanced field joints are unsupported")
+            if joint.flags != bone.flags or joint.property is not None or joint.child is None:
+                raise ValueError("Unreviewed HSD instance joint")
+            targets = [i for i, other in enumerate(self.joints) if other is joint.child]
+            if len(targets) != 1:
+                raise ValueError("HSD instance target is not a structural joint")
+            self.instances.append((index, targets[0]))
+        if any(target == instance or self.joints[target].flags & JOBJ_INSTANCE or
+               self.in_subtree(instance, target) for instance, target in self.instances):
+            raise ValueError("Nested or self-referencing HSD instances are unsupported")
         if any(getattr(model, name) for name in ("track_to_constraints", "copy_rotation_constraints",
                                                 "limit_rotation_constraints", "limit_location_constraints")):
             raise ValueError("Unreviewed field constraint")
@@ -147,11 +297,25 @@ class Model:
         self.tracks, self.materials, self.ends, self.particle_events = [], [], [], []
         self.image_swaps = []
         self.constant_material_colors = {}
+        # Opt-in interior subset. paths: per clip, joint -> admitted spline.
+        # frozen_material_tracks: animated material RGB that the pack format
+        # cannot sample; such a colour keeps its first-clip frame-zero value.
+        self.paths, self.frozen_material_tracks = [], []
+        joint_channels = {1,2,3,5,6,7,8,9,10,11,12,40} | ({4} if allow_paths else set())
         for root in raw.animated_joints or []:
             nodes = title.tree_nodes(root)
             if len(nodes) != len(model.bones):
                 raise ValueError("Incomplete HSD joint animation tree")
-            tracks = [title.channels(n.animation, {1,2,3,5,6,7,8,9,10,11,12,40}) for n in nodes]
+            tracks = [title.channels(n.animation, joint_channels) for n in nodes]
+            paths = {}
+            for index, (node, track) in enumerate(zip(nodes, tracks)):
+                if 4 in track:
+                    # JObjUpdateFunc: the path track replaces the translation
+                    # with a point of the spline held by the AObj's object.
+                    if any(channel in track for channel in (5, 6, 7)):
+                        raise ValueError("HSD path joint also animates its translation")
+                    paths[index] = admitted_spline(getattr(getattr(node.animation, "joint", None), "property", None))
+            self.paths.append(paths)
             self.tracks.append(tracks)
             self.ends.append(max((n.animation.end_frame for n in nodes if n.animation), default=0))
             # Type40 is an integer-bit particle callback, not a transform. Its
@@ -195,18 +359,28 @@ class Model:
                                 raise ValueError("Nonzero unused TEV register animation")
                         tex_tracks[ta.id] = channels
                         ta = ta.next
-                    material_tracks = title.channels(anim.animation, set(range(1, 11)) if constant_material_colors else {10})
+                    material_tracks = title.channels(anim.animation, set(range(1, 11))
+                        if constant_material_colors or frozen_material_colors else {10})
                     for channel, keys in material_tracks.items():
                         if channel == 10:
                             continue
                         # HSD MObjUpdateFunc clamps, multiplies by 255, then
                         # truncates to u8. Only constant, equal-across-clips RGB
                         # tracks may be folded into immutable batch colors.
-                        value = constant_material_byte(keys)
                         identity = (dobj.address, channel)
-                        previous = self.constant_material_colors.get(identity, value)
-                        if previous != value:
-                            raise ValueError("Material RGB differs between effect clips")
+                        try:
+                            value = constant_material_byte(keys)
+                            previous = self.constant_material_colors.get(identity, value)
+                            if previous != value:
+                                raise ValueError("Material RGB differs between effect clips")
+                        except ValueError:
+                            if not frozen_material_colors:
+                                raise
+                            # Declared limitation: the colour does not animate.
+                            value = self.constant_material_colors.get(
+                                identity, int(255 * min(1.0, max(0.0, title.curve_value(keys, 0.0)))))
+                            self.frozen_material_tracks.append(
+                                {"clip": len(self.materials), "dobj": "%08x" % dobj.address, "channel": channel})
                         self.constant_material_colors[identity] = value
                     mapping[dobj.address] = ({k:v for k,v in material_tracks.items() if k == 10}, tex_tracks)
                     dobj, anim = dobj.next, anim.next
@@ -214,12 +388,25 @@ class Model:
             self.image_swaps.append(swaps)
         self.upper, self.lower, self.effector = {}, {}, {}
         for constraint in model.ik_constraints:
-            if constraint.chain_length != 3 or constraint.pole_target_bone or not constraint.target_bone:
+            if (constraint.chain_length != 3 or constraint.pole_target_bone or
+                    (not constraint.target_bone and not allow_instances)):
                 raise ValueError("Unreviewed HSD IK chain")
             end = self.names[constraint.bone_name]
             lower = model.bones[end].parent_index
             upper = model.bones[lower].parent_index
-            target = self.names[constraint.target_bone]
+            if constraint.target_bone:
+                target = self.names[constraint.target_bone]
+            else:
+                # jobj_get_effector_checked returns NULL without the
+                # effector's REFTYPE_JOBJ RObj: resolveIKJoint1/2 keep the
+                # animated FK matrices; only the effector case still places
+                # the end joint along joint2's X axis by its IK-hint length.
+                reference = self.joints[end].reference
+                while reference:
+                    if reference.flags & 0x70000000 == 0x10000000:
+                        raise ValueError("Targetless HSD IK effector has a JObj reference")
+                    reference = reference.next
+                target = None
             lengths = []
             for index in (upper, lower):
                 refs = []
@@ -233,7 +420,10 @@ class Model:
                     raise ValueError("Missing original HSD IK length")
                 lengths.append(refs[0])
             desc = (upper, lower, end, target, *lengths, constraint.pole_flip)
-            self.upper[upper] = self.lower[lower] = self.effector[end] = desc
+            if target is None:
+                self.effector[end] = desc
+            else:
+                self.upper[upper] = self.lower[lower] = self.effector[end] = desc
         self.copy_position = {}
         for constraint in model.copy_location_constraints:
             if constraint.influence != 1:
@@ -247,9 +437,13 @@ class Model:
             return self._cache[key]
         bones = self.model.bones
         tracks = self.tracks[clip] if self.tracks else [{} for _ in bones]
+        paths = self.paths[clip] if getattr(self, "paths", None) else {}
         local, accumulated, scales = [], [], []
-        for bone, track in zip(bones, tracks):
-            position = [title.curve_value(track.get(5+i), frame, bone.position[i]/UNITS)*UNITS for i in range(3)]
+        for index, (bone, track) in enumerate(zip(bones, tracks)):
+            if index in paths:
+                position = [v*UNITS for v in path_point(paths[index], title.curve_value(track[4], frame))]
+            else:
+                position = [title.curve_value(track.get(5+i), frame, bone.position[i]/UNITS)*UNITS for i in range(3)]
             rotation = [title.curve_value(track.get(1+i), frame, bone.rotation[i]) for i in range(3)]
             scale = np.asarray([title.curve_value(track.get(8+i), frame, bone.scale[i]) for i in range(3)])
             parent_scale = accumulated[bone.parent_index] if bone.parent_index is not None else None
@@ -312,7 +506,27 @@ class Model:
         self._cache[key] = result
         return result
 
+    def in_subtree(self, index, root):
+        """True for root and its structural descendants, not its siblings."""
+        while index is not None:
+            if index == root:
+                return True
+            index = self.model.bones[index].parent_index
+        return False
+
+    @staticmethod
+    def base_descriptor(descriptor):
+        return base_descriptor(descriptor)
+
     def deform(self, descriptor, world):
+        if descriptor[0] == "baked":
+            # bake_mesh already applied this sample's transform to vertices.
+            return np.eye(4)
+        if descriptor[0] == "instance":
+            # JObjSetupInstanceMtx: instance.mtx * inverse(child.mtx), then
+            # the shared subtree draws with its own joint matrices.
+            _, instance, target, base = descriptor
+            return world[instance] @ np.linalg.inv(world[target]) @ self.deform(base, world)
         if descriptor[0] == "rigid":
             return world[descriptor[1]]
         _, owner, weights = descriptor
@@ -386,9 +600,17 @@ def pixel_engine_flags(pe, flags):
              (25,3,4,5,3):SUBTRACT | title.TRANSLUCENT,
              (25,1,4,5,3):title.TRANSLUCENT,
              (49,1,4,5,3):title.TRANSLUCENT,
-             (57,0,4,5,3):0}
+             (57,0,4,5,3):0,
+             # ONE/ONE addition with flags 0x39: bit 0x20 keeps depth writes,
+             # as the reviewed 0x31 translucent interior state does.
+             (57,1,1,1,3):ADDITIVE_ONE | title.TRANSLUCENT}
     if state not in modes:
-        raise ValueError("Unreviewed field pixel-engine state: " + str(state))
+        # Nearest supported blend: any ONE destination is framebuffer
+        # addition, otherwise the source-alpha translucent blend.
+        if not approximate("pixel_engine_state_%d_%d_%d_%d_%d" % state):
+            raise ValueError("Unreviewed field pixel-engine state: " + str(state))
+        modes[state] = (ADDITIVE_ONE if pe.destination_factor == 1 and pe.source_factor == 1 else
+                        title.ADDITIVE if pe.destination_factor == 1 else 0) | title.TRANSLUCENT
     flags &= ~(title.ADDITIVE | ADDITIVE_ONE | SUBTRACT | title.TRANSLUCENT | title.NO_DEPTH_WRITE)
     flags |= modes[state]
     if not pe.flags & 0x20:
@@ -425,7 +647,9 @@ def build_mesh(model, mesh_index, max_envelope_weights=3, source_materials=False
         neutral.scale=(1.,1.,1.);neutral.rotation=(0.,0.,0.);neutral.translation=(0.,0.,0.)
         raw_textures=[neutral,reflection_texture]
     if len(raw_textures) > 2:
-        raise ValueError("Field material has more than two texture layers")
+        if not approximate("texture_layers_beyond_first"):
+            raise ValueError("Field material has more than two texture layers")
+        raw_textures = raw_textures[:1]
     source_blend = (source_materials and len(raw_textures)==2 and
                     raw_textures[0].flags==0x30010 and raw_textures[0].blending==1 and
                     not raw_textures[0].tev and not raw_textures[1].tev and
@@ -435,10 +659,29 @@ def build_mesh(model, mesh_index, max_envelope_weights=3, source_materials=False
                         raw_textures[0].tev is None and raw_textures[1].tev is not None and
                         raw_textures[1].tev.active==0 and raw_textures[1].blending==1 and
                         not mesh.uv_layers)
-    dual = len(raw_textures) == 2 and raw_textures[1].flags == 0x40010
+    # M1_out (Phenac City): BLEND factor1 discards the incoming material
+    # color, then an inactive-TEV MODULATE layer multiplies texture1. The
+    # result is exactly T0*T1 with material alpha; it is serialized as the
+    # dual-modulate stage with konst1 and a white diffuse raster.
+    blend_modulate = (len(raw_textures) == 2 and
+                      [t.flags for t in raw_textures] == [0x30010, 0x40010] and
+                      raw_textures[0].blending == 1 and raw_textures[0].tev is None and
+                      (raw_textures[1].tev is None or raw_textures[1].tev.active == 0) and
+                      [t.source for t in raw_textures] == [4, 5] and len(mesh.uv_layers) == 2 and
+                      dobj.mobject.render_mode & 7 == 1)
+    dual = len(raw_textures) == 2 and raw_textures[1].flags == 0x40010 and not blend_modulate
     reflection = len(raw_textures) == 2 and raw_textures[1].flags == 0x30081
-    if len(raw_textures)==2 and not (dual or reflection or source_blend or source_normal_pair):
-        raise ValueError("Unreviewed second field texture expression")
+    if dual and APPROXIMATE["enabled"] and (
+            len(mesh.uv_layers) != 2 or [t.source for t in raw_textures] != [4,5] or
+            any(t.flags != 0x40010 or not t.tev or t.tev.active != 0x40000077 or
+                t.tev.tev0.asRGBList() != [0,0,0] or t.tev.konst.asRGBList() != [127/255]*3
+                for t in raw_textures)):
+        dual = False  # not the reviewed gradient pair: handled as unreviewed below
+    if len(raw_textures)==2 and not (dual or reflection or source_blend or source_normal_pair or blend_modulate):
+        if not approximate("second_texture_layer_0x%x" % raw_textures[1].flags):
+            raise ValueError("Unreviewed second field texture expression")
+        raw_textures = raw_textures[:1]
+        reflection = False
     if dual:
         if len(mesh.uv_layers) != 2 or [t.source for t in raw_textures] != [4,5]:
             raise ValueError("Unsupported dual field texture generators")
@@ -467,7 +710,7 @@ def build_mesh(model, mesh_index, max_envelope_weights=3, source_materials=False
     if raw_textures:
         dobj_copy.mobject.texture = copy.copy(raw_textures[0])
         dobj_copy.mobject.texture.next = None
-        if source_normal_pair:
+        if source_normal_pair or blend_modulate:
             dobj_copy.mobject.texture.flags=0x40010
         if source_materials and dobj_copy.mobject.texture.wrap_t==2:
             dobj_copy.mobject.texture.wrap_t=0
@@ -488,8 +731,14 @@ def build_mesh(model, mesh_index, max_envelope_weights=3, source_materials=False
         textures[batch[2]]=(8,8,b"\xff"*256,0,0)
     if source_materials and raw_textures and raw_textures[0].flags==0x30010 and raw_textures[0].blending==1 and (reflection or source_blend):
         batch[8:11]=[1.,1.,1.]
+    if blend_modulate:
+        if batch[3] & (title.LIT | title.VERTEX_COLOR | title.TEV_LERP):
+            raise ValueError("Blend-modulate material is not unlit material color")
+        batch[8:11] = [1., 1., 1.]
     for channel in range(1, 10):
         value = model.constant_material_colors.get((dobj.address, channel))
+        if value is not None and blend_modulate:
+            raise ValueError("Animated diffuse on a blend-modulate material")
         if value is not None:
             # HSD channels 1..3 ambient, 4..6 diffuse, 7..9 specular.
             index = (11 + channel - 1 if channel <= 3 else
@@ -502,9 +751,9 @@ def build_mesh(model, mesh_index, max_envelope_weights=3, source_materials=False
         batch[3] = pixel_engine_flags(pe, batch[3])
         batch[20:26] = [pe.reference_0,pe.reference_1,pe.alpha_component_0,
                        pe.alpha_component_1,pe.alpha_op,pe.z_comp]
-    if dual or reflection or source_blend or source_normal_pair:
+    if dual or reflection or source_blend or source_normal_pair or blend_modulate:
         textures.append(_texture(raw_textures[1],mesh.material.texture_layers[0 if source_reflection_only else 1].image))
-        batch[3] |= DUAL_MODULATE if dual else REFLECTION_BLEND
+        batch[3] |= DUAL_MODULATE | title.TEV_LERP if blend_modulate else DUAL_MODULATE if dual else REFLECTION_BLEND
         if source_blend:batch[3] |= 16384
         if source_normal_pair:batch[3] |= 65536
         batch[26] = 1
@@ -542,7 +791,7 @@ def build_mesh(model, mesh_index, max_envelope_weights=3, source_materials=False
     if len(vertices) != len(descriptors):
         raise ValueError("Triangulated field envelope mapping differs")
     vertices = [tuple(v) + ((mesh.uv_layers[1].uvs[loop][0],1-mesh.uv_layers[1].uvs[loop][1])
-                            if dual or source_blend else (0.,0.)) for v,loop in zip(vertices,loops)]
+                            if dual or source_blend or blend_modulate else (0.,0.)) for v,loop in zip(vertices,loops)]
     return {"model":model,"index":mesh_index,"bone":bone,"dobj":dobj,"textures":textures,
             "raw_textures":raw_textures,"vertices":vertices,"batch":batch,"descriptors":descriptors}
 
@@ -638,7 +887,7 @@ def material_state(mesh, clip, frame, visible):
         transforms.append((1.,1.,0.,0.))
         crosses.append((0.,0.))
     alpha = title.material_alpha(title.curve_value(mat_track[10],frame)) if 10 in mat_track else dobj.mobject.material.alpha
-    draw_visible=visible[mesh["bone"]] and (clip, frame) not in mesh.get("collapsed_samples", set())
+    draw_visible=visible[mesh["bone"]] and visible[mesh.get("instance",mesh["bone"])] and (clip, frame) not in mesh.get("collapsed_samples", set())
     if "image_variant" in mesh:
         image_track=tex_tracks.get(0,{}).get(1)
         if not image_track:
@@ -647,8 +896,92 @@ def material_state(mesh, clip, frame, visible):
     return (*transforms[0],alpha,float(draw_visible),*tev0,*konst,*transforms[1],*crosses[0],*crosses[1])
 
 
+def instance_meshes(model, meshes):
+    """One additional draw of each shared subtree per HSD instance joint.
+
+    HSD_JObjDispAll draws the instance child and its descendants (not the
+    child's siblings) after JObjSetupInstanceMtx. The shared subtree also
+    keeps its ordinary draw at its structural position in the tree.
+    """
+    result = []
+    for instance, target in model.instances:
+        for mesh in meshes:
+            if mesh["model"] is not model or not model.in_subtree(mesh["bone"], target):
+                continue
+            item = dict(mesh)
+            item["descriptors"] = [("instance", instance, target, d) for d in mesh["descriptors"]]
+            item["instance"] = instance
+            result.append(item)
+    return result
+
+
+def bake_mesh(mesh, clip, frame):
+    """Apply one sample's deformation to the vertices; no sampled bone remains.
+
+    Used for meshes proven static by split_static, and for explicitly
+    reviewed instance copies drawn at a fixed sample. Returns None when a
+    corner's transform is singular (a collapsed part keeps its sampled path).
+    """
+    model = mesh["model"]
+    world, _ = model.world(clip if model.tracks else 0, frame)
+    transforms = {}
+    for descriptor in dict.fromkeys(mesh["descriptors"]):
+        value = model.deform(descriptor, world) @ np.linalg.inv(
+            model.deform(base_descriptor(descriptor), model.rest))
+        if not np.isfinite(value).all() or abs(np.linalg.det(value[:3, :3])) < 1e-12:
+            return None
+        transforms[descriptor] = (value, np.linalg.inv(value[:3, :3]).T)
+    vertices = []
+    for vertex, descriptor in zip(mesh["vertices"], mesh["descriptors"]):
+        value, normal_matrix = transforms[descriptor]
+        position = value @ np.array((*vertex[:3], 1.))
+        normal = normal_matrix @ np.asarray(vertex[3:6])
+        normal /= max(float(np.linalg.norm(normal)), 1e-30)
+        vertices.append((*(float(x) for x in position[:3]), *(float(x) for x in normal), *vertex[6:]))
+    item = dict(mesh)
+    item.update(vertices=vertices, descriptors=[("baked",)] * len(vertices), baked_frame=frame)
+    return item
+
+
+def split_static(meshes, clip, frames, tolerance=1e-6):
+    """Partition meshes whose sampled transforms and materials never change.
+
+    A static mesh needs one sample instead of the whole clock. Transforms are
+    compared after deformation (within `tolerance`), material states exactly.
+    """
+    static, animated = [], []
+    for mesh in meshes:
+        model = mesh["model"]
+        source_clip = clip if model.tracks else 0
+        states = [model.world(source_clip, frame) for frame in frames]
+        moving = False
+        for descriptor in dict.fromkeys(mesh["descriptors"]):
+            first = model.deform(descriptor, states[0][0])
+            if any(np.max(np.abs(model.deform(descriptor, world) - first)) > tolerance
+                   for world, _ in states[1:]):
+                moving = True
+                break
+        if not moving:
+            first = material_state(mesh, source_clip, frames[0], states[0][1])
+            moving = any(material_state(mesh, source_clip, frame, visible) != first
+                         for frame, (_, visible) in zip(frames[1:], states[1:]))
+        (animated if moving else static).append(mesh)
+    return static, animated
+
+
+def surface_collapsed(linear):
+    """True where a 3x3 map has rank <= 1: every triangle gets zero area.
+
+    An authored scale of zero on all axes, or on two of them, leaves a point
+    or a line, so the part draws nothing at that sample. A rank-2 map (one
+    zero axis) can still show a flat surface and is not collapsed.
+    """
+    values = np.linalg.svd(np.asarray(linear, dtype=float), compute_uv=False)
+    return values[..., 1] <= values[..., 0] * 1e-9
+
+
 def _sample_descriptor(model, descriptor, states, attachment=None):
-    rest_inverse = np.linalg.inv(model.deform(descriptor,model.rest))
+    rest_inverse = np.linalg.inv(model.deform(base_descriptor(descriptor),model.rest))
     result = np.asarray([model.deform(descriptor,world) @ rest_inverse for world,_ in states])
     if attachment is not None:
         result = attachment @ result
@@ -658,7 +991,10 @@ def _sample_descriptor(model, descriptor, states, attachment=None):
     # prepare_pack_set hides its batch at these samples; provide an invertible
     # unused normal matrix instead of serializing a singular GPU transform.
     collapsed = np.all(result[:, :3, :3] == 0, axis=(1, 2))
-    if descriptor[0] == "rigid":
+    if base_descriptor(descriptor)[0] == "rigid":
+        # A point or a line (rank <= 1) has no surface either; such samples
+        # are hidden like the exactly-zero ones.
+        collapsed = collapsed | surface_collapsed(result[:, :3, :3])
         result[collapsed, :3, :3] = np.eye(3)
     else:
         approvals = getattr(model, "_collapsed_world_descriptors", {})
@@ -679,9 +1015,123 @@ def _sample_descriptor(model, descriptor, states, attachment=None):
     return result[:,:3,:].astype("<f4")
 
 
+SHIMMER_CHANGE_SHARE = 0.25  # of consecutive samples whose texture offset changes
+SHIMMER_MAX_VALUES = 4       # distinct offsets of a flip-book overlay
+SHIMMER_MIN_SHARE = 0.10     # offsets shown less often than this are dropped
+
+
+def steady_shimmer_layers(meshes, material_tracks):
+    """Screen-tuned cheat for the 3DS LCD (docs/render-performance.md).
+
+    Some translucent overlays switch their texture offset between a few atlas
+    rows on almost every source frame (Phenac's sign glows: rows 0 and 0.25,
+    briefly 0.5 and 0.75). On a television that read as a soft shimmer; on
+    the 3DS's sharp screen at 30 fps it is a hard flicker. Each such mesh is
+    replaced by one steady copy per common offset, drawn at the original
+    alpha times the share of samples that showed it: the time average of the
+    flip-book. Visibility, colour and the other material values keep their
+    tracks. Returns the new mesh list and a report of every replacement.
+    """
+    result, report = [], []
+    for mesh in meshes:
+        track = material_tracks[id(mesh)]
+        # Flip-book rows sit on 1/16 steps of the atlas; the sampled offsets
+        # wander a little around them (0.243-0.251 for the 0.25 row). A smooth
+        # scroll (water) still yields many values and is left alone.
+        offsets = [(round(m[2] * 16) / 16, round(m[3] * 16) / 16) for m in track]
+        changes = sum(a != b for a, b in zip(offsets, offsets[1:]))
+        counts = {}
+        for value in offsets:
+            counts[value] = counts.get(value, 0) + 1
+        translucent = all(m[4] < 1.0 for m in track)
+        if (len(track) < 8 or not translucent or changes < SHIMMER_CHANGE_SHARE * (len(track) - 1)
+                or not 2 <= len(counts) <= SHIMMER_MAX_VALUES):
+            result.append(mesh)
+            continue
+        # Layers in atlas order, so their draw order does not depend on the
+        # exact sample counts.
+        kept = sorted(value for value, n in counts.items() if n / len(track) >= SHIMMER_MIN_SHARE)
+        layers = []
+        for value in kept:
+            share = counts[value] / len(track)
+            layer = dict(mesh)
+            layer["steady_shimmer"] = value
+            material_tracks[id(layer)] = [(*m[:2], value[0], value[1], m[4] * share, *m[5:]) for m in track]
+            result.append(layer)
+            layers.append({"offset": list(value), "share": round(share, 4)})
+        report.append({"mesh_index": mesh["index"], "source_samples": len(track), "offset_changes": changes,
+                       "dropped": [{"offset": list(v), "share": round(n / len(track), 4)}
+                                   for v, n in counts.items() if v not in kept],
+                       "layers": layers})
+    return result, report
+
+
+CROP_PAD = 2  # texels kept around a cropped region for bilinear filtering
+CROP_UNSAFE_FLAGS = 1024 | 8192 | 16384  # second UV stage, reflection, second-UV blend
+
+
+def crop_textures_to_use(meshes, material_tracks):
+    """Give each mesh only the part of its texture it samples.
+
+    A door or machine object is a few dozen vertices that sample a small
+    region of its floor's shared 1024x1024 atlas, and each object pack used to
+    carry the whole atlas (2.8 MB as GPU-native RGB565 with mips; Phenac's six
+    doors held 16.8 MB of copies in a 95 MB heap). A mesh whose texture
+    transform never changes, whose coordinates stay inside the image and that
+    uses no second texture stage gets the smallest power-of-two rectangle
+    covering its coordinates plus CROP_PAD texels, with its coordinates
+    remapped into it: the same texels at the same place. Returns the new mesh
+    list and a report of each crop.
+    """
+    result, report = [], []
+    for mesh in meshes:
+        track = material_tracks[id(mesh)]
+        textures = mesh["textures"]
+        flags = mesh["batch"][3]
+        uvs = [(v[6], v[7]) for v in mesh["vertices"]]
+        static = all(abs(m[0] - 1) < 1e-6 and abs(m[1] - 1) < 1e-6 and abs(m[2]) < 1e-6 and abs(m[3]) < 1e-6
+                     for m in track) and all(abs(m[16]) < 1e-6 and abs(m[17]) < 1e-6 for m in track if len(m) > 17)
+        if (len(textures) != 1 or flags & CROP_UNSAFE_FLAGS or not static or not uvs
+                or not all(0.0 <= u <= 1.0 and 0.0 <= v <= 1.0 for u, v in uvs)):
+            result.append(mesh)
+            continue
+        w, h, pixels, s, t = textures[0]
+
+        def span(lo, hi, size):
+            first = max(0, int(math.floor(lo * size)) - CROP_PAD)
+            last = min(size, int(math.ceil(hi * size)) + CROP_PAD)
+            extent = 8
+            while extent < last - first:
+                extent *= 2
+            extent = min(extent, size)
+            return min(first, size - extent), extent
+
+        x0, cw = span(min(u for u, _ in uvs), max(u for u, _ in uvs), w)
+        y0, ch = span(min(v for _, v in uvs), max(v for _, v in uvs), h)
+        if cw * ch * 2 > w * h:
+            result.append(mesh)
+            continue
+        rows = [pixels[(y0 + y) * w * 4 + x0 * 4:(y0 + y) * w * 4 + (x0 + cw) * 4] for y in range(ch)]
+        cropped = dict(mesh)
+        cropped["textures"] = [(cw, ch, b"".join(rows), s, t)]
+        cropped["vertices"] = [(*v[:6], (v[6] * w - x0) / cw, (v[7] * h - y0) / ch, *v[8:]) for v in mesh["vertices"]]
+        material_tracks[id(cropped)] = track
+        result.append(cropped)
+        report.append({"mesh_index": mesh["index"], "source": [w, h], "region": [x0, y0, cw, ch]})
+    return result, report
+
+
 def prepare_pack_set(meshes, schedules, fps, camera_frames, lights, archive_hash, output, prefix,
-                     attachment=None, expected_count=None, format_version=2, retained_parts=()):
+                     attachment=None, expected_count=None, format_version=2, retained_parts=(),
+                     gpu_textures=False, steady_shimmer=None, crop_textures=False,
+                     fit_first_chunk=False):
     """Sample once, compact equal affine tracks, then partition at native bounds.
+
+    gpu_textures stores the textures as exact PICA images (tools/pack_textures.py:
+    RGB565 with mips when opaque, RGBA8 otherwise). The field packs use it; the
+    reports describe the written bytes either way. steady_shimmer (default:
+    the gpu_textures value) replaces flickering translucent overlays with
+    steady layers (steady_shimmer_layers); reports list each one.
 
     schedules is a list of (source_clip, authored_frame_sequence, loop). Every
     model in a map group uses the same clock; independent clocks get a new set.
@@ -690,6 +1140,21 @@ def prepare_pack_set(meshes, schedules, fps, camera_frames, lights, archive_hash
     """
     if retained_parts and expected_count!=1:
         raise ValueError("Retained source parts require one explicit model pack")
+    # Surveyed floors: a mesh above one pack's vertex bound is split into
+    # whole-triangle slices that share its material (approximation mode).
+    split = []
+    for mesh in meshes:
+        count = len(mesh["vertices"])
+        if count > 30000 and approximate("mesh_split_at_vertex_bound"):
+            step = 30000 - 30000 % 3
+            for start in range(0, count, step):
+                piece = mesh["vertices"][start:start+step]
+                batch = list(mesh["batch"]); batch[0], batch[1] = 0, len(piece)
+                split.append({**mesh, "vertices": piece, "batch": batch,
+                              "descriptors": mesh["descriptors"][start:start+step]})
+        else:
+            split.append(mesh)
+    meshes = split
     frames = [(clip,frame) for clip,sequence,_loop in schedules for frame in sequence]
     models = list(dict.fromkeys(mesh["model"] for mesh in meshes))
     states = {model:[model.world(clip if model.tracks else 0,frame) for clip,frame in frames] for model in models}
@@ -707,7 +1172,8 @@ def prepare_pack_set(meshes, schedules, fps, camera_frames, lights, archive_hash
         for i,(clip,frame) in enumerate(frames):
             world, visible = states[model][i]
             if (all(descriptor[0] == "rigid" for descriptor in mesh["descriptors"]) and
-                np.all(np.asarray(world[mesh["bone"]])[:3, :3] == 0)):
+                (np.all(np.asarray(world[mesh["bone"]])[:3, :3] == 0) or
+                 surface_collapsed(np.asarray(world[mesh["bone"]])[:3, :3]))):
                 visible = list(visible)
                 visible[mesh["bone"]] = False
             material = material_state(mesh,clip,frame,visible)
@@ -721,19 +1187,35 @@ def prepare_pack_set(meshes, schedules, fps, camera_frames, lights, archive_hash
                     raise ValueError("Full UV affine rotation requires C3T3")
                 material=material[:16]
             material_tracks[id(mesh)].append(material)
-    chunks, current, keys, count = [], [], set(), 0
+    shimmer = []
+    if gpu_textures if steady_shimmer is None else steady_shimmer:
+        meshes, shimmer = steady_shimmer_layers(meshes, material_tracks)
+    crops = []
+    if crop_textures:
+        meshes, crops = crop_textures_to_use(meshes, material_tracks)
+    chunks, current, keys, count, images = [], [], set(), 0, set()
     for mesh in meshes:
         used = {signatures[(mesh["model"],d)] for d in mesh["descriptors"]}
+        # C3_TITLE_MAX_TEXTURES: distinct (size, pixels, wrap) per pack.
+        textures = {(w,h,hashlib.sha256(pixels).digest(),s,t) for w,h,pixels,s,t in mesh["textures"]}
         if len(used)>64:
             raise ValueError("Single field mesh exceeds sampled bone limit")
-        if len(keys|used)>64 or count+len(mesh["vertices"])>32768 or len(current)==64:
+        if (len(keys|used)>64 or count+len(mesh["vertices"])>32768 or len(current)==64 or
+                len(images|textures)>32):
             chunks.append(current)
-            current,keys,count=[],set(),0
+            current,keys,count,images=[],set(),0,set()
         current.append(mesh)
         keys |= used
+        images |= textures
         count += len(mesh["vertices"])
     if current:
         chunks.append(current)
+    if (fit_first_chunk and expected_count==1 and len(chunks)>1 and
+            approximate("pack_meshes_beyond_bone_limit_dropped")):
+        # Surveyed floors: one pack per person at runtime. The caller orders
+        # meshes largest first, so the kept chunk holds the main body.
+        APPROXIMATIONS["pack_meshes_dropped"] += sum(len(c) for c in chunks[1:])
+        chunks = chunks[:1]
     if expected_count is not None and len(chunks)!=expected_count:
         raise ValueError("Reviewed field pack partition changed: %d != %d" % (len(chunks),expected_count))
     reports=[]
@@ -791,6 +1273,8 @@ def prepare_pack_set(meshes, schedules, fps, camera_frames, lights, archive_hash
             first+=len(sequence)
         pack=title.encode_pack(len(bone_tracks),vertices,batches,textures,clips,lights,sampled,
                                fps=fps,format_version=format_version,archive_sha256=archive_hash)
+        if gpu_textures:
+            pack,_texture_report=pack_textures.repack(pack)
         name=prefix + (str(number) if expected_count != 1 else "") + ".c3t"
         (output/name).write_bytes(pack)
         report={"file":name,"bytes":len(pack),"sha256":hashlib.sha256(pack).hexdigest(),
@@ -807,6 +1291,11 @@ def prepare_pack_set(meshes, schedules, fps, camera_frames, lights, archive_hash
                                  for i,mesh in enumerate(chunk)],
                 "clips":[{"source_clip":c,"samples":len(s),"authored_end":s[-1],"loop":l}
                          for c,s,l in schedules]}
+        own = {mesh["index"] for mesh in chunk if "steady_shimmer" in mesh}
+        if own:
+            report["steady_shimmer"] = [entry for entry in shimmer if entry["mesh_index"] in own]
+        if crops:
+            report["texture_crops"] = crops
         reports.append(report)
         print("Prepared %s: %d vertices, %d batches, %d sampled bones, %d bytes" %
               (name,len(vertices),len(batches),len(bone_tracks),len(pack)),flush=True)
@@ -840,7 +1329,7 @@ def prepare_wes(archive, output, prefix, camera, lights, format_version=2):
     samples=sum(len(sequence) for _,sequence,_ in schedules)
     reports=prepare_pack_set(meshes,schedules,60,[camera]*samples,lights,
         PROFILES["field_common.fsys"][1],output,prefix,expected_count=1,
-        format_version=format_version)
+        format_version=format_version,gpu_textures=True)
     return reports,sum(len(mesh["vertices"]) for mesh in meshes)
 
 
@@ -852,11 +1341,12 @@ def fixed_lights(raw, data):
     for light_set in raw.lights:
         for animation in light_set.animations or []:
             if animation.next or animation.animation or animation.eye_position_animation or animation.interest_animation:
-                raise ValueError("Animated Outskirt light exceeds the reviewed subset")
+                if not approximate("animated_light_first_values"):
+                    raise ValueError("Animated Outskirt light exceeds the reviewed subset")
         item = copy.copy(light_set)
         item.animations = []
         root.lights.append(item)
-    return title.light_values(root,data,UNITS)
+    return title.light_values(root,data,UNITS,approximate=approximate)
 
 
 def prepare_geometry(archives, output):
@@ -873,13 +1363,13 @@ def prepare_geometry(archives, output):
     meshes=[build_mesh(model,i) for model in models[:4] for i in range(len(model.meshes))]
     short=sample_sequence(179)
     reports=prepare_pack_set(meshes,[(0,short,True)],60,[fixed]*len(short),lights,source_hash,
-                             output,"outskirt_map",expected_count=3)
+                             output,"outskirt_map",expected_count=3,gpu_textures=True)
     sky=[build_mesh(models[4],i) for i in range(len(models[4].meshes))]
     # Sparse sampling of the slow linear sky rotation; its exact loop is 29999
     # source frames, not GSmodelGetFrameCount's inclusive query of 30000.
     sky_frames=[i*29999/1000 for i in range(1001)]
     sky_reports=prepare_pack_set(sky,[(0,sky_frames,True)],30000/29999,[fixed]*1001,lights,
-                                 source_hash,output,"outskirt_map3",expected_count=1)
+                                 source_hash,output,"outskirt_map3",expected_count=1,gpu_textures=True)
     reports+=sky_reports
     wes_reports,actor_vertices=prepare_wes(archives["field_common.fsys"],output,
                                          "outskirt_wes",fixed,lights)
@@ -905,7 +1395,7 @@ def prepare_arrival(archives,output,lights,source_hash):
     bike_meshes=[build_mesh(bike,i) for i in range(len(bike.meshes))]
     reports=prepare_pack_set(bike_meshes,[(1,bike_frames,False)],60,camera_frames,lights,
                                source_hash,output,"outskirt_arrival",attachment=attachment,expected_count=2,
-                               format_version=3)
+                               format_version=3,gpu_textures=True)
     for report in reports:
         if report["file"].startswith("outskirt_arrival"):
             report["clips"][0]["authored_end"]=150

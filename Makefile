@@ -1,14 +1,16 @@
 CC ?= cc
 CPPFLAGS += -Iinclude -Icompat/include -Ivendor/colosseum/include
 CFLAGS ?= -std=c11 -O2 -g -Wall -Wextra -Wpedantic -Werror
+# Compressed packs (src/title.c): C3Z1 zlib, C3Z2 zstd.
+LDFLAGS += -lzstd -lz
 CORE = src/core.c src/data.c src/decomp_rng.c src/decomp_collision.c src/decomp_pokemon.c
 HEADERS = $(wildcard include/colosseum3ds/*.h) compat/include/dolphin/types.h
 HEADERS += vendor/colosseum/include/game/gs_colsys.h vendor/colosseum/include/game/pokemon_evolution.h
 UPSTREAM = vendor/colosseum/src/hsd/random.c vendor/colosseum/src/game/GScolsys2Util_exact_8010C77C.c vendor/colosseum/src/game/pokemon_range_8012795C.c
 
 .PHONY: all test clean 3ds verify-source
-all: build/test_bottom_ui
-all: build/test_core build/test_data build/test_pokemon build/test_model build/test_movie build/test_save build/test_title build/test_field build/test_game_menu build/test_game_state build/test_render_recovery build/test_area build/test_area_camera build/test_area_lights build/test_story build/test_field_story build/test_battle build/test_battle_action build/test_battle_rng
+all: build/test_bottom_ui build/test_bottom_ui_golden build/test_first_person build/test_skin_uniforms
+all: build/test_core build/test_data build/test_pokemon build/test_model build/test_movie build/test_save build/test_title build/test_field build/test_dev_floor build/test_world_map build/test_name_entry build/test_game_menu build/test_game_state build/test_render_recovery build/test_area build/test_area_camera build/test_area_lights build/test_story build/test_field_story build/test_phenac_story build/test_world_story build/test_battle build/test_battle_action build/test_battle_rng
 
 build:
 	mkdir -p $@
@@ -34,8 +36,26 @@ build/test_title: tests/test_title.c src/title.c include/colosseum3ds/title.h | 
 build/test_field: tests/test_field.c src/field.c include/colosseum3ds/field.h include/colosseum3ds/title.h | build
 	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_field.c src/field.c $(LDFLAGS) -lm -o $@
 
+build/test_world_map: tests/test_world_map.c src/world_map.c include/colosseum3ds/world_map.h vendor/colosseum/src/rel/worldmap_menu_rel/worldmap_menu_rel.c | build
+	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_world_map.c src/world_map.c $(LDFLAGS) -o $@
+
+build/test_name_entry: tests/test_name_entry.c src/name_entry.c src/bottom_ui.c include/colosseum3ds/name_entry.h include/colosseum3ds/bottom_ui.h | build
+	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_name_entry.c src/name_entry.c src/bottom_ui.c $(LDFLAGS) -lm -o $@
+
+build/test_dev_floor: tests/test_dev_floor.c src/dev_floor.c src/field.c include/colosseum3ds/dev_floor.h include/colosseum3ds/field.h include/colosseum3ds/title.h | build
+	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_dev_floor.c src/dev_floor.c src/field.c $(LDFLAGS) -lm -o $@
+
 build/test_area: tests/test_area.c src/area.c src/field.c include/colosseum3ds/area.h include/colosseum3ds/field.h | build
 	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_area.c src/area.c src/field.c $(LDFLAGS) -lm -o $@
+
+build/test_bottom_ui_golden: tests/test_bottom_ui_golden.c src/bottom_ui.c include/colosseum3ds/bottom_ui.h | build
+	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_bottom_ui_golden.c src/bottom_ui.c $(LDFLAGS) -o $@
+
+build/test_skin_uniforms: tests/test_skin_uniforms.c src/skin_uniforms.c src/title.c include/colosseum3ds/skin_uniforms.h include/colosseum3ds/title.h | build
+	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_skin_uniforms.c src/skin_uniforms.c src/title.c $(LDFLAGS) -lm -o $@
+
+build/test_first_person: tests/test_first_person.c src/first_person.c include/colosseum3ds/first_person.h include/colosseum3ds/field.h | build
+	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_first_person.c src/first_person.c $(LDFLAGS) -lm -o $@
 
 build/test_area_camera: tests/test_area_camera.c src/area_camera.c include/colosseum3ds/area_camera.h | build
 	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_area_camera.c src/area_camera.c $(LDFLAGS) -lm -o $@
@@ -49,6 +69,13 @@ build/test_story: tests/test_story.c src/story.c include/colosseum3ds/story.h | 
 FIELD_STORY_SOURCES = src/field_story.c src/story.c src/area.c src/area_camera.c src/field.c src/title.c src/game_state.c src/save.c src/decomp_pokemon.c src/battle.c build/save_codec.c
 build/test_field_story: tests/test_field_story.c $(FIELD_STORY_SOURCES) $(HEADERS)
 	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_field_story.c $(FIELD_STORY_SOURCES) $(LDFLAGS) -lm -o $@
+
+build/test_phenac_story: tests/test_phenac_story.c src/floor_profile.c $(FIELD_STORY_SOURCES) $(HEADERS)
+	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_phenac_story.c src/floor_profile.c $(FIELD_STORY_SOURCES) $(LDFLAGS) -lm -o $@
+
+WORLD_BATTLE_SOURCES = src/battle_general.c src/battle_story.c src/battle_rng.c src/decomp_rng.c
+build/test_world_story: tests/test_world_story.c $(FIELD_STORY_SOURCES) $(WORLD_BATTLE_SOURCES) build/battle_rng_source.h $(HEADERS) $(UPSTREAM)
+	$(CC) $(CPPFLAGS) -Ibuild -Isrc $(CFLAGS) tests/test_world_story.c $(FIELD_STORY_SOURCES) $(WORLD_BATTLE_SOURCES) $(LDFLAGS) -lm -o $@
 
 build/test_battle: tests/test_battle.c src/battle.c include/colosseum3ds/battle.h build/save_codec.c
 	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_battle.c src/battle.c build/save_codec.c $(LDFLAGS) -o $@
@@ -69,7 +96,7 @@ build/test_battle_rng: tests/test_battle_rng.c src/battle_rng.c src/decomp_rng.c
 build/test_game_menu: tests/test_game_menu.c platform/3ds/game_menu.c src/bottom_ui.c platform/3ds/game_menu.h platform/3ds/n3ds_platform.h include/colosseum3ds/bottom_ui.h | build
 	$(CC) $(CPPFLAGS) -Iplatform/3ds -DC3_MENU_HOST_TEST $(CFLAGS) tests/test_game_menu.c platform/3ds/game_menu.c src/bottom_ui.c $(LDFLAGS) -lm -o $@
 
-UI_VIEW_SOURCES = src/inventory.c src/decomp_pokemon.c platform/3ds/game_menu.c platform/3ds/game_ui_views.c platform/3ds/ingame_menu.c src/bottom_ui.c src/battle_preview.c src/game_state.c src/pda.c build/save_codec.c
+UI_VIEW_SOURCES = src/floor_profile.c src/inventory.c src/decomp_pokemon.c platform/3ds/game_menu.c platform/3ds/game_ui_views.c platform/3ds/ingame_menu.c src/bottom_ui.c src/battle_preview.c src/game_state.c src/pda.c build/save_codec.c
 UI_VIEW_HEADERS = platform/3ds/game_menu.h platform/3ds/game_ui_views.h platform/3ds/ingame_menu.h include/colosseum3ds/bottom_ui.h include/colosseum3ds/game_state.h include/colosseum3ds/pda.h
 build/render_bottom_ui_preview: tools/render_bottom_ui_preview.c $(UI_VIEW_SOURCES) $(UI_VIEW_HEADERS) | build
 	$(CC) $(CPPFLAGS) -Iplatform/3ds -Isrc -DC3_MENU_HOST_TEST $(CFLAGS) -ffunction-sections tools/render_bottom_ui_preview.c $(UI_VIEW_SOURCES) $(LDFLAGS) -Wl,--gc-sections -lm -o $@
@@ -107,6 +134,7 @@ build/test_render_recovery: tests/test_render_recovery.c platform/3ds/render_rec
 
 test: all
 	./build/test_bottom_ui
+	./build/test_bottom_ui_golden
 	./build/test_core
 	./build/test_data
 	./build/test_pokemon
@@ -115,14 +143,21 @@ test: all
 	./build/test_save
 	./build/test_title
 	./build/test_field
+	./build/test_dev_floor
+	./build/test_world_map
+	./build/test_name_entry
 	./build/test_game_menu
 	./build/test_game_state
 	./build/test_render_recovery
 	./build/test_area
 	./build/test_area_camera
+	./build/test_first_person
+	./build/test_skin_uniforms
 	./build/test_area_lights
 	./build/test_story
 	./build/test_field_story
+	./build/test_phenac_story
+	./build/test_world_story
 	./build/test_battle
 	./build/test_battle_action
 	./build/test_battle_rng
@@ -135,7 +170,7 @@ verify-source:
 	$(MAKE) -f Makefile.3ds
 
 clean:
-	rm -rf build build-3ds build-3ds-boot
+	rm -rf build build-3ds build-3ds-boot build-3ds-devfloor build-3ds-boot-devfloor
 
 include tests/battle-init.mk
 
@@ -271,6 +306,16 @@ wzx-tackle-check: build/test_wzx_tackle
 	./build/test_wzx_tackle
 test: wzx-tackle-check
 
+# Private, optional: every C3PT v2 pack from tools/prepare_particle.py --batch
+# decodes, matches the converter closure and simulates PARTICLE_DISC_TICKS.
+PARTICLE_DISC_DIR ?= private/particles-general
+PARTICLE_DISC_TICKS ?= 600
+build/test_particle_disc: tests/test_particle_disc.c src/particle.c src/particle_pack.c build/save_codec.c $(HEADERS) | build
+	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_particle_disc.c src/particle.c src/particle_pack.c build/save_codec.c $(LDFLAGS) -lm -o $@
+.PHONY: particle-disc-check
+particle-disc-check: build/test_particle_disc
+	./build/test_particle_disc $(PARTICLE_DISC_DIR) $(PARTICLE_DISC_TICKS)
+
 all: build/test_particle_tackle
 .PHONY: particle-tackle-check
 particle-tackle-check: build/test_particle_tackle
@@ -284,6 +329,14 @@ all: build/test_inventory
 inventory-check: build/test_inventory
 	./build/test_inventory
 test: inventory-check
+
+build/test_shop: tests/test_shop.c tests/test_game_state.c src/shop.c src/inventory.c src/pda.c src/bottom_ui.c src/game_state.c src/save.c src/decomp_pokemon.c build/save_codec.c include/colosseum3ds/shop.h $(HEADERS)
+	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_shop.c src/shop.c src/inventory.c src/pda.c src/bottom_ui.c src/game_state.c src/save.c src/decomp_pokemon.c build/save_codec.c $(LDFLAGS) -lm -o $@
+all: build/test_shop
+.PHONY: shop-check
+shop-check: build/test_shop
+	./build/test_shop
+test: shop-check
 
 build/test_pda_audio: tests/test_pda_audio.c platform/3ds/pda_audio.c platform/3ds/pda_audio.h platform/3ds/battle_audio_player.h | build
 	$(CC) $(CPPFLAGS) -Iplatform/3ds $(CFLAGS) tests/test_pda_audio.c platform/3ds/pda_audio.c $(LDFLAGS) -o $@
@@ -466,3 +519,5 @@ battle-entry-preview-check: build/test_battle_entry_preview
 	./build/test_battle_entry_preview
 test: battle-entry-preview-check
 test: battle-runtime-trainer-check
+
+include tests/battle-general.mk

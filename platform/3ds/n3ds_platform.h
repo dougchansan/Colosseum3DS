@@ -21,6 +21,10 @@ typedef struct {
     int8_t stick_x, stick_y;
     int8_t cstick_x, cstick_y;
     uint8_t trigger_l, trigger_r;
+    /* Bottom-screen stylus in 320x240 pixels; pressed/released are edges.
+     * The position of a release is the last held position. */
+    uint16_t touch_x, touch_y;
+    bool touch_held, touch_pressed, touch_released;
     bool exit_requested;
 } C3N3dsInput;
 
@@ -36,6 +40,20 @@ uint64_t c3_n3ds_active_time_us(void);
 /* Actual process heap grants and current linear free space. Call after trace
  * creation and scene allocation; New 3DS detection does not imply a grant. */
 void c3_n3ds_log_memory(FILE *trace, const char *stage);
+/* Write the top screen (400x240) as a 24-bit BMP. The framebuffer read is the
+ * one libctru hands out for drawing, so it holds a frame from just before the
+ * call. Returns 0 on success. */
+int c3_n3ds_capture_top(const char *path);
+int c3_n3ds_capture_bottom(const char *path);
+/* Top-screen loading indicator: a spinning ring of dots and a progress bar
+ * (fraction 0..1), drawn straight into the top framebuffer and presented. */
+void c3_n3ds_top_loading(float fraction);
+
+#ifdef C3_CAMPAIGN
+/* Campaign build: while enabled, every poll adds an A press each
+ * `interval` seconds (menus and battles play their default choices). */
+void c3_n3ds_autopress(int enabled, float interval);
+#endif
 const char *c3_n3ds_data_root(void);
 void c3_n3ds_wait_for_exit(void);
 void c3_n3ds_shutdown(void);

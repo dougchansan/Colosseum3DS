@@ -33,7 +33,8 @@
   "native_translation_units": [
     "src/hsd/random.c",
     "src/game/GScolsys2Util_exact_8010C77C.c",
-    "src/game/pokemon_range_8012795C.c"
+    "src/game/pokemon_range_8012795C.c",
+    "src/rel/worldmap_menu_rel/worldmap_menu_rel.c"
   ],
   "native_extracts": [
     {

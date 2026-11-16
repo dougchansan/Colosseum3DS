@@ -33,7 +33,7 @@ int c3_stage_renderer_particle_pack(const C3ParticlePack *pack,char *error,size_
     }
     for(uint32_t i=0;i<pack->texture_count;++i){
         const C3ParticlePackTexture *p=&pack->textures[i];
-        C3TitleTexture source={p->width,p->height,0,0,p->rgba,(size_t)p->width*p->height*4};
+        C3TitleTexture source={.width=p->width,.height=p->height,.pixels=p->rgba,.size=(size_t)p->width*p->height*4};
         if(!upload_texture(&textures[texture_count],&source))return fail(error,cap,"Particle texture upload failed.");
         particle_binding_textures[particle_binding_count][i]=texture_count++;
         gpu_buffer_bytes+=source.size;
@@ -76,6 +76,23 @@ int c3_stage_renderer_particles_source_order(C3ParticleSystem *system)
     if(!registered||!c3_stage_renderer_particles(system,world))return 0;
     particle_order_system=system;return 1;
 }
+/* Slots 1..15 (slot 0 is the binding above). Borrowed like slot 0. */
+static const C3ParticleSystem *particle_extra_system[C3_STAGE_MAX_PARTICLE_SYSTEMS];
+static unsigned particle_extra_binding[C3_STAGE_MAX_PARTICLE_SYSTEMS];
+static float particle_extra_attachment[C3_STAGE_MAX_PARTICLE_SYSTEMS][12];
+int c3_stage_renderer_particles_set(unsigned index,const C3ParticleSystem *system,const float attachment[12])
+{
+    if(index>=C3_STAGE_MAX_PARTICLE_SYSTEMS)return 0;
+    if(!index)return c3_stage_renderer_particles(system,attachment);
+    if(!system){particle_extra_system[index]=NULL;return 1;}
+    if(!attachment)return 0;
+    for(unsigned i=0;i<12;++i)if(!isfinite(attachment[i]))return 0;
+    for(unsigned i=0;i<particle_binding_count;++i)if(particle_bindings[i]->bank.bytes==system->bank.bytes){
+        particle_extra_system[index]=system;particle_extra_binding[index]=i;
+        memcpy(particle_extra_attachment[index],attachment,sizeof particle_extra_attachment[index]);return 1;
+    }
+    return 0;
+}
 static int particle_draw_indices(uint16_t *order,size_t *count,char *error,size_t cap)
 {
     if(particle_system->bank.profile==C3_PARTICLE_PROFILE_TACKLE_V1){
@@ -117,7 +134,7 @@ static void particle_quad_material(const C3ParticleQuad *q,uint32_t texture)
         C3D_TexBind(0,tex);C3D_TexBind(1,tex);
 }
 static int draw_particle_mixed(const C3TitleCamera *,C3TitleRenderStats *,char *,size_t);
-static int draw_particles(const C3TitleCamera *camera,const C3D_Mtx *mvp,
+static int draw_particles_primary(const C3TitleCamera *camera,const C3D_Mtx *mvp,
                           C3TitleRenderStats *stats,char *error,size_t cap)
 {
     if(!particle_system||!particle_pack)return 1;
@@ -178,4 +195,74 @@ static int draw_particles(const C3TitleCamera *camera,const C3D_Mtx *mvp,
     stats->particle_command_words=gpuCmdBufOffset-command_start;
     stats->particles=count;stats->particle_vertices=count*6;stats->draw_calls+=count;stats->vertices+=count*6;
     return 1;
+}
+/* Slots 1..15: own lazily allocated vertex arena (no cost until used). */
+static TitleGPUVertex *particle_extra_vertices;
+static uint32_t particle_extra_skipped;
+static void particle_extras_shutdown(void)
+{
+    if(particle_extra_vertices){linearFree(particle_extra_vertices);particle_extra_vertices=NULL;
+        gpu_buffer_bytes-=C3_PARTICLE_MAX_PARTICLES*6u*sizeof *particle_extra_vertices;}
+    memset(particle_extra_system,0,sizeof particle_extra_system);particle_extra_skipped=0;
+}
+static int draw_particle_extras(const C3TitleCamera *camera,const C3D_Mtx *mvp,C3TitleRenderStats *stats)
+{
+    unsigned bound=0;
+    for(unsigned s=1;s<C3_STAGE_MAX_PARTICLE_SYSTEMS;++s)bound+=particle_extra_system[s]!=NULL;
+    if(!bound)return 1;
+    if(!particle_extra_vertices){
+        particle_extra_vertices=linearAlloc(C3_PARTICLE_MAX_PARTICLES*6u*sizeof *particle_extra_vertices);
+        if(!particle_extra_vertices){++particle_extra_skipped;return 1;}
+        gpu_buffer_bytes+=C3_PARTICLE_MAX_PARTICLES*6u*sizeof *particle_extra_vertices;
+    }
+    C3D_Mtx clip,view;C3ParticleCamera pc={0};char error[160];
+    if(!camera_matrices(camera,&clip,&view,false))return 1;
+    for(unsigned i=0;i<4;++i){
+        C3D_FVec c=Mtx_MultiplyFVec4(&clip,FVec4_New(i==0,i==1,i==2,i==3));
+        pc.clip[i]=c.x;pc.clip[4+i]=c.y;pc.clip[8+i]=c.z;pc.clip[12+i]=c.w;
+        if(i<3){C3D_FVec v=Mtx_MultiplyFVec3(&view,FVec3_New(i==0,i==1,i==2));pc.right[i]=v.x;pc.up[i]=v.y;}
+    }
+    /* Slot 0 already queued its draws; its CPU quad/texture scratch is free. */
+    uint32_t count=0,command_start=gpuCmdBufOffset;
+    for(unsigned s=1;s<C3_STAGE_MAX_PARTICLE_SYSTEMS;++s){
+        const C3ParticleSystem *system=particle_extra_system[s];if(!system)continue;
+        const C3ParticlePack *pack=particle_bindings[particle_extra_binding[s]];
+        if(pack->bank.bytes!=system->bank.bytes){particle_extra_system[s]=NULL;continue;}
+        for(unsigned i=0;i<C3_PARTICLE_MAX_PARTICLES;++i){
+            const C3Particle *p=&system->particles[i];if(!p->active)continue;
+            if(count==C3_PARTICLE_MAX_PARTICLES||!c3_stage_particle_segment_fits(command_start,count+1,gpuCmdBufSize)){++particle_extra_skipped;continue;}
+            C3ParticleQuad *q=&particle_quads[count];
+            int result=c3_particle_quad(p,particle_extra_attachment[s],&pc,q,error,sizeof error);
+            if(result<0)++particle_extra_skipped;
+            if(result<=0)continue;
+            uint32_t texture=UINT32_MAX;
+            for(uint32_t j=0;j<pack->texture_count;++j)
+                if(pack->textures[j].group==q->texture_group&&pack->textures[j].pose==q->texture_frame){texture=particle_binding_textures[particle_extra_binding[s]][j];break;}
+            if(texture==UINT32_MAX){++particle_extra_skipped;continue;}
+            particle_texids[count]=texture;
+            static const unsigned corners[6]={0,1,2,0,2,3};
+            for(unsigned j=0;j<6;++j){const C3ParticleQuadVertex *v=&q->vertices[corners[j]];
+                TitleGPUVertex *d=&particle_extra_vertices[count*6+j];memset(d,0,sizeof *d);
+                memcpy(d->pos,v->position,sizeof d->pos);memcpy(d->uv,v->uv,sizeof d->uv);
+                for(unsigned k=0;k<4;++k)d->rgba[k]=v->rgba[k]/255.0f;}
+            ++count;
+        }
+    }
+    if(!count)return 1;
+    GSPGPU_FlushDataCache(particle_extra_vertices,count*6u*sizeof *particle_extra_vertices);
+    C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER,mvp_location,mvp);
+    C3D_FVUnifSet(GPU_VERTEX_SHADER,color_pass_location,1,0,0,0);
+    C3D_BufInfo *buffers=C3D_GetBufInfo();BufInfo_Init(buffers);
+    BufInfo_Add(buffers,particle_extra_vertices,sizeof *particle_extra_vertices,5,0x43210);
+    C3D_CullFace(GPU_CULL_NONE);
+    for(uint32_t i=0;i<count;++i){particle_quad_material(&particle_quads[i],particle_texids[i]);C3D_DrawArrays(GPU_TRIANGLES,i*6,6);}
+    stats->particle_command_words+=gpuCmdBufOffset-command_start;
+    stats->particles+=count;stats->particle_vertices+=count*6;stats->draw_calls+=count;stats->vertices+=count*6;
+    return 1;
+}
+static int draw_particles(const C3TitleCamera *camera,const C3D_Mtx *mvp,
+                          C3TitleRenderStats *stats,char *error,size_t cap)
+{
+    if(!draw_particles_primary(camera,mvp,stats,error,cap))return 0;
+    return draw_particle_extras(camera,mvp,stats);
 }

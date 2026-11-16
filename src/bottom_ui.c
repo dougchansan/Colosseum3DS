@@ -1,5 +1,6 @@
 #include "colosseum3ds/bottom_ui.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #define HEADER 32u
@@ -11,6 +12,13 @@
 
 static uint32_t u32(const unsigned char *p)
 { return (uint32_t)p[0]|(uint32_t)p[1]<<8|(uint32_t)p[2]<<16|(uint32_t)p[3]<<24; }
+
+static uint64_t (*ui_clock)(void);
+static C3UiPerf ui_perf;
+void c3_ui_perf_clock(uint64_t (*now_us)(void)) { ui_clock = now_us; }
+void c3_ui_perf_take(C3UiPerf *out) { if (out) *out = ui_perf; memset(&ui_perf, 0, sizeof ui_perf); }
+#define UI_TIMED(field, body) do { uint64_t ui_started_ = ui_clock ? ui_clock() : 0; body; \
+    if (ui_clock) ui_perf.field += ui_clock() - ui_started_; } while (0)
 
 int c3_ui_assets_open(C3UiAssets *a,const void *memory,size_t size)
 {
@@ -37,36 +45,122 @@ int c3_ui_assets_open(C3UiAssets *a,const void *memory,size_t size)
     checked.data=d;checked.size=size;*a=checked;return 1;
 }
 
+/* The 3DS ARM11 has no divide instruction: every '/' below used to be a
+ * library call, three per blended pixel plus one per scaled coordinate, and a
+ * battle redraw took 34 ms. (x+1+(x>>8))>>8 equals x/255 for every
+ * 0 <= x <= 255*255+127, the full range a blend produces (checked
+ * exhaustively), and alpha 255 returns the source colour exactly, so output is
+ * byte-identical (tests/test_bottom_ui_golden.c). */
+static inline unsigned div255(unsigned x){return (x+1u+(x>>8))>>8;}
+
 static void pixel(C3BottomUi *ui,int x,int y,uint32_t color,unsigned alpha)
 {
     if(!ui||!ui->pixels||x<0||x>=320||y<0||y>=240||!alpha)return;
     size_t index=ui->rotated_bgr?(size_t)x*240u+239u-(unsigned)y:(size_t)y*320u+(unsigned)x;
+    unsigned r=(color>>16)&255u,g=(color>>8)&255u,b=color&255u;
     if(ui->rotated_bgr==C3_UI_ROTATED_RGB565){
         unsigned char *p=ui->pixels+index*2u;
-        unsigned old=(unsigned)p[0]|(unsigned)p[1]<<8;
-        unsigned r5=old>>11,g6=(old>>5)&63u,b5=old&31u;
-        unsigned r=((((color>>16)&255u)*alpha)+((r5<<3)|(r5>>2))*(255u-alpha)+127u)/255u;
-        unsigned g=((((color>>8)&255u)*alpha)+((g6<<2)|(g6>>4))*(255u-alpha)+127u)/255u;
-        unsigned b=(((color&255u)*alpha)+((b5<<3)|(b5>>2))*(255u-alpha)+127u)/255u;
+        if(alpha<255u){
+            unsigned old=(unsigned)p[0]|(unsigned)p[1]<<8;
+            unsigned r5=old>>11,g6=(old>>5)&63u,b5=old&31u;
+            r=div255(r*alpha+((r5<<3)|(r5>>2))*(255u-alpha)+127u);
+            g=div255(g*alpha+((g6<<2)|(g6>>4))*(255u-alpha)+127u);
+            b=div255(b*alpha+((b5<<3)|(b5>>2))*(255u-alpha)+127u);
+        }
         unsigned next=(r>>3)<<11|(g>>2)<<5|(b>>3);
         p[0]=(unsigned char)next;p[1]=(unsigned char)(next>>8);return;
     }
-    size_t at=index*3u;
-    unsigned char *p=ui->pixels+at;
-    unsigned r=(color>>16)&255u,g=(color>>8)&255u,b=color&255u;
+    unsigned char *p=ui->pixels+index*3u;
     if(ui->rotated_bgr){unsigned swap=r;r=b;b=swap;}
-    p[0]=(unsigned char)((r*alpha+p[0]*(255u-alpha)+127u)/255u);
-    p[1]=(unsigned char)((g*alpha+p[1]*(255u-alpha)+127u)/255u);
-    p[2]=(unsigned char)((b*alpha+p[2]*(255u-alpha)+127u)/255u);
+    if(alpha==255u){p[0]=(unsigned char)r;p[1]=(unsigned char)g;p[2]=(unsigned char)b;return;}
+    p[0]=(unsigned char)div255(r*alpha+p[0]*(255u-alpha)+127u);
+    p[1]=(unsigned char)div255(g*alpha+p[1]*(255u-alpha)+127u);
+    p[2]=(unsigned char)div255(b*alpha+p[2]*(255u-alpha)+127u);
 }
+
+/* Areas drawn since c3_ui_begin (clipped, exclusive right/bottom). The panel
+ * cache only reuses or captures pixels of a panel drawn over untouched
+ * backdrop, so a cached copy is exactly what blending would produce. */
+static void touch(C3BottomUi *ui,int x,int y,int w,int h)
+{
+    if(!ui||w<=0||h<=0)return;
+    int64_t l=x<0?0:x,t=y<0?0:y,r=(int64_t)x+w>320?320:(int64_t)x+w,b=(int64_t)y+h>240?240:(int64_t)y+h;
+    if(l>=r||t>=b)return;
+    if(ui->touched_count>=64u){ui->touched_count=65u;return;}
+    int16_t *q=ui->touched[ui->touched_count++];
+    q[0]=(int16_t)l;q[1]=(int16_t)t;q[2]=(int16_t)r;q[3]=(int16_t)b;
+}
+
+static int untouched(const C3BottomUi *ui,int l,int t,int r,int b)
+{
+    if(ui->touched_count>64u)return 0;
+    for(unsigned i=0;i<ui->touched_count;++i){
+        const int16_t *q=ui->touched[i];
+        if(l<q[2]&&q[0]<r&&t<q[3]&&q[1]<b)return 0;
+    }
+    return 1;
+}
+
+static unsigned bytes_per_pixel(const C3BottomUi *ui){return ui->rotated_bgr==C3_UI_ROTATED_RGB565?2u:3u;}
+
+/* Copy the clipped rectangle between the framebuffer and a packed buffer.
+ * Rotated layouts keep a screen column contiguous; RGB8 keeps a row. */
+static void copy_rect(C3BottomUi *ui,int l,int t,int r,int b,unsigned char *buffer,int to_screen)
+{
+    unsigned bpp=bytes_per_pixel(ui);
+    if(ui->rotated_bgr){
+        size_t run=(size_t)(b-t)*bpp;
+        for(int x=l;x<r;++x,buffer+=run){
+            unsigned char *p=ui->pixels+((size_t)x*240u+240u-(unsigned)b)*bpp;
+            if(to_screen)memcpy(p,buffer,run);else memcpy(buffer,p,run);
+        }
+        return;
+    }
+    size_t run=(size_t)(r-l)*3u;
+    for(int y=t;y<b;++y,buffer+=run){
+        unsigned char *p=ui->pixels+((size_t)y*320u+(unsigned)l)*3u;
+        if(to_screen)memcpy(p,buffer,run);else memcpy(buffer,p,run);
+    }
+}
+
+static void rect_fill(C3BottomUi *ui,int x,int y,int w,int h,uint32_t color);
 
 void c3_ui_rect(C3BottomUi *ui,int x,int y,int w,int h,uint32_t color)
 {
+    ++ui_perf.rects;
+    UI_TIMED(rect_us, rect_fill(ui,x,y,w,h,color));
+    touch(ui,x,y,w,h);
+}
+
+static void rect_fill(C3BottomUi *ui,int x,int y,int w,int h,uint32_t color)
+{
     /* Clip before adding extents, including adversarial host-test inputs. */
-    if(w<=0||h<=0||x>=320||y>=240)return;
+    if(w<=0||h<=0||x>=320||y>=240||!ui||!ui->pixels)return;
     int left=x<0?0:x,top=y<0?0:y;
     int right=(int64_t)x+w>320?320:x+w,bottom=(int64_t)y+h>240?240:y+h;
-    for(int yy=top;yy<bottom;++yy)for(int xx=left;xx<right;++xx)pixel(ui,xx,yy,color,255);
+    if(left>=right||top>=bottom)return;
+    /* Opaque fill: the bytes pixel() would write, without per-pixel work.
+     * In the rotated layouts one screen column is contiguous in memory. */
+    unsigned r=(color>>16)&255u,g=(color>>8)&255u,b=color&255u;
+    if(ui->rotated_bgr==C3_UI_ROTATED_RGB565){
+        unsigned v=(r>>3)<<11|(g>>2)<<5|(b>>3);unsigned char lo=(unsigned char)v,hi=(unsigned char)(v>>8);
+        for(int xx=left;xx<right;++xx){
+            unsigned char *p=ui->pixels+((size_t)xx*240u+240u-(unsigned)bottom)*2u;
+            for(int n=bottom-top;n>0;--n,p+=2){p[0]=lo;p[1]=hi;}
+        }
+        return;
+    }
+    if(ui->rotated_bgr){
+        for(int xx=left;xx<right;++xx){
+            unsigned char *p=ui->pixels+((size_t)xx*240u+240u-(unsigned)bottom)*3u;
+            for(int n=bottom-top;n>0;--n,p+=3){p[0]=(unsigned char)b;p[1]=(unsigned char)g;p[2]=(unsigned char)r;}
+        }
+        return;
+    }
+    for(int yy=top;yy<bottom;++yy){
+        unsigned char *p=ui->pixels+((size_t)yy*320u+(unsigned)left)*3u;
+        for(int n=right-left;n>0;--n,p+=3){p[0]=(unsigned char)r;p[1]=(unsigned char)g;p[2]=(unsigned char)b;}
+    }
 }
 
 void c3_ui_begin(C3BottomUi *ui,unsigned char *pixels,int rotated,
@@ -74,11 +168,30 @@ void c3_ui_begin(C3BottomUi *ui,unsigned char *pixels,int rotated,
 {
     if(!ui)return;
     ui->pixels=pixels;ui->rotated_bgr=rotated==C3_UI_ROTATED_RGB565?rotated:!!rotated;ui->assets=assets;ui->fallback_font=fallback;ui->content_inset=0;
-    /* The original title palette and quiet field backdrop. No frame ownership. */
-    for(int y=0;y<240;++y){
-        unsigned c=(unsigned)(240-y)/18u;
-        c3_ui_rect(ui,0,y,320,1,((5u+c)<<16)|((12u+c*2u)<<8)|(16u+c*2u));
-    }
+    ui->touched_count=0;
+    if(!pixels)return;
+    /* The original title palette and quiet field backdrop. No frame ownership.
+     * It never changes: render it once per layout (240 one-pixel rows are
+     * 76,800 scattered writes in a rotated framebuffer, 3.5 ms on a New 3DS)
+     * and copy it afterwards. */
+    UI_TIMED(begin_us, {
+        static unsigned char *backdrop[3];
+        size_t bytes=320u*240u*bytes_per_pixel(ui);
+        unsigned char *template=backdrop[ui->rotated_bgr];
+        if(!template&&(template=malloc(bytes))){
+            C3BottomUi plain=*ui;plain.pixels=template;
+            for(int y=0;y<240;++y){
+                unsigned c=(unsigned)(240-y)/18u;
+                rect_fill(&plain,0,y,320,1,((5u+c)<<16)|((12u+c*2u)<<8)|(16u+c*2u));
+            }
+            backdrop[ui->rotated_bgr]=template;
+        }
+        if(template)memcpy(pixels,template,bytes);
+        else for(int y=0;y<240;++y){
+            unsigned c=(unsigned)(240-y)/18u;
+            rect_fill(ui,0,y,320,1,((5u+c)<<16)|((12u+c*2u)<<8)|(16u+c*2u));
+        }
+    });
 }
 
 void c3_ui_sprite(C3BottomUi *ui,unsigned id,int x,int y,int w,int h)
@@ -90,16 +203,78 @@ void c3_ui_sprite(C3BottomUi *ui,unsigned id,int x,int y,int w,int h)
     c3_ui_rgba(ui,src,sw,sh,x,y,w,h);
 }
 
+static void rgba_blit(C3BottomUi *ui,const uint8_t *src,unsigned sw,unsigned sh,int x,int y,int w,int h);
+
 void c3_ui_rgba(C3BottomUi *ui,const uint8_t *src,unsigned sw,unsigned sh,int x,int y,int w,int h)
 {
+    ++ui_perf.sprites;
+    UI_TIMED(sprite_us, rgba_blit(ui,src,sw,sh,x,y,w,h));
+    if(ui&&src&&w>0&&h>0&&w<=640&&h<=480)touch(ui,x,y,w,h);
+}
+
+static void rgba_blit(C3BottomUi *ui,const uint8_t *src,unsigned sw,unsigned sh,int x,int y,int w,int h)
+{
     if(!ui||!src||!sw||sw>1024||!sh||sh>1024||w<=0||h<=0||w>640||h>480||x>=320||y>=240||x < -w||y < -h)return;
-    for(int yy=0;yy<h;++yy)for(int xx=0;xx<w;++xx){
-        const unsigned char *p=src+((size_t)((unsigned)yy*sh/(unsigned)h)*sw+(unsigned)xx*sw/(unsigned)w)*4u;
-        pixel(ui,x+xx,y+yy,(uint32_t)p[0]<<16|(uint32_t)p[1]<<8|p[2],p[3]);
+    /* Same nearest mapping as before, divided once per column and row. */
+    unsigned columns[640];
+    for(int xx=0;xx<w;++xx)columns[xx]=(unsigned)xx*sw/(unsigned)w;
+    for(int yy=0;yy<h;++yy){
+        if(y+yy<0||y+yy>=240)continue;
+        const unsigned char *row=src+(size_t)((unsigned)yy*sh/(unsigned)h)*sw*4u;
+        for(int xx=0;xx<w;++xx){
+            const unsigned char *p=row+(size_t)columns[xx]*4u;
+            pixel(ui,x+xx,y+yy,(uint32_t)p[0]<<16|(uint32_t)p[1]<<8|p[2],p[3]);
+        }
     }
 }
 
+static void panel_draw(C3BottomUi *ui,unsigned sprite,int x,int y,int w,int h);
+
+/* Finished pixels of panels drawn over untouched backdrop, keyed by
+ * everything that determines them. 8 entries, least recently used replaced. */
+typedef struct {
+    const unsigned char *assets; size_t asset_bytes;
+    unsigned sprite; int x,y,w,h,layout;
+    unsigned char *pixels; size_t bytes, capacity; unsigned age;
+} PanelCache;
+static PanelCache panel_cache[8];
+static unsigned panel_clock;
+
+static void panel_cached(C3BottomUi *ui,unsigned sprite,int x,int y,int w,int h)
+{
+    if(!ui||!ui->pixels||!ui->assets||!ui->assets->data||sprite>=C3_UI_SPRITES||
+       w<12||h<12||w>320||h>240||x>=320||y>=240||x < -w||y < -h){panel_draw(ui,sprite,x,y,w,h);return;}
+    int l=x<0?0:x,t=y<0?0:y,r=x+w>320?320:x+w,b=y+h>240?240:y+h;
+    if(!untouched(ui,l,t,r,b)){panel_draw(ui,sprite,x,y,w,h);return;}
+    size_t bytes=(size_t)(r-l)*(size_t)(b-t)*bytes_per_pixel(ui);
+    PanelCache *slot=NULL;
+    for(unsigned i=0;i<8u;++i){
+        PanelCache *c=&panel_cache[i];
+        if(c->pixels&&c->assets==ui->assets->data&&c->asset_bytes==ui->assets->size&&c->sprite==sprite&&
+           c->x==x&&c->y==y&&c->w==w&&c->h==h&&c->layout==ui->rotated_bgr&&c->bytes==bytes){
+            copy_rect(ui,l,t,r,b,c->pixels,1);
+            c->age=++panel_clock;++ui_perf.panel_cache_hits;touch(ui,x,y,w,h);return;
+        }
+        if(!slot||c->age<slot->age)slot=c;
+    }
+    panel_draw(ui,sprite,x,y,w,h);
+    if(slot->capacity<bytes){
+        unsigned char *grown=realloc(slot->pixels,bytes);
+        if(!grown)return;
+        slot->pixels=grown;slot->capacity=bytes;
+    }
+    copy_rect(ui,l,t,r,b,slot->pixels,0);
+    slot->assets=ui->assets->data;slot->asset_bytes=ui->assets->size;slot->sprite=sprite;
+    slot->x=x;slot->y=y;slot->w=w;slot->h=h;slot->layout=ui->rotated_bgr;slot->bytes=bytes;slot->age=++panel_clock;
+}
+
 static void panel(C3BottomUi *ui,unsigned sprite,int x,int y,int w,int h)
+{
+    ++ui_perf.panels;
+    UI_TIMED(panel_us, panel_cached(ui,sprite,x,y,w,h));
+}
+
+static void panel_draw(C3BottomUi *ui,unsigned sprite,int x,int y,int w,int h)
 {
     if(w<12||h<12||w>320||h>240||x>=320||y>=240||x < -w||y < -h)return;
     if(!ui||!ui->assets||!ui->assets->data){
@@ -110,14 +285,22 @@ static void panel(C3BottomUi *ui,unsigned sprite,int x,int y,int w,int h)
     /* Nine-slice the source window. Keep its corners/border, stretch only the
      * middle texels; the original 640x480 window is reflowed, not letterboxed. */
     unsigned border=sprite==C3_UI_HP_FRAME&&sw>=16&&sh>=16?8u:4u;
-    for(int yy=0;yy<h;++yy)for(int xx=0;xx<w;++xx){
-        unsigned sx=xx<4?(unsigned)xx*border/4u:xx>=w-4?sw-border+(unsigned)(xx-w+4)*border/4u:
+    /* Source columns once per call, source row once per row (w <= 320). */
+    unsigned columns[320];
+    for(int xx=0;xx<w;++xx)
+        columns[xx]=xx<4?(unsigned)xx*border/4u:xx>=w-4?sw-border+(unsigned)(xx-w+4)*border/4u:
             border+(unsigned)(xx-4)*(sw-2u*border)/(unsigned)(w-8);
+    for(int yy=0;yy<h;++yy){
+        if(y+yy<0||y+yy>=240)continue;
         unsigned sy=yy<4?(unsigned)yy*border/4u:yy>=h-4?sh-border+(unsigned)(yy-h+4)*border/4u:
             border+(unsigned)(yy-4)*(sh-2u*border)/(unsigned)(h-8);
-        const unsigned char *p=src+((size_t)sy*sw+sx)*4u;
-        pixel(ui,x+xx,y+yy,(uint32_t)p[0]<<16|(uint32_t)p[1]<<8|p[2],p[3]);
+        const unsigned char *row=src+(size_t)sy*sw*4u;
+        for(int xx=0;xx<w;++xx){
+            const unsigned char *p=row+(size_t)columns[xx]*4u;
+            pixel(ui,x+xx,y+yy,(uint32_t)p[0]<<16|(uint32_t)p[1]<<8|p[2],p[3]);
+        }
     }
+    touch(ui,x,y,w,h);
 }
 
 void c3_ui_panel(C3BottomUi *ui,int x,int y,int w,int h)
@@ -132,6 +315,7 @@ static unsigned advance(const C3BottomUi *ui,unsigned c)
 
 static void glyph(C3BottomUi *ui,int x,int y,unsigned c,uint32_t color)
 {
+    ++ui_perf.glyphs;
     if(c<32||c>126)c='?';
     if(ui->assets&&ui->assets->data){
         const unsigned char *d=ui->assets->data,*p=d+u32(d+GLYPH_TABLE+(c-32u)*8u+4);
@@ -169,7 +353,26 @@ static int text_width(const C3BottomUi *ui,const char *text)
     return 0;
 }
 
+static int text_right_draw(C3BottomUi *ui,int right,int y,int width,const char *text,uint32_t color);
+static size_t text_draw(C3BottomUi *ui,int x,int y,int width,int lines,const char *text,uint32_t color);
+
 int c3_ui_text_right(C3BottomUi *ui,int right,int y,int width,const char *text,uint32_t color)
+{
+    int result;
+    UI_TIMED(text_us, result=text_right_draw(ui,right,y,width,text,color));
+    if(result)touch(ui,right-result,y,result+2,18);
+    return result;
+}
+
+size_t c3_ui_text(C3BottomUi *ui,int x,int y,int width,int lines,const char *text,uint32_t color)
+{
+    size_t result;
+    UI_TIMED(text_us, result=text_draw(ui,x,y,width,lines,text,color));
+    if(ui&&text&&width>=16&&width<=320&&lines>=1&&lines<=15)touch(ui,x,y,width+2,lines*17+2);
+    return result;
+}
+
+static int text_right_draw(C3BottomUi *ui,int right,int y,int width,const char *text,uint32_t color)
 {
     if(right<0||right>320||y < -240||y>240||width<1||width>320)return 0;
     int measured=text_width(ui,text);
@@ -179,7 +382,7 @@ int c3_ui_text_right(C3BottomUi *ui,int right,int y,int width,const char *text,u
     return measured;
 }
 
-size_t c3_ui_text(C3BottomUi *ui,int x,int y,int width,int lines,const char *text,uint32_t color)
+static size_t text_draw(C3BottomUi *ui,int x,int y,int width,int lines,const char *text,uint32_t color)
 {
     size_t pos=0;int cursor=0,line=0;
     if(!ui||!text||width<16||width>320||lines<1||lines>15||x < -320||x>320||y < -240||y>240)return 0;
@@ -326,6 +529,7 @@ static void title_heading(C3BottomUi *ui)
         }
         cursor+=advance(ui,c);
     }
+    touch(ui,0,62,320,22); /* the scaled heading and its shadow */
 }
 
 void c3_ui_title(C3BottomUi *ui,int waiting,int accepted)
@@ -338,11 +542,15 @@ void c3_ui_title(C3BottomUi *ui,int waiting,int accepted)
         if(sw>=96){
             /* Reuse the main menu's rounded blue button: preserve its end
              * caps and stretch a text-free vertical strip behind PRESS START. */
-            for(unsigned y=0;y<58;++y)for(unsigned x=0;x<264;++x){
-                unsigned sx=x<32?x:x>=232?sw-32u+x-232u:24u;
-                const unsigned char *p=src+((size_t)(y*sh/58u)*sw+sx)*4u;
-                pixel(ui,28+(int)x,94+(int)y,(uint32_t)p[0]<<16|(uint32_t)p[1]<<8|p[2],p[3]);
+            for(unsigned y=0;y<58;++y){
+                const unsigned char *row=src+(size_t)(y*sh/58u)*sw*4u;
+                for(unsigned x=0;x<264;++x){
+                    unsigned sx=x<32?x:x>=232?sw-32u+x-232u:24u;
+                    const unsigned char *p=row+(size_t)sx*4u;
+                    pixel(ui,28+(int)x,94+(int)y,(uint32_t)p[0]<<16|(uint32_t)p[1]<<8|p[2],p[3]);
+                }
             }
+            touch(ui,28,94,264,58);
         }else c3_ui_panel(ui,28,94,264,58);
         c3_ui_sprite(ui,C3_UI_START,50,109,220,26);
         c3_ui_sprite(ui,C3_UI_HAND,14,114,29,21);

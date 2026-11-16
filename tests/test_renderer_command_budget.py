@@ -40,7 +40,7 @@ int main(void){
             result=subprocess.run(cc+flags+["-I"+str(ROOT/"include"),"-I"+str(ROOT/"platform/3ds"),str(source),"-o",str(exe)],capture_output=True,text=True)
             self.assertEqual(result.returncode,0,result.stdout+result.stderr)
             self.assertEqual(subprocess.run([str(exe)]).returncode,0)
-    def test_eight_bank_registration_and_checked_app_srt_dispatch(self):
+    def test_bank_registration_slots_and_checked_app_srt_dispatch(self):
         cc=shlex.split(os.environ.get("CC","cc"))
         if not shutil.which(cc[0]):self.skipTest("Host C compiler required")
         implementation=(ROOT/"platform/3ds/particle_renderer.inc").read_text().split("static uint32_t particle_color")[0]
@@ -54,7 +54,7 @@ int main(void){
 typedef struct {float x;} TitleGPUVertex;
 static unsigned scene_count=1,scene_drawn,texture_count=5,uploads,allocations;
 static size_t gpu_buffer_bytes;
-static int textures[128];
+static int textures[C3_STAGE_MAX_TEXTURES];
 static int fail(char *e,size_t n,const char*s){if(e&&n)snprintf(e,n,"%s",s);return -1;}
 static void *linearAlloc(size_t n){++allocations;return malloc(n);}
 static int upload_texture(int *t,const C3TitleTexture *s){(void)t;(void)s;++uploads;return 1;}
@@ -82,27 +82,37 @@ int c3_particle_quad_app_srt(C3ParticleSystem *s,const C3Particle *p,const C3Par
  return adapter_result;
 }
 '''+implementation+r'''
-int main(void){(void)particle_quads;(void)particle_texids;char e[192];uint8_t bytes[9]={0};C3ParticlePack packs[9]={0};
- assert(C3_STAGE_MAX_PARTICLE_BANKS==8);
- for(unsigned i=0;i<9;++i){packs[i].bank.bytes=bytes+i;packs[i].texture_count=1;packs[i].textures[0].width=packs[i].textures[0].height=8;}
+enum{N=C3_STAGE_MAX_PARTICLE_BANKS};
+int main(void){(void)particle_quads;(void)particle_texids;char e[192];uint8_t bytes[N+1]={0};static C3ParticlePack packs[N+1];
+ assert(N==32&&C3_STAGE_MAX_PARTICLE_SYSTEMS==16);
+ for(unsigned i=0;i<=N;++i){packs[i].bank.bytes=bytes+i;packs[i].texture_count=1;packs[i].textures[0].width=packs[i].textures[0].height=8;}
  packs[4].bank.profile=C3_PARTICLE_PROFILE_GROWL_V1;
  packs[6].bank.profile=C3_PARTICLE_PROFILE_RED_DOWN_V1;
  packs[7].bank.profile=C3_PARTICLE_PROFILE_TACKLE_V1;
- for(unsigned i=0;i<8;++i){
+ for(unsigned i=0;i<N;++i){
   assert(c3_stage_renderer_particle_pack(&packs[i],e,sizeof e)==C3_RENDER_OK);
   assert(c3_stage_renderer_particle_pack(&packs[i],e,sizeof e)==C3_RENDER_OK);
  }
- assert(allocations==1&&uploads==8&&texture_count==13&&particle_binding_count==8);
+ assert(allocations==1&&uploads==N&&texture_count==5+N&&particle_binding_count==N);
  C3ParticlePack alias=packs[0];
  assert(c3_stage_renderer_particle_pack(&alias,e,sizeof e)==C3_RENDER_ERROR);
  assert(strstr(e,"already belong"));
- assert(c3_stage_renderer_particle_pack(&packs[8],e,sizeof e)==C3_RENDER_ERROR);
- assert(allocations==1&&uploads==8&&texture_count==13&&particle_binding_count==8);
+ assert(c3_stage_renderer_particle_pack(&packs[N],e,sizeof e)==C3_RENDER_ERROR);
+ assert(allocations==1&&uploads==N&&texture_count==5+N&&particle_binding_count==N);
  C3ParticleSystem s={0};float identity[12]={1,0,0,0,0,1,0,0,0,0,1,0};
- for(unsigned i=0;i<8;++i){s.bank=packs[i].bank;
+ for(unsigned i=0;i<N;++i){s.bank=packs[i].bank;
   assert(c3_stage_renderer_particles(&s,identity));assert(particle_pack==&packs[i]&&particle_textures[0]==5+i);
  }
- s.bank=packs[8].bank;assert(!c3_stage_renderer_particles(&s,identity));assert(particle_pack==&packs[7]);
+ s.bank=packs[N].bank;assert(!c3_stage_renderer_particles(&s,identity));assert(particle_pack==&packs[N-1]);
+ /* Slots 1..15: bound by registered bank identity, independent of slot 0. */
+ C3ParticleSystem extra={0};extra.bank=packs[9].bank;
+ assert(!c3_stage_renderer_particles_set(16,&extra,identity));assert(!c3_stage_renderer_particles_set(3,&extra,NULL));
+ assert(c3_stage_renderer_particles_set(3,&extra,identity));assert(particle_extra_system[3]==&extra&&particle_extra_binding[3]==9);
+ assert(particle_pack==&packs[N-1]&&particle_system==&s);
+ extra.bank=packs[N].bank;assert(!c3_stage_renderer_particles_set(4,&extra,identity));assert(!particle_extra_system[4]);
+ {float nan12[12];memcpy(nan12,identity,sizeof nan12);nan12[0]=NAN;extra.bank=packs[9].bank;assert(!c3_stage_renderer_particles_set(3,&extra,nan12));}
+ assert(c3_stage_renderer_particles_set(3,NULL,NULL));assert(!particle_extra_system[3]);
+ s.bank=packs[N-1].bank;assert(c3_stage_renderer_particles_set(0,&s,identity));assert(particle_system==&s&&particle_pack==&packs[N-1]);
  C3ParticleSystem tackle={0};tackle.bank=packs[7].bank;
  assert(c3_stage_renderer_particles_source_order(&tackle));assert(particle_order_system==&tackle);
  uint16_t order[1536];size_t order_count;assert(particle_draw_indices(order,&order_count,e,sizeof e));

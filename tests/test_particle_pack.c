@@ -67,11 +67,39 @@ static void synthetic(void)
     assert(!c3_particle_pack_decode(NULL,bytes,FIXTURE_BYTES,digest,error,sizeof error));
     assert(!c3_particle_pack_decode((C3ParticlePack *)(void *)bytes,bytes,FIXTURE_BYTES,digest,error,sizeof error));
 }
+/* C3PT v2: same synthetic bank, root table after the texture records, 8x4 I8
+ * frames stored as 8x8 RGBA8 (PICA edges); refused by the v1 decoder. */
+enum { V2_BYTES=1024, V2_BANK_AT=224 };
+static void fixture_v2(uint8_t p[V2_BYTES])
+{
+    uint8_t v1[FIXTURE_BYTES];fixture(v1);
+    memset(p,0,V2_BYTES);memcpy(p,"C3PT",4);le(p+4,2);le(p+8,V2_BYTES);le(p+16,V2_BANK_AT);le(p+20,BANK_BYTES);
+    le(p+24,2);le(p+28,128);memset(p+32,0x12,32);memset(p+64,0x34,32);le(p+96,1);
+    memcpy(p+V2_BANK_AT,v1+BANK_AT,BANK_BYTES);
+    for(unsigned i=0;i<2;++i){uint8_t *r=p+128+32*i;
+        le(r+4,i);le(r+8,8);le(r+12,8);le(r+16,512+256*i);le(r+20,256);le(r+24,1);
+        memset(p+512+256*i,20+(int)i,256);
+    }
+}
+static void general_pack(void)
+{
+    static uint8_t bytes[V2_BYTES];uint8_t digest[20];char error[160];static C3ParticlePack pack;
+    fixture_v2(bytes);c3_save_codec_sha1(digest,bytes,V2_BYTES);
+    assert(c3_particle_pack_decode_general(&pack,bytes,V2_BYTES,digest,error,sizeof error));
+    assert(pack.root_count==1&&pack.roots[0]==0&&pack.bank.general&&pack.bank.generator_count==1&&pack.texture_count==2);
+    const C3ParticlePackTexture *t=c3_particle_pack_texture(&pack,0,1);assert(t&&t->width==8&&t->height==8&&t->rgba[0]==21);
+    assert(!c3_particle_pack_decode(&pack,bytes,V2_BYTES,digest,error,sizeof error));
+    const struct {unsigned offset;uint32_t value;} changes[]={{4,1},{12,1},{96,0},{96,2},{100,1},{128+12,4},{128+8,128},{128+24,3},{192,5},{V2_BANK_AT+164,7}};
+    for(unsigned i=0;i<sizeof changes/sizeof changes[0];++i){
+        fixture_v2(bytes);le(bytes+changes[i].offset,changes[i].value);c3_save_codec_sha1(digest,bytes,V2_BYTES);
+        assert(!c3_particle_pack_decode_general(&pack,bytes,V2_BYTES,digest,error,sizeof error)&&error[0]);
+    }
+}
 static unsigned hex(char c)
 {if(c>='0'&&c<='9')return (unsigned)(c-'0');if(c>='a'&&c<='f')return (unsigned)(c-'a'+10);assert(0);return 0;}
 int main(int argc,char **argv)
 {
-    synthetic();
+    synthetic();general_pack();
     if(argc==3){
         assert(strlen(argv[2])==40);uint8_t digest[20];for(unsigned i=0;i<20;++i)digest[i]=(uint8_t)(16*hex(argv[2][2*i])+hex(argv[2][2*i+1]));
         FILE *f=fopen(argv[1],"rb");assert(f);assert(!fseek(f,0,SEEK_END));long size=ftell(f);assert(size>0 && (unsigned long)size<=C3_PARTICLE_PACK_MAX_BYTES);

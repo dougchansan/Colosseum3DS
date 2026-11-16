@@ -77,6 +77,9 @@ int c3_story_add_bank(C3Story *story, const void *data, size_t size, char *error
         return fail(error, "GSVM bank header is invalid");
     for (i = 0; i < next.function_count; ++i) {
         uint32_t at = be32(bytes + 24 + 4*i);
+        /* Retail banks keep null slots (offset zero) for removed functions;
+         * they are never valid entry points. */
+        if (!at) continue;
         if (at < next.global_offset || at >= size) return fail(error, "GSVM function offset is invalid");
         if (at < first) first = at;
     }
@@ -115,7 +118,8 @@ static int group_valid(const uint8_t *b, uint32_t size) {
     uint32_t i, count, previous = 0, start;
     if (size < 16) return 0;
     count = be16(b + 4); start = 16 + count*8;
-    if (!count || count > 8192 || start > size) return 0;
+    /* Some floors' message member is empty (M2_windmill_2F 019E0A00). */
+    if (count > 8192 || start > size) return 0;
     for (i = 0; i < count; ++i) {
         uint32_t key = be32(b + 16 + i*8), off = be32(b + 20 + i*8);
         if ((i && key <= previous) || key > 0xfffff || off < start || !inside(off, 2, size)) return 0;
@@ -194,6 +198,7 @@ int c3_story_start(C3Story *story, uint32_t script_id, const uint32_t *args,
     p->last_key = candidate; memset(t, 0, sizeof(*t)); t->key = candidate;
     t->bank = (uint8_t)bank; t->script_id = script_id; t->status = C3_STORY_RUNNING;
     t->pc = be32(p->banks[bank].data + 24 + (script_id & 0xffff)*4);
+    if (!t->pc) { memset(t, 0, sizeof(*t)); return fail(error, "GSVM script %08x is an original null slot", (unsigned)script_id); }
     t->count = argc + 4;
     for (i = 0; i < argc; ++i) t->stack[i+1] = args[i];
     t->stack[argc+3] = argc;
@@ -455,9 +460,20 @@ uint32_t c3_story_floor(const C3Story *story){Impl*p=story?story->impl:NULL;retu
 static int append(char *out,size_t capacity,size_t *used,const char*text){
     size_t n=strlen(text);if(n>=capacity-*used)return 0;memcpy(out+*used,text,n);*used+=n;out[*used]=0;return 1;
 }
+typedef struct { const char *hero, *partner, *speaker; } Names;
+static const char *names_source(void *context,uint8_t control){
+    const Names *n=context;
+    return control==0x2b?(n->hero?n->hero:""):control==0x2c?(n->partner?n->partner:""):
+           control==0x59?(n->speaker?n->speaker:""):NULL;
+}
 int c3_story_message(const C3Story *story,uint32_t id,const char*hero,const char*partner,const char*speaker,
                     char*out,size_t capacity,char*error){
-    Impl*p=story?story->impl:NULL;const uint8_t*data=NULL;uint32_t length=0,i,j;size_t used=0;int ruby=0;
+    Names names={hero,partner,speaker};
+    return c3_story_message_with(story,id,names_source,&names,out,capacity,error);
+}
+int c3_story_message_with(const C3Story *story,uint32_t id,C3StoryTextSource source,void *context,
+                    char*out,size_t capacity,char*error){
+    Impl*p=story?story->impl:NULL;const uint8_t*data=NULL;uint32_t length=0,i,j;size_t used=0;int ruby=0,drop_prefix=0;
     if(!p||!id||!out||!capacity)return fail(error,"Invalid story message request");
     out[0]=0;
     for(i=0;i<p->group_count&&!data;++i){
@@ -472,6 +488,10 @@ int c3_story_message(const C3Story *story,uint32_t id,const char*hero,const char
     for(i=0;i+2<=length;){
         uint16_t glyph=be16(data+i);char encoded[5]={0};const char*text=encoded;i+=2;
         if(!glyph){if(error)error[0]=0;return 1;}
+        /* After an unnamed speaker slot, drop its ": " separator too. */
+        if(drop_prefix==2&&glyph==':'){drop_prefix=1;continue;}
+        if(drop_prefix==1&&glyph==' '){drop_prefix=0;continue;}
+        drop_prefix=0;
         if(glyph==0xffff){
             uint8_t control;if(i>=length)return fail(error,"Truncated message control");control=data[i++];
             switch(control){
@@ -482,15 +502,31 @@ int c3_story_message(const C3Story *story,uint32_t id,const char*hero,const char
             case 5:ruby=1;break;
             case 6:ruby=0;break;
             case 7:if(i>=length)return fail(error,"Truncated font control");++i;break;
-            case 0x2b:text=hero?hero:"";break;
-            case 0x2c:text=partner?partner:"";break;
             case 0x3d:break; /* message sound disabled; no text payload */
-            case 0x59:text=speaker?speaker:"";break;
-            default:return fail(error,"Message %08x uses unsupported control %02x",(unsigned)id,control);
+            default:
+                text=source?source(context,control):NULL;
+                if(!text)return fail(error,"Message %08x uses unsupported control %02x",(unsigned)id,control);
+                break;
             }
         }else if(!ruby){
-            if(glyph==0x2031)text="???"; /* original unknown-name glyph */
+            if(glyph==0x2031){
+                /* The speaker slot that opens a field line ("<name>: text").
+                 * It takes the talking person's name when the scene supplies
+                 * one (control 59); a person or Pokemon without a name gets
+                 * no label rather than "???". */
+                const char *speaker=source?source(context,0x59):NULL;
+                if(speaker&&*speaker)text=speaker;else{text="";drop_prefix=2;}
+            }
             else if(glyph==0xe9)text="e"; /* libctru console font */
+            /* The field text is drawn with an ASCII font, which prints any
+             * other byte as '?'. Full-width spaces pad some original
+             * messages (three after "became a partner!"); typographic
+             * punctuation gets its ASCII form. */
+            else if(glyph==0x3000)text=" ";
+            else if(glyph==0x2026)text="...";
+            else if(glyph==0x2018||glyph==0x2019)text="'";
+            else if(glyph==0x201c||glyph==0x201d)text="\"";
+            else if(glyph==0x2013||glyph==0x2014)text="-";
             else if(glyph<0x80){if(glyph<32)return fail(error,"Unexpected text control glyph");encoded[0]=(char)glyph;}
             else if(glyph<0x800){encoded[0]=(char)(0xc0|(glyph>>6));encoded[1]=(char)(0x80|(glyph&63));}
             else if(glyph<0xd800||glyph>0xdfff){encoded[0]=(char)(0xe0|(glyph>>12));encoded[1]=(char)(0x80|((glyph>>6)&63));encoded[2]=(char)(0x80|(glyph&63));}

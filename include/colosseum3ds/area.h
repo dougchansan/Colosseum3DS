@@ -5,7 +5,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define C3_AREA_MAX_ACTORS 32u
+#define C3_AREA_MAX_ACTORS 48u
 #define C3_AREA_MAX_SURFACES 1024u
 #define C3_AREA_MAX_LINKS 128u
 
@@ -19,6 +19,27 @@ typedef struct C3AreaActor {
      * Zero means no prepared attachment part. Other part IDs remain closed. */
     uint32_t part1_bone_plus_one;
 } C3AreaActor;
+/* One row of the original door/elevator table lbl_80478ECC (0x18-byte
+ * FloorDoorEntry, floor_event.c): animation numbers of the door model
+ * (negative = none), the CCD object its collision uses, and the flags that
+ * record it open (open_flag) or gate it (close_flag). */
+#define C3_AREA_MAX_DOORS 16u
+typedef struct C3AreaDoor {
+    uint32_t index;    /* row index the scripts pass to native 60 */
+    int8_t open_anim, close_anim, open_end_anim, close_end_anim;
+    uint8_t door_type, part_index;
+    int16_t collision_id;
+    uint16_t open_flag, close_flag;
+    uint32_t resource; /* door model resource; zero = no model */
+    int8_t alternate_a, alternate_b; /* elevator travel animations */
+    uint16_t part_bone_plus_one;     /* sampled bone of model part part_index; 0 = none */
+    char file[40];                   /* prepared object pack; empty = not prepared */
+} C3AreaDoor;
+/* C3D1: the door-table rows of one floor with their object pack names. */
+typedef struct C3AreaDoors {
+    uint32_t floor, count;
+    C3AreaDoor rows[C3_AREA_MAX_DOORS];
+} C3AreaDoors;
 typedef struct C3AreaLink {
     uint32_t kind, source_id, script, args[4], source_index;
 } C3AreaLink;
@@ -44,5 +65,16 @@ const C3FieldTriangle *c3_area_transition(const C3Area *area,
                                         const float before[3], const float after[3], float radius);
 const C3FieldTriangle *c3_area_transition_active(const C3Area *area,const C3FieldMap *map,
                                         const float before[3], const float after[3], float radius);
+
+/* Zero-initialize before use. A failed parse leaves the previous table. */
+int c3_area_doors_parse(C3AreaDoors *doors, const void *data, size_t bytes, char *error, size_t capacity);
+int c3_area_doors_load(C3AreaDoors *doors, const char *path, char *error, size_t capacity);
+/* GScolsys2ThruGetEventID (kind 2 events): source IDs of the event
+ * surfaces a sphere of `radius` touches on its way from before to after,
+ * approached from their front side. Face, flagged edges and flagged corners
+ * are tested as in the original; at most four distinct IDs, in table order
+ * per pass. Returns the count. */
+unsigned c3_area_touch_events(const C3Area *area,const C3FieldMap *map,const float before[3],
+                              const float after[3],float radius,uint16_t ids[4]);
 
 #endif

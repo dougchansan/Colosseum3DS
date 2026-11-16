@@ -67,8 +67,8 @@ int c3_field_parse(C3FieldMap *map,const void *data,size_t bytes,char *error,siz
         return fail(error,capacity,"Field sections must be contiguous and exact.");
     next.map_pack_count=le32(p+180);
     next.arrival_pack_count=le32(p+184);
-    if(!next.map_pack_count||next.map_pack_count>6u||
-       next.arrival_pack_count>6u||next.map_pack_count+next.arrival_pack_count>7u)
+    if(!next.map_pack_count||next.map_pack_count>C3_FIELD_MAX_MODEL_PACKS||
+       next.arrival_pack_count>6u||next.map_pack_count+next.arrival_pack_count>C3_FIELD_MAX_MODEL_PACKS)
         return fail(error,capacity,"Invalid field model count.");
     for(unsigned i=188;i<HEADER_BYTES;++i)if(p[i])return fail(error,capacity,"Unknown field header extension.");
     next.scale=flt(p+64);next.radius=flt(p+68);next.walk_distance=flt(p+72);next.run_distance=flt(p+76);
@@ -177,6 +177,15 @@ int c3_field_object_enabled(const C3FieldMap *map,uint32_t object)
 {
     return map&&object<map->object_count&&object<256u&&
         !(map->disabled_objects[object/8u]&(1u<<(object%8u)));
+}
+
+int c3_field_cover_objects(C3FieldMap *map,uint32_t count)
+{
+    if(!map||count>256u)return 0;
+    for(uint32_t object=map->object_count;object<count;++object)
+        map->disabled_objects[object/8u]&=(uint8_t)~(1u<<(object%8u));
+    if(count>map->object_count)map->object_count=count;
+    return 1;
 }
 
 int c3_field_set_object_enabled(C3FieldMap *map,uint32_t object,int enabled)
@@ -325,6 +334,7 @@ int c3_field_move(const C3FieldMap *map,C3FieldPlayer *player,int stick_x,int st
     /* Bound collision travel after a stalled frame, but keep the sampled
      * motion on the same elapsed clock as scripted actors and cameras. */
     float dt=fminf(seconds,0.25f);player->animation_seconds+=seconds;
+    memcpy(player->proposed,player->position,sizeof player->proposed);
     if(!x&&!y)return 1;
     float fx=fabsf((float)x)/28.0f,fy=fabsf((float)y)/28.0f;
     float angle_part=fy<0.001f?1.5707964f:1.5707964f*sinf(fminf(fx/fy,5.0f)/3.1830988f);
@@ -338,6 +348,7 @@ int c3_field_move(const C3FieldMap *map,C3FieldPlayer *player,int stick_x,int st
     step*=dt*60.0f;
     float before[3];memcpy(before,player->position,sizeof before);
     player->position[0]+=sinf(player->yaw)*step;player->position[2]+=cosf(player->yaw)*step;
+    memcpy(player->proposed,player->position,sizeof player->proposed);
     return c3_field_resolve_position(map,player,before);
 }
 

@@ -60,6 +60,14 @@ int c3_story_write_value(C3Story *story, uint32_t address, uint32_t value);
 int c3_story_message(const C3Story *story, uint32_t id,
                      const char *hero, const char *partner, const char *speaker,
                      char *output, size_t capacity, char *error);
+/* The same decoder with a caller-supplied source for value controls: the
+ * control byte is the msgctrl variable it prints (2B hero, 2C partner, 2D
+ * item name, 2F number, 59 speaker ...). A NULL return rejects the message
+ * with that control named, as an unsupported control does. */
+typedef const char *(*C3StoryTextSource)(void *context, uint8_t control);
+int c3_story_message_with(const C3Story *story, uint32_t id,
+                          C3StoryTextSource source, void *context,
+                          char *output, size_t capacity, char *error);
 uint32_t c3_story_floor(const C3Story *story);
 
 #endif

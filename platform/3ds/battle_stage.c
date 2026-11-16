@@ -119,6 +119,12 @@ int c3_battle_stage_load(C3BattleStage *s,const char *root,const uint16_t hp[4],
     if(!reflect_load(s,root,error,cap)||!confusion_load(s,root,error,cap)||!confusion_camera_load(s,root,error,cap)||!tail_load(s,root,error,cap)||!growl_load(s,root,error,cap)||!stat_down_load(s,root,error,cap)||!tackle_load(s,root,error,cap))goto bad;
     c3_battle_presentation_init(&s->presentation,hp);
     if(!c3_battle_presentation_wait_limit(&s->presentation,20000))goto invalid;
+#ifndef C3_NO_GPU_SKIN
+    /* Only the animated actors (four Pokemon slots, two trainers) are worth
+     * the linear memory of a GPU skin stream. */
+    {uint64_t actors=0;for(uint32_t i=0;i<s->count&&i<64u;++i)if(s->slots[i]<6u)actors|=UINT64_C(1)<<i;
+     c3_stage_renderer_request_gpu_skin(actors);}
+#endif
     if(c3_stage_renderer_init(s->draw,s->count,error,cap)!=C3_RENDER_OK)goto bad;
     s->initialized=1;
     if(s->damage_available&&c3_stage_renderer_particle_pack(&s->particle_pack,error,cap)!=C3_RENDER_OK)return 0;
@@ -385,13 +391,24 @@ int c3_battle_stage_step(C3BattleStage *s,uint32_t ms,char *error,size_t cap)
         if(s->immutable[i]&&s->sampled[i])continue;
         int effect=s->bite_available&&i==s->bite_model;
         int damage_effect=s->damage_available&&i==s->damage_model;
-        if(!c3_title_animate(m,s->clips[i],s->clocks[i]))return fail(error,cap,"Battle clip sampling failed.");
-        float *t=s->transforms[i],co=cosf(t[3]),si=sinf(t[3]);
+        float *t=s->transforms[i];
         int visible=(s->growl_available&&i==s->growl_model)?s->growl.model_visible:(s->tail_available&&i==s->tail_model)?s->tail.effect_visible:(s->reflect_available&&i==s->reflect_model)?s->reflect.model_visible:effect?s->bite.model_visible:damage_effect?s->damage.model_visible:(s->slots[i]>=4||s->presentation.visible[s->slots[i]]);
         int identity=t[0]==0&&t[1]==0&&t[2]==0&&t[3]==0&&t[4]==1;
-        if(!identity)for(uint32_t v=0;v<m->vertex_count;++v){C3TitleDrawVertex *d=&m->draw_vertices[v];float x=d->pos[0]*t[4],z=d->pos[2]*t[4],nx=d->normal[0],nz=d->normal[2];
-            d->pos[0]=co*x+si*z+t[0];d->pos[1]=d->pos[1]*t[4]+t[1];d->pos[2]=-si*x+co*z+t[2];d->normal[0]=co*nx+si*nz;d->normal[2]=-si*nx+co*nz;
-            for(unsigned axis=0;axis<3;++axis)if(!isfinite(d->pos[axis])||!isfinite(d->normal[axis]))return fail(error,cap,"Battle actor transform overflow.");}
+        /* The stage never rewrites sampled vertices. Scale, yaw and translation
+         * are folded into the bone matrices (specular origins stay unplaced, as
+         * before), unchanged batches keep their vertices and a hidden actor is
+         * not skinned at all. */
+        m->retained=1;m->hidden=(uint8_t)!visible;
+#ifndef C3_NO_GPU_SKIN
+        /* Supported batches are skinned and lit by the GPU from pose.skin. */
+        m->gpu_batches=c3_stage_renderer_gpu_skin_mask(i);
+#endif
+        if(identity)m->placement.enabled=0;
+        else{
+            for(unsigned axis=0;axis<5;++axis)if(!isfinite(t[axis]))return fail(error,cap,"Battle actor transform overflow.");
+            c3_title_place_yaw(m,t,cosf(t[3]),sinf(t[3]),t[4],0);
+        }
+        if(!c3_title_animate(m,s->clips[i],s->clocks[i]))return fail(error,cap,"Battle clip sampling failed.");
         s->sampled[i]=1;
         if(!visible)for(uint32_t j=0;j<m->batch_count;++j)m->pose.materials[j].visible=0;
     }

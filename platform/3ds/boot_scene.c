@@ -1,11 +1,15 @@
 #include "boot_scene.h"
+#include "trace_writer.h"
 #include "field_scene.h"
+#include "dev_floor_scene.h"
 #include "game_menu.h"
 #include "bottom_screen.h"
 #include "movie_player.h"
+#include "music_player.h"
 #include "n3ds_platform.h"
 #include "render_recovery.h"
 #include "title_renderer.h"
+#include "colosseum3ds/floor_profile.h"
 #include "colosseum3ds/game_state.h"
 #include "colosseum3ds/movie.h"
 #include "colosseum3ds/title.h"
@@ -80,7 +84,7 @@ static void load_card(C3GameState *state, C3GameMenuSave *view,
     view->valid = 1;
     view->can_continue = c3_field_scene_supports(summary.floor) && prepared != NULL;
     snprintf(view->name, sizeof(view->name), "%s", summary.name);
-    snprintf(view->location, sizeof(view->location), "%s", summary.floor == 1 ? "OUTSKIRT STAND" : summary.floor == 2 ? "OUTSKIRT STAND - INSIDE" : "Unported area");
+    snprintf(view->location, sizeof(view->location), "%s", summary.floor == 2 ? "OUTSKIRT STAND - INSIDE" : c3_floor_profile(summary.floor) ? c3_floor_profile(summary.floor)->label : "Unported area");
     view->money = summary.money;
     view->play_seconds = summary.play_seconds;
     if (!prepared)
@@ -102,7 +106,7 @@ static void load_card(C3GameState *state, C3GameMenuSave *view,
 /* Return 0 with a prepared in-memory game, 1 on application exit, -1 on
  * rendering/asset failure. Native menus borrow the live title background. */
 static int run_title(FILE *trace, C3GameState *state,
-                      int *new_game, int start_at_menu, C3GameMenuOptions *session_options,
+                      int *new_game, int *dev_floor, int start_at_menu, C3GameMenuOptions *session_options,
                       int *options_edited, char *error, size_t capacity)
 {
     C3Title *title = calloc(1, sizeof(*title));
@@ -118,6 +122,9 @@ static int run_title(FILE *trace, C3GameState *state,
     float clip_seconds = 0.0f, phase_seconds = start_at_menu ? 1.0f : 0.0f;
     uint64_t previous, next_status = 0;
     int menu_open = 0, result = -1;
+#ifndef C3_DEV_FLOOR
+    (void)dev_floor;
+#endif
     if (!title) { snprintf(error, capacity, "Title allocation failed."); return -1; }
     if (!c3_title_load(title, BOOT_ROOT "title.c3t", error, capacity)) goto done;
     if (title->clip_count != 3 || !(title->fps > 0.0f)) {
@@ -131,16 +138,25 @@ static int run_title(FILE *trace, C3GameState *state,
                 (unsigned long)title->texture_count, (unsigned long)title->bone_count, (double)title->fps);
         fflush(trace);
     }
+    /* gs_title_8001EF78.c fn_8001FD48: fn_80165A20(0x46A, 0, 0xFF). The
+     * original runs the attract demo when the song ends (fn_801666BC == 0)
+     * and restarts it on return; without the demo, restart it directly. */
+    c3_music_play(C3_MUSIC_SLOT_406, 0x46A, 0xFF, 0);
+    uint64_t music_check = c3_n3ds_active_time_us() + 1000000u;
     previous = c3_n3ds_active_time_us();
     result = 1;
     while (c3_n3ds_poll(&input)) {
         uint64_t now = c3_n3ds_active_time_us();
         float delta = (float)(now - previous) / 1000000.0f;
         previous = now;
+        if (now >= music_check) {
+            music_check = now + 1000000u;
+            if (!c3_music_status(0x46A)) c3_music_play(C3_MUSIC_SLOT_406, 0x46A, 0xFF, 0);
+        }
         clip_seconds += delta;
         phase_seconds += delta;
         float fade = 1.0f;
-        if (phase == TITLE_INTRO && (input.pressed & (C3_PAD_A | C3_PAD_B | C3_PAD_START))) {
+        if (phase == TITLE_INTRO && ((input.pressed & (C3_PAD_A | C3_PAD_B | C3_PAD_START)) || input.touch_pressed)) {
             phase = TITLE_SKIP_OUT;
             phase_seconds = 0.0f;
         }
@@ -164,7 +180,14 @@ static int run_title(FILE *trace, C3GameState *state,
             if (phase_seconds >= 0.5f) {
                 phase = TITLE_WAIT_START; phase_seconds = 0.0f; fade = 1.0f;
             }
-        } else if (phase == TITLE_WAIT_START && (input.pressed & (C3_PAD_A | C3_PAD_START))) {
+#ifdef C3_DEV_FLOOR
+        } else if (phase == TITLE_WAIT_START && (input.pressed & C3_PAD_Y)) {
+            /* Developer build only: leave the title renderer, touch no state. */
+            *dev_floor = 1; result = 0;
+            if (trace) { fprintf(trace, "dev_floor_request input=%04x\n", input.pressed); fflush(trace); }
+            break;
+#endif
+        } else if (phase == TITLE_WAIT_START && ((input.pressed & (C3_PAD_A | C3_PAD_START)) || input.touch_pressed)) {
             phase = TITLE_ACCEPTED; phase_seconds = 0.0f;
         } else if (phase == TITLE_ACCEPTED && phase_seconds >= 1.0f) {
             C3GameMenuSave view;
@@ -251,6 +274,13 @@ static int run_title(FILE *trace, C3GameState *state,
         }
         if (phase == TITLE_MENU) c3_game_menu_draw(&menu);
         else if (now >= next_status) {
+#ifdef C3_DEV_FLOOR
+            if (phase == TITLE_WAIT_START)
+                c3_bottom_screen_notice("DEVELOPER BUILD",
+                    "A/START: normal game.\n\nY: DEVELOPER FLOOR LOADER (Phenac City).\n"
+                    "Not story progress. Nothing is saved.", "C3_DEV_FLOOR=1");
+            else
+#endif
             c3_bottom_screen_title(phase == TITLE_WAIT_START,phase == TITLE_ACCEPTED);
             next_status = now + UINT64_C(250000);
         }
@@ -289,19 +319,86 @@ int c3_boot_scene_run(int core_status)
     C3GameMenuOptions session_options = {0};
     int options_edited = 0;
     c3_movie_player_set_mono(0);
-    FILE *trace = fopen("sdmc:/3ds/Colosseum3DS/boot-trace.log", "w");
+    FILE *trace = c3_trace_open("sdmc:/3ds/Colosseum3DS/boot-trace.log");
     if (trace) { fprintf(trace, "boot_build %s core=%d\n", C3_BUILD_ID, core_status); fflush(trace); }
     c3_n3ds_log_memory(trace, "boot_start");
+#ifdef C3_CAMPAIGN
+    /* Campaign build: play the story unattended from the campaign's own
+     * save (resumed when present) or from a new game, never the player's
+     * save path; progress is saved there at each newly reached floor. */
+    {
+        const char *campaign_save = "sdmc:/3ds/Colosseum3DS/campaign/save.gci";
+        const char *prepared = file_exists(GAME_DATA) ? GAME_DATA : NULL;
+        int new_game = !file_exists(campaign_save);
+        int campaign_result = -1;
+        mkdir("sdmc:/3ds/Colosseum3DS/campaign", 0777);
+        if (new_game ? (prepared && c3_game_state_new(&state, "WES", 0x12345678u, prepared, error) &&
+                        c3_game_state_set_flag(&state, 0x08D0, 1))
+                     : c3_game_state_load(&state, campaign_save, prepared, error))
+            campaign_result = c3_field_scene_run(&state, new_game, campaign_save, trace, error, sizeof(error));
+        if (trace) { fprintf(trace, "campaign_exit result=%d new_game=%d error=%s\n", campaign_result, new_game, error); fclose(trace); }
+        c3_game_state_free(&state);
+        return campaign_result < 0 ? 1 : 0;
+    }
+#endif
+#ifdef C3_ROUNDTRIP_PROBE
+    /* Memory probe: the campaign's save (read only), then area/world-map
+     * round trips with no input. */
+    {
+        int probe_result = -1;
+        /* probe-save.gci (a copy of a console save) when present. */
+        const char *probe_save = file_exists("sdmc:/3ds/Colosseum3DS/probe-save.gci")
+            ? "sdmc:/3ds/Colosseum3DS/probe-save.gci" : "sdmc:/3ds/Colosseum3DS/campaign/save.gci";
+        if (!c3_game_state_load(&state, probe_save,
+                                file_exists(GAME_DATA) ? GAME_DATA : NULL, error))
+            fprintf(trace ? trace : stderr, "roundtrip_save status=invalid reason=%s\n", error);
+        else probe_result = c3_field_scene_roundtrip_probe(&state, trace, error, sizeof(error));
+        if (trace) { fprintf(trace, "roundtrip_exit result=%d\n", probe_result); fclose(trace); }
+        c3_game_state_free(&state);
+        return probe_result < 0 ? 1 : 0;
+    }
+#endif
+#ifdef C3_WARP_TOUR
+    /* Tour build: the tour's own copy of a save (never the player's save
+     * path), no movies or title, every floor in boot/tour.txt, then exit. */
+    {
+        int tour_result = -1;
+        if (!c3_game_state_load(&state, "sdmc:/3ds/Colosseum3DS/tour/save.gci",
+                                file_exists(GAME_DATA) ? GAME_DATA : NULL, error))
+            fprintf(trace ? trace : stderr, "tour_save status=invalid reason=%s\n", error);
+        else tour_result = c3_field_scene_tour(&state, trace, error, sizeof(error));
+        if (trace) { fprintf(trace, "tour_exit result=%d error=%s\n", tour_result, error); fclose(trace); }
+        c3_game_state_free(&state);
+        return tour_result < 0 ? 1 : 0;
+    }
+#endif
+    {
+        char music_error[128] = {0};
+        if (!c3_music_open("sdmc:/3ds/Colosseum3DS", music_error, sizeof music_error) && trace)
+            fprintf(trace, "music_open status=unavailable reason=%s\n", music_error);
+    }
     int result = c3_movie_player_run(BOOT_ROOT "tpc.c3v", "tpc", trace, error, sizeof(error));
+    /* movie.c fn_800364C8: the converted logo movie has no audio track; the
+     * original plays its jingle as sound 0x4D1 (volume 0x7F) at movie start. */
+    if (!result) c3_music_play(C3_MUSIC_SLOT_406, 0x4D1, 0x7F, 0);
     if (!result) result = c3_movie_player_run(BOOT_ROOT "gs_logo.c3v", "gs_logo", trace, error, sizeof(error));
+    c3_music_trace(trace, "gs_logo_end");
     int from_game = 0;
     while (!result) {
-        int new_game = 0;
-        result = run_title(trace, &state, &new_game, from_game,
+        int new_game = 0, dev_floor = 0;
+        result = run_title(trace, &state, &new_game, &dev_floor, from_game,
                            &session_options, &options_edited, error, sizeof(error));
         if (result) break;
+        c3_music_stop_slot(C3_MUSIC_SLOT_406, 500);   /* the floor scripts start area music */
+        if (dev_floor) {
+            /* No game state crosses this call; return to the title menu. */
+            result = c3_dev_floor_scene_run(trace, error, sizeof(error));
+            from_game = 1;
+            continue;
+        }
         if (new_game) {
             uint64_t before = c3_n3ds_active_time_us();
+            c3_music_stop_slot(C3_MUSIC_SLOT_406, 0);   /* the opening movie carries its own audio */
             if (trace) { fprintf(trace, "game_link floor=928 name=openingdemo\n"); fflush(trace); }
             result = c3_movie_player_run(BOOT_ROOT "openingdemo.c3v", "openingdemo", trace, error, sizeof(error));
             c3_game_state_add_play_time(&state, (double)(c3_n3ds_active_time_us() - before) / 1000000.0);
@@ -320,9 +417,11 @@ int c3_boot_scene_run(int core_status)
             session_options.sound_mono=current_options.sound_mono;
             session_options.rumble_disabled=current_options.rumble_disabled;
             c3_movie_player_set_mono(session_options.sound_mono);
+            c3_music_set_mono(session_options.sound_mono);
         }
         from_game = 1;
     }
+    c3_music_close();
     c3_game_state_free(&state);
     if (trace) { fprintf(trace, "boot_end result=%d error=%s\n", result, error); fclose(trace); }
     if (result < 0) {

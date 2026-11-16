@@ -8,6 +8,10 @@
 #define C3_FIELD_MAX_BYTES (512u * 1024u)
 #define C3_FIELD_MAX_SPAWNS 64u
 #define C3_FIELD_MAX_TRIANGLES 4096u
+/* Map plus arrival packs; Wes takes the last of the stage's 48 model slots
+ * (C3_STAGE_MAX_MODELS). Scenes with NPC/TV models still check their
+ * complete model count. */
+#define C3_FIELD_MAX_MODEL_PACKS 47u
 
 typedef struct {
     float vertices[9], normal[3];
@@ -38,6 +42,11 @@ typedef struct {
     float position[3], yaw, animation_seconds, speed;
     uint32_t motion; /* 0 idle, 1 walk, 2 run */
     uint32_t collision_count;
+    /* The step c3_field_move proposed before wall correction. people.c
+     * queries touched event surfaces (GScolsys2ThruGetEventID) with this
+     * point and only then applies GScolsys2HumanCollision, so a touch
+     * surface behind a wall is still reached. Equals position when idle. */
+    float proposed[3];
 } C3FieldPlayer;
 
 /* Initialize the map to zero. Parse/load own their decoded tables and replace
@@ -48,6 +57,11 @@ int c3_field_load(C3FieldMap *map, const char *path, char *error, size_t capacit
 void c3_field_close(C3FieldMap *map);
 int c3_field_spawn(const C3FieldMap *map, uint32_t source_index, C3FieldPlayer *player);
 int c3_field_set_object_enabled(C3FieldMap *map, uint32_t object, int enabled);
+/* object_count is implied by the walk/wall rows, but event surfaces (area
+ * transitions and touches) may sit on later CCD objects that hold no walk or
+ * wall triangle, e.g. the mayor's-house exit on object 3 of three. Raise the
+ * count to cover them; added objects start enabled, as CCD objects do. */
+int c3_field_cover_objects(C3FieldMap *map, uint32_t count);
 int c3_field_object_enabled(const C3FieldMap *map, uint32_t object);
 /* Resolve a proposed foot position after an actor pushes the player. Walls
  * retain priority; unavailable ground restores the previous foot position. */

@@ -61,9 +61,18 @@ typedef struct {
 
 typedef struct {
     uint32_t width, height, wrap_s, wrap_t; /* 0=clamp, 1=repeat, 2=mirror */
-    const uint8_t *pixels;                 /* top row first, RGBA8 */
+    const uint8_t *pixels;                 /* top row first, RGBA8 (unless gpu_native) */
     size_t size;
+    /* tools/pack_textures.py output: pixels are the finished PICA image
+     * (8x8 Morton tiles, rows bottom-up, levels contiguous) in gpu_format
+     * (C3_TITLE_GPU_RGBA8 or C3_TITLE_GPU_RGB565) with `levels` mip levels. */
+    uint32_t gpu_native, gpu_format, levels;
 } C3TitleTexture;
+
+#define C3_TITLE_GPU_RGBA8 0u
+#define C3_TITLE_GPU_RGB565 3u
+/* Bytes of a gpu_native image: each level is a quarter of the one before. */
+size_t c3_title_texture_bytes(uint32_t width, uint32_t height, uint32_t gpu_format, uint32_t levels);
 
 typedef struct { uint32_t first_frame, frame_count, loop; } C3TitleClip;
 
@@ -94,7 +103,27 @@ typedef struct {
     float matrices[C3_TITLE_MAX_BONES][12]; /* row-major affine 3x4 */
     C3TitleMaterialState materials[C3_TITLE_MAX_BATCHES];
     C3TitleCamera camera;
+    /* For bones of visible gpu_batches only: the placed matrix and normal
+     * matrix c3_title_animate would have skinned those vertices with. */
+    float skin[C3_TITLE_MAX_BONES][12];
+    float skin_normal[C3_TITLE_MAX_BONES][9];
 } C3TitlePose;
+
+/* World placement folded into the bone matrices by c3_title_animate, so an
+ * actor needs no second pass over its sampled vertices. Positions use
+ * matrix * bone; normals use normal * (bone normal matrix) and are then
+ * renormalised. pose.matrices stay the unplaced sampled bones. */
+typedef struct {
+    uint8_t enabled; /* 0: bones are used as sampled */
+    uint8_t origin;  /* also map every batch's specular_origin through matrix */
+    float matrix[12]; /* row-major affine 3x4 */
+    float normal[9];  /* row-major 3x3, a rotation for rigid placement */
+} C3TitlePlacement;
+
+/* Source normals within this squared-length tolerance of one, skinned by an
+ * orthonormal normal matrix within the same tolerance, skip the per-vertex
+ * renormalisation. The staged colour then differs by far less than one LSB. */
+#define C3_TITLE_UNIT_TOLERANCE 1e-5f
 
 typedef struct {
     uint8_t *file_data;
@@ -113,7 +142,61 @@ typedef struct {
     uint32_t active_clip;
     float active_frame;
     uint8_t borrowed_storage;
+    /* Caller-set before c3_title_animate. retained promises that nothing but
+     * c3_title_animate writes draw_vertices (use placement, not a second
+     * pass); animate then rewrites only batches whose bones, UV state or
+     * placement changed, and skips invisible ones. hidden additionally
+     * reports every batch invisible. Both default to the legacy behaviour:
+     * every vertex of every batch is rewritten by every call. */
+    uint8_t retained, hidden;
+    /* Caller-set, for retained titles only: batches the GPU skins and lights
+     * (colosseum3ds/skin_uniforms.h). animate leaves their draw_vertices
+     * unwritten and fills pose.skin/skin_normal for their bones instead. */
+    uint64_t gpu_batches;
+    C3TitlePlacement placement;
+    /* Maintained by the loader and c3_title_animate; read-only for callers.
+     * batch_revision advances whenever a batch's draw_vertices are rewritten. */
+    C3TitlePlacement skinned_placement;
+    uint64_t batch_bones[C3_TITLE_MAX_BATCHES];
+    uint32_t batch_revision[C3_TITLE_MAX_BATCHES];
+    uint8_t batch_current[C3_TITLE_MAX_BATCHES];
+    uint8_t batch_unit_normals[C3_TITLE_MAX_BATCHES];
 } C3Title;
+
+/* Interval counters for c3_title_animate. Time is measured only while a
+ * microsecond clock is installed; counts are always kept. take copies the
+ * counters to out (may be NULL) and clears them. Not thread safe. */
+typedef struct {
+    uint64_t animate_us;
+    uint32_t calls;
+    uint32_t vertices_animated; /* skinned */
+    uint32_t vertices_retained; /* left untouched: unchanged or invisible */
+    uint32_t vertices_gpu;      /* visible gpu_batches vertices, skinned by the GPU */
+} C3TitlePerf;
+void c3_title_perf_clock(uint64_t (*now_us)(void));
+/* Time split of the most recent pack load (needs the perf clock): stream
+ * decompression and decoding, in microseconds. */
+void c3_title_last_load(uint64_t *unpack_us, uint64_t *decode_us);
+void c3_title_perf_take(C3TitlePerf *out);
+/* Running animate_us of the current interval, for callers that time a pass
+ * which also samples animation and want the remainder. */
+uint64_t c3_title_perf_animate_us(void);
+
+/* Rigid actor placement: uniform scale, then a rotation about +Y given by its
+ * cosine and sine, then a translation. origin selects whether the specular
+ * origins follow (field actors do; battle actors historically do not). */
+static inline void c3_title_place_yaw(C3Title *title, const float position[3],
+                                      float cosine, float sine, float scale, int origin)
+{
+    C3TitlePlacement *p = &title->placement;
+    p->enabled = 1; p->origin = (uint8_t)(origin != 0);
+    p->matrix[0] = cosine * scale; p->matrix[1] = 0.0f; p->matrix[2] = sine * scale; p->matrix[3] = position[0];
+    p->matrix[4] = 0.0f; p->matrix[5] = scale; p->matrix[6] = 0.0f; p->matrix[7] = position[1];
+    p->matrix[8] = -sine * scale; p->matrix[9] = 0.0f; p->matrix[10] = cosine * scale; p->matrix[11] = position[2];
+    p->normal[0] = cosine; p->normal[1] = 0.0f; p->normal[2] = sine;
+    p->normal[3] = 0.0f; p->normal[4] = 1.0f; p->normal[5] = 0.0f;
+    p->normal[6] = -sine; p->normal[7] = 0.0f; p->normal[8] = cosine;
+}
 
 /* Zero-initialize before first use. Owns its file and decoded geometry after
  * success. Parse copies the caller's bytes; load reads directly into owned
@@ -122,6 +205,12 @@ typedef struct {
  * space scaled by the pinned importer's factor 0.10. The renderer reads
  * draw_vertices, batches, textures, pose and lights. */
 int c3_title_load(C3Title *title, const char *path, char *error, size_t capacity);
+/* A pack file may be stored compressed: "C3Z1" (zlib) or "C3Z2" (zstd), the
+ * raw byte count (u32 LE), then one stream of the raw pack. c3_title_load
+ * accepts any form;
+ * c3_title_load_memory loads the same bytes from memory (data is not kept). */
+int c3_title_load_memory(C3Title *title, const void *data, size_t bytes, char *error, size_t capacity);
+int c3_title_is_compressed(const void *data, size_t bytes, size_t *raw_bytes);
 int c3_title_parse(C3Title *title, const void *data, size_t bytes, char *error, size_t capacity);
 void c3_title_close(C3Title *title);
 /* Shares immutable source/geometry with owner; owns pose and sampled vertices.
@@ -135,7 +224,9 @@ int c3_title_instance(C3Title *instance, const C3Title *owner, char *error, size
  * visibility and quantized TEV colors hold the earlier sample. Returns 1 on
  * success, 0 on failure. It transforms
  * rigid vertices/normals and top-origin UVs; RGBA stays the original vertex
- * channel so the renderer can apply the batch's HSD material source rules. */
+ * channel so the renderer can apply the batch's HSD material source rules.
+ * An enabled placement with a nonfinite or excessive matrix also fails
+ * without changing the pose. Uses static scratch storage: not reentrant. */
 int c3_title_animate(C3Title *title, uint32_t clip, float seconds);
 
 #endif

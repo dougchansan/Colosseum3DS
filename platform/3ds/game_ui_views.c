@@ -1,4 +1,6 @@
 #include "game_ui_views.h"
+#include "colosseum3ds/floor_profile.h"
+#include "n3ds_platform.h"
 #include <stdio.h>
 
 static const char *pokemon_name(uint16_t species)
@@ -35,22 +37,20 @@ void c3_field_ui_draw_to(C3BottomUi *ui,const C3GameSummary *summary,FieldPhase 
     c3_ui_pager_sync(pager,c3_field_ui_identity(page,story));
     snprintf(text,sizeof text,"%s   $%lu   %lu:%02lu",summary->name,(unsigned long)summary->money,
         (unsigned long)(summary->play_seconds/3600u),(unsigned long)(summary->play_seconds/60u%60u));
-    c3_ui_header(ui,summary->floor==2?"OUTSKIRT STAND - INSIDE":"OUTSKIRT STAND",text);
+    c3_ui_header(ui,summary->floor==2?"OUTSKIRT STAND - INSIDE":c3_floor_profile(summary->floor)?c3_floor_profile(summary->floor)->label:"UNKNOWN AREA",text);
     if(phase==FIELD_SETUP||phase==FIELD_ARRIVAL||phase==FIELD_ARRIVAL_OUT){
         c3_ui_panel(ui,7,64,306,90);
-        c3_ui_text(ui,20,80,280,3,phase==FIELD_SETUP?"Loading the original area...":"Arriving at Outskirt Stand...",C3_UI_WHITE);
+        c3_ui_text(ui,20,80,280,3,phase==FIELD_SETUP?"Loading the original area...":"Arriving...",C3_UI_WHITE);
     }else if(page==PAUSE_CLOSED&&story&&story->blocked[0]){
         c3_ui_dialogue(ui,pager,story->blocked,0,0);
-        if(!pager->more)c3_ui_footer(ui,story->battle_id==10?"A: combat preview   X / START: menu":"X / START: main menu");
+        if(!pager->more)c3_ui_footer(ui,story->battle_id==10?"A: battle   X / START: menu":
+            story->battle_id?"A: battle   X: menu":"X / START: main menu");
     }else if(page==PAUSE_CLOSED&&story&&story->dialogue){
         c3_ui_dialogue(ui,pager,story->message,story->choice,!story->choice_no);
     }else if(page==PAUSE_CLOSED){
-        for(unsigned i=0;i<2;++i){
-            snprintf(text,sizeof text,"%s  Lv.%u",pokemon_name(summary->party[i].species),summary->party[i].level);
-            c3_ui_hp(ui,9,65+(int)i*58,302,text,summary->party[i].hp,summary->party[i].max_hp);
-            experience(ui,&summary->party[i],19,113+(int)i*58,282,1);
-        }
-        c3_ui_text(ui,18,184,284,1,story&&!story->control?"An event is running...":"Circle Pad / D-pad: move",C3_UI_MUTED);
+        /* Only when the P*DA hub cannot be shown (the field scene draws it
+         * in its place): a short status, no party panel. */
+        c3_ui_text(ui,18,80,284,1,story&&!story->control?"An event is running...":"Circle Pad / D-pad: move",C3_UI_MUTED);
         c3_ui_footer(ui,"A: talk / inspect   X / START: menu");
     }else if(page==PAUSE_MAIN){
         static const char *const labels[]={"RESUME","POKEMON","SAVE","MAIN MENU"};

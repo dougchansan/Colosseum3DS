@@ -2,10 +2,14 @@
 
 The objective is the original main story from genuine New Game through its
 ending, credits, legitimate clear-save flow and a fresh-process Continue.
-**That objective is not achieved.** The current native game still supports
-only the Outskirt Stand exterior/shop, and GSVM native 98 remains suspended
-because authoritative combat/result/writeback is not implemented. The selected
-battle preview is nonpersistent and cannot advance the story.
+**That objective is not achieved.** The current native game supports the
+Outskirt Stand exterior/shop, the first battle's result and the
+[world-map destination choice](world-map.md). GSVM native 98 now resumes from
+the outcome the battle scene reports (a hero win is the original result ID 2),
+so the original Outskirt script sets its own flags, including Phenac's unlock
+`0x3DF`. This is a deliberate shortcut: the result still comes from the
+nonpersistent preview engine, and no HP, PP, EXP or money is copied back to
+the party. Authoritative combat/result/writeback remains open.
 
 ## Newly verified prerequisites
 
@@ -66,8 +70,8 @@ not yet established. These observations never authorize granting those flags.
 | Original shared RNG and full trainer/Pokemon/FightPokemon entry | Bounded parent, Pokemon, sorting and runtime constructors match original calls; live stream bootstrap, actual sequences, active fighters and complete entry remain required |
 | Source-legal commands, AI scoring, ordering, effects, statuses, items and full-party replacements | Selected preview behavior only; authoritative complete turns still required |
 | Terminal results, EXP/EV/rewards/capture/evolution and source party copyback | Isolated result rules qualified; complete result transaction and original witnesses still required |
-| Exactly-once native 98 continuation and authentic story flags | Native98 remains waiting; no preview outcome is accepted |
-| All mandatory floors, actors, collision, natives, dialogue, media and interactions | Full source index now available; only floors 1/2 playable |
+| Exactly-once native 98 continuation and authentic story flags | Native 98 resumes once from the reported outcome (preview engine win only); the flags are written by the original script. Loss handling (whiteout script `05960008`, money halving) and party writeback are missing |
+| All mandatory floors, actors, collision, natives, dialogue, media and interactions | Floors 1/2 are playable. Phenac City's exterior (floor 3) runs its original arrival, first battle request and partner event on the host with prepared packs ([phenac-story.md](phenac-story.md)); it is not drawn on the console yet and its interiors, doors and later events are missing. The full source index lists the remaining floors |
 | Source-legal party/action/capture/Shadow/storage/purification/loss branches | Some menu/stat/save foundations; original-compatible main-story behavior remains incomplete |
 | Ending, full credits, clear-save and fresh-process Continue | Source guards identified; native sequence and full chronological acceptance missing |
 | Native resource/lifecycle/playability through the entire story | Early-area/device subsets only; later content and full-run qualification missing |

@@ -80,9 +80,21 @@ int c3_game_state_memo_count(const C3GameState *state,unsigned *count);
 int c3_game_state_memo(const C3GameState *state,unsigned index,C3GameMemo *memo);
 int c3_game_state_item(const C3GameState *state,unsigned pocket,unsigned slot,C3GameItem *item);
 int c3_game_state_pokemon(const C3GameState *state,unsigned slot,uint8_t record[0x138]);
+/* Battle writeback: replace party slot's record. The slot must already hold
+ * the same species; level 1..100 and HP within the record's maximum. */
+int c3_game_state_set_pokemon(C3GameState *state,unsigned slot,const uint8_t record[0x138]);
 /* Native mail read transaction follows mailMain fn_801D228C; original flag
  * metadata comes from the admitted private PDA pack. No disk I/O. */
 int c3_game_state_mail_read(C3GameState *state,const C3GameMailRead *action,int commit);
+/* mailAddMailbox (mail.c) as mailMainSendByScrpt calls it: a mail not yet
+ * in the mailbox is appended (at most 512) and marked unread. Returns 1 when
+ * added, 0 when it was already received, -1 for an invalid ID or full box. */
+int c3_game_state_mail_add(C3GameState *state,unsigned id);
+/* memoDataSetMemoFlag(0): clear the new/seen bits (0xC000) of every Strategy
+ * Memo entry; 1 when an entry was new (bit 0x8000), 0 when none, -1 on error. */
+int c3_game_state_memo_mark_seen(C3GameState *state);
+/* Day Care occupancy (save status 0xB byte 0, body 0x8168; fn_801ED218). */
+int c3_game_state_daycare_occupied(const C3GameState *state);
 int c3_game_state_mail_preferences(C3GameState *state,int sort,int tone);
 int c3_game_state_mail_settings(const C3GameState *state,unsigned *sort,unsigned *tone);
 /* Inventory-only optimistic transaction. Region-wise conflicts reject stale
@@ -94,9 +106,19 @@ const uint8_t *c3_game_state_body(const C3GameState *state, size_t *length);
  * arbitrary player position. Changing these fields does not run scripts. */
 int c3_game_state_set_floor(C3GameState *state, uint32_t floor,
                             uint32_t previous_floor, uint8_t spawn);
+/* The partner-present byte of the hero record (heroSetStatus selector 0x18,
+ * hero +0xA98), written by script native 23 when the partner joins. */
+int c3_game_state_set_partner(C3GameState *state, int present);
+int c3_game_state_partner(const C3GameState *state);
+/* The partner's name (hero +0xAC2, ten characters and a terminator).
+ * Accepts 1..10 printable ASCII characters. */
+int c3_game_state_set_partner_name(C3GameState *state, const char *name);
 int c3_game_state_set_options(C3GameState *state, uint8_t sound_mono,
                               uint8_t rumble_disabled);
 int c3_game_state_add_play_time(C3GameState *state, double seconds);
+/* Hero money (hero +0xA84). Adds a signed amount; refuses a result below 0
+ * or above 9,999,999 (the save's bound) and then changes nothing. */
+int c3_game_state_add_money(C3GameState *state, int64_t delta);
 
 /* Source-defined packed flag access. Writes are clipped to the definition's
  * bit width, like the original value setter. Script/event dispatch remains
@@ -104,6 +126,9 @@ int c3_game_state_add_play_time(C3GameState *state, double seconds);
 int c3_game_state_get_flag(const C3GameState *state, uint32_t id,
                            uint32_t *value);
 int c3_game_state_set_flag(C3GameState *state, uint32_t id, uint32_t value);
+/* One draw of the state's shared 16-bit game RNG (HSD_Rand). The context is
+ * the C3GameState, so it can be handed to c3_field_story_set_random. */
+uint16_t c3_game_state_random16(void *state);
 
 /* Explicit user save: increment the original inner/outer save counters,
  * encode the full preserved payload, and retain the previous verified card

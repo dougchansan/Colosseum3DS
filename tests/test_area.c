@@ -64,6 +64,28 @@ static void mutation(C3Area *area,const uint8_t *original,unsigned offset,uint32
 static void contacts(C3Area *area)
 {
     float before[3]={1,0,0},after[3]={.2f,0,0};
+    /* Kind-2 touch query. Both fixture triangles lie in x=0 facing +x with
+     * edge flag 4 (edge v2->v0) set; their source IDs are 7 and 42. */
+    {uint16_t ids[4]={0};float from[3]={1,0,0},to[3]={.2f,0,0};
+     CHECK(c3_area_touch_events(area,NULL,from,to,.4f,ids)==2&&ids[0]==7&&ids[1]==42);
+     to[0]=.6f;CHECK(c3_area_touch_events(area,NULL,from,to,.4f,ids)==0);   /* still a radius away */
+     CHECK(c3_area_touch_events(area,NULL,to,from,.4f,ids)==0);            /* moving away */
+     from[0]=-.1f;to[0]=-.5f;CHECK(c3_area_touch_events(area,NULL,from,to,.4f,ids)==0); /* behind */
+     /* Just outside the flagged edge v2->v0 (y=-1.5 at z=0): the edge pass hits. */
+     from[0]=.9f;to[0]=.1f;from[1]=to[1]=-1.7f;CHECK(c3_area_touch_events(area,NULL,from,to,.4f,ids)==2);
+     /* Just outside the unflagged edge v0->v1 (z=-3): nothing. */
+     from[1]=to[1]=0;from[2]=to[2]=-3.2f;CHECK(c3_area_touch_events(area,NULL,from,to,.4f,ids)==0);
+     /* Corners need both adjoining edge flags; only one is set here. */
+     from[1]=to[1]=-3.2f;from[2]=to[2]=-3.2f;CHECK(c3_area_touch_events(area,NULL,from,to,.4f,ids)==0);
+     area->transitions[0].flags=7;CHECK(c3_area_touch_events(area,NULL,from,to,.4f,ids)==1&&ids[0]==7);
+     area->transitions[0].flags=0x1234;
+     from[1]=to[1]=0;from[2]=to[2]=0;from[0]=1;to[0]=.2f;
+     CHECK(!c3_area_touch_events(NULL,NULL,from,to,.4f,ids)&&!c3_area_touch_events(area,NULL,from,from,.4f,ids));
+     CHECK(!c3_area_touch_events(area,NULL,from,to,0,ids)&&!c3_area_touch_events(area,NULL,from,to,.4f,NULL));
+     C3FieldMap disabled={.object_count=2};uint16_t first=area->transitions[0].object,second=area->transitions[1].object;
+     area->transitions[0].object=0;area->transitions[1].object=1;CHECK(c3_field_set_object_enabled(&disabled,0,0));
+     CHECK(c3_area_touch_events(area,&disabled,from,to,.4f,ids)==1&&ids[0]==42);
+     area->transitions[0].object=first;area->transitions[1].object=second;}
     CHECK(c3_area_transition(area,before,after,.4f)==area->transitions);
     CHECK(!c3_area_transition(area,before,before,.4f));
     CHECK(!c3_area_transition(area,after,before,.4f));
@@ -98,8 +120,71 @@ static void contacts(C3Area *area)
     CHECK(c3_area_transition(area,before,after,.4f)==area->transitions+1);
 }
 
+/* C3D1 door table: 32-byte header, 64-byte rows. Synthetic values only. */
+static void door_fixture(uint8_t d[32+2*64])
+{
+    memset(d,0,32+2*64);memcpy(d,"C3D1",4);w32(d+4,1);w32(d+8,32+2*64);w32(d+12,11);w32(d+16,2);w32(d+20,64);
+    for(unsigned i=0;i<2;++i){
+        uint8_t *r=d+32+i*64;
+        w32(r,3+i*2);r[4]=0;r[5]=1;r[6]=2;r[7]=0xff;r[8]=0xff;r[9]=i?3:0xff;r[10]=(uint8_t)(1+i);r[11]=(uint8_t)i;
+        w16(r+12,i?0xffff:5);w16(r+14,0x120+i);w16(r+16,i?0:0x200);w16(r+18,i?4:0);
+        w32(r+20,i?0x01020304u:0);if(i)memcpy(r+24,"door_b.c3t",10);
+    }
+}
+
+static void door_rejected(C3AreaDoors *doors,const uint8_t *d,size_t bytes)
+{
+    C3AreaDoors prior=*doors;char error[96]={0};
+    CHECK(!c3_area_doors_parse(doors,d,bytes,error,sizeof error));CHECK(error[0]);
+    CHECK(!memcmp(doors,&prior,sizeof prior));
+}
+
+static void doors(void)
+{
+    enum { DOORS=32+2*64 };
+    uint8_t d[DOORS],c[DOORS];static C3AreaDoors table;char error[96];
+    door_fixture(d);
+    CHECK(c3_area_doors_parse(&table,d,DOORS,error,sizeof error));CHECK(!error[0]);
+    CHECK(table.floor==11&&table.count==2);
+    CHECK(table.rows[0].index==3&&table.rows[0].open_anim==0&&table.rows[0].close_anim==1&&table.rows[0].open_end_anim==2);
+    CHECK(table.rows[0].close_end_anim==-1&&table.rows[0].alternate_b==-1&&table.rows[0].collision_id==5);
+    CHECK(table.rows[0].open_flag==0x120&&table.rows[0].close_flag==0x200&&!table.rows[0].resource&&!table.rows[0].file[0]);
+    CHECK(table.rows[1].index==5&&table.rows[1].alternate_b==3&&table.rows[1].door_type==2&&table.rows[1].part_index==1);
+    CHECK(table.rows[1].collision_id==-1&&table.rows[1].part_bone_plus_one==4&&table.rows[1].resource==0x01020304u);
+    CHECK(!strcmp(table.rows[1].file,"door_b.c3t"));
+    for(size_t i=0;i<DOORS;++i)door_rejected(&table,d,i);
+    door_rejected(&table,NULL,DOORS);CHECK(!c3_area_doors_parse(NULL,d,DOORS,NULL,0));
+    /* Header: magic, version, size, floor 0 / >65535, count beyond max or extent, row size, reserved. */
+    static const struct { unsigned at; uint32_t value; } header[]={{0,0},{4,2},{8,DOORS+1},{12,0},{12,65536},{16,3},{16,17},{20,32},{24,1},{28,1}};
+    for(unsigned i=0;i<sizeof header/sizeof *header;++i){memcpy(c,d,DOORS);w32(c+header[i].at,header[i].value);door_rejected(&table,c,DOORS);}
+    /* Rows: table order, animation below -1 or past the clip limit, collision below -1, bone past the limit. */
+    memcpy(c,d,DOORS);w32(c+32+64,3);door_rejected(&table,c,DOORS);
+    for(unsigned at=4;at<10;++at){
+        memcpy(c,d,DOORS);c[32+at]=0xfe;door_rejected(&table,c,DOORS);
+        memcpy(c,d,DOORS);c[32+at]=(uint8_t)C3_TITLE_MAX_CLIPS;door_rejected(&table,c,DOORS);
+    }
+    memcpy(c,d,DOORS);w16(c+32+12,0xfffe);door_rejected(&table,c,DOORS);
+    memcpy(c,d,DOORS);w16(c+32+18,C3_TITLE_MAX_BONES+1);door_rejected(&table,c,DOORS);
+    static const char *bad[]={"..","../x.c3t",".x.c3t","a..b.c3t","a/b.c3t","A.c3t","a b.c3t"};
+    for(unsigned i=0;i<sizeof bad/sizeof *bad;++i){
+        memcpy(c,d,DOORS);memset(c+32+64+24,0,40);memcpy(c+32+64+24,bad[i],strlen(bad[i]));door_rejected(&table,c,DOORS);
+    }
+    memcpy(c,d,DOORS);memset(c+32+64+24,'a',40);door_rejected(&table,c,DOORS);
+    memcpy(c,d,DOORS);c[32+64+24+12]='a';door_rejected(&table,c,DOORS); /* text after the terminator */
+    /* Longest name fits; boundary values are accepted. */
+    memcpy(c,d,DOORS);memset(c+32+64+24,'a',39);c[32+64+24+39]=0;w16(c+32+18,C3_TITLE_MAX_BONES);
+    c[32+4]=(uint8_t)(C3_TITLE_MAX_CLIPS-1);w32(c+12,65535);
+    CHECK(c3_area_doors_parse(&table,c,DOORS,NULL,0));CHECK(strlen(table.rows[1].file)==39&&table.floor==65535);
+    /* An empty table is valid; loads fail cleanly. */
+    memcpy(c,d,32);w32(c+8,32);w32(c+16,0);CHECK(c3_area_doors_parse(&table,c,32,NULL,0)&&!table.count);
+    C3AreaDoors prior=table;
+    CHECK(!c3_area_doors_load(&table,"/no-such-c3-door-pack",error,sizeof error)&&error[0]);
+    CHECK(!c3_area_doors_load(&table,NULL,error,sizeof error));CHECK(!memcmp(&table,&prior,sizeof prior));
+}
+
 int main(int argc,char **argv)
 {
+    doors();
     uint8_t p[PACK+1],changed[PACK+1];C3Area area={0};char error[128];
     fixture(p);CHECK(c3_area_parse(&area,p,PACK,error,sizeof(error)));CHECK(!error[0]);
     CHECK(area.floor==1&&area.group==29&&area.actor_count==2&&area.transition_count==2&&area.interaction_count==2&&area.link_count==3);

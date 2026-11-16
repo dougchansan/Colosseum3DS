@@ -8,6 +8,9 @@ typedef struct {
     float *frames;
     uint32_t frame_count,loop;
     float fps;
+    /* Original camera member ID (header word 28). Zero in the first shop
+     * pack, which predates the field and means member 00E51800. */
+    uint32_t resource;
 } C3AreaCamera;
 
 /* Zero-initialize before use. Replacement is transactional. Samples are the
