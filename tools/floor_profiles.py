@@ -554,7 +554,11 @@ def auto_profiles(survey_path):
         floor = entry["floor"]
         if floor in known or entry.get("status") != "ok" or not entry.get("maps"):
             continue
-        if not all(entry.get(k) is not None for k in ("script", "messages", "collision", "rel", "module",
+        # The message bank may be absent: Snagem Hideout's exterior (0x88,
+        # S2_out_2.fsys) has none; its script's text resolves from the common
+        # groups and from banks other floors load (c3_story_message searches
+        # every loaded group).
+        if not all(entry.get(k) is not None for k in ("script", "collision", "rel", "module",
                                                       "entrance_table", "people_table")):
             continue
         prefix = "f%03x" % floor

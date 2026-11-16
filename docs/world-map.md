@@ -203,7 +203,8 @@ returned to 2.02 MB after every area.
 | The Under -> next | 15 | 10 | `0C711800` | done |
 | next | 3 (west) | 8 | `0C731800` | done |
 
-Snagem Hideout (0x88) has no prepared field packs and was not ridden to.
+Snagem Hideout (0x88) had no prepared field packs at the time; see the
+next section.
 
 Original (Dolphin): Agate's terraced village blocked a quick walk to its
 exit, so the original rides came from the console save instead (Phenac and
@@ -217,3 +218,37 @@ debris), and the original reached black at 4.87-4.90 s against the port's
 Observed, not changed: from Outskirt the original opened the map with the
 cursor on Phenac City; the port starts on the floor the player came from
 (`fn_80025730` as decompiled). The ride row did not depend on it.
+
+## Snagem Hideout (floor 0x88)
+
+The floor survey (`tools/floor_survey.py`) lists Snagem Hideout's exterior
+as `S2_out_2.fsys` with map, script, collision, REL module 7, three
+entrances and one person, but no message bank: the archive has none.
+`floor_profiles.auto_profiles` required a message bank, so 0x88 never got a
+surveyed profile and the warp-tour preparation never saw it. The message
+bank is now optional there and in `prepare_story.py` (the story pack then
+carries only the common groups; `c3_story_message` searches every loaded
+group, so a text that only another bank holds fails only when shown).
+
+Prepared like the other surveyed floors, from the full disc extract (the
+pinned `private/reference/orig/GC6E01` holds no `S2_*` archives):
+
+```text
+C3_FLOOR_SURVEY=<floor-survey.json> python tools/prepare_story.py --disc <disc> --output <boot> --floor auto_088
+C3_FLOOR_SURVEY=<floor-survey.json> python tools/prepare_tour.py --disc <disc> --boot <boot> --floor auto_088
+python tools/compress_packs.py <boot> --codec zlib
+```
+
+The exterior links to building 1F (0x84) by two doors; 1F links to 2F
+(0x85) and 2F to 3F (0x86), all three already prepared by the earlier tour
+run. Floors 0x87 and 0x89 (the exterior's other story states) and 0x81-0x83
+(hallway, Snatch room, boss room) have no collision or entrance tables in
+the survey and are not prepared.
+
+Azahar, completed save: Outskirt -> Snagem Hideout played row 0 (route 5,
+`0C761800`), its two map packs loaded during the ride and the field took
+them; the floor's init, entry and common scripts ran without errors, the
+person streamed in and the field reached control; leaving it,
+`used_bytes` returned to 2.02 MB. The original's Snagem ride was not
+captured in Dolphin (only the console save's two destinations were reachable
+there); row 0 itself matched the original on the Outskirt -> Phenac ride.

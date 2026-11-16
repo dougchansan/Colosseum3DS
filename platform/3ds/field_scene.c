@@ -1339,8 +1339,15 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         if(draw_result){result=-1;break;}
         ++frames;
 #ifdef C3_ROUNDTRIP_PROBE
-        /* Leave for the world map once the people have joined. */
+        /* Leave for the world map once the people have joined; keep the
+         * last frame of each area for review (the capture lags one frame). */
         if(npc.attached&&frames>=90u){
+            char shot[80];
+            mkdir("sdmc:/3ds/Colosseum3DS/probe",0777);
+            snprintf(shot,sizeof shot,"sdmc:/3ds/Colosseum3DS/probe/area_%03lx_top.bmp",(unsigned long)map.floor);
+            (void)c3_n3ds_capture_top(shot);
+            snprintf(shot,sizeof shot,"sdmc:/3ds/Colosseum3DS/probe/area_%03lx_bottom.bmp",(unsigned long)map.floor);
+            (void)c3_n3ds_capture_bottom(shot);
             if(!c3_game_state_set_floor(state,C3_FLOOR_WORLD_MAP_ID,map.floor,0)){result=-1;break;}
             result=2;break;
         }
