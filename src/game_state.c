@@ -695,6 +695,21 @@ int c3_game_state_take_item(C3GameState *state,unsigned pocket,unsigned id,unsig
     for(;w<counts[pocket];++w)memset(base+w*4,0,4);
     return 1;
 }
+/* Add count of item id to bag pocket: to its slot, else the first empty one
+ * (at most 999 a slot). For probes and tests; the menus use inventory.c. */
+int c3_game_state_put_item(C3GameState *state,unsigned pocket,unsigned id,unsigned count)
+{
+    static const unsigned offsets[]={0x780,0x7d0,0x87c,0x8bc,0x9bc,0xa74};
+    static const unsigned counts[]={20,43,16,64,46,3};
+    GameStateImpl *s=state?state->impl:NULL;
+    if(!s||pocket>=6||!id||id>0xffffu||!count)return 0;
+    uint8_t *base=s->body+HERO+offsets[pocket];int empty=-1;
+    for(unsigned i=0;i<counts[pocket];++i){uint8_t *q=base+i*4;
+        if(be16(q)==id){unsigned n=be16(q+2)+count;if(n>999)return 0;put16(q+2,(uint16_t)n);return 1;}
+        if(!be16(q)&&empty<0)empty=(int)i;}
+    if(empty<0||count>999)return 0;
+    put16(base+empty*4,(uint16_t)id);put16(base+empty*4+2,(uint16_t)count);return 1;
+}
 int c3_game_state_trade_pokemon(C3GameState *state,unsigned slot,const uint8_t record[0x138])
 {
     GameStateImpl *s=state?state->impl:NULL;uint8_t *p;

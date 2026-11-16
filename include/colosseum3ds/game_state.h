@@ -98,6 +98,8 @@ int c3_game_state_box_pokemon(const C3GameState *state,unsigned box,unsigned slo
 /* Remove count of item id from bag pocket (0 normal, 1 key, 2 balls, 3 TMs,
  * 4 berries, 5 colognes); returns 0, changing nothing, when there are fewer. */
 int c3_game_state_take_item(C3GameState *state,unsigned pocket,unsigned id,unsigned count);
+/* Add count of item id to a pocket (its slot, else the first empty one). */
+int c3_game_state_put_item(C3GameState *state,unsigned pocket,unsigned id,unsigned count);
 /* A traded Pokemon replaces the occupied party slot it was traded from
  * (docs/link-play.md): any species, not an egg, level 1..100, HP within its
  * maximum. Memory only; the explicit Save writes it. */

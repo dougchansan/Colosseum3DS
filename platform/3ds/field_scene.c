@@ -564,7 +564,8 @@ static int field_renderer_init(C3Title *storage,const C3Title *const *models,uin
  * front of it, facing it, and interacts (open dialogue is answered with A).
  * Other floors leave for the world map as before. */
 static struct { uint32_t start, start_spawn, floor[32], source[32]; uint8_t interact[32]; unsigned count, next; int loaded;
-                uint32_t film_floor, film_frames; unsigned shadow_slot, shadow_id; } probe_route;
+                uint32_t film_floor, film_frames; unsigned shadow_slot, shadow_id;
+                uint32_t flag_id[8], flag_value[8], ball_id[4], ball_count[4]; unsigned flags, balls; } probe_route;
 static void probe_route_load(void)
 {
     if(probe_route.loaded)return;
@@ -584,6 +585,12 @@ static void probe_route_load(void)
          * Pokemon whose heart is open, in memory only (the probe saves to
          * probe-unused.gci), to try the Relic Stone. */
         else if(sscanf(line,"shadow %lx %lx",&a,&b)==2&&a<6&&b){probe_route.shadow_slot=(unsigned)a;probe_route.shadow_id=(unsigned)b;}
+        /* "flag <id> <value>" and "ball <item> <count>" (hex): story point
+         * and balls for the probe's in-memory copy of the save. */
+        else if(sscanf(line,"flag %lx %lx",&a,&b)==2&&probe_route.flags<8){
+            probe_route.flag_id[probe_route.flags]=(uint32_t)a;probe_route.flag_value[probe_route.flags++]=(uint32_t)b;}
+        else if(sscanf(line,"ball %lx %lx",&a,&b)==2&&probe_route.balls<4&&a>=1&&a<=12&&b){
+            probe_route.ball_id[probe_route.balls]=(uint32_t)a;probe_route.ball_count[probe_route.balls++]=(uint32_t)b;}
         else if(sscanf(line,"%lx i%lx",&a,&b)==2&&probe_route.count<32){
             probe_route.floor[probe_route.count]=(uint32_t)a;probe_route.interact[probe_route.count]=1;
             probe_route.source[probe_route.count++]=(uint32_t)b;}
@@ -1688,6 +1695,10 @@ int c3_field_scene_roundtrip_probe(C3GameState *state,FILE *trace,char *error,si
             if(trace){fprintf(trace,"roundtrip_shadow slot=%u id=%u level=%u ok=%d\n",slot,id,(unsigned)r[0x60],ok);fflush(trace);}
         }
     }
+    for(unsigned i=0;i<probe_route.flags;++i){int ok=c3_game_state_set_flag(state,probe_route.flag_id[i],probe_route.flag_value[i]);
+        if(trace){fprintf(trace,"roundtrip_flag id=%04lx value=%lu ok=%d\n",(unsigned long)probe_route.flag_id[i],(unsigned long)probe_route.flag_value[i],ok);fflush(trace);}}
+    for(unsigned i=0;i<probe_route.balls;++i){int ok=c3_game_state_put_item(state,2,probe_route.ball_id[i],probe_route.ball_count[i]);
+        if(trace){fprintf(trace,"roundtrip_ball item=%lu count=%lu ok=%d\n",(unsigned long)probe_route.ball_id[i],(unsigned long)probe_route.ball_count[i],ok);fflush(trace);}}
     if(!c3_game_state_set_floor(state,start,C3_FLOOR_WORLD_MAP_ID,(uint8_t)probe_route.start_spawn)){snprintf(error,capacity,"floor rejected");return -1;}
     for(unsigned i=0;i<AREAS;++i){
         C3GameSummary summary;uint32_t floor=c3_game_state_summary(state,&summary)?summary.floor:0;
