@@ -89,6 +89,8 @@ void c3_field_story_set_purify_service(C3FieldStory *story, C3FieldStoryPurify p
  * (c3_relive_pickable) and reports its slot, or -1 to cancel. */
 int c3_field_story_relive_pick(C3FieldStory *story, int slot, char *error);
 void c3_field_story_set_party_service(C3FieldStory *story,C3FieldStoryRestore restore,void *context);
+/* D8 mode1: clear poison/toxic only, returning cured members or -1. */
+void c3_field_story_set_poison_service(C3FieldStory *story,C3FieldStoryRestore clear,void *context);
 /* Music (GSsnd wrappers). Natives 68/69 call fn_80165A20/fn_801659FC with
  * (sound, fade, volume), loading the 0x406/0x407 song slots; 6A is
  * soundStop(sound, fade); 6D is fn_80165718(volume, fade), the music master

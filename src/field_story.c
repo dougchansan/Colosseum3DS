@@ -83,6 +83,7 @@ typedef struct {
     C3FieldStoryAudio audio;void *audio_context;
     const C3AreaDoor *door_rows;C3StoryDoor doors[C3_AREA_MAX_DOORS];uint32_t door_count;
     C3FieldStoryRestore restore;void *restore_context;
+    C3FieldStoryRestore clear_poison;void *poison_context;
     C3FieldStoryPurify purify;void *purify_context;
     C3FieldStoryPurified purified; /* the last purification, for its messages */
     uint32_t message_values[256]; /* msgctrlSetValue: one word per control byte */
@@ -1029,17 +1030,18 @@ static int run_native(Impl *s,RunTask *t,char *error)
         }
         }break;
     case 0xd8:{
-        /* fn_801C852C: nothing unless flag value 08AE is zero. Mode 0 is
-         * fn_801D0AFC(0): pokemonAllKaihuku on every valid party member.
-         * Mode 1 clears two per-member attributes that are not identified. */
+        /* fn_801C852C: guarded by 08AE. Mode0 heals fully; mode1
+         * clears only condition IDs 3 and4 (poison/toxic), without HP/PP. */
         uint32_t battle_mode=0;
         if(!flag(s,0x8ae,&battle_mode,error))return 0;
         if(battle_mode)break;
-        if(a[0]!=0)return fail(error,"Native D8 mode %lu is not ported",(unsigned long)a[0]);
-        if(!s->restore)return fail(error,"Native D8 needs the party service, which this scene did not bind");
-        int restored=s->restore(s->restore_context);
-        if(restored<0)return fail(error,"The party could not be restored");
-        log_line(s,"story_party_restore mode=0 members=%d",restored);
+        if(a[0]>1)break; /* the original switch has no default action */
+        C3FieldStoryRestore service=a[0]?s->clear_poison:s->restore;
+        void *context=a[0]?s->poison_context:s->restore_context;
+        if(!service)return fail(error,"Native D8 mode %lu needs the %s service",(unsigned long)a[0],a[0]?"poison":"party");
+        int restored=service(context);
+        if(restored<0)return fail(error,"Native D8 mode %lu party service failed",(unsigned long)a[0]);
+        log_line(s,"story_party_restore mode=%lu members=%d",(unsigned long)a[0],restored);
         }break;
     case 0xe8:
         /* fn_801C7730 moves the follower out of the hero-to-NPC corridor
@@ -1410,6 +1412,10 @@ void c3_field_story_set_item_change_service(C3FieldStory *story,C3FieldStoryItem
 void c3_field_story_set_item_service(C3FieldStory *story,C3FieldStoryReceive receive,void *context)
 {
     Impl *s=story?story->impl:NULL;if(s){s->receive=receive;s->receive_context=context;}
+}
+void c3_field_story_set_poison_service(C3FieldStory *story,C3FieldStoryRestore clear,void *context)
+{
+    Impl *s=story?story->impl:NULL;if(s){s->clear_poison=clear;s->poison_context=context;}
 }
 void c3_field_story_set_party_service(C3FieldStory *story,C3FieldStoryRestore restore,void *context)
 {

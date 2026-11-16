@@ -24,6 +24,9 @@ int c3_inventory_remove(C3GameState *state,const C3PdaAssets *assets,unsigned id
  * each valid move's PP to its maximum (base PP and PP Ups from the move
  * table) and the persistent condition record cleared when it holds one of
  * conditions 3..8. Returns the number of members restored, or -1. */
+/* D8 mode1: clear persistent poison/toxic conditions (IDs 3 and 4) only;
+ * preserve HP, PP and all other conditions. Returns members cured or -1. */
+int c3_inventory_clear_party_poison(C3GameState *state);
 int c3_inventory_restore_party(C3GameState *state,const C3PdaAssets *assets);
 C3InventoryCode c3_inventory_apply(C3GameState *state,const C3PdaAssets *assets,const C3InventoryRequest *request,C3InventoryResult *result);
 #endif

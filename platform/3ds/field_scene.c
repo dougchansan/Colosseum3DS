@@ -119,6 +119,10 @@ static int story_audio(void *context,unsigned op,uint32_t a,uint32_t b,uint32_t 
 }
 
 /* Party service for script native D8. */
+static int clear_party_poison(void *context)
+{
+    return c3_inventory_clear_party_poison(context);
+}
 static int restore_party(void *context)
 {
     C3PdaAssets assets={0};uint8_t *data=open_pda(&assets);
@@ -821,6 +825,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     c3_field_story_set_item_service(&story,receive_item,state);
     c3_field_story_set_item_change_service(&story,change_item,state);
     c3_field_story_set_party_service(&story,restore_party,state);
+    c3_field_story_set_poison_service(&story,clear_party_poison,state);
     purify_trace=trace;c3_field_story_set_purify_service(&story,purify_party,state);
     c3_field_story_set_audio_service(&story,story_audio,NULL);
     if(!c3_field_story_prepare(&story,story_error))goto story_failed;
