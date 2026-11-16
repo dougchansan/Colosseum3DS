@@ -689,6 +689,21 @@ def build_mesh(model, mesh_index, max_envelope_weights=3, source_materials=False
             raise ValueError("Unreviewed second field texture expression")
         raw_textures = raw_textures[:1]
         reflection = False
+    # Retain a normal-generated ADD EXT after the existing explicit source
+    # layer admission above. Its inactive TEV record has no effect. Like a
+    # reflection-only BLEND, it needs a neutral base plus normal texture2;
+    # unlike BLEND, ADD ignores the authored blending scalar entirely.
+    source_normal_add = (len(raw_textures) == 1 and raw_textures[0].flags == 0x70081 and
+                         (raw_textures[0].tev is None or raw_textures[0].tev.active == 0))
+    if source_normal_add:
+        source_reflection_only = True
+        reflection_texture = copy.copy(raw_textures[0])
+        reflection_texture.source, reflection_texture.tev = 5, None
+        neutral = copy.copy(raw_textures[0])
+        neutral.flags, neutral.blending, neutral.source, neutral.tev = 0x40010, 1., 4, None
+        neutral.scale, neutral.rotation, neutral.translation = (1., 1., 1.), (0., 0., 0.), (0., 0., 0.)
+        raw_textures = [neutral, reflection_texture]
+        reflection = True
     if dual:
         if len(mesh.uv_layers) != 2 or [t.source for t in raw_textures] != [4,5]:
             raise ValueError("Unsupported dual field texture generators")
@@ -762,7 +777,7 @@ def build_mesh(model, mesh_index, max_envelope_weights=3, source_materials=False
     # exactly. Omit that inert stage, including its normal-generated texture,
     # so unlit vertex-color geometry need not satisfy a lit reflection path.
     # Keep the source reflection classification above for base-stage handling.
-    if dual or (reflection and raw_textures[1].blending != 0) or source_blend or source_normal_pair or blend_modulate:
+    if dual or (reflection and (source_normal_add or raw_textures[1].blending != 0)) or source_blend or source_normal_pair or blend_modulate:
         textures.append(_texture(raw_textures[1],mesh.material.texture_layers[0 if source_reflection_only else 1].image))
         batch[3] |= DUAL_MODULATE | title.TEV_LERP if blend_modulate else DUAL_MODULATE if dual else REFLECTION_BLEND
         if source_blend:batch[3] |= 16384
@@ -771,6 +786,10 @@ def build_mesh(model, mesh_index, max_envelope_weights=3, source_materials=False
         if reflection or source_blend:
             batch[27] = raw_textures[1].blending
         if source_normal_pair:batch[27]=raw_textures[0].blending
+        if source_normal_add:
+            # Original source flags distinguish post-lighting ADD from BLEND
+            # without changing the C3T layout or consuming a new batch flag.
+            batch[7], batch[27] = 0x70081, 1.
     if source_materials:
         # HSD_TExpSetupTev converts F32 constants to int(255*x), then clamps
         # to u8. Original Slugma's authored factor2 therefore becomes255.

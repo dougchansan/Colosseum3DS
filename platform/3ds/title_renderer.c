@@ -842,7 +842,11 @@ static void combiner(const C3TitleBatch *batch, const C3TitleMaterialState *mate
         C3D_TexEnv *reflection = C3D_GetTexEnv(4);
         C3D_TexEnvColor(reflection, color4(batch->texture2_blend, batch->texture2_blend, batch->texture2_blend, 1));
         C3D_TexEnvSrc(reflection, C3D_RGB, GPU_TEXTURE1, GPU_PREVIOUS, GPU_CONSTANT);
-        C3D_TexEnvFunc(reflection, C3D_RGB, GPU_INTERPOLATE);
+        /* HSD TEX_LIGHTMAP_EXT ADD follows diffuse lighting. A synthetic
+         * neutral base carries the raster; the original normal-generated
+         * texture is added here with the source clamp, never lit again. */
+        C3D_TexEnvFunc(reflection, C3D_RGB,
+                      batch->texture_flags==0x70081u ? GPU_ADD : GPU_INTERPOLATE);
     }
     C3D_TexEnv *fade_stage = C3D_GetTexEnv(5);
     C3D_TexEnvColor(fade_stage, color4(fade, fade, fade, 1.0f));
@@ -1336,7 +1340,7 @@ int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
                              * HSD. Only the prior lighting contribution is
                              * attenuated; its texture term was drawn once. */
                             C3D_TexEnv *ext=C3D_GetTexEnv(4);
-                            float remaining=1.f-batch->texture2_blend;
+                            float remaining=batch->texture_flags==0x70081u?1.f:1.f-batch->texture2_blend;
                             C3D_TexEnvColor(ext,color4(remaining,remaining,remaining,1));
                             C3D_TexEnvSrc(ext,C3D_RGB,GPU_PREVIOUS,GPU_CONSTANT,GPU_PRIMARY_COLOR);
                             C3D_TexEnvFunc(ext,C3D_RGB,GPU_MODULATE);
