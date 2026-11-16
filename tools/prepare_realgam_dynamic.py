@@ -11,7 +11,7 @@ from pathlib import Path
 import struct
 
 MARKER = 0x43334459
-RESOURCE = 0x115A0400
+RESOURCES = (0x115A0400,0x115E0400,0x115F0400,0x11600400,0x11610400)
 
 def insert_actor(blob, row):
     """Insert a reserved row without changing any existing section bytes."""
@@ -36,10 +36,9 @@ def prepare(disc, metadata, output, parser):
     if blob[:4] != b"C3A1" or struct.unpack_from("<I", blob, 12)[0] != 0x76:
         raise ValueError("Expected Realgam Colosseum C3A1")
     count = struct.unpack_from("<I", blob, 20)[0]
-    if count >= 48 or any(struct.unpack_from("<I",blob,128+i*160+28)[0] == MARKER for i in range(count)):
+    if count+len(RESOURCES)>48 or any(struct.unpack_from("<I",blob,128+i*160+28)[0] == MARKER for i in range(count)):
         raise ValueError("Dynamic registry already present or actor table full")
     used = {struct.unpack_from("<I",blob,128+i*160)[0] for i in range(count)}
-    index = next(i for i in range(255,-1,-1) if i not in used)
     output = area.check_output(output)
     if output.exists():
         raise ValueError("Choose a new private output directory")
@@ -48,17 +47,46 @@ def prepare(disc, metadata, output, parser):
     camera = scene.cameras[0]
     fixed = (*camera.position,*camera.target_position,camera.roll,camera.field_of_view,camera.near,camera.far,camera.aspect,0.)
     lights = geometry.fixed_lights(raw,data)
-    # peopleOpenSub finds no PeopleInfo for this model, so it keeps source
-    # model defaults at the origin. Native73 immediately selects clip0.
-    record = {"model_resource":RESOURCE,"file":"f076_dynamic115a.c3t","motion_indices":[0]*9}
-    packs = area.npc_pack(archive,record,fixed,lights,profile["sha256"],output,format_version=3)
-    row = bytearray(160)
-    struct.pack_into("<8I7f",row,0,index,RESOURCE,0,0x40000000,0,0,0,MARKER,0.,0.,0.,0.,0.01,0.,0.)
-    filename = record["file"].encode("ascii")
-    row[72:72+len(filename)] = filename
-    result = insert_actor(blob,row)
+    result,packs,resources = blob,[],[]
+    for resource in RESOURCES:
+        index = next(i for i in range(255,-1,-1) if i not in used)
+        used.add(index)
+        model_data,model_raw,model_scene = geometry.load_scene(archive,resource)
+        if len(model_scene.models)!=1:
+            raise ValueError("Dynamic resource needs exactly one original model")
+        model = geometry.Model(model_scene.models[0],model_raw.models[0])
+        meshes = [geometry.build_mesh(model,i) for i in range(len(model.meshes))]
+        schedules = [(i,geometry.sample_sequence(end) if end else [0.],False) for i,end in enumerate(model.ends)]
+        samples = sum(len(sequence) for _,sequence,_ in schedules)
+        stem = f"f076_dynamic{resource>>16:04x}"
+        # Retain the original root part0 for nativeA6's original attachment.
+        if meshes:
+            prepared = geometry.prepare_pack_set(meshes,schedules,60,[fixed]*samples,lights,
+                profile["sha256"],output,stem,expected_count=1,format_version=3,
+                retained_parts=((model,0,0),),gpu_textures=True)
+        else:
+            frames,clips,first = bytearray(),[],0
+            for clip,sequence,loop in schedules:
+                clips.append((first,len(sequence),int(loop),0));first+=len(sequence)
+                for frame in sequence:
+                    world,_ = model.world(clip,frame)
+                    frames.extend(geometry.np.asarray(world[0][:3,:],dtype="<f4").tobytes())
+                    frames.extend(struct.pack("<12f",*fixed))
+            pack = title.encode_pack(1,[],[],[],clips,lights,frames,fps=60,format_version=3,archive_sha256=profile["sha256"])
+            filename = stem+".c3t";(output/filename).write_bytes(pack)
+            prepared = [{"file":filename,"bytes":len(pack),"sha256":hashlib.sha256(pack).hexdigest(),
+                "vertices":0,"batches":0,"textures":0,"sampled_bones":1,"frames":samples,
+                "retained_parts":[{"source_part":0,"source_joint":0,"sampled_bone":0}],"transform_only":True}]
+        packs.extend(prepared)
+        root_bone = prepared[0]["retained_parts"][0]["sampled_bone"]
+        row = bytearray(160)
+        struct.pack_into("<8I7f",row,0,index,resource,0,0x40000000,0,0,root_bone+1,MARKER,0.,0.,0.,0.,0.01,0.,0.)
+        filename = prepared[0]["file"].encode("ascii")
+        row[72:72+len(filename)] = filename
+        result = insert_actor(result,row)
+        resources.append({"resource":f"{resource:08x}","reserved_index":index,"source_model_sha256":hashlib.sha256(model_data).hexdigest(),"root_bone_plus_one":root_bone+1})
     (output/metadata.name).write_bytes(result)
-    manifest = {"resource":"115a0400","registry_marker":"43334459","reserved_index":index,"source_archive":profile["archive"],"source_archive_sha256":profile["sha256"],"source_model_sha256":hashlib.sha256(area.field.member(archive,RESOURCE)).hexdigest(),"packs":packs,"metadata":metadata.name}
+    manifest = {"resources":resources,"registry_marker":"43334459","source_archive":profile["archive"],"source_archive_sha256":profile["sha256"],"packs":packs,"metadata":metadata.name}
     (output/"dynamic-manifest.json").write_text(json.dumps(manifest,indent=2)+"\n")
     print(json.dumps(manifest))
 

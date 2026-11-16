@@ -8,6 +8,18 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]/"tools"))
 from prepare_realgam_dynamic import insert_actor
 
 class DynamicRegistry(unittest.TestCase):
+    def test_transform_only_encoder(self):
+        from prepare_title import encode_pack
+        identity=(1.,0.,0.,0.,0.,1.,0.,0.,0.,0.,1.,0.)
+        camera=(1.,2.,3.,0.,0.,0.,0.,45.,.1,100.,1.,0.)
+        light=(4,0,1.,1.,1.,0.,0.,0.,0.,0.,0.,0.,1.,1.,0.,0.)
+        frame=struct.pack("<24f",*(identity+camera))
+        blob=encode_pack(1,[],[],[],[(0,1,0,0)],[light],frame)
+        self.assertEqual(struct.unpack_from("<3I",blob,16),(0,0,0))
+        self.assertEqual(struct.unpack_from("<I",blob,72)[0],96)
+        for vertices,batches,textures in (([],[],[(8,8,b"" ,0,0)]),([],[(0,3)],[])):
+            with self.assertRaises(ValueError):encode_pack(1,vertices,batches,textures,[(0,1,0,0)],[light],frame)
+
     def test_insertion_preserves_existing_sections(self):
         blob=bytearray(128+160+56+56+32)
         blob[:4]=b"C3A1"

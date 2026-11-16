@@ -238,6 +238,29 @@ static void synthetic_regressions(void)
     synthetic_load(s,&game,file,code,0,0,0x1000003);CHECK(c3_field_story_enter(&s->story,error));
     CHECK(!c3_field_story_tick(&s->story,0,0,error));CHECK(strstr(error,"not prepared"));close_scene(s);
     memset(code,0,sizeof code);args[0]=3;args[1]=0;
+    /* A6 follows the actual root matrix even beyond the vehicle's small
+     * Euler range. This carrier has yaw 3.05 radians and nonzero translation. */
+    memset(code,0,sizeof code);args[0]=0x115e0400;native(code+3,0x70,1,args,1);
+    args[0]=3;args[1]=0x7ffe0000;args[2]=0;native(code+3,0xa6,3,args,1);
+    synthetic_load(s,&game,file,code,0,0,0x1000003);c3_field_story_close(&s->story);
+    s->area.actors=realloc(s->area.actors,2*sizeof(*s->area.actors));CHECK(s->area.actors);
+    s->area.actors[1]=s->area.actors[0];s->area.actor_count=2;
+    s->area.actors[1].index=254;s->area.actors[1].resource=0x115e0400;
+    s->area.actors[1].aux3=0x43334459;s->area.actors[1].aux2=1;
+    synthetic_model(s->actors+1);s->models[1]=s->actors+1;
+    for(unsigned i=0;i<31;++i){uint8_t *frame=s->actors[1].file_data+i*s->actors[1].frame_bytes;
+        le32(frame,bits(cosf(3.05f)));le32(frame+8,bits(sinf(3.05f)));
+        le32(frame+32,bits(-sinf(3.05f)));le32(frame+40,bits(cosf(3.05f)));
+        le32(frame+12,bits(2));le32(frame+28,bits(3));le32(frame+44,bits(4));}
+    CHECK(c3_field_story_load(&s->story,file,&game,&s->map,&s->area,&s->hero,&s->wes,s->models,&s->camera,NULL,error));
+    CHECK(c3_field_story_prepare(&s->story,error));
+    for(unsigned i=0;i<10&&!c3_field_story_view(&s->story)->prepared;++i)CHECK(c3_field_story_tick(&s->story,0,0,error));
+    CHECK(c3_field_story_enter(&s->story,error));CHECK(c3_field_story_tick(&s->story,0,0,error));
+    CHECK(c3_field_story_sample(&s->story,error));
+    CHECK(fabsf(s->actors[0].draw_vertices[0].pos[0]-(2+cosf(3.05f)))<1e-5f);
+    CHECK(fabsf(s->actors[0].draw_vertices[0].pos[1]-3)<1e-5f);
+    CHECK(fabsf(s->actors[0].draw_vertices[0].pos[2]-(4-sinf(3.05f)))<1e-5f);close_scene(s);
+    memset(code,0,sizeof code);args[0]=3;args[1]=0;
     /* An absent init cannot suppress a present pre hook. */
     native(code+2,0x64,2,args,1);synthetic_load(s,&game,file,code,0,0x1000002,0);
     CHECK(!c3_field_story_actor(&s->story,3)->visible);close_scene(s);

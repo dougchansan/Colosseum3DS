@@ -43,6 +43,7 @@ typedef struct Person {
     uint32_t waypoint_capacity, waypoint_count, waypoint_cursor;
     int waypoint_active, waypoint_loop;
     struct Person *parent;
+    uint32_t parent_bone_plus_one;int parent_root;
     float local_position[3],local_rotation[3],world_rotation[3],world_scale[3];
 } Person;
 typedef struct {
@@ -129,7 +130,7 @@ static int validate_native(const Impl *s,const C3StoryCall *c,char *error)
         {0x46,5,0},{0x47,2,0},{0x48,3,0},{0x49,5,28},{0x4a,3,0},
         {0x19,1,0},{0x4c,2,0},{0x4d,2,0},{0x4e,1,0},{0x4f,1,0},{0x50,2,0},{0x51,1,0},{0x52,1,0},
         {0x5c,0,0},{0x5d,0,0},{0x5e,0,0},{0x5f,2,0},{0x64,2,0},{0x65,4,14},
-        {0x70,1,0},{0x71,1,0},{0xdd,3,0},
+        {0x70,1,0},{0x71,1,0},{0xdd,3,0},{0xa6,3,0},
         {0x67,0,0},{0x68,3,0},{0x69,3,0},{0x6a,2,0},{0x6d,2,0},{0x72,2,0},{0x76,2,0},
         {0x7d,3,0},{0x7f,3,7},{0x88,0,0},{0x8a,4,0},{0x8c,5,30},{0x98,3,0},{0xd9,1,0},{0xe0,2,0},{0xc3,0,0},
         {0xc2,2,0},{0x99,1,0},{0x9d,1,1},{0xb3,2,1},{0xb6,1,0},{0xd1,5,0},{0xd3,0,0},{0xe4,0,0},
@@ -550,7 +551,8 @@ static int run_native(Impl *s,RunTask *t,char *error)
         }
         /* GSmodelAttachToGSpart(type7,updateOnce0,reset1). The reviewed
          * vehicle has an identity source root and one sampled part node. */
-        p->parent=parent;p->moving=p->turning=p->waypoint_active=0;
+        p->parent=parent;p->parent_bone_plus_one=parent->source->part1_bone_plus_one;p->parent_root=0;
+        p->moving=p->turning=p->waypoint_active=0;
         memset(p->local_position,0,sizeof p->local_position);memset(p->local_rotation,0,sizeof p->local_rotation);
         value=1;break;
     }
@@ -890,6 +892,20 @@ static int run_native(Impl *s,RunTask *t,char *error)
         memcpy(p->public.pose.position,p->source->position,sizeof p->source->position);p->public.pose.yaw=p->source->yaw;
         value=id;log_line(s,"story_dynamic_open resource=%08lx id=%08lx",(unsigned long)a[0],(unsigned long)id);
         }break;
+    case 0xa6:{
+        /* fn_801CB61C -> fn_801845E4: source child resource follows the
+         * original animated carrier's root part0, retained as C3DY aux2. */
+        p=person(s,s->area->group,a[0]);Person *parent=person(s,s->area->group,a[1]);
+        if(!p||!parent)break;
+        if(a[2]||!parent->source||parent->source->aux3!=DYNAMIC_MARKER||
+           !parent->source->aux2||!parent->public.model||parent->parent||p==parent||
+           parent->source->aux2>parent->public.model->bone_count)
+            return fail(error,"Original root attachment is not prepared");
+        p->parent=parent;p->parent_bone_plus_one=parent->source->aux2;p->parent_root=1;
+        p->moving=p->turning=p->waypoint_active=0;
+        memset(p->local_position,0,sizeof p->local_position);memset(p->local_rotation,0,sizeof p->local_rotation);
+        value=1;break;
+    }
     case 0x71:
         /* fn_801CB9D8 closes a transient person and releases its slot. The
          * prepared GPU pack stays resident for a later original allocation. */
@@ -1913,7 +1929,7 @@ static void rotation_matrix(const float euler[3],float r[9])
 static int attachment_pose(Impl *s,Person *p,char *error)
 {
     Person *parent=p->parent;if(!parent)return 1;
-    const float *m=parent->public.model->pose.matrices[parent->source->part1_bone_plus_one-1u];
+    const float *m=parent->public.model->pose.matrices[p->parent_bone_plus_one-1u];
     float scale[3],r[9],angles[3];
     for(unsigned col=0;col<3;++col){
         scale[col]=sqrtf(m[col]*m[col]+m[4+col]*m[4+col]+m[8+col]*m[8+col]);
@@ -1924,7 +1940,7 @@ static int attachment_pose(Impl *s,Person *p,char *error)
      * stay within +/-0.033rad. GSpartGetTransform SUMS ancestor Eulers;
      * decomposing a parent-yaw * joint matrix would give a different answer. */
     angles[0]=atan2f(r[7],r[8]);angles[1]=asinf(fmaxf(-1,fminf(1,-r[6])));angles[2]=atan2f(r[3],r[0]);
-    for(unsigned i=0;i<3;++i)if(!isfinite(angles[i])||fabsf(angles[i])>.25f)
+    for(unsigned i=0;i<3;++i)if(!isfinite(angles[i])||(!p->parent_root&&fabsf(angles[i])>.25f))
         return fail(error,"Original attachment part exceeds its reviewed Euler range");
     angles[1]+=parent->public.pose.yaw;rotation_matrix(angles,r);
     float sine=sinf(parent->public.pose.yaw),cosine=cosf(parent->public.pose.yaw);
