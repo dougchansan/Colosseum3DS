@@ -99,6 +99,14 @@ typedef struct C3GeneralBattle {
     uint8_t screens[2][2];         /* Reflect, Light Screen turns per side */
     C3GeneralMon party[2][C3_GB_PARTY];
     uint8_t player_order[C3_GB_PARTY];
+    /* Link battles (src/link_battle.c, docs/link-play.md): both sides are
+     * players. viewer is the side this console shows as its own; it only
+     * changes message text ("Foe", "Go!"), never the state, so it is left
+     * out of c3_general_battle_hash. owner_split (multi battles): each
+     * active slot sends out only the Pokemon its own player brought. */
+    uint8_t link, viewer, owner_split;
+    uint8_t owner[2][C3_GB_PARTY];
+    char side_name[2][C3_GB_NAME];
     uint32_t event_count;
     C3GeneralEvent events[C3_GB_EVENT_LIMIT];
 } C3GeneralBattle;
@@ -146,6 +154,37 @@ int c3_general_battle_turn(C3GeneralBattle *battle, const C3BattlePack *pack,
 int c3_general_battle_writeback(const C3GeneralBattle *battle, const C3BattlePack *pack,
                                 uint8_t party[C3_GB_PARTY][C3_GB_POKEMON_SIZE],
                                 C3GeneralRewards *rewards);
+/* ---- link battles (docs/link-play.md) ----------------------------------
+ * A Pokemon from a 312-byte party record (0 for an egg or a damaged record)
+ * or from a story trainer's preset party in the pack. */
+int c3_general_mon_from_record(const C3BattlePack *pack, const uint8_t record[C3_GB_POKEMON_SIZE],
+                               unsigned slot, C3GeneralMon *mon);
+int c3_general_mon_from_trainer(const C3BattlePack *pack, uint32_t encounter, unsigned index, C3GeneralMon *mon);
+/* Both sides from players. stage: an encounter whose floor, music and
+ * intro the battle borrows (its trainer and party are not used). owner may
+ * be NULL (each side is one player); names: each side's player name(s).
+ * viewer: the side this console shows as its own. */
+int c3_general_battle_begin_link(C3GeneralBattle *battle, const C3BattleEncounterInfo *stage,
+                                 unsigned active_per_side, const C3GeneralMon mons[2][C3_GB_PARTY],
+                                 const uint8_t counts[2], const uint8_t owner[2][C3_GB_PARTY],
+                                 const char names[2][C3_GB_NAME], uint32_t seed, unsigned viewer,
+                                 char *error);
+/* commands[0..3]: every battle position (ignored when empty or fainted).
+ * No command is drawn from the battle's RNG: all four come from players. */
+int c3_general_battle_turn_link(C3GeneralBattle *battle, const C3BattlePack *pack,
+                                const C3GeneralCommand commands[4], char *error);
+int c3_general_battle_command_valid(const C3GeneralBattle *battle, const C3BattlePack *pack,
+                                    unsigned position, C3GeneralCommand command);
+/* The opponent policy with a caller's generator, so an automatic player
+ * never draws from the shared battle RNG. */
+int c3_general_battle_choose_with(const C3GeneralBattle *battle, const C3BattlePack *pack,
+                                  unsigned position, C3BattleRng *rng, C3GeneralCommand *command);
+/* FNV-1a over the battle state both consoles must agree on. */
+uint32_t c3_general_battle_hash(const C3GeneralBattle *battle);
+/* The battle seen from side 1: sides, positions and outcome swapped, so the
+ * 2D/3D scenes (which show side 0 as the player's) can present it. */
+void c3_general_battle_mirror(const C3GeneralBattle *in, C3GeneralBattle *out);
+
 /* Whether the general engine models this move's effect exactly as listed
  * (1) or substitutes a plain hit / no effect (0). */
 int c3_general_effect_modelled(uint16_t effect);

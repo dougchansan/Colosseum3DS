@@ -38,9 +38,13 @@ const char *c3_link_reason_text(C3LinkReason r)
     return "unknown link error";
 }
 
+/* Control datagrams are padded to 32 bytes: under Azahar's UDS a 10-byte
+ * frame makes the receiver's udsPullPacket fail and is lost
+ * (docs/link-play.md, "Azahar notes"). */
+#define RAW_SIZE 32u
 static void raw(C3LinkSession *s, uint8_t node, unsigned kind, unsigned ack, unsigned extra)
 {
-    uint8_t p[10];
+    uint8_t p[RAW_SIZE] = {0};
     p[0] = 'C'; p[1] = 'L'; p[2] = (uint8_t)kind; p[3] = 0; put16(p + 4, 0); put16(p + 6, ack);
     p[8] = (uint8_t)extra; p[9] = 0;
     s->transport.send(s->transport.ctx, node, p, sizeof p);
@@ -227,7 +231,7 @@ static int message_complete(C3LinkSession *s, C3LinkPeer *p, uint8_t type, uint8
 static int accept_data(C3LinkSession *s, C3LinkPeer *p, const uint8_t *b, size_t size)
 {
     unsigned flags = b[3], n = get16(b + 12);
-    if (HEADER + n != size) return -1;
+    if (HEADER + n > size) return -1; /* transports may pad a datagram */
     if (flags & F_FIRST) { p->asm_active = 1; p->asm_size = 0; p->asm_type = b[8]; p->asm_from = b[9]; p->asm_to = b[10]; }
     if (!p->asm_active || p->asm_size + n > C3_LINK_MAX_MESSAGE) return -1;
     if (flags & F_LAST) {

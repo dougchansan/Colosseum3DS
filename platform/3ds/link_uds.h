@@ -11,7 +11,9 @@
 typedef struct C3LinkUds {
     int initialised, connected, host;
     unsigned char bind[64]; /* udsBindContext, kept opaque for the header */
-    unsigned packets_in, packets_out, send_errors;
+    unsigned packets_in, packets_out, send_errors, pull_errors;
+    unsigned long last_pull_error, last_send_error;
+    size_t last_pull_size;
 } C3LinkUds;
 
 int c3_link_uds_host(C3LinkUds *uds, const char *name, char *error, size_t capacity);

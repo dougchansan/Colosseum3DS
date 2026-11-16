@@ -84,7 +84,7 @@ static int uds_send(void *ctx, uint8_t node, const void *data, size_t size)
     if (!u->connected || size > UDS_DATAFRAME_MAXSIZE) return 0;
     u16 dest = node == C3_LINK_BROADCAST ? UDS_BROADCAST_NETWORKNODEID : node;
     Result r = udsSendTo(dest, DATA_CHANNEL, UDS_SENDFLAG_Default, data, size);
-    if (R_FAILED(r) && (u32)r != 0xC86113F0u) { ++u->send_errors; return 0; } /* UDS_CHECK_SENDTO_FATALERROR */
+    if (R_FAILED(r) && (u32)r != 0xC86113F0u) { ++u->send_errors; u->last_send_error = (unsigned long)r; return 0; } /* UDS_CHECK_SENDTO_FATALERROR */
     ++u->packets_out;
     return 1;
 }
@@ -95,7 +95,13 @@ static int uds_recv(void *ctx, uint8_t *node, void *data, size_t capacity)
     if (!u->connected) return -1;
     size_t got = 0; u16 src = 0;
     Result r = udsPullPacket(bindctx(u), data, capacity, &got, &src);
-    if (R_FAILED(r)) return -1;
+    if (R_FAILED(r)) {
+        /* Report it once; a run of failures means the network is gone. */
+        u->last_pull_error = (unsigned long)r; u->last_pull_size = got;
+        if (++u->pull_errors >= 30) return -1;
+        return 0;
+    }
+    u->pull_errors = 0;
     if (!got) return 0;
     *node = (uint8_t)src;
     ++u->packets_in;

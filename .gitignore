@@ -50,3 +50,4 @@ __pycache__/
 
 # Private source-derived WZX descriptor
 *.c3w
+/build-3ds-*/

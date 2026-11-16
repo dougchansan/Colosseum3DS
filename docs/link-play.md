@@ -227,4 +227,74 @@ camera and the messages call the other side "Foe".
 - The trade changes the console's game state in memory only. **Only the
   explicit Save writes the card**, as everywhere else in the port.
 
-The sections below are filled in as each stage lands.
+## Testing
+
+### Host tests (no console, no original data needed)
+
+```
+make build/test_link_protocol build/test_link_battle
+./build/test_link_protocol
+./build/test_link_battle [<battles.c3x> <newgame.c3g> <save A.gci> <save B.gci>]
+```
+
+`test_link_protocol` runs the session over the loopback transport: the
+handshake with four players, refusals (build, version, locked, full),
+120 messages in order through 25% loss with duplication and reordering,
+relaying between clients, BYE, a silent client and a lost host.
+`test_link_battle` plays Colosseum battles (single, double and 2-against-2
+with four consoles) over a lossy loopback with a synthetic pack, checks that
+every console logs the same hash after every turn, and that a forced desync
+and a dropped player are reported. With the private arguments it also plays
+Battle Now (2P single, 2P double, 4P multi) with the real pack and a
+Colosseum battle with two saves' parties.
+
+### Several Azahar instances (unattended)
+
+The probe build boots straight into a link session, plays from a script and
+writes `link-probe.log`; it never writes a save.
+
+```
+make -f Makefile.3ds BUILD=build-3ds-link C3_EXTRA_CFLAGS=-DC3_LINK_PROBE
+```
+
+Each instance is a portable copy of Azahar in `G:\Colosseum3DS-emu\link\pN`
+with its own user folder; its SD card holds
+`sdmc:/3ds/Colosseum3DS/link-role.txt` (`role host|join`, `players N`,
+`name`, `mode echo|battle-now|colosseum|trade`, `type single|double`,
+`rule 0..2`, `slot N`) and, for Colosseum and trading, a **copy** of a save
+at `saves/pokemon_colosseum.gci`. The private runner
+`private/run/link_run.ps1 -Mode <mode> -Players <2|4> [-Saves a.gci,b.gci]`
+starts `azahar-room.exe` and the instances, joins each to the room through
+UI Automation patterns (no keystrokes or mouse), waits for every log to end
+and collects logs and frames under `private/evidence/<mode>-<n>p/`.
+
+### Azahar notes
+
+- Every copy needs its own console identity, or the room refuses it: the
+  CFG username (block 0xA0000), console ID (blocks 0x90000/0x90001) and
+  `user/sysdata/mac.txt` (`private/run/link_identity.py`).
+- Under Azahar's UDS a 10-byte datagram makes the receiver's
+  `udsPullPacket` fail and is lost; the session pads its control datagrams
+  (ACK, PING, REJECT, BYE) to 32 bytes. Data packets were unaffected.
+- `udsSetNewConnectionsBlocked` is not used; the session's own LOCK refuses
+  late joiners.
+- Another program on this machine (a Switch emulator's room server) held
+  127.0.0.1:24872, Azahar's default room port, so the runs use port 24901.
+
+## Results
+
+### Battle Now (stage 3)
+
+| run | consoles | turns | hashes | outcome | evidence |
+|---|---|---|---|---|---|
+| 2P single, 3D stage | 2 Azahar | 37 | all 38 equal, final E5CC8C50 | side 1 won; each console reports its own result | `private/evidence/battle-now-2p/` |
+| 4P multi (2 v 2), 3D stage | 4 Azahar | 4 | all 5 equal on four consoles, final 2338636A | side 0 won | `private/evidence/battle-now-4p/` |
+
+Original: the two-different-trainers draw, held items cleared, the per-type
+team sizes (single 3, double 4, multi 2), `menuCBPlayerOrders` pairing.
+Approximation: the preset parties come from the story trainers in the pack
+(the Mt. Battle `staCPU` table is not prepared); the stage is a story
+Colosseum floor (encounter row on battle floor 26) and its trainer model
+stands in for the opponent players; turn rules are the port's general engine
+(see `include/colosseum3ds/battle_general.h`), not the original battle
+scripts.
