@@ -196,6 +196,47 @@ static void relive_pick_draw(const RelivePick *p,C3BottomUi *ui)
     }
     c3_ui_footer(ui,"A: purify   B: cancel");
 }
+/* Native D0 (fn_801C8628) opens the pause menu on Items to use a key item.
+ * The port's own list shows the items the scripts registered (native 11)
+ * that the bag holds; A uses one, B closes (the original cancel). */
+typedef struct { int open; unsigned cursor, count; uint32_t items[8]; char names[8][32]; } ItemPick;
+static void item_pick_open(ItemPick *p,const C3FieldStory *story,const C3GameState *state)
+{
+    uint32_t registered[8];unsigned n=c3_field_story_item_menu_items(story,registered);
+    C3PdaAssets assets={0};uint8_t *data=open_pda(&assets);C3GameSummary summary;
+    memset(p,0,sizeof *p);p->open=1;
+    int have_summary=c3_game_state_summary(state,&summary);
+    for(unsigned i=0;i<n&&p->count<8;++i){
+        int held=0;
+        for(unsigned pocket=0;pocket<6&&!held;++pocket)
+            for(unsigned slot=0;slot<c3_inventory_capacity(pocket);++slot){unsigned item,count;
+                if(c3_inventory_slot(state,pocket,slot,&item,&count)&&item==registered[i]&&count){held=1;break;}}
+        if(!held)continue;
+        C3InventoryItem info;char *name=p->names[p->count];
+        if(!data||!have_summary||!c3_inventory_item(&assets,registered[i],&info)||
+           !c3_pda_text(&assets,info.name,summary.name,summary.partner,name,sizeof p->names[0]))
+            snprintf(name,sizeof p->names[0],"ITEM %lu",(unsigned long)registered[i]);
+        p->items[p->count++]=registered[i];
+    }
+    free(data);
+}
+/* Returns the chosen item, 0 to close, UINT32_MAX while still choosing. */
+static uint32_t item_pick_update(ItemPick *p,uint32_t pressed)
+{
+    if(pressed&C3_PAD_B)return 0;
+    if(!p->count)return pressed&C3_PAD_A?0:UINT32_MAX;
+    if(pressed&C3_PAD_UP)p->cursor=(p->cursor+p->count-1)%p->count;
+    if(pressed&C3_PAD_DOWN)p->cursor=(p->cursor+1)%p->count;
+    if(pressed&C3_PAD_A)return p->items[p->cursor];
+    return UINT32_MAX;
+}
+static void item_pick_draw(const ItemPick *p,C3BottomUi *ui)
+{
+    c3_ui_header(ui,"ITEMS","Use which item?");
+    if(!p->count)c3_ui_row_value(ui,44,"No item to use here","",1,1);
+    for(unsigned i=0;i<p->count;++i)c3_ui_row_value(ui,44+(int)i*24,p->names[i],"",i==p->cursor,0);
+    c3_ui_footer(ui,"A: use   B: close");
+}
 /* Destinations the original doorway script may request from a field. */
 /* The in-game menu stays loaded while the hero walks: its hub is the
  * bottom screen, and X / START or a tap open it at once. Returns whether
@@ -613,6 +654,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     C3ShopMenu shop_menu;C3ShopTable shop_table={0};C3PdaAssets shop_assets={0};
     uint8_t *shop_pda=NULL,*shop_pack=NULL;size_t shop_pack_size=0;int shopping=0;
     RelivePick relive_pick={0};
+    ItemPick item_pick={0};
     C3IngameMenu *ingame=calloc(1,sizeof *ingame);
     C3PdaPreview *pda_preview=NULL;
     float pda_seconds=0;
@@ -807,6 +849,12 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     if(npc.count){npc.stream=c3_pack_stream_start(npc.jobs,npc.count);npc.start_us=c3_n3ds_time_us();
         if(!npc.stream){snprintf(error,capacity,"The people loader could not start.");goto done;}}
     else npc.attached=1;
+    {   /* Treasure people of the floor (<prefix>.c3r beside the story pack). */
+            char treasure[256];size_t n;snprintf(treasure,sizeof treasure,BOOT_ROOT "%s",profile->story);n=strlen(treasure);
+            if(n>4&&!strcmp(treasure+n-4,".c3s")){memcpy(treasure+n-4,".c3r",4);
+                if(!c3_field_story_load_treasure(&story,treasure,story_error))goto story_failed;
+                if(trace){fprintf(trace,"field_treasure floor=%lu rows=%u\n",(unsigned long)map.floor,c3_field_story_treasure_count(&story));fflush(trace);}}
+    }
     if(doors.count){
         uint32_t with_model=0;for(uint32_t i=0;i<doors.count;++i)with_model+=door_models[i]!=NULL;
         if(!c3_field_story_bind_doors(&story,doors.rows,doors.count,door_models,story_error))goto story_failed;
@@ -819,6 +867,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     c3_field_story_set_species_namer(&story,field_species_name,ingame);
     c3_field_story_enable_shop(&story,1);
     c3_field_story_set_item_service(&story,receive_item,state);
+    c3_field_story_enable_item_menu(&story,1);
     c3_field_story_set_item_change_service(&story,change_item,state);
     c3_field_story_set_party_service(&story,restore_party,state);
     purify_trace=trace;c3_field_story_set_purify_service(&story,purify_party,state);
@@ -1081,6 +1130,25 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
             if(shop_event==C3_SHOP_EVENT_CLOSE){
                 free(shop_pda);free(shop_pack);shop_pda=shop_pack=NULL;shopping=0;
                 if(!c3_field_story_shop_done(&story,story_error))goto story_failed;
+            }
+            input.pressed=0;input.touch_pressed=false;
+        }
+        /* Native D0: the port's item list while the event waits. */
+        if(view->item_menu&&!item_pick.open&&page==PAUSE_CLOSED){
+            item_pick_open(&item_pick,&story,state);dirty=1;
+            if(trace){fprintf(trace,"item_menu_open items=%u\n",item_pick.count);fflush(trace);}
+        }
+        if(item_pick.open){
+            uint32_t pressed=input.pressed;
+#if defined(C3_ROUNDTRIP_PROBE) || defined(C3_WARP_TOUR) || defined(C3_CAMPAIGN)
+            pressed=C3_PAD_A; /* probes use the first held key item, or close */
+#endif
+            uint32_t chosen=item_pick_update(&item_pick,pressed);
+            if(pressed)dirty=1;
+            if(chosen!=UINT32_MAX){
+                item_pick.open=0;
+                if(trace){fprintf(trace,"item_menu item=%lu\n",(unsigned long)chosen);fflush(trace);}
+                if(!c3_field_story_item_menu_result(&story,chosen,story_error))goto story_failed;
             }
             input.pressed=0;input.touch_pressed=false;
         }
@@ -1457,6 +1525,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
             if(naming)c3_name_entry_draw(&name_entry,bottom,"PARTNER'S NAME");
             else if(shopping)c3_shop_menu_draw(&shop_menu,state,bottom,profile->label);
             else if(relive_pick.open)relive_pick_draw(&relive_pick,bottom);
+            else if(item_pick.open)item_pick_draw(&item_pick,bottom);
             else if(page==PAUSE_MAIN&&ingame->active)c3_ingame_draw_to(ingame,state,bottom);
             else if(page==PAUSE_CLOSED&&(phase==FIELD_CONTROL||phase==FIELD_FADE_IN)&&!view->dialogue&&!view->blocked[0]&&
                     hub_menu_ready(ingame,state)>=0){

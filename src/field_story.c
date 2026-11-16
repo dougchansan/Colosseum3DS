@@ -797,9 +797,10 @@ static int run_native(Impl *s,RunTask *t,char *error)
      * the save menu is not opened, which the original reports as 0. */
     case 0xeb:s->view.unported_menu=0xeb;
         log_line(s,"story_save_menu status=unported_not_saved");value=0;break;
-    /* fn_800FF730(floor): push a menu floor and yield until it returns
-     * (0x391 PC box from the common PC script 0596000D, 0x386 evolution).
-     * Those menu floors are not ported here; it returns at once. */
+    /* fn_800FF730(floor): push a menu floor (0x391 PC box, 0x386
+     * evolution) and yield until it returns. Stub: returns at once. The
+     * systems lane's scene-owned version (fba85ea, PR 18) replaces this
+     * case when it merges. */
     case 0x62:s->view.unported_menu=0x62;
         log_line(s,"story_menu_floor floor=%03lx status=unported_returned",(unsigned long)a[0]);break;
     /* fn_801C8688(item, item, item): the three DNA disc items (0x200-0x211,
