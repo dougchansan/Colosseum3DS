@@ -11,6 +11,7 @@ except ImportError:
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 import prepare_floor as floor
+from under_profiles import UNDER_FLOORS
 import prepare_outskirt as stage
 if np is not None:
     import prepare_field_geometry as geometry
@@ -78,7 +79,8 @@ class FloorProfileTests(unittest.TestCase):
         self.assertEqual(floor.runtime_meshes(kept, 0, False, clean), kept)
         self.assertEqual(clean, [])
         self.assertEqual(sorted(name for name, row in floor.FLOORS.items()
-                                if row.get("omit_unsupported_texture_modes")), ["phenac_pc1f", "phenac_pcb1"])
+                                if row.get("omit_unsupported_texture_modes")),
+                         sorted(["phenac_pc1f", "phenac_pcb1", *UNDER_FLOORS]))
 
     def test_interior_manifest_records_objects_limits_and_ccd_object_count(self):
         base = {"developer_only": True, "floor": 13, "limitations": ["old"], "packs": []}
