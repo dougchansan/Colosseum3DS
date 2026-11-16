@@ -36,6 +36,8 @@ static inline uint8_t *make_pack(unsigned opponent_species, unsigned opponent_le
         r[0] = 0; p16(r + 6, s == 1 ? 100 : 50); r[0x30] = r[0x31] = s == 1 ? 0 : 10;
         for (unsigned j = 0; j < 6; ++j) p16(r + 0x84 + 2 * j, s == 1 ? 100 : 40);
         r[0xba] = 1; p16(r + 0xbc, 1); /* level-up: TACKLE at 1 */
+        if (s == 1) { r[0xbe] = 6; p16(r + 0xc0, 2); } /* HERO learns GROWL at 6 */
+        if (s == 2) p16(r + 0x90 + 2 * 5, 2);          /* FOE gives 2 Speed effort */
     }
     for (unsigned t = 0; t < 18; ++t) for (unsigned d = 0; d < 18; ++d) p16(b + types + t * 44 + 8 + d * 2, 0x3f);
     p16(b + types + 0 * 44 + 8 + 7 * 2, 0x43);      /* Normal vs Ghost: immune */
@@ -48,6 +50,8 @@ static inline uint8_t *make_pack(unsigned opponent_species, unsigned opponent_le
         p16(enc + 24, 1); p32(enc + 28, 1); p16(enc + 32, 10);
         p16(r + 64 + 2, 200); r[120] = 1; r[121] = 6; r[122] = 2;
         p16(r + 128 + 2, 26); p16(r + 180, 5);
+        /* fight kind 2 (story trainer): back-save, items, EXP, money, criticals, Hyper Mode */
+        r[88] = 1; r[92] = 1; r[96] = 1; r[97] = 1; r[102] = 1; r[110] = 1;
         if (e == 0) {
             r[2] = 2;
             for (unsigned k = 0; k < 2; ++k) {

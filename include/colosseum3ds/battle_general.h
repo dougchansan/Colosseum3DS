@@ -43,6 +43,11 @@ typedef struct C3BattleEncounterInfo {
     uint32_t bgm;
     uint32_t intro_wzx;      /* encounter row +20, else battle floor row +8 */
     uint32_t environment_sound; /* battle floor row +16 */
+    /* FightKindData (encounter fightKind row): backSaveDataFlag (the hero
+     * copy is written back to the save, fn_8020B... heroBiosCopy), useItem,
+     * nigeru, getExp, getOkane, okanePool, doCriticalAttack and
+     * darkpokemonHypermode. */
+    uint8_t back_save, use_item, can_run, get_exp, get_money, money_pool, critical, hyper_mode;
 } C3BattleEncounterInfo;
 
 typedef enum {
@@ -64,6 +69,7 @@ typedef struct C3GeneralMon {
     uint8_t nature, party_slot;
     uint8_t ball;      /* catch ball item (PokemonBios +0x0F; opponents: Poke Ball 4) */
     uint32_t exp;
+    uint16_t ev_gain[6]; /* effort earned this battle (species giveEffort, +0x90) */
     char name[C3_GB_NAME];
 } C3GeneralMon;
 
@@ -117,6 +123,11 @@ typedef struct C3GeneralRewards {
     uint32_t exp[C3_GB_PARTY];
     uint8_t levels_gained[C3_GB_PARTY];
     int wipeout;          /* a loss with the encounter's zenmetu flag set */
+    int written;          /* the party was written back (backSaveDataFlag) */
+    /* Level-up moves (species getWaza) put into a free slot, and those that
+     * needed the forget prompt (not ported: left unlearned and reported). */
+    uint16_t learned[C3_GB_PARTY][4], skipped[C3_GB_PARTY][4];
+    uint8_t learned_count[C3_GB_PARTY], skipped_count[C3_GB_PARTY];
 } C3GeneralRewards;
 
 int c3_battle_pack_decode(C3BattlePack *pack, const void *bytes, size_t size, char *error);
@@ -161,9 +172,12 @@ int c3_general_battle_choose(C3GeneralBattle *battle, const C3BattlePack *pack,
 /* commands[0..1] are the hero's positions 0 and 1 (ignored when empty). */
 int c3_general_battle_turn(C3GeneralBattle *battle, const C3BattlePack *pack,
                            const C3GeneralCommand commands[2], char *error);
-/* Experience, levels (stats recomputed from IVs/EVs/nature), HP and PP back
- * into the party records; prize money and the story result code. Shadow
- * Pokemon bank their experience in poolExp instead of levelling. */
+/* Experience, effort, levels (stats recomputed from IVs/EVs/nature) and
+ * their level-up moves, HP, PP and the persistent status back into the party
+ * records; prize money and the story result code. Shadow Pokemon bank their
+ * experience in poolExp instead of levelling. Nothing is written when the
+ * fight kind's backSaveDataFlag is clear (the original discards the hero
+ * copy); no experience without getExp, no prize without getOkane. */
 int c3_general_battle_writeback(const C3GeneralBattle *battle, const C3BattlePack *pack,
                                 uint8_t party[C3_GB_PARTY][C3_GB_POKEMON_SIZE],
                                 C3GeneralRewards *rewards);
