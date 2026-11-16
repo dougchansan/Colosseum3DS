@@ -85,7 +85,9 @@ typedef struct {
     C3FieldStoryPurify purify;void *purify_context;
     C3FieldStoryPurified purified; /* the last purification, for its messages */
     uint32_t message_values[256]; /* msgctrlSetValue: one word per control byte */
-    char item_name[64],number_text[16];const char *message_speaker;
+    char item_name[64],number_text[24],value_text[64];const char *message_speaker;
+    C3StoryNamer namer;void *namer_context;
+    char value_strings[C3_STORY_CONTROLS][32]; /* string variables (msgctrlSetValue of a GSchar pointer) */
     Person partner_actor; /* (0,101); invisible until native 23 */
     int (*floor_supported)(uint32_t floor);
     uint32_t dialog_owner;
@@ -254,25 +256,65 @@ static void page(Impl *s)
     memcpy(s->view.message,begin,n);s->view.message[n]=0;
 }
 /* Value controls of the message decoder (the control byte is the msgctrl
- * variable): hero, partner and speaker names, the item named by variable
- * 2D (its name is supplied by the item service) and the number in 2F. */
-static const char *message_source(void *context,uint8_t control)
+ * variable, msgctrlcode modes 1/2). Every control a field message can use
+ * is answered here; c3_field_story_message_control() lists them for the
+ * message sweep (tests/test_message_sweep.c). */
+static int message_source(void *context,uint8_t control,C3StoryValue *v)
 {
-    Impl *s=context;
+    Impl *s=context;uint32_t value=s->message_values[control];
+    if(c3_story_format_number(control,s->message_values,s->number_text,sizeof s->number_text)){v->text=s->number_text;return 1;}
     switch(control){
-    case 0x2b:return s->hero_name;
-    case 0x2c:return s->partner_name;
-    case 0x59:return s->message_speaker?s->message_speaker:"";
-    case 0x2d:return s->item_name[0]?s->item_name:NULL;
-    /* msgctrl 32 / 39: the purified Pokemon's nickname and a move name
-     * (reliveCeremonyAll's msgctrlSetValue(0x32 / 0x39)). */
-    case 0x32:return s->purified.nickname;
-    case 0x39:return s->purified.move_name;
-    case 0x2f:snprintf(s->number_text,sizeof s->number_text,"%lu",(unsigned long)s->message_values[0x2f]);return s->number_text;
-    /* msgctrl 4B: the number msgctrlSetValue(0x4B) stored (_msgctrlMakeDigit). */
-    case 0x4b:snprintf(s->number_text,sizeof s->number_text,"%lu",(unsigned long)s->message_values[0x4b]);return s->number_text;
-    default:return NULL;
+    case 0x2b:v->text=s->hero_name;return 1;   /* msgctrlHero */
+    case 0x2c:v->text=s->partner_name;return 1;/* msgctrlHizuki */
+    case 0x59:                                 /* msgctrlNpc: the speaker */
+        if(s->message_speaker&&*s->message_speaker){v->text=s->message_speaker;return 1;}
+        if(value){v->message=value;return 1;}
+        v->text="";return 1;
+    /* msgctrlMsgID / MenuMsgID / MenuMsgID2: print that message. */
+    case 0x31:case 0x55:case 0x56:if(!value)return 0;v->message=value;return 1;
+    /* msgctrlItem / Item2: the item's name message (2B6E when it has none). */
+    case 0x2d:case 0x2e:
+        if(control==0x2d&&s->item_name[0]){v->text=s->item_name;return 1;}
+        if(s->namer&&s->namer(s->namer_context,C3_STORY_NAME_ITEM,value,v))return 1;
+        return 0;
+    /* msgctrlPokemon: the purified Pokemon's nickname (reliveCeremonyAll's
+     * msgctrlSetValue(0x32)); msgctrlWaza: a move name. */
+    case 0x32:if(!s->purified.nickname[0])return 0;v->text=s->purified.nickname;return 1;
+    case 0x39:
+        if(s->purified.move_name[0]){v->text=s->purified.move_name;return 1;}
+        return s->namer&&s->namer(s->namer_context,C3_STORY_NAME_MOVE,value,v);
+    /* msgctrlTribe: the trainer class prefix ("COOLTRAINER"). */
+    case 0x58:return s->namer&&s->namer(s->namer_context,C3_STORY_NAME_TRAINER_KIND,value,v);
+    /* String variables a native or menu stored with msgctrlSetValue
+     * (TrainerName, MenuPokemon, MenuMsg, MenuMsg2, String, String2,
+     * EvStrBuf0-2). */
+    case 0x0d:case 0x0e:case 0x23:case 0x41:case 0x33:case 0x36:case 0x37:case 0x51:case 0x4d:case 0x57:
+        if(!s->value_strings[control][0])return 0;
+        v->text=s->value_strings[control];return 1;
+    /* msgctrlPokemonID: a species name. */
+    case 0x4e:
+        if(s->namer&&s->namer(s->namer_context,C3_STORY_NAME_SPECIES,value,v))return 1;
+        if(s->species_name&&s->species_name(s->species_context,value,s->value_text,sizeof s->value_text)){v->text=s->value_text;return 1;}
+        return 0;
+    default:return 0;
     }
+}
+int c3_field_story_message_control(uint8_t control)
+{
+    static const uint8_t controls[]={0x0d,0x0e,0x23,0x2b,0x2c,0x2d,0x2e,0x2f,0x30,0x31,0x32,0x33,0x34,0x35,0x36,
+        0x37,0x39,0x41,0x45,0x46,0x47,0x48,0x49,0x4a,0x4b,0x4c,0x4d,0x4e,0x4f,0x50,0x51,0x55,0x56,0x57,0x58,0x59};
+    for(size_t i=0;i<sizeof controls;++i)if(controls[i]==control)return 1;
+    return 0;
+}
+int c3_field_story_set_message_string(C3FieldStory *story,uint8_t control,const char *text)
+{
+    Impl *s=story?story->impl:NULL;
+    if(!s||!c3_story_control_is_value(control))return 0;
+    snprintf(s->value_strings[control],sizeof s->value_strings[control],"%s",text?text:"");return 1;
+}
+void c3_field_story_set_namer(C3FieldStory *story,C3StoryNamer namer,void *context)
+{
+    Impl *s=story?story->impl:NULL;if(s){s->namer=namer;s->namer_context=context;}
 }
 static int message(Impl *s,RunTask *t,uint32_t id,const char *speaker,char *error)
 {
@@ -282,7 +324,7 @@ static int message(Impl *s,RunTask *t,uint32_t id,const char *speaker,char *erro
     C3GameSummary names;
     if(!c3_game_state_summary(s->game,&names))return fail(error,"Game state names are unavailable");
     snprintf(s->partner_name,sizeof s->partner_name,"%s",names.partner);s->message_speaker=speaker;
-    if(!c3_story_message_with(&s->vm,id,message_source,s,s->full_message,sizeof s->full_message,error))return 0;
+    if(!c3_story_render(&s->vm,id,message_source,s,C3_STORY_TEXT_MARKUP,s->full_message,sizeof s->full_message,error))return 0;
     s->dialog_owner=t->key;s->page_start=0;s->view.message_id=id;s->view.dialogue=1;s->view.choice=0;
     page(s);t->wait=W_MESSAGE;t->remaining=.12f;
     log_line(s,"story_message script=%08lx pc=%08lx id=%05lx",(unsigned long)t->call.script_id,
