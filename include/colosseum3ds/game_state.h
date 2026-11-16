@@ -145,6 +145,11 @@ uint16_t c3_game_state_random16(void *state);
  * using the save service's recoverable .tmp/.bak protocol. Failed stores
  * leave the in-memory payload/counters unchanged. The parent directory must
  * already exist. Caller must serialize save operations. */
+/* Explicit clear-save boundary: write a snapshot, retaining the live body,
+ * counters, RNG and card image as movie.c fn_80035F64 restores its backup. */
+int c3_game_state_save_snapshot(const C3GameState *state, const char *path,
+                                 char error[C3_GAME_ERROR_SIZE]);
+
 int c3_game_state_save(C3GameState *state, const char *path,
                        char error[C3_GAME_ERROR_SIZE]);
 
