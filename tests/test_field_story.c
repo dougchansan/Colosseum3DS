@@ -559,9 +559,30 @@ static void synthetic_regressions(void)
     free(s);c3_game_state_free(&game);CHECK(!unlink(file));CHECK(!rmdir(directory));
     printf("field-story synthetic regressions: %u checks passed\n",checks);
 }
+/* Original flag metadata is needed to exercise BB's paired BC setter and
+ * prove the returned value reaches its script caller, rather than merely
+ * accepting the native. Uses synthetic bytecode with the real game pack. */
+static void premium_regressions(const char *prepared)
+{
+    char directory[]="/tmp/c3-premium-XXXXXX",file[1024];CHECK(mkdtemp(directory));path(file,directory,"premium.c3s");
+    C3GameState game={0};CHECK(c3_game_state_new(&game,"WES",7,prepared,error));
+    Scene *s=calloc(1,sizeof(*s));CHECK(s);
+    for(unsigned premium=0;premium<=1;++premium){
+        Program code[8]={0};uint32_t args[1]={premium};native(code+3,0xbc,1,args,1);
+        /* actorSetVisible(3, scriptGetPremium()). */
+        push(code+3,0);push(code+3,0x64);push(code+3,3);
+        native(code+3,0xbb,0,NULL,0);call_end(code+3,2,1);
+        synthetic_load(s,&game,file,code,0,0,0x1000003);CHECK(c3_field_story_enter(&s->story,error));
+        CHECK(c3_field_story_tick(&s->story,0,0,error));
+        CHECK(flag(&game,0xa9e)==premium&&c3_field_story_actor(&s->story,3)->visible==(int)premium);close_scene(s);
+    }
+    free(s);c3_game_state_free(&game);CHECK(!unlink(file));CHECK(!rmdir(directory));
+    puts("premium native BC/BB original flag roundtrip passed");
+}
 int main(int argc,char **argv)
 {
     synthetic_regressions();
+    if(argc==3&&!strcmp(argv[1],"--premium")){premium_regressions(argv[2]);return 0;}
     if(argc<2){puts("field-story private integration skipped: supply privately prepared boot directory");return 0;}
     trace=argc>2?fopen(argv[2],"w+"):tmpfile();CHECK(trace!=NULL);
     fprintf(trace,"integration_scope=headless_actual_runtime private_original_data=1 visual_evidence=0 battle_backend=0\n");
