@@ -1,4 +1,5 @@
 #include "colosseum3ds/field_story.h"
+#include "colosseum3ds/hero_follow.h"
 #include "colosseum3ds/battle.h"
 
 #include <math.h>
@@ -89,6 +90,8 @@ typedef struct {
     C3StoryNamer namer;void *namer_context;
     char value_strings[C3_STORY_CONTROLS][32]; /* string variables (msgctrlSetValue of a GSchar pointer) */
     Person partner_actor; /* (0,101); invisible until native 23 */
+    C3AreaActor partner_source; /* its PeopleInfo stand-in: pack clips, Wes's distances */
+    C3Follow follow;            /* hero_move.c follower history */
     int (*floor_supported)(uint32_t floor);
     uint32_t dialog_owner;
     size_t page_start, page_end;
@@ -204,6 +207,12 @@ static Person *person(Impl *s,uint32_t group,uint32_t id)
      * in any group. Floor actors are the only other people here. */
     for(uint32_t i=0;i<s->area->actor_count;++i)if(s->actors[i].public.index==id)return s->actors+i;
     return NULL;
+}
+static void partner_place_behind(Impl *s);
+/* Every person the scene draws: the floor's people, Wes, then the partner. */
+static Person *person_at(Impl *s,uint32_t i)
+{
+    return i<s->area->actor_count?s->actors+i:i==s->area->actor_count?&s->hero_actor:&s->partner_actor;
 }
 static C3FieldPlayer *pose(Impl *s,Person *p)
 {return p==&s->hero_actor?s->hero:&p->public.pose;}
@@ -358,6 +367,13 @@ static int set_motion(Impl *s,Person *p,uint32_t source_clip,uint32_t frame,uint
         /* prepare_area preserves [source1,source2,source3] and appends the
          * distinct source0 at bundle3. Never alias that animation to idle. */
         clip=source_clip==0?3:source_clip==1?s->map->idle_clip:source_clip==2?s->map->walk_clip:s->map->run_clip;
+    }
+    if(p==&s->partner_actor){
+        /* The partner pack's clip order (floor_profiles.PARTNER["clips"]). */
+        static const uint8_t order[]={1,2,3,0,4,7,14,21,22,23,27,28,29,42,43,44};
+        clip=UINT32_MAX;
+        for(uint32_t i=0;i<sizeof order;++i)if(order[i]==source_clip)clip=i;
+        if(clip==UINT32_MAX){note_presentation(s,0x33,"partner_motion_not_prepared_kept_current");return 1;}
     }
     if(!p->public.model&&p!=&s->hero_actor){
         p->pending_motion=1;p->pending_clip=source_clip;p->pending_frame=frame;p->pending_loop=loop;return 1;
@@ -839,7 +855,8 @@ static int run_native(Impl *s,RunTask *t,char *error)
     case 0x23:
         /* fn_801C9F00: heroSetStatus(0,0x18,active) and the follower state. */
         if(!c3_game_state_set_partner(s->game,a[0]!=0))return fail(error,"The partner state cannot be written");
-        s->partner_actor.public.visible=a[0]!=0;
+        if(a[0]&&!s->partner_actor.public.visible&&s->partner_actor.public.model)partner_place_behind(s);
+        s->partner_actor.public.visible=a[0]!=0&&s->partner_actor.public.model;s->partner_actor.want_visible=a[0]!=0;
         log_line(s,"story_partner present=%d",a[0]!=0);
         break;
     case 0x31:
@@ -1579,6 +1596,8 @@ int c3_field_story_enter(C3FieldStory *story,char *error)
 }
 const C3FieldStoryView *c3_field_story_view(const C3FieldStory *story)
 {const Impl *s=story?story->impl:NULL;return s?&s->view:NULL;}
+C3StoryActor *c3_field_story_person(C3FieldStory *story,uint32_t group,uint32_t index)
+{Impl *s=story?story->impl:NULL;Person *p=s?person(s,group,index):NULL;return p?&p->public:NULL;}
 C3StoryActor *c3_field_story_actor(C3FieldStory *story,uint32_t index)
 {Impl *s=story?story->impl:NULL;Person *p=s?person(s,s->area->group,index):NULL;return p?&p->public:NULL;}
 
@@ -1622,7 +1641,8 @@ static int advance_turn(Impl *s,Person *p,float elapsed,char *error)
 static int advance_people(Impl *s,float elapsed,char *error)
 {
     float movement_dt=fminf(elapsed,.25f);
-    for(uint32_t i=0;i<=s->area->actor_count;++i){Person *p=i==s->area->actor_count?&s->hero_actor:s->actors+i;
+    for(uint32_t i=0;i<=s->area->actor_count+1u;++i){Person *p=person_at(s,i);
+        if(p==&s->partner_actor&&!p->public.model)continue;
         C3FieldPlayer *q=pose(s,p);
         if(p->public.playing&&(p!=&s->hero_actor||!s->view.control))q->animation_seconds+=elapsed;
         if(!advance_turn(s,p,elapsed,error))return 0;
@@ -1680,6 +1700,63 @@ static int advance_people(Impl *s,float elapsed,char *error)
     }
     return 1;
 }
+/* Rui behind Wes (hero_move.c heroMoveMain: fn_8012DE94 / fn_8012D7F0 for
+ * the follower, then moveLeader's record) while the player has control and
+ * no script is moving her. Pack clips 0/1/2 are her idle, walk and run. */
+static void partner_place_behind(Impl *s)
+{
+    Person *p=&s->partner_actor;float sc=s->map->scale,ground;
+    float spot[3]={s->hero->position[0]-sinf(s->hero->yaw)*12.0f*sc,s->hero->position[1],
+                   s->hero->position[2]-cosf(s->hero->yaw)*12.0f*sc};
+    if(!c3_field_ground(s->map,spot,&ground)){memcpy(spot,s->hero->position,sizeof spot);ground=spot[1];}
+    spot[1]=ground;memcpy(p->public.pose.position,spot,sizeof spot);memcpy(p->public.pose.proposed,spot,sizeof spot);
+    p->public.pose.yaw=s->hero->yaw;c3_follow_reset(&s->follow);
+}
+static void follow_partner(Impl *s,float seconds)
+{
+    Person *p=&s->partner_actor;float sc=s->map->scale;
+    if(!p->public.model||!s->view.control)return;
+    if(p->public.visible&&!p->moving&&!p->parent){
+        C3FieldPlayer *q=&p->public.pose;C3FollowStep step;float before[3];
+        float dt=fminf(seconds,.25f);
+        memcpy(before,q->position,sizeof before);
+        c3_follow_step(&s->follow,s->hero->position,q->position,12.0f*sc,sc,dt,&step);
+        q->position[0]+=step.move[0];q->position[2]+=step.move[1];
+        memcpy(q->proposed,q->position,sizeof q->proposed);
+        if(!c3_field_resolve_position(s->map,q,before))memcpy(q->position,before,sizeof before);
+        if(step.facing[0]!=0||step.facing[1]!=0)q->yaw=atan2f(step.facing[0],step.facing[1]);
+        uint32_t clip=step.speed<0.05f?0u:(step.speed>0.9f&&s->hero->motion==2?2u:1u);
+        if(clip>=p->public.model->clip_count)clip=0;
+        if(clip!=p->public.clip){p->public.clip=clip;q->animation_seconds=0;}
+        p->public.loop=1;p->public.playing=1;
+        if(c3_follow_far(&s->follow,s->hero->position,q->position,sc,dt)){
+            float record[3],ground;
+            for(unsigned i=0;c3_follow_record_at(&s->follow,i,record);++i)
+                if(c3_field_ground(s->map,record,&ground)){record[1]=ground;memcpy(q->position,record,sizeof record);break;}
+            c3_follow_caught_up(&s->follow);
+            log_line(s,"story_partner_catch_up x=%.3f z=%.3f",(double)q->position[0],(double)q->position[2]);
+        }
+    }
+    c3_follow_record(&s->follow,s->hero->position,sc);
+}
+int c3_field_story_attach_partner(C3FieldStory *story,C3Title *model,char *error)
+{
+    Impl *s=story?story->impl:NULL;
+    if(!s||!model)return fail(error,"Invalid partner model");
+    if(model->clip_count<3)return fail(error,"The partner pack lacks its idle, walk and run motions");
+    Person *p=&s->partner_actor;
+    memset(&s->partner_source,0,sizeof s->partner_source);
+    s->partner_source.index=101;s->partner_source.motions[0]=0;s->partner_source.motions[1]=1;s->partner_source.motions[2]=2;
+    s->partner_source.walk_distance=s->map->walk_distance;s->partner_source.run_distance=s->map->run_distance;
+    s->partner_source.radius=s->map->radius;
+    p->source=&s->partner_source;p->public.model=model;p->public.index=101;
+    p->public.clip=0;p->public.loop=1;p->public.playing=1;p->speed=1;
+    p->public.visible=c3_game_state_partner(s->game);p->want_visible=p->public.visible;
+    partner_place_behind(s);
+    log_line(s,"story_partner_model visible=%d x=%.3f z=%.3f",p->public.visible,
+             (double)p->public.pose.position[0],(double)p->public.pose.position[2]);
+    return 1;
+}
 int c3_field_story_tick(C3FieldStory *story,float seconds,uint16_t pressed,char *error)
 {
     Impl *s=story?story->impl:NULL;
@@ -1687,6 +1764,7 @@ int c3_field_story_tick(C3FieldStory *story,float seconds,uint16_t pressed,char 
     /* Animation, camera, waits and fades share active elapsed time. Only
      * collision-sensitive translation retains a bounded movement step. */
     if(!advance_people(s,seconds,error))return 0;
+    follow_partner(s,seconds);
     for(uint32_t i=0;i<s->door_count;++i){C3StoryDoor *door=s->doors+i;
         if(!door->playing||!door->model)continue;
         float end=(float)(door->model->clips[door->clip].frame_count-1u)/door->model->fps;
@@ -1958,7 +2036,7 @@ static void transform(C3Title *model,const C3FieldPlayer *q,const Person *p)
 int c3_field_story_sample(C3FieldStory *story,char *error)
 {
     Impl *s=story?story->impl:NULL;if(!s)return fail(error,"Missing story sample context");
-    for(uint32_t i=0;i<=s->area->actor_count;++i){Person *p=i==s->area->actor_count?&s->hero_actor:s->actors+i;
+    for(uint32_t i=0;i<=s->area->actor_count+1u;++i){Person *p=person_at(s,i);
         C3Title *model=p->public.model;if(!model)continue;
         uint32_t clip=p->public.clip;
         if(p==&s->hero_actor&&s->view.control)clip=s->hero->motion==2?s->map->run_clip:s->hero->motion==1?s->map->walk_clip:s->map->idle_clip;
@@ -1976,9 +2054,9 @@ int c3_field_story_sample(C3FieldStory *story,char *error)
     }
     /* All parent samples are current before resolving a passenger. Original
      * actor-table order places passengers before the vehicle. */
-    for(uint32_t i=0;i<=s->area->actor_count;++i)
-        if(!attachment_pose(s,i==s->area->actor_count?&s->hero_actor:s->actors+i,error))return 0;
-    for(uint32_t i=0;i<=s->area->actor_count;++i){Person *p=i==s->area->actor_count?&s->hero_actor:s->actors+i;
+    for(uint32_t i=0;i<=s->area->actor_count+1u;++i)
+        if(!attachment_pose(s,person_at(s,i),error))return 0;
+    for(uint32_t i=0;i<=s->area->actor_count+1u;++i){Person *p=person_at(s,i);
         C3Title *model=p->public.model;if(!model||!p->parent)continue;
         transform(model,pose(s,p),p);
         if(!p->public.visible)for(uint32_t b=0;b<model->batch_count;++b)model->pose.materials[b].visible=0;

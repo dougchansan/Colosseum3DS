@@ -38,6 +38,7 @@ static int logged(const char *text)
     while(fgets(line,sizeof line,trace))if(strstr(line,text)){found=1;break;}
     CHECK(!ferror(trace)&&fsetpos(trace,&position)==0);return found;
 }
+static C3Title partner; /* closed after the story that borrows it */
 static int reachable(uint32_t floor){return floor>=1&&floor<=3;}
 static unsigned gifts;static uint32_t gift_item,gift_count;
 static int receive(void *context,uint32_t item,uint32_t count,char *name,size_t capacity)
@@ -221,6 +222,32 @@ int main(int argc,char **argv)
     for(frame=0;frame<6000&&!c3_field_story_view(&s->story)->control;++frame)tick(s,frame);
     CHECK(c3_field_story_view(&s->story)->control&&flag(&game,0xacf)==1&&flag(&game,0x3e4)==1);
     fprintf(trace,"phenac_partner_event_complete partner=1 flags03E5_0ACF=1 control=1\n");
+    /* Rui follows Wes (hero_move.c follower): her pack is attached as person
+     * (0,101); when Wes walks away she closes to her spacing (1.2 units =
+     * twelve source units) and faces him. */
+    {char file[1024];
+     if(present(argv[2],"phenac_partner.c3t")){
+         path(file,argv[2],"phenac_partner.c3t");
+         CHECK(c3_title_load(&partner,file,error,sizeof error));
+         CHECK(c3_field_story_attach_partner(&s->story,&partner,error)&&logged("story_partner_model visible=1"));
+         C3StoryActor *rui=c3_field_story_person(&s->story,0,101);CHECK(rui&&rui->visible&&rui->model==&partner);
+         float start[3]={rui->pose.position[0],rui->pose.position[1],rui->pose.position[2]};
+         float hero0[3]={s->hero.position[0],s->hero.position[1],s->hero.position[2]};
+         int walked=0;
+         for(frame=0;frame<240;++frame){
+             /* Wes walks straight ahead (his facing) for two seconds. */
+             if(frame<120){float d=0.04f,g,next[3]={s->hero.position[0]+sinf(s->hero.yaw)*d,s->hero.position[1],s->hero.position[2]+cosf(s->hero.yaw)*d};
+                 if(c3_field_ground(&s->map,next,&g)){s->hero.position[0]=next[0];s->hero.position[2]=next[2];s->hero.position[1]=g;}}
+             tick(s,frame);
+             if(rui->clip==1)walked=1;
+         }
+         float moved=hypotf(rui->pose.position[0]-start[0],rui->pose.position[2]-start[2]);
+         float gap=hypotf(rui->pose.position[0]-s->hero.position[0],rui->pose.position[2]-s->hero.position[2]);
+         float hero_moved=hypotf(s->hero.position[0]-hero0[0],s->hero.position[2]-hero0[2]);
+         fprintf(trace,"phenac_partner_follow hero_moved=%.3f rui_moved=%.3f gap=%.3f walked=%d clip=%lu\n",
+                 (double)hero_moved,(double)moved,(double)gap,walked,(unsigned long)rui->clip);
+         CHECK(hero_moved>1.0f&&moved>0.5f&&walked&&gap>0.85f&&gap<1.6f&&rui->clip==0);
+     }}
     /* The optional trainer, actor 15: main's function 40 tests native A9
      * (hero within 30 units and 15 degrees of the actor's facing), shows the
      * emote, walks the actor up with B1 and calls function 39: a YES/NO
@@ -248,7 +275,7 @@ int main(int argc,char **argv)
 
     c3_field_story_close(&s->story);c3_field_close(&s->map);c3_area_close(&s->area);
     c3_area_camera_close(&s->camera);
-    c3_title_close(&s->wes);for(unsigned i=0;i<C3_AREA_MAX_ACTORS;++i)c3_title_close(s->actors+i);
+    c3_title_close(&partner);c3_title_close(&s->wes);for(unsigned i=0;i<C3_AREA_MAX_ACTORS;++i)c3_title_close(s->actors+i);
     free(s);
     /* Report, floor by floor, how far each prepared interior gets from the
      * state reached above. Missing packs are skipped. */

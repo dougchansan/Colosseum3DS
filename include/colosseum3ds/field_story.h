@@ -132,6 +132,10 @@ int c3_field_story_message_control(uint8_t control);
  * last motion the scripts asked for meanwhile. area_index is the person's
  * row in the area. */
 int c3_field_story_attach_actor(C3FieldStory *story,uint32_t area_index,C3Title *model,char *error);
+/* The partner's field model (<prefix>_partner.c3t; person 0,101). Shown when
+ * the save's partner byte is set (native 23 changes it); while the player
+ * has control she follows Wes as hero_move.c's follower does. */
+int c3_field_story_attach_partner(C3FieldStory *story, C3Title *model, char *error);
 /* Internal species index of a field Pokemon model resource, or 0. */
 unsigned c3_field_story_model_species(uint32_t resource);
 /* Diagnostics: one "task:wait:script@pc:native" entry per waiting script. */
@@ -144,6 +148,9 @@ int c3_field_story_tick(C3FieldStory *story, float seconds, uint16_t pressed,
                         char *error);
 const C3FieldStoryView *c3_field_story_view(const C3FieldStory *story);
 C3StoryActor *c3_field_story_actor(C3FieldStory *story, uint32_t source_index);
+/* A person by original (group, ID), as natives address them: (0,100) is
+ * Wes, (0,101) the partner once her model is attached. */
+C3StoryActor *c3_field_story_person(C3FieldStory *story, uint32_t group, uint32_t index);
 /* A-button searches original NPC radii/facing, then original CCD interaction
  * surfaces. Door contacts use the separately decoded original link table. */
 int c3_field_story_interact(C3FieldStory *story, char *error);
