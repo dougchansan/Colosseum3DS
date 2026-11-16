@@ -116,6 +116,11 @@ const uint8_t *c3_game_state_body(const C3GameState *state, size_t *length);
  * arbitrary player position. Changing these fields does not run scripts. */
 int c3_game_state_set_floor(C3GameState *state, uint32_t floor,
                             uint32_t previous_floor, uint8_t spawn);
+/* gamedatasaveGetStatus(0,5/7/8): where the last card save (or the loaded
+ * card) was made. c3_game_state_set_floor does not move it. Returns 0 when
+ * no save point is known (a fresh New Game before its first save). */
+int c3_game_state_save_point(const C3GameState *state, uint32_t *floor,
+                             uint32_t *previous_floor, uint8_t *spawn);
 /* The partner-present byte of the hero record (heroSetStatus selector 0x18,
  * hero +0xA98), written by script native 23 when the partner joins. */
 int c3_game_state_set_partner(C3GameState *state, int present);

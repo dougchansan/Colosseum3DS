@@ -32,6 +32,11 @@ typedef struct GameStateImpl {
     uint32_t random;
     double play_time;
     unsigned used_backup;
+    /* gamedatasaveGetStatus(0,5/7/8): the floor, previous floor and
+     * entrance of the last card save (fn_80113FE8's whiteout fallback). The
+     * body's own fields follow the hero, so the point is kept here. */
+    uint32_t saved_floor, saved_previous;
+    uint8_t saved_spawn;
 } GameStateImpl;
 
 static uint16_t be16(const uint8_t *p)
@@ -186,6 +191,7 @@ static int install(C3GameState *state, GameStateImpl *s, char *error)
      * is brought to the cap (the shop and rewards assume it). */
     if (be32(s->body+HERO+0xa84)>9999999u) put32(s->body+HERO+0xa84,9999999u);
     s->play_time=read_float(s->body+0x20);
+    s->saved_floor=be32(s->body+0x1c); s->saved_previous=be32(s->body+0x24); s->saved_spawn=s->body[0x28];
     release(state->impl); state->impl=s;
     if (error) error[0]=0;
     return 1;
@@ -760,6 +766,18 @@ int c3_game_state_save(C3GameState *state, const char *path,
     }
     free(s->card); free(s->body); s->card=card; s->body=body;
     s->random=random; s->used_backup=0;
+    s->saved_floor=be32(body+0x1c); s->saved_previous=be32(body+0x24); s->saved_spawn=body[0x28];
     if (error) error[0]=0;
+    return 1;
+}
+
+int c3_game_state_save_point(const C3GameState *state, uint32_t *floor,
+                             uint32_t *previous_floor, uint8_t *spawn)
+{
+    const GameStateImpl *s=state?state->impl:NULL;
+    if (!s || !s->saved_floor) return 0;
+    if (floor) *floor=s->saved_floor;
+    if (previous_floor) *previous_floor=s->saved_previous;
+    if (spawn) *spawn=s->saved_spawn;
     return 1;
 }

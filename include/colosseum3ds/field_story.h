@@ -46,8 +46,10 @@ int c3_field_story_bind_battle(C3FieldStory *story,const char *path,char *error)
  * once and makes the same ID readable through native 67. */
 int c3_field_story_battle_pending(const C3FieldStory *story,uint32_t *encounter);
 int c3_field_story_battle_result(C3FieldStory *story,uint32_t result,char *error);
-/* Hero lost an encounter with the wipeout (zenmetu) flag: leave for the
- * whiteout point recorded by native A1, or resume with result 3 if none. */
+/* Hero lost an encounter with the wipeout (zenmetu) flag: set flag 0E05,
+ * restore the party (party service), and leave for the whiteout point
+ * recorded by native A1, else the last save point
+ * (c3_game_state_save_point); resume with result 3 if neither is known. */
 int c3_field_story_battle_whiteout(C3FieldStory *story,char *error);
 /* Native 16 mode 1 names the partner. When the scene enables it the script
  * waits with view.name_entry set until the scene reports 1..10 printable
