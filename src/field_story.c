@@ -116,7 +116,7 @@ static float angle_delta(float x){return remainderf(x,2*PI);}
 static int validate_native(const Impl *s,const C3StoryCall *c,char *error)
 {
     static const struct {uint8_t id,argc,floats;} signature[]={
-        {0x03,6,0},{0x04,1,0},{0x06,1,0},{0x07,3,0},{0x08,1,0},{0x0b,0,0},
+        {0x00,0,0},{0x03,6,0},{0x04,1,0},{0x06,1,0},{0x07,3,0},{0x08,1,0},{0x0b,0,0},
         {0x1c,2,2},{0x1d,1,0},{0x1e,0,0},{0x1f,0,0},{0x20,0,0},{0x21,0,0},
         {0x24,1,0},{0x25,2,0},{0x26,3,7},{0x27,3,7},{0x28,3,7},{0x29,3,7},
         {0x2a,4,0},{0x2b,0,0},{0x2c,0,0},{0x2d,0,0},{0x2e,1,0},{0x30,4,8},
@@ -132,7 +132,7 @@ static int validate_native(const Impl *s,const C3StoryCall *c,char *error)
         /* Phenac City exterior bank 013E0E00 (native table lbl_802E1CF0). */
         {0x02,1,0},{0x16,2,0},{0x23,1,0},{0x31,0,0},{0x66,1,0},{0x7e,2,0},
         {0x82,3,0},{0x83,3,0},{0x89,3,0},{0xa1,3,0},{0xa4,6,0x3c},{0xa5,5,0x10},
-        {0x77,2,0},{0x84,2,0},{0x60,3,0},{0x73,4,0},{0x75,2,0},{0x8d,5,0x1e},{0x9a,5,0},{0xa0,1,0},{0xb5,4,0},{0xa9,2,0},{0xb1,6,0x10},{0xb4,0,0},{0xd8,1,0},{0xda,1,0},{0xe8,2,0},
+        {0x77,2,0},{0x84,2,0},{0x60,3,0},{0x73,4,0},{0x74,1,0},{0x75,2,0},{0x8d,5,0x1e},{0x9a,5,0},{0xa0,1,0},{0xb5,4,0},{0xa9,2,0},{0xb1,6,0x10},{0xb4,0,0},{0xd8,1,0},{0xda,1,0},{0xe8,2,0},
         /* Whole-game survey (tests/test_world_story.c), table lbl_802E1CF0. */
         {0x97,3,0},{0xaa,7,0x3c},{0xab,1,0},{0xad,1,0},{0xe1,0,0},
         {0xa2,0,0},{0xac,3,0},{0xcb,3,0},{0xd4,0,0},{0x61,5,0},{0xe2,0,0},{0x90,2,0},{0x7b,0,0},{0xc5,4,0},
@@ -152,6 +152,9 @@ static int validate_native(const Impl *s,const C3StoryCall *c,char *error)
         if((c->native==0x4c||c->native==0x4d)&&c->argc<2)return 1;
         /* Some banks call 32 with (group,index) only: visible reads zero. */
         if(c->native==0x32&&c->argc==2)return 1;
+        /* Realgam bar function 7 omits the loop word of 33. The original
+         * dispatcher leaves that trailing register zero (nonlooping). */
+        if(c->native==0x33&&c->argc==4)return 1;
         /* Floor 022 starts a battle with the encounter alone (98 with one
          * word); the zero-filled register image gives the other two zero. */
         if(c->native==0x98&&c->argc>=1)return 1;
@@ -374,6 +377,9 @@ static int run_native(Impl *s,RunTask *t,char *error)
             t->key,(unsigned long)c->script_id,(unsigned long)c->pc,(unsigned long)c->native,(unsigned long)c->argc,
             (unsigned long)a[0],(unsigned long)a[1],(unsigned long)a[2],(unsigned long)a[3],(unsigned long)a[4],(unsigned long)a[5]);
     switch(c->native){
+    case 0x00:
+        /* lbl_802E1CF0[0] is NULL: fn_800F10E8 unwinds with result 0. */
+        break;
     case 0x03:
         if(!start(s,a[0],a+2,4,&t->child,error))return 0;
         value=t->child;break;
@@ -914,6 +920,13 @@ static int run_native(Impl *s,RunTask *t,char *error)
         if(p){if(!set_motion(s,p,a[shift+1],a[shift+2],a[shift+3],error))return 0;}
         else if(c->native==0x73)note_presentation(s,c->native,"map_object_animation_unrendered");
         }break;
+    case 0x74:
+        /* fn_801CB7C4: stop a person's resource animation, else the raw
+         * floor model. Map-object clocks are not bound to this adapter yet. */
+        p=person(s,s->area->group,a[0]);
+        if(p){p->public.playing=0;p->pending_motion=0;}
+        else note_presentation(s,c->native,"map_object_animation_stop_unrendered");
+        break;
     case 0x75:
         /* scriptWaitSyncMotion(resource,wait): a person waits like native 35;
          * a model resource that is not a person reports finished. */

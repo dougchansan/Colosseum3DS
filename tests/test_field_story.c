@@ -224,6 +224,15 @@ static void synthetic_regressions(void)
     /* An absent init cannot suppress a present pre hook. */
     native(code+2,0x64,2,args,1);synthetic_load(s,&game,file,code,0,0x1000002,0);
     CHECK(!c3_field_story_actor(&s->story,3)->visible);close_scene(s);
+    /* Realgam bar's four-word native 33 gets the dispatcher's zero loop.
+     * Native 74 stops that resource; a later tick must not advance it. */
+    memset(code,0,sizeof code);args[0]=29;args[1]=3;args[2]=1;args[3]=0;
+    native(code+3,0x00,0,NULL,1);native(code+3,0x33,4,args,1);args[0]=3;native(code+3,0x74,1,args,1);
+    synthetic_load(s,&game,file,code,0,0,0x1000003);CHECK(c3_field_story_enter(&s->story,error));
+    CHECK(c3_field_story_tick(&s->story,0,0,error));
+    CHECK(!c3_field_story_actor(&s->story,3)->playing&&!c3_field_story_actor(&s->story,3)->loop);
+    CHECK(c3_field_story_tick(&s->story,.5f,0,error));
+    CHECK(c3_field_story_actor(&s->story,3)->pose.animation_seconds==0);close_scene(s);
     /* Menu callbacks queue work without running it inside the paused menu. */
     memset(code,0,sizeof code);native(code+3,0x1f,0,NULL,1);args[0]=3;args[1]=0;native(code+5,0x64,2,args,1);
     synthetic_load(s,&game,file,code,0,0,0x1000003);CHECK(c3_field_story_enter(&s->story,error));
