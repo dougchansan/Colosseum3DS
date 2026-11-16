@@ -362,6 +362,12 @@ void c3_n3ds_log_memory(FILE *trace, const char *stage)
     fflush(trace);
 }
 
+size_t c3_n3ds_heap_used(void)
+{
+    struct mallinfo memory = mallinfo();
+    return (size_t)memory.uordblks;
+}
+
 const char *c3_n3ds_data_root(void)
 {
     return "sdmc:/3ds/Colosseum3DS/data";

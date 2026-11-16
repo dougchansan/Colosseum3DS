@@ -1687,11 +1687,20 @@ int c3_field_scene_roundtrip_probe(C3GameState *state,FILE *trace,char *error,si
         }
     }
     if(!c3_game_state_set_floor(state,start,C3_FLOOR_WORLD_MAP_ID,(uint8_t)probe_route.start_spawn)){snprintf(error,capacity,"floor rejected");return -1;}
+    /* Memory check: after every area exit the allocator must be back near
+     * the first exit's level (an area's packs are all released on exit). */
+    size_t baseline=0,worst=0;unsigned exits=0;int leak=0;
     for(unsigned i=0;i<AREAS;++i){
         C3GameSummary summary;uint32_t floor=c3_game_state_summary(state,&summary)?summary.floor:0;
         result=run_area(state,0,"sdmc:/3ds/Colosseum3DS/probe-unused.gci",trace,error,capacity);
         snprintf(stage,sizeof stage,"roundtrip_%u_field_%03lx_end",i,(unsigned long)floor);
         c3_n3ds_log_memory(trace,stage);
+        {   size_t used=c3_n3ds_heap_used();
+            if(!exits++)baseline=used;
+            size_t growth=used>baseline?used-baseline:0;if(growth>worst)worst=growth;
+            int ok=growth<=1024u*1024u;leak|=!ok;
+            if(trace){fprintf(trace,"roundtrip_memory exit=%u floor=%03lx used=%lu baseline=%lu growth=%lu ok=%d\n",exits,
+                              (unsigned long)floor,(unsigned long)used,(unsigned long)baseline,(unsigned long)growth,ok);fflush(trace);} }
         if(result!=2||i+1==AREAS)break;
         /* A door led to another field floor: no world-map visit. */
         if(c3_game_state_summary(state,&summary)&&summary.floor!=C3_FLOOR_WORLD_MAP_ID)continue;
@@ -1700,7 +1709,9 @@ int c3_field_scene_roundtrip_probe(C3GameState *state,FILE *trace,char *error,si
         c3_n3ds_log_memory(trace,stage);
         if(result!=2)break;
     }
-    if(trace){fprintf(trace,"roundtrip_end result=%d error=%s\n",result,result<0?error:"");fflush(trace);}
+    if(trace){fprintf(trace,"roundtrip_memory_check status=%s exits=%u baseline=%lu worst_growth=%lu limit=1048576\n",
+                      leak?"fail":"pass",exits,(unsigned long)baseline,(unsigned long)worst);
+              fprintf(trace,"roundtrip_end result=%d error=%s\n",result,result<0?error:"");fflush(trace);}
     return result<0?-1:0;
 }
 #endif
