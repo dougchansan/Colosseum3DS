@@ -91,6 +91,19 @@ int main(void)
      CHECK(map.cursor == before.cursor && map.enabled == before.enabled && map.previous_floor == before.previous_floor);}
     CHECK(!c3_world_map_open(NULL, 1, read_flag, &flags) && !c3_world_map_open(&map, 1, NULL, NULL));
 
+    /* Journey rows (fn_80025F84 over lbl_3_data_270). */
+    {   C3WorldMapJourney journey = {0}; uint32_t anim = 99, camera = 0;
+        CHECK(c3_world_map_journey_west(0, 100, 40) == 1 && c3_world_map_journey_west(1, 100, 160) == 0);
+        CHECK(c3_world_map_journey_west(1, 100, 100) == 1 && c3_world_map_journey_west(0, 100, 100) == 0);
+        CHECK(c3_world_map_journey_pick(&journey, 0, &anim, &camera) == 10u && anim == 0u && camera == 0x0C7B1800u);
+        CHECK(journey.east_index == 1u && journey.west_index == 0u);
+        CHECK(c3_world_map_journey_pick(&journey, 1, &anim, &camera) == 0u && anim == 5u && camera == 0x0C761800u);
+        for (int i = 0; i < 8; ++i) (void)c3_world_map_journey_pick(&journey, 0, NULL, NULL);
+        CHECK(journey.east_index == 9u);
+        CHECK(c3_world_map_journey_pick(&journey, 0, &anim, &camera) == 19u && anim == 14u && camera == 0x0C6D1800u);
+        CHECK(journey.east_index == 0u);
+        CHECK(c3_world_map_journey_pick(&journey, 0, &anim, &camera) == 10u && anim == 0u); }
+
     printf("world-map: %u checks passed\n", checks);
     return 0;
 }

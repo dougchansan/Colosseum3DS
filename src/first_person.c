@@ -1,6 +1,11 @@
 #include "colosseum3ds/first_person.h"
 #include <math.h>
 
+#define PAD_LEFT 0x0001u
+#define PAD_RIGHT 0x0002u
+#define PAD_DOWN 0x0004u
+#define PAD_UP 0x0008u
+#define PAD_L 0x0040u
 #define PAD_Z 0x0010u
 #define PAD_R 0x0020u
 #define PAD_X 0x0400u
@@ -81,9 +86,10 @@ void c3_first_person_camera(const C3FirstPerson *view, const C3FieldMap *map,
 {
     if (!view || !map || !player || !camera) return;
     float scale = map->scale > 0.0f ? map->scale : 1.0f;
+    float height = view->eye_height > 0.0f ? view->eye_height : C3_FIRST_PERSON_EYE_HEIGHT;
     *camera = map->camera;
     camera->eye[0] = player->position[0] + sinf(player->yaw) * C3_FIRST_PERSON_EYE_FORWARD * scale;
-    camera->eye[1] = player->position[1] + C3_FIRST_PERSON_EYE_HEIGHT * scale;
+    camera->eye[1] = player->position[1] + height * scale;
     camera->eye[2] = player->position[2] + cosf(player->yaw) * C3_FIRST_PERSON_EYE_FORWARD * scale;
     float c = cosf(view->pitch), distance = 10.0f * scale;
     camera->target[0] = camera->eye[0] + sinf(view->yaw) * c * distance;
@@ -91,6 +97,42 @@ void c3_first_person_camera(const C3FirstPerson *view, const C3FieldMap *map,
     camera->target[2] = camera->eye[2] + cosf(view->yaw) * c * distance;
     camera->roll = 0.0f;
     if (!(camera->near_plane > 0.0f) || camera->near_plane > scale) camera->near_plane = scale;
+    if (view->fov > 0.0f) camera->fov_y_degrees = view->fov;
+    if (view->view_distance > 0.0f) {
+        float far = camera->far_plane * view->view_distance;
+        camera->far_plane = far > camera->near_plane * 2.0f ? far : camera->near_plane * 2.0f;
+    }
+}
+
+uint16_t c3_first_person_adjust(C3FirstPerson *view, uint16_t held, float floor_fov, float seconds)
+{
+    uint16_t used = 0;
+    if (!view || !view->enabled || !isfinite(seconds) || seconds <= 0.0f) return 0;
+    seconds = fminf(seconds, 0.25f);
+    int vertical = (held & PAD_UP) ? -1 : (held & PAD_DOWN) ? 1 : 0;
+    if (vertical && (held & PAD_L)) {
+        float d = view->view_distance > 0.0f ? view->view_distance : 1.0f;
+        d *= exp2f(-(float)vertical * C3_FIRST_PERSON_DISTANCE_SPEED * seconds);
+        view->view_distance = fmaxf(C3_FIRST_PERSON_DISTANCE_MIN, fminf(C3_FIRST_PERSON_DISTANCE_MAX, d));
+    } else if (vertical) {
+        float fov = view->fov > 0.0f ? view->fov : (floor_fov > 0.0f ? floor_fov : 45.0f);
+        fov += (float)vertical * C3_FIRST_PERSON_FOV_SPEED * seconds;
+        view->fov = fmaxf(C3_FIRST_PERSON_FOV_MIN, fminf(C3_FIRST_PERSON_FOV_MAX, fov));
+    }
+    used |= (uint16_t)(held & (PAD_UP | PAD_DOWN));
+    int sideways = (held & PAD_RIGHT) ? 1 : (held & PAD_LEFT) ? -1 : 0;
+    if (sideways) {
+        float h = view->eye_height > 0.0f ? view->eye_height : C3_FIRST_PERSON_EYE_HEIGHT;
+        h += (float)sideways * C3_FIRST_PERSON_HEIGHT_SPEED * seconds;
+        view->eye_height = fmaxf(C3_FIRST_PERSON_HEIGHT_MIN, fminf(C3_FIRST_PERSON_HEIGHT_MAX, h));
+    }
+    used |= (uint16_t)(held & (PAD_LEFT | PAD_RIGHT));
+    return used;
+}
+
+void c3_first_person_reset_view(C3FirstPerson *view)
+{
+    if (view) view->fov = view->eye_height = view->view_distance = 0.0f;
 }
 
 int c3_first_person_chord(uint16_t held, uint16_t pressed)

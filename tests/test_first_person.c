@@ -45,10 +45,10 @@ int main(void)
     CHECK(NEAR(camera.near_plane, 0.5f)); /* capped at one original unit */
     map.camera.near_plane = 0.25f; c3_first_person_camera(&view, &map, &player, &camera); CHECK(camera.near_plane == 0.25f);
 
-    /* Stick: deadzone, 2 rad/s at full deflection, right turns to decreasing yaw, up looks up. */
+    /* Stick: deadzone, LOOK_SPEED rad/s at full deflection, right turns to decreasing yaw, up looks up. */
     c3_first_person_look(&view, 14, -14, 1.0f); CHECK(NEAR(view.yaw, 1.0f) && view.pitch == 0);
-    c3_first_person_look(&view, 127, 0, 0.1f); CHECK(NEAR(view.yaw, 0.8f));
-    c3_first_person_look(&view, 0, 127, 0.1f); CHECK(NEAR(view.pitch, 0.2f));
+    c3_first_person_look(&view, 127, 0, 0.1f); CHECK(NEAR(view.yaw, 1.0f - 0.1f * C3_FIRST_PERSON_LOOK_SPEED));
+    c3_first_person_look(&view, 0, 127, 0.1f); CHECK(NEAR(view.pitch, 0.1f * C3_FIRST_PERSON_LOOK_SPEED));
     c3_first_person_camera(&view, &map, &player, &camera); CHECK(camera.target[1] > camera.eye[1]);
     /* A stalled frame is bounded; pitch never reaches vertical. */
     for (int i = 0; i < 40; ++i) c3_first_person_look(&view, 0, 127, 5.0f);
@@ -56,7 +56,7 @@ int main(void)
     for (int i = 0; i < 80; ++i) c3_first_person_look(&view, 0, -127, 0.25f);
     CHECK(NEAR(view.pitch, -C3_FIRST_PERSON_PITCH_LIMIT));
     /* Yaw wraps into [0, 2pi). */
-    view.pitch = 0; view.yaw = 0.05f; c3_first_person_look(&view, 127, 0, 0.1f); CHECK(view.yaw >= 0 && view.yaw < 6.2832f && NEAR(view.yaw, 6.2831853f - 0.15f));
+    view.pitch = 0; view.yaw = 0.05f; c3_first_person_look(&view, 127, 0, 0.1f); CHECK(view.yaw >= 0 && view.yaw < 6.2832f && NEAR(view.yaw, 6.2831853f + 0.05f - 0.1f * C3_FIRST_PERSON_LOOK_SPEED));
 
     /* Touch drag: first contact only anchors; dragging right turns right, up looks up; release re-anchors. */
     view.yaw = 1.0f; view.pitch = 0;
@@ -77,6 +77,22 @@ int main(void)
     c3_first_person_toggle(NULL, &player, 0); c3_first_person_look(NULL, 1, 1, 1); c3_first_person_camera(NULL, &map, &player, &camera);
     c3_first_person_toggle(&view, NULL, 3); CHECK(view.enabled && view.yaw == 0);
     c3_first_person_look(&view, 127, 127, NAN); CHECK(view.yaw == 0 && view.pitch == 0);
+    /* Tuned view: fov, eye height, view distance; reset. */
+    {   C3FirstPerson v = {0}; C3FieldPlayer pl = {0}; C3FieldMap m; C3TitleCamera c;
+        memset(&m, 0, sizeof m); m.scale = 0.5f; m.camera.fov_y_degrees = 40; m.camera.near_plane = 0.1f; m.camera.far_plane = 100;
+        CHECK(c3_first_person_adjust(&v, 0x0008, 40, 0.1f) == 0); /* off: nothing */
+        c3_first_person_toggle(&v, &pl, 1);
+        CHECK(c3_first_person_adjust(&v, 0x0008, 40, 0.1f) == 0x0008 && NEAR(v.fov, 37.0f));
+        CHECK(c3_first_person_adjust(&v, 0x0004, 40, 10.0f) == 0x0004 && NEAR(v.fov, 44.5f)); /* 0.25 s cap */
+        for (int k = 0; k < 40; ++k) (void)c3_first_person_adjust(&v, 0x0004, 40, 0.25f);
+        CHECK(NEAR(v.fov, C3_FIRST_PERSON_FOV_MAX));
+        CHECK(c3_first_person_adjust(&v, 0x0002, 40, 0.25f) == 0x0002 && NEAR(v.eye_height, 17.0f));
+        CHECK(c3_first_person_adjust(&v, 0x0048, 40, 0.25f) == 0x0008 && NEAR(v.view_distance, exp2f(0.25f)));
+        CHECK(NEAR(v.fov, C3_FIRST_PERSON_FOV_MAX)); /* L + Up changed distance, not fov */
+        c3_first_person_camera(&v, &m, &pl, &c);
+        CHECK(NEAR(c.fov_y_degrees, C3_FIRST_PERSON_FOV_MAX) && NEAR(c.eye[1], 17.0f * 0.5f) && NEAR(c.far_plane, 100 * exp2f(0.25f)));
+        c3_first_person_reset_view(&v); c3_first_person_camera(&v, &m, &pl, &c);
+        CHECK(NEAR(c.fov_y_degrees, 40) && NEAR(c.eye[1], C3_FIRST_PERSON_EYE_HEIGHT * 0.5f) && NEAR(c.far_plane, 100)); }
     printf("first-person: %u checks passed\n", checks);
     return 0;
 }

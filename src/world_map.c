@@ -142,3 +142,28 @@ int c3_world_map_choose(const C3WorldMap *map, int visible_index,
     *floor = chosen;
     return 1;
 }
+
+int c3_world_map_journey_west(int previous_west, int origin_x, int destination_x)
+{
+    /* fn_80023E60 normalises (destination - origin) and dots it with +X;
+     * only the sign of the x difference decides, and a zero vector keeps
+     * the previous value. */
+    if (destination_x == origin_x) return previous_west;
+    return destination_x < origin_x;
+}
+
+uint32_t c3_world_map_journey_pick(C3WorldMapJourney *journey, int west,
+                                   uint32_t *route_animation, uint32_t *camera)
+{
+    const u32 *rows;
+    uint32_t *index, row;
+    publish();
+    rows = (const u32 *)c3_wm_cameras;
+    /* lbl_8047A380 == 0 reads base + idx*16 + 41*4 (row 10 + idx). */
+    index = west ? &journey->west_index : &journey->east_index;
+    row = (west ? 0u : 10u) + (*index <= 9u ? *index : 0u);
+    *index = *index + 1u > 9u ? 0u : *index + 1u;
+    if (route_animation) *route_animation = rows[row * 4u + 1u];
+    if (camera) *camera = rows[row * 4u + 2u];
+    return row;
+}

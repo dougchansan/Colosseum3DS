@@ -437,18 +437,21 @@ def main():
                   "scope": "Original banks/data only. Native engine services are separately ported and checked."}
         for floor, (filename, script_id, message_id, outname) in areas.items():
             bank = member(originals[filename], script_id)
-            messages = member(originals[filename], message_id)
+            # A floor without its own message bank (Snagem Hideout 0x88).
+            messages = member(originals[filename], message_id) if message_id is not None else None
             info = inspect_bank(bank, allow_null_entries=True)
             if be16(bank, 0) != 0x100:
                 raise ValueError("Unexpected original field script bank")
             extra = [member(originals[filename], ident) for ident in extra_messages.get(floor, ())]
-            packed = encode_pack(floor, [bank, common], [messages, *extra, common_messages, common_names])
+            own = [messages] if messages is not None else []
+            packed = encode_pack(floor, [bank, common], [*own, *extra, common_messages, common_names])
             (output / outname).write_bytes(packed)
             report["areas"].append({"floor": floor, "file": outname, "bytes": len(packed),
                 "sha256": hashlib.sha256(packed).hexdigest(), "bank": info,
-                "script_member": f"{script_id:08x}", "message_member": f"{message_id:08x}",
-                "message_sha256": hashlib.sha256(messages).hexdigest(),
-                "message_count": be16(messages, 4)})
+                "script_member": f"{script_id:08x}",
+                "message_member": f"{message_id:08x}" if messages is not None else None,
+                "message_sha256": hashlib.sha256(messages).hexdigest() if messages is not None else None,
+                "message_count": be16(messages, 4) if messages is not None else 0})
         for filename, records in area_metadata.items():
             encoded = (json.dumps(records, indent=2)+"\n").encode("utf-8")
             (output / filename).write_bytes(encoded)

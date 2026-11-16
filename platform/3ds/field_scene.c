@@ -3,6 +3,9 @@
 #include "game_ui_views.h"
 #include "ingame_menu.h"
 #include "pack_cache.h"
+#include "area_prefetch.h"
+#include "colosseum3ds/world_map.h"
+#include "debug_overlay.h"
 #include "pack_loader.h"
 #include "battle_general_scene.h"
 #include "battle_general_3d.h"
@@ -464,6 +467,33 @@ static int field_renderer_init(C3Title *storage,const C3Title *const *models,uin
     return 0;
 }
 
+#ifdef C3_ROUNDTRIP_PROBE
+/* Optional door route (sdmc:/3ds/Colosseum3DS/probe-route.txt): a first
+ * line "start <floor>" and then lines "<floor> <door source>", hex, taken
+ * in order. In a listed floor the probe fires that door's transition (the
+ * original door script picks the target floor and entrance); a source
+ * written "i<source>" is an A-button surface instead: the hero is stood in
+ * front of it, facing it, and interacts (open dialogue is answered with A).
+ * Other floors leave for the world map as before. */
+static struct { uint32_t start, floor[32], source[32]; uint8_t interact[32]; unsigned count, next; int loaded; } probe_route;
+static void probe_route_load(void)
+{
+    if(probe_route.loaded)return;
+    probe_route.loaded=1;
+    FILE *f=fopen("sdmc:/3ds/Colosseum3DS/probe-route.txt","r");char line[64];
+    if(!f)return;
+    while(fgets(line,sizeof line,f)){
+        unsigned long a,b;
+        if(sscanf(line,"start %lx",&a)==1)probe_route.start=(uint32_t)a;
+        else if(sscanf(line,"%lx i%lx",&a,&b)==2&&probe_route.count<32){
+            probe_route.floor[probe_route.count]=(uint32_t)a;probe_route.interact[probe_route.count]=1;
+            probe_route.source[probe_route.count++]=(uint32_t)b;}
+        else if(sscanf(line,"%lx %lx",&a,&b)==2&&probe_route.count<32){
+            probe_route.floor[probe_route.count]=(uint32_t)a;probe_route.source[probe_route.count++]=(uint32_t)b;}
+    }
+    fclose(f);
+}
+#endif
 /* Return 2 only after a real source doorway and its post callback finish. */
 static int run_area(C3GameState *state,int new_game,const char *save_path,
                     FILE *trace,char *error,size_t capacity)
@@ -544,10 +574,14 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     if(count>C3_STAGE_MAX_MODELS){snprintf(error,capacity,"The area exceeds the model bound.");goto done;}
     storage=calloc(count,sizeof(*storage));
     if(!storage){snprintf(error,capacity,"Field model allocation failed.");goto done;}
-    c3_bottom_screen_notice(profile->label,"Loading the area...","Please wait...");
+    /* From the world map the journey already covered the load and faded
+     * out: the bottom screen keeps the map and the top stays black. */
+    int from_world_map=summary.previous_floor==C3_FLOOR_WORLD_MAP_ID;
+    if(!from_world_map)c3_bottom_screen_notice(profile->label,"Loading the area...","Please wait...");
     unsigned load_total=map.map_pack_count+1u+arrival_count;
     for(uint32_t i=0;i<doors.count;++i)load_total+=doors.rows[i].file[0]!=0;
-    c3_n3ds_top_loading(0.0f);
+    int after_journey=from_world_map&&c3_world_map_scene_take_journey_shown();
+    if(!after_journey)c3_n3ds_top_loading(0.0f);
     /* Every pack is a job with a fixed slot (the same order as before):
      * the main core and the New 3DS's second core load them in parallel,
      * then the slots are bound and posed in order on this thread. */
@@ -573,7 +607,24 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
             npc.jobs[job].title=storage+slot;npc.area_index[job]=i;++job;++slot;}
     }
     pack_us=c3_n3ds_time_us();
-    size_t failed=c3_pack_load_all(jobs,load_total,load_progress);
+    /* Map packs the world map prefetched (while the journey played) move in
+     * as they are; only the rest is read now. */
+    size_t failed=0;unsigned prefetched=0;
+    for(unsigned j=0;j<load_total;++j)
+        if(c3_area_prefetch_take(jobs[j].path,jobs[j].title)){jobs[j].ok=1;jobs[j].error[0]=0;jobs[j].microseconds=0;++prefetched;}
+    c3_area_prefetch_release();
+    {
+        C3PackJob *pending=calloc(load_total?load_total:1u,sizeof *pending);
+        unsigned *slot=calloc(load_total?load_total:1u,sizeof *slot),n=0;
+        if(!pending||!slot){free(pending);free(slot);snprintf(error,capacity,"Not enough memory for the load list.");free(jobs);goto done;}
+        for(unsigned j=0;j<load_total;++j)if(!jobs[j].ok){pending[n]=jobs[j];slot[n++]=j;}
+        size_t bad=n?c3_pack_load_all(pending,n,after_journey?NULL:load_progress):0;
+        for(unsigned k=0;k<n;++k){C3PackJob *job=jobs+slot[k];job->ok=pending[k].ok;job->microseconds=pending[k].microseconds;
+            snprintf(job->error,sizeof job->error,"%s",pending[k].error);}
+        if(bad)failed=slot[bad-1]+1u;
+        free(pending);free(slot);
+    }
+    if(trace){fprintf(trace,"field_prefetch taken=%u of=%u\n",prefetched,load_total);}
     if(trace){fprintf(trace,"field_pack_jobs count=%u us=%llu\n",load_total,(unsigned long long)(c3_n3ds_time_us()-pack_us));}
     for(unsigned j=0;j<load_total;++j){
         if(trace)fprintf(trace,"field_pack_load file=%s bytes=%lu us=%llu ok=%d\n",jobs[j].path,
@@ -686,6 +737,11 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         (unsigned long)area.actor_count,(unsigned long)count,arrival!=NULL,(double)arrival_seconds);fflush(trace);}
     previous=c3_n3ds_active_time_us();result=1;
     while(c3_n3ds_poll(&input)){
+        c3_debug_overlay_input(&input);
+#ifdef C3_ROUNDTRIP_PROBE
+        /* Probe: answer open dialogue with A, one press a second. */
+        if(view&&(view->dialogue||view->choice)&&frames%60u==0u)input.pressed|=C3_PAD_A;
+#endif
         if(!npc.attached&&!npc_stream_attach(&npc,0,storage,models,actor_models,model_paths,&story,count,skin_actors,
                                              tv_index,view?view->tv_enabled:1,frames,trace,error,capacity)){result=-1;break;}
 #ifdef C3_CAMPAIGN
@@ -1090,10 +1146,16 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                     if(c3_orbit_recenter_chord(input.held,input.pressed)){
                         /* ZL/ZR (or R) + Down: leave free flight, authored view again. */
                         c3_orbit_reset(&orbit);
+                        c3_first_person_reset_view(&first_person);
                         input.pressed&=(uint16_t)~(C3_PAD_DOWN|C3_PAD_Z|C3_PAD_R);
                         if(trace){fprintf(trace,"camera_recenter\n");fflush(trace);}
                     }
+                    uint16_t view_buttons=0;
                     if(first_person.enabled){
+                        /* D-pad: field of view (Up/Down), eye height (Left/Right),
+                         * view distance (L + Up/Down); kept from walking. */
+                        if(!(input.held&(C3_PAD_Z|C3_PAD_R)))
+                            view_buttons=c3_first_person_adjust(&first_person,input.held,map.camera.fov_y_degrees,delta);
                         c3_first_person_look(&first_person,input.cstick_x,input.cstick_y,delta);
                         c3_first_person_touch(&first_person,input.touch_held,input.touch_x,input.touch_y);
                     }else if(orbit.free){
@@ -1132,6 +1194,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                             float reach=hypotf((float)walk_x,(float)walk_y);
                             if(reach>15.0f){walk_x=(int)lroundf((float)walk_x*127.0f/reach);walk_y=(int)lroundf((float)walk_y*127.0f/reach);}
                         }
+                        walk_buttons&=(uint16_t)~view_buttons;
                         if(orbit.free)walk_buttons=0;
                         if(!c3_field_move(&map,&player,walk_x,walk_y,walk_buttons,move_yaw,delta)){
                             snprintf(error,capacity,"Field movement failed.");result=-1;break;
@@ -1296,6 +1359,17 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
             c3_pda_preview_control(pda_preview,abs(input.cstick_x)>20?input.cstick_x/128.f:0,
                                    abs(input.cstick_y)>20?input.cstick_y/128.f:0,delta);
         }
+        if(!pda_preview&&c3_debug_overlay_enabled()){
+            char l1[64],l2[64];
+            snprintf(l1,sizeof l1,"floor %03lx xyz %.1f %.1f %.1f",(unsigned long)map.floor,
+                     (double)player.position[0],(double)player.position[1],(double)player.position[2]);
+            if(first_person.enabled)
+                snprintf(l2,sizeof l2,"fp fov %.0f eye %.1f dist %.2fx",(double)camera.fov_y_degrees,
+                         (double)(first_person.eye_height>0?first_person.eye_height:C3_FIRST_PERSON_EYE_HEIGHT),
+                         (double)(first_person.view_distance>0?first_person.view_distance:1.0f));
+            else snprintf(l2,sizeof l2,"orbit zoom %.2f yaw %.2f pitch %.2f",(double)orbit.zoom,(double)orbit.yaw,(double)orbit.pitch);
+            c3_debug_overlay_frame("field",&camera,0,&stats,l1,l2,NULL);
+        }
         int draw_result=pda_preview?c3_pda_preview_draw(pda_preview,pda_seconds,&stats,error,capacity):
             c3_stage_renderer_draw(models,npc.attached?count:npc.first,&camera,fade,&stats,error,capacity);
         if(draw_result==C3_RENDER_BUSY){
@@ -1306,6 +1380,57 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         }
         if(draw_result){result=-1;break;}
         ++frames;
+#ifdef C3_ROUNDTRIP_PROBE
+        /* Leave for the world map once the people have joined; keep the
+         * last frame of each area for review (the capture lags one frame). */
+        {   static int door_fired;static unsigned next_step;
+            if(frames<=1u){door_fired=0;next_step=90u;}
+            probe_route_load();
+            if(npc.attached&&frames>=next_step&&view->control&&!door_fired&&probe_route.next<probe_route.count&&
+               probe_route.floor[probe_route.next]==map.floor&&probe_route.interact[probe_route.next]){
+                uint32_t source=probe_route.source[probe_route.next++];const C3FieldTriangle *hit=NULL;
+                for(uint32_t i=0;i<area.interaction_count&&!hit;++i)if(area.interactions[i].source_id==source)hit=area.interactions+i;
+                if(hit){
+                    float c[3]={0},n[2]={hit->normal[0],hit->normal[2]},len;
+                    for(int v=0;v<3;++v)for(int k=0;k<3;++k)c[k]+=hit->vertices[v*3+k]/3.0f;
+                    len=hypotf(n[0],n[1]);if(len<1e-4f){n[0]=0;n[1]=1;len=1;}
+                    n[0]/=len;n[1]/=len;
+                    /* The side with ground: in front of the surface, facing it. */
+                    for(int side=0;side<2;++side){
+                        float sgn=side?-1.0f:1.0f,spot[3]={c[0]+n[0]*sgn*0.5f,c[1],c[2]+n[1]*sgn*0.5f},ground;
+                        if(!c3_field_ground(&map,spot,&ground))continue;
+                        player.position[0]=spot[0];player.position[1]=ground;player.position[2]=spot[2];
+                        memcpy(player.proposed,player.position,sizeof player.position);
+                        player.yaw=atan2f(c[0]-spot[0],c[2]-spot[2]);break;
+                    }
+                }
+                if(trace){fprintf(trace,"probe_interact floor=%03lx source=%lu surface=%d\n",(unsigned long)map.floor,
+                                  (unsigned long)source,hit!=NULL);fflush(trace);}
+                if(!c3_field_story_interact(&story,story_error))goto story_failed;
+                next_step=frames+120u;
+            }
+            if(npc.attached&&frames>=next_step&&view->control&&!door_fired){
+                char shot[80];
+                mkdir("sdmc:/3ds/Colosseum3DS/probe",0777);
+                snprintf(shot,sizeof shot,"sdmc:/3ds/Colosseum3DS/probe/area_%03lx_top.bmp",(unsigned long)map.floor);
+                (void)c3_n3ds_capture_top(shot);
+                snprintf(shot,sizeof shot,"sdmc:/3ds/Colosseum3DS/probe/area_%03lx_bottom.bmp",(unsigned long)map.floor);
+                (void)c3_n3ds_capture_bottom(shot);
+                probe_route_load();
+                if(probe_route.next<probe_route.count&&probe_route.floor[probe_route.next]==map.floor){
+                    uint32_t source=probe_route.source[probe_route.next++];
+                    if(trace){fprintf(trace,"probe_door floor=%03lx source=%lu\n",(unsigned long)map.floor,(unsigned long)source);fflush(trace);}
+                    door_fired=1;
+                    if(!c3_field_story_transition(&story,source,story_error))goto story_failed;
+                }else{
+                    if(!c3_game_state_set_floor(state,C3_FLOOR_WORLD_MAP_ID,map.floor,0)){result=-1;break;}
+                    result=2;break;
+                }
+            }
+            /* A fired door that never links: give up after 20 s. */
+            if(door_fired&&frames>=1290u){snprintf(error,capacity,"probe door did not link");result=-1;break;}
+        }
+#endif
 #ifdef C3_WARP_TOUR
         if(tour.captured==-1&&frames>2){
             snprintf(tour.shot,sizeof tour.shot,"sdmc:/3ds/Colosseum3DS/tour/%s.bmp",prefix);
@@ -1341,7 +1466,12 @@ story_failed:
     campaign_line("floor=%03lx script_error=\"%s\" action=restart",(unsigned long)map.floor,story_error);
 #endif
 done:
-    if(npc.stream){c3_pack_stream_finish(npc.stream);npc.stream=NULL;opened=count;}
+    /* Every slot, room and people: streamed people attach mid-scene without
+     * moving `opened`, and calloc'd slots that never loaded close as no-ops.
+     * Closing only `opened` leaked every person pack on each area exit. */
+    if(npc.stream){c3_pack_stream_finish(npc.stream);npc.stream=NULL;}
+    if(storage)opened=count;
+    c3_area_prefetch_release(); /* anything a failed load did not take */
     free(npc.jobs);npc.jobs=NULL;
     c3_pda_audio_close();
     c3_ingame_close(ingame);
@@ -1391,6 +1521,44 @@ int c3_field_scene_tour(C3GameState *state,FILE *trace,char *error,size_t capaci
     fprintf(log,"tour_end visited=%u captured=%u\n",visited,ok);
     fclose(log);fclose(list);
     return 0;
+}
+#endif
+
+#ifdef C3_ROUNDTRIP_PROBE
+int c3_field_scene_roundtrip_probe(C3GameState *state,FILE *trace,char *error,size_t capacity)
+{
+    enum{AREAS=11};
+    char stage[64];int result=0;
+    c3_n3ds_log_memory(trace,"roundtrip_baseline");
+    /* Start in the save's own world-map area (its floor, else the floor it
+     * came from, as when a save sits in a building), else Phenac; the world
+     * map then visits the unlocked destinations in turn. */
+    uint32_t start=3;
+    probe_route_load();
+    if(probe_route.start)start=probe_route.start;
+    else {   C3GameSummary s;
+        if(c3_game_state_summary(state,&s))
+            for(uint32_t i=0;i<c3_world_map_entry_count();++i){C3WorldMapEntry e;
+                if(!c3_world_map_entry(i,&e)||!c3_field_scene_supports(e.floor))continue;
+                if(e.floor==s.floor){start=s.floor;break;}
+                if(e.floor==s.previous_floor)start=s.previous_floor;} }
+    if(trace){fprintf(trace,"roundtrip_start floor=%03lx\n",(unsigned long)start);fflush(trace);}
+    if(!c3_game_state_set_floor(state,start,C3_FLOOR_WORLD_MAP_ID,0)){snprintf(error,capacity,"floor rejected");return -1;}
+    for(unsigned i=0;i<AREAS;++i){
+        C3GameSummary summary;uint32_t floor=c3_game_state_summary(state,&summary)?summary.floor:0;
+        result=run_area(state,0,"sdmc:/3ds/Colosseum3DS/probe-unused.gci",trace,error,capacity);
+        snprintf(stage,sizeof stage,"roundtrip_%u_field_%03lx_end",i,(unsigned long)floor);
+        c3_n3ds_log_memory(trace,stage);
+        if(result!=2||i+1==AREAS)break;
+        /* A door led to another field floor: no world-map visit. */
+        if(c3_game_state_summary(state,&summary)&&summary.floor!=C3_FLOOR_WORLD_MAP_ID)continue;
+        result=c3_world_map_scene_run(state,trace,error,capacity);
+        snprintf(stage,sizeof stage,"roundtrip_%u_worldmap_end",i);
+        c3_n3ds_log_memory(trace,stage);
+        if(result!=2)break;
+    }
+    if(trace){fprintf(trace,"roundtrip_end result=%d error=%s\n",result,result<0?error:"");fflush(trace);}
+    return result<0?-1:0;
 }
 #endif
 

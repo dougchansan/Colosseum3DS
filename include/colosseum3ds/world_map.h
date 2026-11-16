@@ -46,4 +46,28 @@ int c3_world_map_choose(const C3WorldMap *map, int visible_index,
                         C3WorldMapFlag flag, void *context,
                         uint32_t *floor, int *travel);
 
+/* The journey (menu 0xC3, gs_title.c fn_80025F84). Two cycling indices
+ * (lbl_8047A394 east, lbl_8047A398 west) live for the whole session; the
+ * world map's open (fn_800259B0) does not reset them. */
+typedef struct C3WorldMapJourney {
+    uint32_t east_index, west_index;
+} C3WorldMapJourney;
+/* fn_80023E60 sets the west flag (lbl_8047A380) on each cursor move: 1 when
+ * the highlighted item lies left of the origin item on the map (dx < 0), 0
+ * when right, unchanged when both are at the same place; fn_800259B0 resets
+ * it to 0 when the map opens. */
+int c3_world_map_journey_west(int previous_west, int origin_x, int destination_x);
+/* fn_80025F84: west uses lbl_3_data_270 rows 0-9, east rows 10-19; the
+ * chosen half's index advances and wraps after 9. Writes the route
+ * animation of move_demo model 0xC6A1000 and the camera resource
+ * (cam_move_demo_XX, 0x0C6D1800-0x0C7B1800); returns the table row. */
+uint32_t c3_world_map_journey_pick(C3WorldMapJourney *journey, int west,
+                                   uint32_t *route_animation, uint32_t *camera);
+/* Story flag 0x3E5 selects bike_hizuki (0x0C6B1000, Wes with Rui) over
+ * bike_pokemon (0x0C6C1000). */
+#define C3_WORLD_MAP_JOURNEY_RUI_FLAG 0x3E5u
+/* The journey lasts 0xAE frames at 60 Hz after the camera starts, then the
+ * world map's exit (fn_800255A4) fades out over two seconds. */
+#define C3_WORLD_MAP_JOURNEY_FRAMES 0xAEu
+
 #endif

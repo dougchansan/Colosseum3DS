@@ -110,12 +110,28 @@ static void effect_pass_draw(const C3Title *const *models, const C3D_Mtx *mvp, C
             const C3TitleMaterialState *material = &title->pose.materials[i];
             if (material->visible < 0.5f || (batch->flags & C3_TITLE_SUBTRACT) ||
                 ((batch->flags & C3_TITLE_CULL_BACK) && (batch->flags & C3_TITLE_CULL_FRONT))) continue;
-            if (!effect_budget(skin_batch_gpu(title, i) ? 4096u : 512u)) return;
+            if (!effect_budget(skin_batch_gpu(title, i) ? 4096u : 512u)) {
+                C3D_StencilTest(false, GPU_ALWAYS, 0, 0xFF, 0x00);
+                return;
+            }
             C3D_CullFace(batch->flags & C3_TITLE_CULL_BACK ? GPU_CULL_BACK_CCW :
                          batch->flags & C3_TITLE_CULL_FRONT ? GPU_CULL_FRONT_CCW : GPU_CULL_NONE);
             C3D_AlphaTest(true, GPU_GREATER, 0);
-            C3D_DepthTest(true, depth_function[batch->depth_compare], GPU_WRITE_COLOR);
-            bool add = inst->additive || (batch->flags & (C3_TITLE_ADDITIVE | C3_TITLE_ADDITIVE_ONE));
+            /* Mode 3 (projected shadow): each pixel takes the shadow once
+             * (stencil 0 -> 1; the target clears stencil every frame), so
+             * the flattened model's overlapping layers do not stack. */
+            if (inst->additive == 3) {
+                /* Flattening reverses the winding of half the triangles. */
+                C3D_CullFace(GPU_CULL_NONE);
+                C3D_DepthTest(true, GPU_GEQUAL, GPU_WRITE_COLOR);
+                C3D_StencilTest(true, GPU_NOTEQUAL, 1, 0xFF, 0xFF);
+                C3D_StencilOp(GPU_STENCIL_KEEP, GPU_STENCIL_KEEP, GPU_STENCIL_REPLACE);
+            } else {
+                C3D_StencilTest(false, GPU_ALWAYS, 0, 0xFF, 0x00);
+                C3D_DepthTest(true, depth_function[batch->depth_compare], GPU_WRITE_COLOR);
+            }
+            bool add = inst->additive == 1 || inst->additive == 2 ||
+                (inst->additive != 3 && (batch->flags & (C3_TITLE_ADDITIVE | C3_TITLE_ADDITIVE_ONE)));
             C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_SRC_ALPHA, add ? GPU_ONE : GPU_ONE_MINUS_SRC_ALPHA, GPU_ZERO, GPU_ONE);
             combiner(batch, material, 1.0f);
             /* Stage 5: the model's floor/owner modulation (2*color*previous)
@@ -152,6 +168,7 @@ static void effect_pass_draw(const C3Title *const *models, const C3D_Mtx *mvp, C
             stats->draw_calls++; stats->vertices += batch->count;
         }
     }
+    C3D_StencilTest(false, GPU_ALWAYS, 0, 0xFF, 0x00);
     skin_restore(&scenes[0], mvp);
     C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, mvp_location, mvp);
     if (effect_source_count && effect_vertices && effect_budget(1024u)) {

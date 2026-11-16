@@ -341,6 +341,23 @@ int c3_boot_scene_run(int core_status)
         return campaign_result < 0 ? 1 : 0;
     }
 #endif
+#ifdef C3_ROUNDTRIP_PROBE
+    /* Memory probe: the campaign's save (read only), then area/world-map
+     * round trips with no input. */
+    {
+        int probe_result = -1;
+        /* probe-save.gci (a copy of a console save) when present. */
+        const char *probe_save = file_exists("sdmc:/3ds/Colosseum3DS/probe-save.gci")
+            ? "sdmc:/3ds/Colosseum3DS/probe-save.gci" : "sdmc:/3ds/Colosseum3DS/campaign/save.gci";
+        if (!c3_game_state_load(&state, probe_save,
+                                file_exists(GAME_DATA) ? GAME_DATA : NULL, error))
+            fprintf(trace ? trace : stderr, "roundtrip_save status=invalid reason=%s\n", error);
+        else probe_result = c3_field_scene_roundtrip_probe(&state, trace, error, sizeof(error));
+        if (trace) { fprintf(trace, "roundtrip_exit result=%d\n", probe_result); fclose(trace); }
+        c3_game_state_free(&state);
+        return probe_result < 0 ? 1 : 0;
+    }
+#endif
 #ifdef C3_WARP_TOUR
     /* Tour build: the tour's own copy of a save (never the player's save
      * path), no movies or title, every floor in boot/tour.txt, then exit. */
