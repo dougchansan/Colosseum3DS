@@ -1561,6 +1561,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
             if(npc.attached&&frames>=next_step&&view->control&&!door_fired){
                 char shot[80];
                 mkdir("sdmc:/3ds/Colosseum3DS/probe",0777);
+                if(trace){fprintf(trace,"probe_capture floor=%lu prepared=%d control=%d frame=%u\n",(unsigned long)map.floor,view->prepared,view->control,frames);fflush(trace);}
                 snprintf(shot,sizeof shot,"sdmc:/3ds/Colosseum3DS/probe/area_%03lx_top.bmp",(unsigned long)map.floor);
                 (void)c3_n3ds_capture_top(shot);
                 snprintf(shot,sizeof shot,"sdmc:/3ds/Colosseum3DS/probe/area_%03lx_bottom.bmp",(unsigned long)map.floor);

@@ -62,8 +62,11 @@ foreach ($floor in $Floors) {
         while ([DateTime]::UtcNow -lt $deadline) {
             Start-Sleep -Milliseconds 500
             if ((Test-Frame $top 400) -and (Test-Frame $bottom 320) -and (Test-Path -LiteralPath $trace)) {
-                $log = [IO.File]::ReadAllText($trace)
-                if ($log -match "story_prepared floor=$floor(?:\s|$)" -and $log -match "field_tick floor=$floor\s[^\r\n]*control=1(?:\s|$)") { $captured = $true; break }
+                $stream = [IO.File]::Open($trace, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
+                $reader = New-Object IO.StreamReader($stream)
+                try { $log = $reader.ReadToEnd() } finally { $reader.Dispose() }
+                $control = $log -match "field_tick floor=$floor\s[^\r\n]*control=1(?:\s|$)" -or $log -match "probe_capture floor=$floor prepared=1 control=1(?:\s|$)"
+                if ($log -match "story_prepared floor=$floor(?:\s|$)" -and $control) { $captured = $true; break }
             }
             if ($process.HasExited) { break }
         }
