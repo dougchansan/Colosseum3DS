@@ -475,7 +475,8 @@ static int field_renderer_init(C3Title *storage,const C3Title *const *models,uin
  * written "i<source>" is an A-button surface instead: the hero is stood in
  * front of it, facing it, and interacts (open dialogue is answered with A).
  * Other floors leave for the world map as before. */
-static struct { uint32_t start, floor[32], source[32]; uint8_t interact[32]; unsigned count, next; int loaded; } probe_route;
+static struct { uint32_t start, start_spawn, floor[32], source[32]; uint8_t interact[32]; unsigned count, next; int loaded;
+                uint32_t film_floor, film_frames; } probe_route;
 static void probe_route_load(void)
 {
     if(probe_route.loaded)return;
@@ -484,7 +485,13 @@ static void probe_route_load(void)
     if(!f)return;
     while(fgets(line,sizeof line,f)){
         unsigned long a,b;
-        if(sscanf(line,"start %lx",&a)==1)probe_route.start=(uint32_t)a;
+        /* "start <floor> [spawn]": the first floor and its entrance;
+         * "frames <floor> <count>": in that floor, before leaving, save
+         * <count> consecutive top-screen frames (probe/film_<floor>_<n>.bmp)
+         * to compare animation against an emulator capture. */
+        if(sscanf(line,"start %lx %lx",&a,&b)==2){probe_route.start=(uint32_t)a;probe_route.start_spawn=(uint32_t)b;}
+        else if(sscanf(line,"start %lx",&a)==1)probe_route.start=(uint32_t)a;
+        else if(sscanf(line,"frames %lx %lu",&a,&b)==2&&b<=600){probe_route.film_floor=(uint32_t)a;probe_route.film_frames=(uint32_t)b;}
         else if(sscanf(line,"%lx i%lx",&a,&b)==2&&probe_route.count<32){
             probe_route.floor[probe_route.count]=(uint32_t)a;probe_route.interact[probe_route.count]=1;
             probe_route.source[probe_route.count++]=(uint32_t)b;}
@@ -1409,6 +1416,16 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                 if(!c3_field_story_interact(&story,story_error))goto story_failed;
                 next_step=frames+120u;
             }
+            /* Film: consecutive top frames once the hero has control. */
+            {static uint32_t filmed;
+             if(probe_route.film_frames&&probe_route.film_floor==map.floor&&npc.attached&&view->control&&filmed<probe_route.film_frames){
+                 char shot[96];mkdir("sdmc:/3ds/Colosseum3DS/probe",0777);
+                 snprintf(shot,sizeof shot,"sdmc:/3ds/Colosseum3DS/probe/film_%03lx_%03lu.bmp",(unsigned long)map.floor,(unsigned long)filmed);
+                 (void)c3_n3ds_capture_top(shot);
+                 if(trace&&!filmed){fprintf(trace,"probe_film floor=%03lx frames=%lu frame=%u\n",(unsigned long)map.floor,(unsigned long)probe_route.film_frames,frames);fflush(trace);}
+                 if(++filmed==probe_route.film_frames&&trace){fprintf(trace,"probe_film_end frame=%u elapsed=%.3f\n",frames,(double)elapsed);fflush(trace);}
+                 next_step=frames+30u;
+             }}
             if(npc.attached&&frames>=next_step&&view->control&&!door_fired){
                 char shot[80];
                 mkdir("sdmc:/3ds/Colosseum3DS/probe",0777);
@@ -1543,7 +1560,7 @@ int c3_field_scene_roundtrip_probe(C3GameState *state,FILE *trace,char *error,si
                 if(e.floor==s.floor){start=s.floor;break;}
                 if(e.floor==s.previous_floor)start=s.previous_floor;} }
     if(trace){fprintf(trace,"roundtrip_start floor=%03lx\n",(unsigned long)start);fflush(trace);}
-    if(!c3_game_state_set_floor(state,start,C3_FLOOR_WORLD_MAP_ID,0)){snprintf(error,capacity,"floor rejected");return -1;}
+    if(!c3_game_state_set_floor(state,start,C3_FLOOR_WORLD_MAP_ID,(uint8_t)probe_route.start_spawn)){snprintf(error,capacity,"floor rejected");return -1;}
     for(unsigned i=0;i<AREAS;++i){
         C3GameSummary summary;uint32_t floor=c3_game_state_summary(state,&summary)?summary.floor:0;
         result=run_area(state,0,"sdmc:/3ds/Colosseum3DS/probe-unused.gci",trace,error,capacity);

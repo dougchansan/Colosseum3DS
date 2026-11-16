@@ -663,10 +663,17 @@ def build_mesh(model, mesh_index, max_envelope_weights=3, source_materials=False
     # color, then an inactive-TEV MODULATE layer multiplies texture1. The
     # result is exactly T0*T1 with material alpha; it is serialized as the
     # dual-modulate stage with konst1 and a white diffuse raster.
-    blend_modulate = (len(raw_textures) == 2 and
-                      [t.flags for t in raw_textures] == [0x30010, 0x40010] and
-                      raw_textures[0].blending == 1 and raw_textures[0].tev is None and
-                      (raw_textures[1].tev is None or raw_textures[1].tev.active == 0) and
+    # M3_out (Agate Village water): texture0 MODULATEs a constant white
+    # material color instead (render mode diffuse = material, diffuse
+    # 255,255,255, no alpha map), which is the same T0*T1; texture1 scrolls
+    # independently, so the two layers' product is the moving ripple.
+    def inactive_tev(tex):
+        return tex.tev is None or tex.tev.active == 0
+    white_diffuse = all(round(c * 255) == 255 for c in dobj.mobject.material.diffuse.asRGBList())
+    blend_modulate = (len(raw_textures) == 2 and raw_textures[1].flags == 0x40010 and
+                      ((raw_textures[0].flags == 0x30010 and raw_textures[0].blending == 1) or
+                       (raw_textures[0].flags == 0x40010 and white_diffuse)) and
+                      inactive_tev(raw_textures[0]) and inactive_tev(raw_textures[1]) and
                       [t.source for t in raw_textures] == [4, 5] and len(mesh.uv_layers) == 2 and
                       dobj.mobject.render_mode & 7 == 1)
     dual = len(raw_textures) == 2 and raw_textures[1].flags == 0x40010 and not blend_modulate
@@ -876,9 +883,12 @@ def material_state(mesh, clip, frame, visible):
         transforms.append(transform)
         crosses.append(cross)
         if index == 0:
-            tev0 = tex.tev.tev0.asRGBList() if tex.tev else [0.,0.,0.]
-            konst = tex.tev.konst.asRGBList() if tex.tev else [1.,1.,1.]
-            for component in range(3):
+            # An inactive TEV block (active 0) is not applied by HSD, so its
+            # registers do not reach the combiner.
+            active = tex.tev is not None and tex.tev.active != 0
+            tev0 = tex.tev.tev0.asRGBList() if active else [0.,0.,0.]
+            konst = tex.tev.konst.asRGBList() if active else [1.,1.,1.]
+            for component in range(3 if active else 0):
                 if 16+component in tracks:
                     tev0[component] = title.tev_byte(title.curve_value(tracks[16+component],frame))
                 if 12+component in tracks:
