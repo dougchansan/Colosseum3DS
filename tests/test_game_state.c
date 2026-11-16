@@ -186,6 +186,25 @@ int main(int argc,char **argv)
         CHECK(c3_game_state_mail_add(&mailbox,512)==-1&&c3_game_state_mail_add(NULL,1)==-1);
         c3_game_state_free(&mailbox);
     }
+    {   /* PC boxes: deposit keeps one party member and closes the gap;
+         * withdraw fills the first empty party slot. */
+        C3GameState pc={0};C3GameSummary s;uint8_t first[0x138],second[0x138],boxed[0x138];
+        CHECK(c3_game_state_new(&pc,NULL,0x12345678,packpath,error));
+        CHECK(c3_game_state_pokemon(&pc,0,first)&&c3_game_state_pokemon(&pc,1,second));
+        CHECK(c3_game_state_box_used(&pc,0)==0&&!c3_game_state_box_pokemon(&pc,0,0,NULL)&&c3_game_state_box_used(&pc,3)==-1);
+        CHECK(c3_game_state_box_deposit(&pc,0,1)==0);
+        CHECK(c3_game_state_box_pokemon(&pc,1,0,boxed)&&!memcmp(boxed,first,0x138)&&c3_game_state_box_used(&pc,1)==1);
+        CHECK(c3_game_state_pokemon(&pc,0,boxed)&&!memcmp(boxed,second,0x138));
+        CHECK(c3_game_state_summary(&pc,&s)&&s.party_count==1);
+        CHECK(c3_game_state_box_deposit(&pc,0,0)==-1);           /* the last Pokemon stays */
+        CHECK(c3_game_state_box_withdraw(&pc,1,0)==1&&c3_game_state_box_used(&pc,1)==0);
+        CHECK(c3_game_state_pokemon(&pc,1,boxed)&&!memcmp(boxed,first,0x138));
+        CHECK(c3_game_state_box_withdraw(&pc,1,0)==-1&&c3_game_state_box_withdraw(&pc,3,0)==-1);
+        for(unsigned i=0;i<30;++i)CHECK(c3_game_state_box_store(&pc,2,first)==(int)i);
+        CHECK(c3_game_state_box_store(&pc,2,first)==-1&&c3_game_state_box_deposit(&pc,1,2)==-1);
+        char name[16];CHECK(c3_game_state_box_name(&pc,0,name,sizeof name));
+        c3_game_state_free(&pc);
+    }
     CHECK(summary.party[0].experience==0x4a6fu && summary.party[1].experience==0x3ff4u);
     CHECK(!summary.party[0].shadow_id && !summary.party[1].shadow_id);
     uint32_t exp_progress,exp_range;
