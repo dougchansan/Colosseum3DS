@@ -313,6 +313,7 @@ static int play_story_battle(C3FieldStory *story,C3GameState *state,uint32_t enc
         C3GeneralBattle *battle=malloc(sizeof *battle);int ok=battle!=NULL;
         for(unsigned i=0;ok&&i<C3_GB_PARTY;++i)ok=c3_game_state_pokemon(state,i,party[i]);
         if(ok)ok=c3_general_battle_begin(battle,&pack,encounter,party,seed,problem);
+        if(ok&&!c3_battle_story_prepare(state,battle)){ok=0;snprintf(problem,sizeof problem,"The bag could not be read for the battle.");}
         else if(!problem[0])snprintf(problem,sizeof problem,"The party could not be read for the battle.");
         if(ok){
             int scene=-1;char why[192]="";
@@ -322,7 +323,14 @@ static int play_story_battle(C3FieldStory *story,C3GameState *state,uint32_t enc
                 if(released<0){free(battle);c3_battle_pack_free(&pack);return 2;}
                 if(!released){free(battle);c3_battle_pack_free(&pack);
                     snprintf(error,capacity,"%s",problem[0]?problem:"The field could not make room for the battle.");return -1;}
+#ifdef C3_ROUNDTRIP_PROBE
+                {char prefix[32];snprintf(prefix,sizeof prefix,"probe/battle_%lu",(unsigned long)encounter);
+                 mkdir("sdmc:/3ds/Colosseum3DS/probe",0777);c3_battle_general_3d_set_autoplay(1,prefix);}
+#endif
                 scene=c3_battle_general_3d_run(&pack,battle,trace);
+#ifdef C3_ROUNDTRIP_PROBE
+                c3_battle_general_3d_set_autoplay(0,NULL);
+#endif
                 int restored=field_battle_restore(host,scene==1,trace,problem,sizeof problem);
                 if(restored<0)scene=1;
                 else if(!restored){free(battle);c3_battle_pack_free(&pack);
@@ -336,7 +344,16 @@ static int play_story_battle(C3FieldStory *story,C3GameState *state,uint32_t enc
             else result=c3_battle_story_apply(story,state,battle,&pack,NULL,&rewards,problem)?1:-1;
         }
         if(trace){fprintf(trace,"field_battle_engine encounter=%lu trainer=%s mode=played result=%d code=%u prize=%lu\n",
-                          (unsigned long)encounter,info.trainer,result,(unsigned)rewards.result_code,(unsigned long)rewards.prize);fflush(trace);}
+                          (unsigned long)encounter,info.trainer,result,(unsigned)rewards.result_code,(unsigned long)rewards.prize);
+            if(result>0){unsigned long exp=0;unsigned levels=0,learned=0,skipped=0,balls=0;
+                for(unsigned i=0;i<C3_GB_PARTY;++i){exp+=rewards.exp[i];levels+=rewards.levels_gained[i];learned+=rewards.learned_count[i];skipped+=rewards.skipped_count[i];}
+                for(unsigned i=1;i<=12;++i)balls+=rewards.balls_used[i];
+                fprintf(trace,"field_battle_writeback encounter=%lu written=%d exp=%lu levels=%u learned=%u forget_prompt_skipped=%u snagged=%u balls_used=%u wipeout=%d\n",
+                        (unsigned long)encounter,rewards.written,exp,levels,learned,skipped,(unsigned)rewards.caught_count,balls,rewards.wipeout);
+                for(unsigned k=0;k<rewards.caught_count;++k)
+                    fprintf(trace,"field_battle_snag encounter=%lu species=%u shadow=%u stored=%u\n",(unsigned long)encounter,
+                            battle->party[1][rewards.caught[k]].species,battle->party[1][rewards.caught[k]].shadow,rewards.stored[k]);}
+            fflush(trace);}
         free(battle);
     }
     c3_battle_pack_free(&pack);
@@ -825,6 +842,8 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
 #ifdef C3_ROUNDTRIP_PROBE
         /* Probe: answer open dialogue with A, one press a second. */
         if(view&&(view->dialogue||view->choice)&&frames%60u==0u)input.pressed|=C3_PAD_A;
+        /* Probe: accept a waiting story battle (it then plays unattended). */
+        if(view&&view->blocked[0]&&view->battle_id&&view->battle_id!=10&&frames%60u==30u)input.pressed|=C3_PAD_A;
 #endif
         if(!npc.attached&&!npc_stream_attach(&npc,0,storage,models,actor_models,model_paths,&story,count,skin_actors,
                                              tv_index,view?view->tv_enabled:1,frames,trace,error,capacity)){result=-1;break;}

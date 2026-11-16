@@ -38,6 +38,20 @@ static const C3GeneralMon *hero(const C3GeneralBattle *b, unsigned pos)
     uint8_t m = pos < b->active_count ? b->active[0][pos] : 255;
     return m != 255 ? &b->party[0][m] : NULL;
 }
+/* Balls the hero holds (item ids), for the Snag Machine page. */
+static unsigned ball_list(const C3GeneralBattle *b, unsigned out[12])
+{
+    unsigned n = 0;
+    if (!b->snag || b->link) return 0;
+    for (unsigned ball = 1; ball <= 12; ++ball) if (b->balls[ball]) out[n++] = ball;
+    return n;
+}
+static unsigned snag_targets(const C3GeneralBattle *b, const C3BattlePack *pack, unsigned pos, unsigned ball, unsigned out[2])
+{
+    unsigned n = 0;
+    for (unsigned t = 2; t < 2u + b->active_count; ++t) if (c3_general_battle_can_snag(b, pack, pos, ball, t)) out[n++] = t;
+    return n;
+}
 /* First hero position at or after `from` that still needs a command. */
 static int next_position(const C3GeneralUi *ui, const C3GeneralBattle *b, unsigned from)
 {
@@ -69,7 +83,7 @@ void c3_general_ui_draw(const C3BattlePack *pack, const C3GeneralBattle *b, cons
     const char *message = e ? e->text : ui->error[0] ? ui->error : "";
     if (ui->page == C3_GUI_RESULT && b->event_count) message = b->events[b->event_count - 1].text;
     if (ui->page == C3_GUI_WAIT) message = "Waiting for the other players...";
-    if (ui->page == C3_GUI_MOVES || ui->page == C3_GUI_TARGET || ui->page == C3_GUI_SWITCH) {
+    if (ui->page == C3_GUI_MOVES || ui->page == C3_GUI_TARGET || ui->page == C3_GUI_SWITCH || ui->page == C3_GUI_BALL) {
         const C3GeneralMon *m = hero(b, ui->position);
         snprintf(text, sizeof text, "What will %s do?", m ? m->name : "?");
         message = ui->error[0] ? ui->error : text;
@@ -83,7 +97,19 @@ void c3_general_ui_draw(const C3BattlePack *pack, const C3GeneralBattle *b, cons
             if (m->moves[i]) { c3_battle_pack_move_name(pack, m->moves[i], name); snprintf(pp, sizeof pp, "%u/%u", m->pp[i], m->pp_max[i]); }
             c3_ui_row_value(s, 148 + (int)i * 19, name, pp, ui->cursor == i, !(legal >> i & 1u));
         }
-        c3_ui_footer(s, b->party_count[0] > b->active_count ? "A: use  B: back  Y: switch" : "A: use  B: back");
+        unsigned balls[12];
+        int can_ball = ball_list(b, balls) > 0, can_switch = b->party_count[0] > b->active_count;
+        c3_ui_footer(s, can_switch && can_ball ? "A: use  B: back  Y: switch  X: ball" : can_switch ? "A: use  B: back  Y: switch" :
+                        can_ball ? "A: use  B: back  X: ball" : "A: use  B: back");
+    } else if (ui->page == C3_GUI_BALL) {
+        unsigned balls[12], n = ball_list(b, balls);
+        for (unsigned i = 0; i < n && i < 4; ++i) {
+            unsigned first = ui->cursor >= 4 ? ui->cursor - 3 : 0, k = first + i;
+            if (k >= n) break;
+            snprintf(text, sizeof text, "x%u", b->balls[balls[k]]);
+            c3_ui_row_value(s, 148 + (int)i * 19, c3_general_ball_name(balls[k]), text, ui->cursor == k, 0);
+        }
+        c3_ui_footer(s, "A: throw  B: back");
     } else if (ui->page == C3_GUI_TARGET) {
         unsigned foes[2], n = living_foes(b, foes);
         for (unsigned i = 0; i < n; ++i) {
@@ -126,7 +152,9 @@ int c3_general_ui_press(C3GeneralUi *ui, const C3BattlePack *pack, C3GeneralBatt
         uint8_t legal = c3_general_battle_legal_moves(b, pack, ui->position);
         if (pressed & C3_PAD_UP) ui->cursor = (ui->cursor + 3) % 4;
         if (pressed & C3_PAD_DOWN) ui->cursor = (ui->cursor + 1) % 4;
-        if ((pressed & C3_PAD_Y) && b->party_count[0] > b->active_count) { ui->page = C3_GUI_SWITCH; ui->cursor = 0; }
+        unsigned balls[12];
+        if ((pressed & C3_PAD_X) && ball_list(b, balls)) { ui->page = C3_GUI_BALL; ui->cursor = 0; }
+        else if ((pressed & C3_PAD_Y) && b->party_count[0] > b->active_count) { ui->page = C3_GUI_SWITCH; ui->cursor = 0; }
         else if (pressed & C3_PAD_B) {
             int back = -1;
             for (int p = (int)ui->position - 1; p >= 0; --p) {
@@ -149,11 +177,31 @@ int c3_general_ui_press(C3GeneralUi *ui, const C3BattlePack *pack, C3GeneralBatt
                 else submit = 1;
             }
         }
+    } else if (ui->page == C3_GUI_BALL) {
+        unsigned balls[12], n = ball_list(b, balls);
+        if (!n) { ui->page = C3_GUI_MOVES; ui->cursor = 0; }
+        else if (pressed & C3_PAD_UP) ui->cursor = (ui->cursor + n - 1) % n;
+        else if (pressed & C3_PAD_DOWN) ui->cursor = (ui->cursor + 1) % n;
+        else if (pressed & C3_PAD_B) { ui->page = C3_GUI_MOVES; ui->cursor = 0; }
+        else if (pressed & C3_PAD_A) {
+            /* The Snag Machine: a ball only at a Shadow Pokemon. */
+            unsigned ball = balls[ui->cursor % n], targets[2], t = snag_targets(b, pack, ui->position, ball, targets);
+            C3GeneralCommand *c = &ui->commands[ui->position];
+            if (!t) snprintf(ui->error, sizeof ui->error, "There is no Shadow Pokemon to snag.");
+            else { c->kind = 2; c->slot = (uint8_t)ball; c->target = (uint8_t)targets[0];
+                   if (t > 1) { ui->page = C3_GUI_TARGET; ui->target_cursor = 0; } else submit = 1; }
+        }
     } else if (ui->page == C3_GUI_TARGET) {
         unsigned foes[2], n = living_foes(b, foes);
+        C3GeneralCommand *c = &ui->commands[ui->position];
         if (pressed & (C3_PAD_UP | C3_PAD_DOWN | C3_PAD_LEFT | C3_PAD_RIGHT)) ui->target_cursor = n ? (ui->target_cursor + 1) % n : 0;
-        if (pressed & C3_PAD_B) ui->page = C3_GUI_MOVES;
-        else if ((pressed & C3_PAD_A) && n) { ui->commands[ui->position].target = (uint8_t)foes[ui->target_cursor % n]; submit = 1; }
+        if (pressed & C3_PAD_B) { ui->page = c->kind == 2 ? C3_GUI_BALL : C3_GUI_MOVES; ui->cursor = 0; }
+        else if ((pressed & C3_PAD_A) && n) {
+            unsigned target = foes[ui->target_cursor % n];
+            if (c->kind == 2 && !c3_general_battle_can_snag(b, pack, ui->position, c->slot, target))
+                snprintf(ui->error, sizeof ui->error, "Only a Shadow Pokemon can be snagged.");
+            else { c->target = (uint8_t)target; submit = 1; }
+        }
     } else if (ui->page == C3_GUI_SWITCH) {
         if (pressed & C3_PAD_UP) ui->cursor = (ui->cursor + b->party_count[0] - 1) % b->party_count[0];
         if (pressed & C3_PAD_DOWN) ui->cursor = (ui->cursor + 1) % b->party_count[0];

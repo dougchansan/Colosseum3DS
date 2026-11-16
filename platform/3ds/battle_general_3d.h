@@ -38,6 +38,11 @@ typedef struct C3BattleLinkHooks {
     int (*turn_ready)(void *ctx, C3GeneralBattle *view);
 } C3BattleLinkHooks;
 int c3_battle_general_3d_run_link(const C3BattlePack *pack, C3GeneralBattle *view, C3BattleLinkHooks *hooks, FILE *trace);
+/* Probe builds (C3_ROUNDTRIP_PROBE): story battles run unattended. The
+ * hero throws its best ball at any Shadow Pokemon it may snag, else uses
+ * the opponent policy; frames go to <shot_prefix>_<frame>_top/bottom.bmp.
+ * on = 0 restores player control. */
+void c3_battle_general_3d_set_autoplay(int on, const char *shot_prefix);
 #ifdef C3_GENERAL_3D_PROBE
 int c3_battle_general_3d_probe_run(uint32_t encounter);
 #endif

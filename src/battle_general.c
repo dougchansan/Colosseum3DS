@@ -710,6 +710,7 @@ int c3_general_battle_choose_with(const C3GeneralBattle *cb,const C3BattlePack *
 
 static const char *const ball_name[13]={"","MASTER BALL","ULTRA BALL","GREAT BALL","POKE BALL",
     "SAFARI BALL","NET BALL","DIVE BALL","NEST BALL","REPEAT BALL","TIMER BALL","LUXURY BALL","PREMIER BALL"};
+const char *c3_general_ball_name(unsigned ball){return ball>=1&&ball<=12?ball_name[ball]:"";}
 static int snag_allowed(C3GeneralBattle *b,const C3BattlePack *p,unsigned pos,unsigned ball,unsigned target)
 {
     C3ShadowInfo sh;const C3GeneralMon *y=target<4?cat(b,target):NULL;

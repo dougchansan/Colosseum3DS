@@ -167,6 +167,8 @@ typedef struct C3ShadowInfo {
     uint16_t species, gauge, snag_flag;
 } C3ShadowInfo;
 int c3_battle_pack_shadow(const C3BattlePack *pack, unsigned id, C3ShadowInfo *info);
+/* The ball item's name (1..12), "" otherwise. */
+const char *c3_general_ball_name(unsigned ball);
 /* Whether the hero at `position` may throw `ball` at `target` now. */
 int c3_general_battle_can_snag(const C3GeneralBattle *battle, const C3BattlePack *pack,
                                unsigned position, unsigned ball, unsigned target);
