@@ -326,6 +326,7 @@ scripts.
 | double, rule 0, 3D stage | 2 Azahar | console save, campaign save | 25 | all 26 equal, final 8203A059 | `private/evidence/colosseum-2p-double-3d/` |
 | single, rule 0, headless | 2 Azahar | console save (2 Pokemon, Lv25-26), downloaded save (6 Pokemon, Lv100) | 3 | all 4 equal, final 5EA5A0E8 | `private/evidence/colosseum-2p-rule0/` |
 | single, rule 1 (Lv50) | 2 Azahar | as above | - | refused on both: "Choose 3 Pokemon." | `private/evidence/colosseum-2p-lv50-refused/` |
+| multi (2 v 2), rule 0, headless | 4 Azahar | console, downloaded, campaign, provided saves (2 or 3 Pokemon each) | 25 | all 26 equal on four consoles, final 96672B24 | `private/evidence/colosseum-4p-multi/` |
 | title-menu lobby, scripted presses | 2 Azahar | console save, campaign save | 16 | all 17 equal, final 164E2928 | `private/evidence/lobby-colosseum-2p/` |
 
 The headless run is the documented fallback: the Lv100 team's lead species
@@ -380,9 +381,8 @@ rather than Ruby/Sapphire, so no GBA conversion (`fn_8008BBDC` /
 - **Trading**: no trade evolution check (`stateFunctionEvolution`), no
   strategy-memo update (`memoDataSet`), no GBA (Ruby/Sapphire) partner, no
   trade animation; trades are between two players only.
-- **Four-player Colosseum** was proved in the host tests (synthetic pack)
-  and four-player Battle Now on Azahar; a four-instance Colosseum run with
-  four saves was not done.
+- **Four-player Colosseum** ran on four Azahar instances only headless
+  (the Lv100 saves' species have no prepared 3D models).
 - **Lobby UI** was driven only by scripted presses in the probe build, not
   by a person at the console.
 
