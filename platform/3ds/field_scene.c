@@ -1137,10 +1137,16 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                     if(c3_orbit_recenter_chord(input.held,input.pressed)){
                         /* ZL/ZR (or R) + Down: leave free flight, authored view again. */
                         c3_orbit_reset(&orbit);
+                        c3_first_person_reset_view(&first_person);
                         input.pressed&=(uint16_t)~(C3_PAD_DOWN|C3_PAD_Z|C3_PAD_R);
                         if(trace){fprintf(trace,"camera_recenter\n");fflush(trace);}
                     }
+                    uint16_t view_buttons=0;
                     if(first_person.enabled){
+                        /* D-pad: field of view (Up/Down), eye height (Left/Right),
+                         * view distance (L + Up/Down); kept from walking. */
+                        if(!(input.held&(C3_PAD_Z|C3_PAD_R)))
+                            view_buttons=c3_first_person_adjust(&first_person,input.held,map.camera.fov_y_degrees,delta);
                         c3_first_person_look(&first_person,input.cstick_x,input.cstick_y,delta);
                         c3_first_person_touch(&first_person,input.touch_held,input.touch_x,input.touch_y);
                     }else if(orbit.free){
@@ -1179,6 +1185,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                             float reach=hypotf((float)walk_x,(float)walk_y);
                             if(reach>15.0f){walk_x=(int)lroundf((float)walk_x*127.0f/reach);walk_y=(int)lroundf((float)walk_y*127.0f/reach);}
                         }
+                        walk_buttons&=(uint16_t)~view_buttons;
                         if(orbit.free)walk_buttons=0;
                         if(!c3_field_move(&map,&player,walk_x,walk_y,walk_buttons,move_yaw,delta)){
                             snprintf(error,capacity,"Field movement failed.");result=-1;break;
@@ -1347,7 +1354,11 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
             char l1[64],l2[64];
             snprintf(l1,sizeof l1,"floor %03lx xyz %.1f %.1f %.1f",(unsigned long)map.floor,
                      (double)player.position[0],(double)player.position[1],(double)player.position[2]);
-            snprintf(l2,sizeof l2,"orbit zoom %.2f yaw %.2f pitch %.2f",(double)orbit.zoom,(double)orbit.yaw,(double)orbit.pitch);
+            if(first_person.enabled)
+                snprintf(l2,sizeof l2,"fp fov %.0f eye %.1f dist %.2fx",(double)camera.fov_y_degrees,
+                         (double)(first_person.eye_height>0?first_person.eye_height:C3_FIRST_PERSON_EYE_HEIGHT),
+                         (double)(first_person.view_distance>0?first_person.view_distance:1.0f));
+            else snprintf(l2,sizeof l2,"orbit zoom %.2f yaw %.2f pitch %.2f",(double)orbit.zoom,(double)orbit.yaw,(double)orbit.pitch);
             c3_debug_overlay_frame("field",&camera,0,&stats,l1,l2,NULL);
         }
         int draw_result=pda_preview?c3_pda_preview_draw(pda_preview,pda_seconds,&stats,error,capacity):
