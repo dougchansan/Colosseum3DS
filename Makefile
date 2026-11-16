@@ -335,16 +335,16 @@ particle-tackle-check: build/test_particle_tackle
 	./build/test_particle_tackle
 test: particle-tackle-check
 
-build/test_inventory: tests/test_inventory.c tests/test_game_state.c src/inventory.c src/pda.c src/game_state.c src/save.c src/decomp_pokemon.c build/save_codec.c $(HEADERS)
-	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_inventory.c src/inventory.c src/pda.c src/game_state.c src/save.c src/decomp_pokemon.c build/save_codec.c $(LDFLAGS) -lm -o $@
+build/test_inventory: tests/test_inventory.c tests/test_game_state.c src/inventory.c src/pda.c src/game_state.c src/save.c src/decomp_pokemon.c build/save_codec.c src/pc_menu.c src/bottom_ui.c $(HEADERS)
+	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_inventory.c src/inventory.c src/pda.c src/game_state.c src/save.c src/decomp_pokemon.c build/save_codec.c src/pc_menu.c src/bottom_ui.c $(LDFLAGS) -lm -o $@
 all: build/test_inventory
 .PHONY: inventory-check
 inventory-check: build/test_inventory
 	./build/test_inventory
 test: inventory-check
 
-build/test_shop: tests/test_shop.c tests/test_game_state.c src/shop.c src/inventory.c src/pda.c src/bottom_ui.c src/game_state.c src/save.c src/decomp_pokemon.c build/save_codec.c include/colosseum3ds/shop.h $(HEADERS)
-	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_shop.c src/shop.c src/inventory.c src/pda.c src/bottom_ui.c src/game_state.c src/save.c src/decomp_pokemon.c build/save_codec.c $(LDFLAGS) -lm -o $@
+build/test_shop: tests/test_shop.c tests/test_game_state.c src/shop.c src/inventory.c src/pda.c src/bottom_ui.c src/game_state.c src/save.c src/decomp_pokemon.c build/save_codec.c include/colosseum3ds/shop.h src/pc_menu.c $(HEADERS)
+	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_shop.c src/shop.c src/inventory.c src/pda.c src/bottom_ui.c src/game_state.c src/save.c src/decomp_pokemon.c build/save_codec.c src/pc_menu.c $(LDFLAGS) -lm -o $@
 all: build/test_shop
 .PHONY: shop-check
 shop-check: build/test_shop
@@ -360,8 +360,8 @@ pda-audio-check: build/test_pda_audio
 	./build/test_pda_audio
 test: pda-audio-check
 
-build/test_inventory_ui: tests/test_inventory_ui.c tests/test_game_state.c $(PDA_SOURCES) $(HEADERS) $(UI_VIEW_HEADERS) build/pda_fixture.c3pd
-	$(CC) $(CPPFLAGS) -Iplatform/3ds -Isrc $(CFLAGS) tests/test_inventory_ui.c $(PDA_SOURCES) $(LDFLAGS) -lm -o $@
+build/test_inventory_ui: tests/test_inventory_ui.c tests/test_game_state.c $(PDA_SOURCES) src/pc_menu.c $(HEADERS) $(UI_VIEW_HEADERS) build/pda_fixture.c3pd
+	$(CC) $(CPPFLAGS) -Iplatform/3ds -Isrc $(CFLAGS) tests/test_inventory_ui.c $(PDA_SOURCES) src/pc_menu.c $(LDFLAGS) -lm -o $@
 all: build/test_inventory_ui
 .PHONY: inventory-ui-check
 inventory-ui-check: build/test_inventory_ui
@@ -369,8 +369,8 @@ inventory-ui-check: build/test_inventory_ui
 test: inventory-ui-check
 
 # Opt-in private input: ./build/test_inventory_real INPUT.gci GAME.c3g PDA.c3pd
-build/test_inventory_real: tests/test_inventory_real.c tests/test_game_state.c src/inventory.c src/pda.c src/game_state.c src/save.c src/decomp_pokemon.c build/save_codec.c $(HEADERS)
-	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_inventory_real.c src/inventory.c src/pda.c src/game_state.c src/save.c src/decomp_pokemon.c build/save_codec.c $(LDFLAGS) -lm -o $@
+build/test_inventory_real: tests/test_inventory_real.c tests/test_game_state.c src/inventory.c src/pda.c src/game_state.c src/save.c src/decomp_pokemon.c build/save_codec.c src/pc_menu.c src/bottom_ui.c $(HEADERS)
+	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_inventory_real.c src/inventory.c src/pda.c src/game_state.c src/save.c src/decomp_pokemon.c build/save_codec.c src/pc_menu.c src/bottom_ui.c $(LDFLAGS) -lm -o $@
 
 # Opt-in original model audit: pass model root followed by additional species IDs.
 build/pda_valid_batch.inc: platform/3ds/title_renderer.c | build
