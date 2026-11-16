@@ -538,6 +538,10 @@ def validate_partner(partner=None):
     return partner
 
 
+# Permanent regional identities are available without a private survey.
+from realgam_profiles import REALGAM_FLOORS
+FLOORS.update(REALGAM_FLOORS)
+
 validate()
 validate_partner()
 
