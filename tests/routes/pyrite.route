@@ -48,15 +48,17 @@ floor 0x0f 0
 door 4
 at 18 -73
 expect 0xa17 1
-# Generator: A on surface 0 opens the pause menu at Items (native D0,
-# cipher lane, not landed); using the gear runs fn12, which sets 0xAB7.
-set 0xab7 1
-door 6
-# Town fn30: the camera follows the restarted windmill, then back inside.
+# Generator: A on surface 0 opens the pause menu at Items (native D0);
+# using the gear (item 532) queues fn12, which sets 0xAB7.
+use 532
+inspect 0
+expect 0xab7 1
+# fn12 runs once the menu event ends: town fn30 shows the windmill turning,
+# back inside fn15 takes the gear.
 expect 0xab8 1
 expect 0x408 1
-# Pyrite Colosseum (entrance 0x78 through town door 9, function 31).
 door 6
+# Pyrite Colosseum (entrance 0x78 through town door 9, function 31).
 door 9
 press 9 1 180
 run 1200

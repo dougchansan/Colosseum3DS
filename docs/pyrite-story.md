@@ -43,8 +43,8 @@ floor, the scripts' own floor changes are followed, battles are reported as
 wins. Start: GameFAQs save 35188 (Phenac, WES/RUI; see
 `private/lanes/saves/INDEX.md`) plus Pyrite's world-map unlock `0x3F8`,
 which Realgam's exterior (D4_out bank `02CC0E00` function 2) writes before
-this chapter. 82 steps run; the original scripts write 42 flags and show
-127 messages.
+this chapter. 83 steps run; the original scripts write 43 flags and show
+about 130 messages.
 
 | Step | Original behaviour | Flags written by the scripts |
 | --- | --- | --- |
@@ -56,8 +56,8 @@ this chapter. 82 steps run; the original scripts write 42 flags and show
 | Door 0xE | town main: with `0x9DA`, the box x 18..30, z -264..-250 | `0x403` |
 | Windmill keeper | 0x17 person 1 (fn 6), then main fn 7 | `0x404`, `0x405`, `0x8D1` |
 | Construction site | Realgam exterior (0x66): with `0x8D1`, init enables surface 0; A there runs fn 8 (gear, item 532, native DB) | `0xA58`, `0x407` |
-| Gear | 0x17 main fn 8 (box); A on surface 0 opens the pause menu at Items (native D0) and using the gear runs fn 12 | `0xA17`; `0xAB7` is a **shortcut** (below) |
-| Windmill turns | town main fn 30: camera, then link to 0x17 spawn 200; windmill fn 15 takes the gear | `0xAB8`, `0x408` |
+| Gear | 0x17 main fn 8 (box); A on surface 0 opens the pause menu at Items (native D0, route step `use 532`); the gear's registered script, fn 12, runs when that event ends | `0xA17`, `0xAB7` |
+| Windmill turns | fn 12 leads to town main fn 30: camera, then link to 0x17 spawn 200; windmill fn 15 takes the gear | `0xAB8`, `0x408` |
 | Colosseum | town fn 31 to 0x78; the receptionist (fn 5) accepts from the counter box x 4.6..19.2, z 0.2..1.8; main fn 4 plays four battles and gives item 294 | `0xB09`, `0xAF5`, `0xDD1`, `0x409`, `0xAF7` |
 | Bridge | town main fn 24 (box by the gate) leads into the building | `0x40A` |
 | Building 1F | 1F main fn 5: Cipher Peon, battle 101 | `0x9C8`, `0x40B` |
@@ -114,15 +114,16 @@ packs of the same floors. Commands: `tools/prepare_story.py` (and
   building's front door (town row 15) stays locked until `0x40A`, so the
   rooftop (town door 6) is how the chapter first reaches 4F.
 
-Natives from other lanes this chapter needs: DB (under), BB (under), 3C
-pitch/roll (under), the message control table and item names (systems), D0
-(cipher, not landed).
+Natives from other lanes this chapter needs: DB, BB, 3C pitch/roll and D8
+mode 1 (under), the message control table and item names (systems), D0 and
+native 11 key-item scripts (cipher, 59312a1; its own DB case is dropped in
+favour of under's, which was claimed first).
 
 ## Shortcuts
 
 | Area | Shortcut | Where recorded |
 | --- | --- | --- |
-| Gear | Native D0 (pause menu at Items) is the cipher lane's and has not landed; the route sets `0xAB7`, the one flag fn 12 writes | `route_shortcut flag=ab7` |
+| Gear on the console | The host route answers D0 with the gear; the console field scene does not enable the item menu yet (`c3_field_story_enable_item_menu`), so there D0 closes at once and the generator cannot be repaired | cipher lane's pause-menu work |
 | Battles | encounters 169, 170, 171, 172 (Colosseum), 101, 126, 129, 164 are skipped as wins; nothing is written to the party | `route_battle ... skipped_as_result=1`; for the battles lane |
 | Optional trainers | sight-triggered trainers (town fn 18/25, building 2F/3F, cave) are not fought: the port has no trainer sight | not in the route |
 | Start | the chapter starts from a Phenac save with `0x3F8` set; the Realgam visit that writes it belongs to the realgam lane | `route_shortcut flag=3f8` |
