@@ -12,7 +12,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define TABLE (32u+C3_UI_SPRITES*16u+95u*8u)
+#define TABLE (32u+C3_UI_SPRITES_V1*16u+95u*8u)
 
 static void put32(unsigned char *p,uint32_t n)
 {for(unsigned i=0;i<4;++i)p[i]=(unsigned char)(n>>(8*i));}
@@ -22,12 +22,12 @@ static void put32(unsigned char *p,uint32_t n)
 static unsigned char *fixture(size_t *bytes)
 {
     size_t size=TABLE;
-    for(unsigned i=0;i<C3_UI_SPRITES;++i){unsigned w=8u+(i*13u)%40u,h=8u+(i*7u)%24u;size+=w*h*4u;}
+    for(unsigned i=0;i<C3_UI_SPRITES_V1;++i){unsigned w=8u+(i*13u)%40u,h=8u+(i*7u)%24u;size+=w*h*4u;}
     size+=95u*256u;
     unsigned char *d=calloc(1,size);assert(d);
-    memcpy(d,"C3UI",4);put32(d+4,1);put32(d+8,(uint32_t)size);put32(d+12,C3_UI_SPRITES);put32(d+16,95);
+    memcpy(d,"C3UI",4);put32(d+4,1);put32(d+8,(uint32_t)size);put32(d+12,C3_UI_SPRITES_V1);put32(d+16,95);
     size_t next=TABLE;
-    for(unsigned i=0;i<C3_UI_SPRITES;++i){
+    for(unsigned i=0;i<C3_UI_SPRITES_V1;++i){
         unsigned w=8u+(i*13u)%40u,h=8u+(i*7u)%24u;unsigned char *e=d+32+i*16;
         put32(e,w);put32(e+4,h);put32(e+8,(uint32_t)next);put32(e+12,w*h*4u);
         for(unsigned y=0;y<h;++y)for(unsigned x=0;x<w;++x){
@@ -38,7 +38,7 @@ static unsigned char *fixture(size_t *bytes)
         next+=(size_t)w*h*4u;
     }
     for(unsigned i=0;i<95;++i){
-        unsigned char *e=d+32+C3_UI_SPRITES*16+i*8;put32(e,6u+i%9u);put32(e+4,(uint32_t)next);
+        unsigned char *e=d+32+C3_UI_SPRITES_V1*16+i*8;put32(e,6u+i%9u);put32(e+4,(uint32_t)next);
         for(unsigned y=0;y<16;++y)for(unsigned x=0;x<16;++x)
             if(((x*3u+y*5u+i)%7u)<3u&&x<12u&&y<14u)d[next+y*16u+x]=(unsigned char)(40u+((x*29u+y*31u+i*13u)%216u));
         next+=256;

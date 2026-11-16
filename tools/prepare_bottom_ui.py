@@ -31,7 +31,12 @@ SPRITES = (
     ("common.fsys", 0x00EE1200, (128, 74, 91, 47)),
     ("common.fsys", 0x01E11200, (0, 0, 144, 118)),
     ("common.fsys", 0x00EE1200, (213, 204, 33, 32)),
+    # C3_UI_BALL (pack version 2): the small shaded red/white Poke Ball beside
+    # the dark and grey party balls in the same atlas; the top-screen loading
+    # indicator spins it.
+    ("common.fsys", 0x00EE1200, (198, 4, 16, 16)),
 )
+PACK_VERSION = 2
 
 
 def decode_texture(data):
@@ -159,7 +164,7 @@ def extract_font(dol):
 
 
 def encode_pack(sprites, glyphs):
-    if len(sprites) != 10 or len(glyphs) != 95:
+    if len(sprites) != len(SPRITES) or len(glyphs) != 95:
         raise ValueError("Unexpected UI resource count")
     start = 32 + 16 * len(sprites) + 8 * len(glyphs)
     table, font_table, payload = bytearray(), bytearray(), bytearray()
@@ -176,7 +181,7 @@ def encode_pack(sprites, glyphs):
     size = start + len(payload)
     if size > 1024 * 1024:
         raise ValueError("UI pack exceeds memory budget")
-    return struct.pack("<4s7I", b"C3UI", 1, size, 10, 95, 0, 0, 0) + table + font_table + payload
+    return struct.pack("<4s7I", b"C3UI", PACK_VERSION, size, len(sprites), 95, 0, 0, 0) + table + font_table + payload
 
 
 def prepare(main_dol, files):
@@ -203,7 +208,7 @@ def prepare(main_dol, files):
             images[key] = decode_texture(read_member(archives[name], member, 1024 * 1024))
         sprites.append(crop(images[key], rect))
     data = encode_pack(sprites, extract_font(dol))
-    return data, {"format": "C3UI", "version": 1, "main_dol_sha1": MAIN_DOL_SHA1,
+    return data, {"format": "C3UI", "version": PACK_VERSION, "main_dol_sha1": MAIN_DOL_SHA1,
         "archives": provenance, "sprites": [{"archive": n, "member": hex(m), "crop": r} for n, m, r in SPRITES],
         "font": {"address": "0x8027A500", "id": 0, "characters": "ASCII 32..126; absent source braces display '?'", "resampling": "2x2 area average; original top bearing and half-width advance plus 1px spacing"},
         "sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data),
