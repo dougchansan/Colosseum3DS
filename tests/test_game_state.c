@@ -1,5 +1,6 @@
 #define _POSIX_C_SOURCE 200809L
 #include "colosseum3ds/game_state.h"
+#include "colosseum3ds/pc_menu.h"
 #include "colosseum3ds/save.h"
 #include "../src/save_codec.h"
 
@@ -28,6 +29,8 @@ static void w16(unsigned char *p,unsigned v) { p[0]=(unsigned char)(v>>8);p[1]=(
 static void w32(unsigned char *p,unsigned v)
 { p[0]=(unsigned char)(v>>24);p[1]=(unsigned char)(v>>16);p[2]=(unsigned char)(v>>8);p[3]=(unsigned char)v; }
 
+static int pc_text(void *context,uint32_t id,const char *name,char *out,size_t capacity)
+{(void)context;snprintf(out,capacity,name?"MSG%04X %s":"MSG%04X",(unsigned)id,name?name:"");return 1;}
 static void write_file(const char *path,const void *data,size_t size)
 {
     FILE *f=fopen(path,"wb"); CHECK(f!=NULL);
@@ -203,6 +206,38 @@ int main(int argc,char **argv)
         for(unsigned i=0;i<30;++i)CHECK(c3_game_state_box_store(&pc,2,first)==(int)i);
         CHECK(c3_game_state_box_store(&pc,2,first)==-1&&c3_game_state_box_deposit(&pc,1,2)==-1);
         char name[16];CHECK(c3_game_state_box_name(&pc,0,name,sizeof name));
+        c3_game_state_free(&pc);
+        /* The PC menu: Storage, deposit the first party member into BOX2,
+         * withdraw it again; a full BOX and the last Pokemon refuse. */
+        C3PcMenu menu;enum{L=1,R=2,D=4,U=8,PL=0x40,PR=0x20,A=0x100,B=0x200};
+        CHECK(c3_game_state_new(&pc,NULL,0x12345678,packpath,error));
+        c3_pc_menu_open(&menu,&pc,pc_text,NULL);
+        CHECK(menu.phase==C3_PC_TOP&&c3_pc_menu_update(&menu,D)==C3_PC_CHANGED&&menu.top==2); /* Item Storage is skipped */
+        CHECK(c3_pc_menu_update(&menu,A)==C3_PC_SAVE&&c3_pc_menu_update(&menu,D)==C3_PC_CHANGED&&c3_pc_menu_update(&menu,A)==C3_PC_EXIT);
+        CHECK(c3_pc_menu_update(&menu,U)==C3_PC_CHANGED&&c3_pc_menu_update(&menu,U)==C3_PC_CHANGED&&menu.top==0);
+        CHECK(c3_pc_menu_update(&menu,A)==C3_PC_CHANGED&&menu.phase==C3_PC_STORAGE);
+        CHECK(c3_pc_menu_update(&menu,A)==C3_PC_CHANGED&&menu.phase==C3_PC_ACTION);
+        CHECK(c3_pc_menu_update(&menu,A)==C3_PC_CHANGED&&menu.phase==C3_PC_BOX_CHOICE);
+        CHECK(c3_pc_menu_update(&menu,D)==C3_PC_CHANGED&&c3_pc_menu_update(&menu,A)==C3_PC_CHANGED);
+        CHECK(menu.phase==C3_PC_STORAGE&&menu.deposits==1&&menu.box==1&&c3_game_state_box_used(&pc,1)==1);
+        /* The last party member cannot be deposited. */
+        CHECK(c3_pc_menu_update(&menu,A)==C3_PC_CHANGED&&c3_pc_menu_update(&menu,A)==C3_PC_CHANGED);
+        CHECK(menu.phase==C3_PC_NOTICE&&!strcmp(menu.notice,"MSG1B90")&&c3_pc_menu_update(&menu,B)==C3_PC_CHANGED);
+        /* Box side: withdraw it back. */
+        CHECK(c3_pc_menu_update(&menu,R)==C3_PC_CHANGED&&menu.side==1&&c3_pc_menu_update(&menu,A)==C3_PC_CHANGED);
+        CHECK(c3_pc_menu_update(&menu,A)==C3_PC_CHANGED&&menu.withdrawals==1&&c3_game_state_box_used(&pc,1)==0);
+        CHECK(c3_game_state_summary(&pc,&s)&&s.party_count==2);
+        /* L/R switch boxes; an empty slot does nothing. */
+        CHECK(c3_pc_menu_update(&menu,PR)==C3_PC_CHANGED&&menu.box==2&&c3_pc_menu_update(&menu,A)==C3_PC_NONE);
+        for(unsigned i=0;i<30;++i)CHECK(c3_game_state_box_store(&pc,2,first)>=0);
+        CHECK(c3_pc_menu_update(&menu,L)==C3_PC_CHANGED&&c3_pc_menu_update(&menu,A)==C3_PC_CHANGED);
+        CHECK(c3_pc_menu_update(&menu,A)==C3_PC_CHANGED&&c3_pc_menu_update(&menu,A)==C3_PC_CHANGED); /* BOX3 chosen */
+        CHECK(menu.phase==C3_PC_NOTICE&&!strcmp(menu.notice,"MSG1B81"));
+        CHECK(c3_pc_menu_update(&menu,A)==C3_PC_CHANGED&&menu.phase==C3_PC_BOX_CHOICE);
+        CHECK(c3_pc_menu_update(&menu,B)==C3_PC_CHANGED&&c3_pc_menu_update(&menu,B)==C3_PC_CHANGED&&menu.phase==C3_PC_TOP);
+        {unsigned char *pixels=calloc(1,320u*240u*3u);C3BottomUi ui;CHECK(pixels);
+         c3_ui_begin(&ui,pixels,0,NULL,NULL);c3_pc_menu_draw(&menu,&ui);
+         menu.phase=C3_PC_STORAGE;c3_pc_menu_draw(&menu,&ui);free(pixels);}
         c3_game_state_free(&pc);
     }
     CHECK(summary.party[0].experience==0x4a6fu && summary.party[1].experience==0x3ff4u);

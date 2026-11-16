@@ -118,8 +118,8 @@ build/pda_fixture.c3pd: tests/pda_fixture.py tools/prepare_pda.py | build
 	python3 tests/pda_fixture.py $@
 
 PDA_SOURCES = src/inventory.c platform/3ds/ingame_menu.c src/pda.c src/bottom_ui.c src/game_state.c src/save.c src/decomp_pokemon.c build/save_codec.c
-build/test_pda: tests/test_pda.c tests/test_game_state.c $(PDA_SOURCES) src/story.c $(HEADERS) $(UI_VIEW_HEADERS) build/pda_fixture.c3pd
-	$(CC) $(CPPFLAGS) -Iplatform/3ds -Isrc $(CFLAGS) tests/test_pda.c $(PDA_SOURCES) src/story.c $(LDFLAGS) -lm -o $@
+build/test_pda: tests/test_pda.c tests/test_game_state.c $(PDA_SOURCES) src/pc_menu.c src/story.c $(HEADERS) $(UI_VIEW_HEADERS) build/pda_fixture.c3pd
+	$(CC) $(CPPFLAGS) -Iplatform/3ds -Isrc $(CFLAGS) tests/test_pda.c $(PDA_SOURCES) src/pc_menu.c src/story.c $(LDFLAGS) -lm -o $@
 
 build/render_ingame_menu_preview: tools/render_ingame_menu_preview.c $(PDA_SOURCES) $(HEADERS) $(UI_VIEW_HEADERS)
 	$(CC) $(CPPFLAGS) -Iplatform/3ds -Isrc $(CFLAGS) tools/render_ingame_menu_preview.c $(PDA_SOURCES) $(LDFLAGS) -lm -o $@
@@ -130,8 +130,8 @@ pda-check: build/test_pda
 	./build/test_pda
 test: pda-check
 
-build/test_game_state: tests/test_game_state.c src/game_state.c src/save.c src/decomp_pokemon.c build/save_codec.c $(HEADERS)
-	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_game_state.c src/game_state.c src/save.c src/decomp_pokemon.c build/save_codec.c $(LDFLAGS) -lm -o $@
+build/test_game_state: tests/test_game_state.c src/game_state.c src/pc_menu.c src/bottom_ui.c src/save.c src/decomp_pokemon.c build/save_codec.c $(HEADERS)
+	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_game_state.c src/game_state.c src/pc_menu.c src/bottom_ui.c src/save.c src/decomp_pokemon.c build/save_codec.c $(LDFLAGS) -lm -o $@
 
 build/save_codec.c: tools/prepare_save_codec.py vendor/colosseum/src/game/memcard.c | build
 	python3 tools/prepare_save_codec.py
