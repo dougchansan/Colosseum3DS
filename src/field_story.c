@@ -183,6 +183,10 @@ static int validate_native(const Impl *s,const C3StoryCall *c,char *error)
         /* Floor 022 starts a battle with the encounter alone (98 with one
          * word); the zero-filled register image gives the other two zero. */
         if(c->native==0x98&&c->argc>=1)return 1;
+        /* The Pyrite windmill bank (floor 017) calls B5 (fn_80188FA0, head
+         * aim) as (group, index, target) with three words; the fourth is the
+         * zero of the register image, so the target is person (target, 0). */
+        if(c->native==0xb5&&c->argc==3)return 1;
         /* Extra script words are legal: the dispatcher reads only the table
          * row's typed arguments and the call pops the rest (the mayor's-house
          * bank passes five words to the three-argument native 36). Missing
@@ -400,14 +404,16 @@ static int run_native(Impl *s,RunTask *t,char *error)
 {
     C3StoryCall *c=&t->call;uint32_t *a=c->args,value=0;Person *p;
     if(c->kind==C3_STORY_WAIT_FRAMES){t->wait=W_SECONDS;t->remaining=(float)a[0]/60.0f;return 1;}
-    /* Opcode 0x23 (fn_800F16C0) formats into a buffer and writes it with
-     * GSlogWrite, the developer log only; nothing is shown in retail. */
+    /* Opcode 23 is fn_800F16C0 (gs_vm.c): it formats a debug string into
+     * the developer log and returns no value. Retail shows nothing, so the
+     * call is logged by position only (Pyrite's windmill cutscene, town
+     * function 30, starts with one). */
     if(c->kind==C3_STORY_PRINT){
-        log_line(s,"story_print script=%08lx pc=%08lx format=%08lx argc=%lu status=developer_log_only",
-                 (unsigned long)c->script_id,(unsigned long)c->pc,(unsigned long)a[0],(unsigned long)c->argc);
+        log_line(s,"story_print task=%u script=%08lx pc=%08lx argc=%lu",t->key,(unsigned long)c->script_id,
+                 (unsigned long)c->pc,(unsigned long)c->argc);
         return resume(s,t,0,error);
     }
-    if(c->kind!=C3_STORY_NATIVE)return fail(error,"Original GSVM print request needs a string adapter");
+    if(c->kind!=C3_STORY_NATIVE)return fail(error,"Unknown original GSVM call kind %u",(unsigned)c->kind);
     if(!validate_native(s,c,error))return 0;
     if(c->native!=0x51&&c->native!=0x47&&c->native!=0x1f&&c->native!=0x3a)
         log_line(s,"story_native task=%u script=%08lx pc=%08lx id=%02lx argc=%lu a=%08lx,%08lx,%08lx,%08lx,%08lx,%08lx",
