@@ -13,6 +13,40 @@ static bool graphics_started;
 static bool console_is_new;
 static uint16_t previous_buttons;
 static uint16_t deferred_buttons;
+#ifdef C3_LINK_PROBE
+/* Unattended link probes: one scripted button edge every `script_every`
+ * frames, as if pressed on the pad; a trailing '*' repeats the script,
+ * and tokens before a '|' run once before the rest repeats. */
+static uint16_t script_keys[64];
+static unsigned script_count, script_at, script_every = 30, script_frame, script_repeat, script_loop;
+void c3_n3ds_set_script(const char *script, unsigned every)
+{
+    static const struct { const char *name; uint16_t bit; } names[] = {
+        {"A", C3_PAD_A}, {"B", C3_PAD_B}, {"X", C3_PAD_X}, {"Y", C3_PAD_Y}, {"UP", C3_PAD_UP}, {"DOWN", C3_PAD_DOWN},
+        {"LEFT", C3_PAD_LEFT}, {"RIGHT", C3_PAD_RIGHT}, {"START", C3_PAD_START}, {"WAIT", 0}};
+    char token[16]; unsigned n = 0;
+    script_count = script_at = script_frame = script_repeat = script_loop = 0;
+    if (every) script_every = every;
+    for (const char *p = script; p && *p && script_count < 64;) {
+        if (*p == ',' || *p == '*' || *p == '|') {
+            if (*p == '*') script_repeat = 1;
+            if (*p == '|') { script_repeat = 1; script_loop = script_count; } /* prefix once, then repeat the rest */
+            ++p; continue;
+        }
+        n = 0; while (*p && *p != ',' && *p != '*' && *p != '|' && n + 1 < sizeof token) token[n++] = *p++;
+        token[n] = 0;
+        for (unsigned k = 0; k < sizeof names / sizeof names[0]; ++k)
+            if (!strcmp(token, names[k].name)) { script_keys[script_count++] = names[k].bit; break; }
+    }
+}
+static uint16_t script_next(void)
+{
+    if (!script_count || ++script_frame < script_every) return 0;
+    script_frame = 0;
+    if (script_at >= script_count) { if (!script_repeat) return 0; script_at = script_loop; }
+    return script_keys[script_at++];
+}
+#endif
 static aptHookCookie clock_hook;
 static unsigned clock_pause_mask;
 static uint64_t clock_pause_start, clock_paused_us;
@@ -120,6 +154,9 @@ bool c3_n3ds_poll(C3N3dsInput *input)
     memset(input, 0, sizeof(*input));
     input->held = map_buttons(keys);
     input->pressed = (uint16_t)((input->held & ~previous_buttons) | deferred_buttons);
+#ifdef C3_LINK_PROBE
+    input->pressed |= script_next();
+#endif
     deferred_buttons = 0;
     previous_buttons = input->held;
     input->stick_x = normalize_axis(circle.dx);

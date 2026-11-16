@@ -58,6 +58,9 @@ void c3_n3ds_autopress(int enabled, float interval);
 #endif
 const char *c3_n3ds_data_root(void);
 void c3_n3ds_wait_for_exit(void);
+#ifdef C3_LINK_PROBE
+void c3_n3ds_set_script(const char *script, unsigned every_frames);
+#endif
 void c3_n3ds_shutdown(void);
 
 int c3_n3ds_renderer_init(char *error, size_t capacity);

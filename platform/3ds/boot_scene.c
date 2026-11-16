@@ -1,4 +1,5 @@
 #include "boot_scene.h"
+#include "link_play.h"
 #include "trace_writer.h"
 #include "field_scene.h"
 #include "dev_floor_scene.h"
@@ -106,7 +107,7 @@ static void load_card(C3GameState *state, C3GameMenuSave *view,
 /* Return 0 with a prepared in-memory game, 1 on application exit, -1 on
  * rendering/asset failure. Native menus borrow the live title background. */
 static int run_title(FILE *trace, C3GameState *state,
-                      int *new_game, int *dev_floor, int start_at_menu, C3GameMenuOptions *session_options,
+                      int *new_game, int *dev_floor, int *link_mode, int start_at_menu, C3GameMenuOptions *session_options,
                       int *options_edited, char *error, size_t capacity)
 {
     C3Title *title = calloc(1, sizeof(*title));
@@ -252,6 +253,10 @@ static int run_title(FILE *trace, C3GameState *state,
                         break;
                     } else c3_game_menu_set_error(&menu, game_error);
                 }
+            } else if (event.kind == C3_MENU_EVENT_COLOSSEUM_BATTLE || event.kind == C3_MENU_EVENT_BATTLE_NOW) {
+                *link_mode = event.kind == C3_MENU_EVENT_COLOSSEUM_BATTLE ? C3_LINK_MODE_COLOSSEUM : C3_LINK_MODE_BATTLE_NOW;
+                if (trace) { fprintf(trace, "link_play mode=%d\n", *link_mode); fflush(trace); }
+                result = 0; break;
             } else if (event.kind == C3_MENU_EVENT_CONTINUE) {
                 if (!c3_field_scene_available()) {
                     c3_game_menu_set_error(&menu, "Prepare the OUTSKIRT STAND assets before continuing.");
@@ -389,11 +394,17 @@ int c3_boot_scene_run(int core_status)
     c3_music_trace(trace, "gs_logo_end");
     int from_game = 0;
     while (!result) {
-        int new_game = 0, dev_floor = 0;
-        result = run_title(trace, &state, &new_game, &dev_floor, from_game,
+        int new_game = 0, dev_floor = 0, link_mode = 0;
+        result = run_title(trace, &state, &new_game, &dev_floor, &link_mode, from_game,
                            &session_options, &options_edited, error, sizeof(error));
         if (result) break;
         c3_music_stop_slot(C3_MUSIC_SLOT_406, 500);   /* the floor scripts start area music */
+        if (link_mode) {
+            /* Battle Mode over local wireless; returns to the title menu. */
+            result = c3_link_lobby_run(link_mode, &state, SAVE_PATH, trace);
+            from_game = 1;
+            continue;
+        }
         if (dev_floor) {
             /* No game state crosses this call; return to the title menu. */
             result = c3_dev_floor_scene_run(trace, error, sizeof(error));

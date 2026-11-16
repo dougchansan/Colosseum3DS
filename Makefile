@@ -526,3 +526,4 @@ test: battle-entry-preview-check
 test: battle-runtime-trainer-check
 
 include tests/battle-general.mk
+include tests/link.mk

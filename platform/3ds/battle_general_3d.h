@@ -20,6 +20,24 @@
  * intact and the caller may continue it on the 2D scene). */
 int c3_battle_general_3d_ready(const C3GeneralBattle *battle, FILE *trace, char *why, size_t capacity);
 int c3_battle_general_3d_run(const C3BattlePack *pack, C3GeneralBattle *battle, FILE *trace);
+
+/* A link battle (docs/link-play.md) on the same stage. view is this
+ * console's copy of the battle as it shows it (side 0 its own); the
+ * caller's hooks carry commands to the other consoles and bring back each
+ * agreed turn. */
+typedef struct C3BattleLinkHooks {
+    void *ctx;
+    unsigned control_mask;   /* view positions (bits 0/1) this console commands */
+    int autoplay;            /* probe: choose with a local generator, never the battle's */
+    const char *shot_prefix; /* probe frames: sdmc:/3ds/Colosseum3DS/<prefix>_<frame>_top.bmp */
+    /* Every frame; 0 when the link failed (error filled). */
+    int (*pump)(void *ctx, char *error, size_t capacity);
+    /* This console's commands, in view numbering (positions 0/1). */
+    int (*submit)(void *ctx, const C3GeneralCommand commands[2]);
+    /* 1 when the next agreed turn was applied; view then holds it. */
+    int (*turn_ready)(void *ctx, C3GeneralBattle *view);
+} C3BattleLinkHooks;
+int c3_battle_general_3d_run_link(const C3BattlePack *pack, C3GeneralBattle *view, C3BattleLinkHooks *hooks, FILE *trace);
 #ifdef C3_GENERAL_3D_PROBE
 int c3_battle_general_3d_probe_run(uint32_t encounter);
 #endif

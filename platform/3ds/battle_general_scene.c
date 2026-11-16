@@ -39,9 +39,12 @@ static const C3GeneralMon *hero(const C3GeneralBattle *b, unsigned pos)
     return m != 255 ? &b->party[0][m] : NULL;
 }
 /* First hero position at or after `from` that still needs a command. */
-static int next_position(const C3GeneralBattle *b, unsigned from)
+static int next_position(const C3GeneralUi *ui, const C3GeneralBattle *b, unsigned from)
 {
-    for (unsigned p = from; p < b->active_count; ++p) { const C3GeneralMon *m = hero(b, p); if (m && m->hp) return (int)p; }
+    for (unsigned p = from; p < b->active_count; ++p) {
+        if (ui->control_mask && !(ui->control_mask >> p & 1u)) continue;
+        const C3GeneralMon *m = hero(b, p); if (m && m->hp) return (int)p;
+    }
     return -1;
 }
 
@@ -65,6 +68,7 @@ void c3_general_ui_draw(const C3BattlePack *pack, const C3GeneralBattle *b, cons
     c3_ui_panel(s, 5, 94, 310, 50);
     const char *message = e ? e->text : ui->error[0] ? ui->error : "";
     if (ui->page == C3_GUI_RESULT && b->event_count) message = b->events[b->event_count - 1].text;
+    if (ui->page == C3_GUI_WAIT) message = "Waiting for the other players...";
     if (ui->page == C3_GUI_MOVES || ui->page == C3_GUI_TARGET || ui->page == C3_GUI_SWITCH) {
         const C3GeneralMon *m = hero(b, ui->position);
         snprintf(text, sizeof text, "What will %s do?", m ? m->name : "?");
@@ -104,12 +108,13 @@ void c3_general_ui_draw(const C3BattlePack *pack, const C3GeneralBattle *b, cons
     c3_bottom_screen_present();
 }
 
-void c3_general_ui_commands(C3GeneralUi *ui, const C3GeneralBattle *b)
+int c3_general_ui_commands(C3GeneralUi *ui, const C3GeneralBattle *b)
 {
     memset(ui->commands, 0, sizeof ui->commands);
-    int p = next_position(b, 0);
+    int p = next_position(ui, b, 0);
     ui->position = p < 0 ? 0 : (unsigned)p;
     ui->cursor = 0; ui->page = C3_GUI_MOVES;
+    return p >= 0;
 }
 
 int c3_general_ui_press(C3GeneralUi *ui, const C3BattlePack *pack, C3GeneralBattle *b, uint16_t pressed, FILE *trace)
@@ -124,7 +129,10 @@ int c3_general_ui_press(C3GeneralUi *ui, const C3BattlePack *pack, C3GeneralBatt
         if ((pressed & C3_PAD_Y) && b->party_count[0] > b->active_count) { ui->page = C3_GUI_SWITCH; ui->cursor = 0; }
         else if (pressed & C3_PAD_B) {
             int back = -1;
-            for (int p = (int)ui->position - 1; p >= 0; --p) { const C3GeneralMon *m = hero(b, (unsigned)p); if (m && m->hp) { back = p; break; } }
+            for (int p = (int)ui->position - 1; p >= 0; --p) {
+                if (ui->control_mask && !(ui->control_mask >> p & 1u)) continue;
+                const C3GeneralMon *m = hero(b, (unsigned)p); if (m && m->hp) { back = p; break; }
+            }
             if (back >= 0) { ui->position = (unsigned)back; ui->cursor = 0; }
         } else if (pressed & C3_PAD_A) {
             C3GeneralCommand *c = &ui->commands[ui->position];
@@ -154,13 +162,15 @@ int c3_general_ui_press(C3GeneralUi *ui, const C3BattlePack *pack, C3GeneralBatt
             int active = 0;
             for (unsigned a = 0; a < b->active_count; ++a) active |= b->active[0][a] == ui->cursor;
             for (unsigned p = 0; p < ui->position; ++p) active |= ui->commands[p].kind == 1 && ui->commands[p].slot == ui->cursor;
-            if (active || !b->party[0][ui->cursor].hp) snprintf(ui->error, sizeof ui->error, "That Pokemon cannot battle now.");
+            if (b->owner_split && b->owner[0][ui->cursor] != ui->position) snprintf(ui->error, sizeof ui->error, "That Pokemon belongs to your partner.");
+            else if (active || !b->party[0][ui->cursor].hp) snprintf(ui->error, sizeof ui->error, "That Pokemon cannot battle now.");
             else { ui->commands[ui->position].kind = 1; ui->commands[ui->position].slot = (uint8_t)ui->cursor; submit = 1; }
         }
     }
     if (!submit) return 0;
-    int p = next_position(b, ui->position + 1);
+    int p = next_position(ui, b, ui->position + 1);
     if (p >= 0) { ui->position = (unsigned)p; ui->cursor = 0; ui->page = C3_GUI_MOVES; return 0; }
+    if (ui->defer) { ui->page = C3_GUI_WAIT; return 2; }
     char error[C3_GB_ERROR_SIZE];
     if (!c3_general_battle_turn(b, pack, ui->commands, error)) {
         if (trace) { fprintf(trace, "general_battle_error turn=%lu error=%s\n", (unsigned long)b->turn, error); fflush(trace); }
