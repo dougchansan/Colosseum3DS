@@ -566,7 +566,7 @@ static int field_renderer_init(C3Title *storage,const C3Title *const *models,uin
  * Other floors leave for the world map as before. */
 static struct { uint32_t start, start_spawn, floor[32], source[32]; uint8_t interact[32]; unsigned count, next; int loaded;
                 uint32_t film_floor, film_frames; unsigned shadow_slot, shadow_id;
-                uint32_t flag_id[16], flag_value[16]; unsigned flags; int partner; } probe_route;
+                uint32_t flag_id[16], flag_value[16]; unsigned flags, name_mode; int partner; } probe_route;
 static void probe_route_load(void)
 {
     if(probe_route.loaded)return;
@@ -591,6 +591,10 @@ static void probe_route_load(void)
         else if(sscanf(line,"flag %lx %lx",&a,&b)==2&&probe_route.flags<16){
             probe_route.flag_id[probe_route.flags]=(uint32_t)a;probe_route.flag_value[probe_route.flags++]=(uint32_t)b;}
         else if(sscanf(line,"partner %lx",&a)==1)probe_route.partner=a!=0;
+        /* "name <mode>": once the hero has control, open the name entry for
+         * that mode as native 16 would, play a fixed input sequence (NEW NAME,
+         * a key, R, a key, START) and save each step's bottom screen. */
+        else if(sscanf(line,"name %lx",&a)==1&&a<4)probe_route.name_mode=(unsigned)a+1u;
         else if(sscanf(line,"shadow %lx %lx",&a,&b)==2&&a<6&&b){probe_route.shadow_slot=(unsigned)a;probe_route.shadow_id=(unsigned)b;}
         /* "<floor> p<person>": stand in front of that person (area index),
          * facing it, and talk (interact value 2). */
@@ -631,7 +635,8 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     float elapsed=0,phase_seconds=0,arrival_seconds=0;
     uint64_t previous=0,next_console=0,next_trace=0,skin_actors=0;
     C3UiPager ui_pager={0};
-    C3NameEntry name_entry;C3NameEntryText name_text;C3Story name_messages={0};int naming=0;
+    C3NameEntry name_entry;C3NameEntryText name_text;C3Story name_messages={0};int naming=0,naming_probe=0;unsigned naming_step=0;
+    (void)naming_step;
     C3ShopMenu shop_menu;C3ShopTable shop_table={0};C3PdaAssets shop_assets={0};
     uint8_t *shop_pda=NULL,*shop_pack=NULL;size_t shop_pack_size=0;int shopping=0;
     RelivePick relive_pick={0};
@@ -1062,10 +1067,16 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
             campaign_line("floor=%03lx name_entry default=RUI",(unsigned long)map.floor);
         }
 #endif
-        if(view->name_entry&&!naming&&page==PAUSE_CLOSED){
+        unsigned name_request=view->name_entry;
+#ifdef C3_ROUNDTRIP_PROBE
+        probe_route_load();
+        if(!name_request&&probe_route.name_mode&&view->control&&npc.attached&&frames>60u){
+            name_request=probe_route.name_mode;probe_route.name_mode=0;naming_probe=1;}
+#endif
+        if(name_request&&!naming&&page==PAUSE_CLOSED){
             /* The original name entry (floor 0x390): its texts, presets and
              * key pages come from name_entry_menu's message group. */
-            unsigned mode=view->name_entry-1u;size_t bytes=0;uint8_t *group=read_boot_file(BOOT_ROOT "name_entry.c3m",&bytes);
+            unsigned mode=name_request-1u;size_t bytes=0;uint8_t *group=read_boot_file(BOOT_ROOT "name_entry.c3m",&bytes);
             c3_story_free(&name_messages);
             int ready=group&&c3_story_add_messages(&name_messages,group,bytes,story_error)&&
                       c3_name_entry_text_load(&name_text,&name_messages,mode);
@@ -1076,13 +1087,29 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         }
         if(naming){
 #ifdef C3_ROUNDTRIP_PROBE
-            /* Probe: take the first preset (A on the list, A on "yes"). */
-            if(frames%30u==0u)input.pressed|=C3_PAD_A;
+            /* Probe: for a story request take the first preset (A, A); for a
+             * "name" route line play NEW NAME, A, R, A, START with a bottom
+             * screen before each step. */
+            if(frames%30u==0u){
+                static const uint16_t steps[]={C3_PAD_DOWN,C3_PAD_DOWN,C3_PAD_DOWN,C3_PAD_A,C3_PAD_A,C3_PAD_R,C3_PAD_A,C3_PAD_START};
+                if(!naming_probe)input.pressed|=C3_PAD_A;
+                else{
+                    char shot[96];mkdir("sdmc:/3ds/Colosseum3DS/probe",0777);
+                    snprintf(shot,sizeof shot,"sdmc:/3ds/Colosseum3DS/probe/name_%02u.bmp",naming_step);
+                    int ok=c3_n3ds_capture_bottom(shot)==0;
+                    if(trace){fprintf(trace,"probe_name step=%u phase=%d length=%u shot=%d\n",naming_step,(int)name_entry.phase,name_entry.length,ok);fflush(trace);}
+                    if(naming_step<sizeof steps/sizeof steps[0])input.pressed|=steps[naming_step];
+                    ++naming_step;
+                }
+            }
 #endif
             C3NameEvent typed=c3_name_entry_update(&name_entry,input.pressed,input.touch_pressed,input.touch_x,input.touch_y);
             if(typed!=C3_NAME_NONE)dirty=1;
             if(typed==C3_NAME_DONE){
-                if(!c3_field_story_name_result(&story,name_entry.result,story_error))goto story_failed;
+                if(naming_probe){
+                    int ok=c3_game_state_set_partner_name(state,name_entry.result);naming_probe=0;
+                    if(trace){fprintf(trace,"probe_name_done name=%s stored=%d\n",name_entry.result,ok);fflush(trace);}
+                }else if(!c3_field_story_name_result(&story,name_entry.result,story_error))goto story_failed;
                 if(trace){fprintf(trace,"name_entry_done name=%s length=%u\n",name_entry.result,name_entry.length);fflush(trace);}
                 naming=0;c3_story_free(&name_messages);
             }
@@ -1530,7 +1557,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         {   static int door_fired;static unsigned next_step;
             if(frames<=1u){door_fired=0;next_step=90u;}
             probe_route_load();
-            if(npc.attached&&frames>=next_step&&view->control&&!door_fired&&probe_route.next<probe_route.count&&
+            if(npc.attached&&frames>=next_step&&view->control&&!door_fired&&!naming&&!probe_route.name_mode&&probe_route.next<probe_route.count&&
                probe_route.floor[probe_route.next]==map.floor&&probe_route.interact[probe_route.next]){
                 int talk=probe_route.interact[probe_route.next]==2;
                 uint32_t source=probe_route.source[probe_route.next++];const C3FieldTriangle *hit=NULL;
@@ -1599,7 +1626,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                  if(++filmed==probe_route.film_frames&&trace){fprintf(trace,"probe_film_end frame=%u elapsed=%.3f\n",frames,(double)elapsed);fflush(trace);}
                  next_step=frames+30u;
              }}
-            if(npc.attached&&frames>=next_step&&view->control&&!door_fired){
+            if(npc.attached&&frames>=next_step&&view->control&&!door_fired&&!naming&&!probe_route.name_mode){
                 char shot[80];
                 mkdir("sdmc:/3ds/Colosseum3DS/probe",0777);
                 snprintf(shot,sizeof shot,"sdmc:/3ds/Colosseum3DS/probe/area_%03lx_top.bmp",(unsigned long)map.floor);

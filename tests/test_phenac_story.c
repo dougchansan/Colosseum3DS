@@ -195,6 +195,10 @@ int main(int argc,char **argv)
      CHECK(s->hero.position[0]>=-.8f&&s->hero.position[0]<=1.0f&&s->hero.position[2]>=31.4f&&s->hero.position[2]<=34.0f);
      s->hero.yaw=3.1415927f;
      CHECK(!c3_game_state_partner(&game)&&flag(&game,0x3e4)==0&&flag(&game,0x3e5)==0);
+     /* C3_PHENAC_PARTNER_SAVE=<path>: the state just before Rui's event
+      * as a save, for console and Azahar checks of the name entry. */
+     {const char *out=getenv("C3_PHENAC_PARTNER_SAVE");char save_error[C3_GAME_ERROR_SIZE];
+      if(out){CHECK(c3_game_state_save(&game,out,save_error));fprintf(trace,"phenac_partner_save path=%s\n",out);}}
      CHECK(c3_field_story_interact(&s->story,error));CHECK(logged("story_talk actor=0 script=01000021"));}
     /* The scene collects the partner's name when native 16 waits for it. */
     {int named=0,spoken=0;
