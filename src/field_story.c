@@ -560,7 +560,11 @@ static int run_native(Impl *s,RunTask *t,char *error)
         p=person(s,a[0],a[1]);
         if(p){
             if(p->parent){for(unsigned i=0;i<3;++i)p->local_rotation[i]=as_float(a[i+2])*PI/180.0f;}
-            else {if(as_float(a[2])!=0||as_float(a[4])!=0)return fail(error,"Actor pitch/roll is not prepared");
+            else {
+                /* A field pose holds yaw only. Eagun's house (floor 02C)
+                 * tilts Wes by a few degrees of pitch and roll as he wakes
+                 * there; the tilt is recorded as unrendered. */
+                if(as_float(a[2])!=0||as_float(a[4])!=0)note_presentation(s,0x3c,"actor_pitch_roll_unrendered");
                 p->turn_target=pose(s,p)->yaw=as_float(a[3])*PI/180.0f;}
         }break;
     case 0x3d:
