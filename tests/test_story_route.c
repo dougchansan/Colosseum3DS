@@ -27,9 +27,14 @@
  *   door <surface>            cross a surface (event kind 1); a floor change follows
  *   at <x> <z>                put the hero at a source position (main-loop boxes)
  *   run <frames>              tick with no input (a floor change is followed)
+ *   pad <mask>                hold these buttons for ten ticks (0x1-0x8 D-pad),
+ *                             then run until the hero has control
  *   result <id>               result ID reported for the next battles (default 2, win)
  *   expect <flag> <value>     fail unless the flag holds the value
  *   expect_floor <floor>      fail unless the scene is on that floor
+ *   talkall                   talk to every present person with a talk script, one
+ *                             "route_talk" line each; a failed or floor-changing
+ *                             conversation reloads this floor and the sweep goes on
  *   mail <id>                 read a received PDA mail: its original read
  *                             transaction (flags, hints) from the PDA pack
  *                             named by C3_ROUTE_PDA (tools/prepare_pda.py)
@@ -49,7 +54,7 @@ typedef struct Scene {
     C3Title wes, npc;
     C3Title *models[C3_AREA_MAX_ACTORS];
     C3AreaCamera camera;
-    uint32_t floor;
+    uint32_t floor, entrance, previous;
     int loaded;
 } Scene;
 
@@ -122,7 +127,7 @@ static int load(uint32_t floor, uint32_t entrance, uint32_t previous)
     char file[1024], name[64];
     unload();
     error[0] = 0;
-    scene->floor = floor;
+    scene->floor = floor; scene->entrance = entrance; scene->previous = previous;
     CHECK(c3_game_state_set_floor(&game, floor, previous, (uint8_t)entrance));
     snprintf(name, sizeof name, "f%03lx.c3f", (unsigned long)floor); path(file, root, name);
     if (!c3_field_load(&scene->map, file, error, sizeof error)) return 0;
@@ -156,6 +161,7 @@ static int load(uint32_t floor, uint32_t entrance, uint32_t previous)
  * A floor change requested by a script loads the next floor. */
 static int run(unsigned frames, int until_control)
 {
+    unsigned steady = 0;
     for (unsigned frame = 0; frame < frames; ++frame) {
         const C3FieldStoryView *v = c3_field_story_view(&scene->story);
         if (v->next_floor) {
@@ -173,7 +179,10 @@ static int run(unsigned frames, int until_control)
             fprintf(report, "route_message floor=%03lx id=%05lx non_ascii=%d\n", (unsigned long)scene->floor,
                     (unsigned long)v->message_id, wide);
         }
-        if (until_control && frame > 30 && v->control && !v->dialogue) return 1;
+        /* Control must hold for a second: some events hand it back
+         * between two parts (Mt. Battle area 1, function 72). */
+        if (v->control && !v->dialogue && !c3_field_story_battle_pending(&scene->story, NULL)) ++steady; else steady = 0;
+        if (until_control && frame > 30 && steady >= 60) return 1;
         uint16_t pressed = (v->dialogue || v->choice) && frame % 15 == 0 ? 0x100 : 0;
         uint32_t encounter;
         if (c3_field_story_battle_pending(&scene->story, &encounter)) {
@@ -250,12 +259,45 @@ static int step(char *line)
         return load((uint32_t)a, (uint32_t)b, scene->loaded ? scene->floor : 0x38e);
     }
     if (!scene->loaded) { snprintf(error, sizeof error, "no floor is loaded"); return 0; }
+    if (!strcmp(word, "pad")) {
+        CHECK(sscanf(line, "%li", (long *)&a) == 1);
+        for (unsigned held = 0; held < 10 && scene->loaded; ++held)
+            if (!c3_field_story_tick(&scene->story, 1.0f/60.0f, (uint16_t)a, error) || !c3_field_story_sample(&scene->story, error)) return 0;
+        return run(30000, 1);
+    }
     if (!strcmp(word, "run")) { CHECK(sscanf(line, "%li", (long *)&a) == 1); return run((unsigned)a, 0); }
     if (!strcmp(word, "at")) {
         CHECK(sscanf(line, "%f %f", &x, &z) == 2);
         scene->hero.position[0] = x * scene->map.scale; scene->hero.position[2] = z * scene->map.scale;
         memcpy(scene->hero.proposed, scene->hero.position, sizeof scene->hero.position);
         return run(120, 0) && run(6000, 1);
+    }
+    if (!strcmp(word, "talkall")) {
+        uint32_t floor = scene->floor, entrance = scene->entrance, previous = scene->previous, count = scene->area.actor_count;
+        unsigned failed = 0, talked = 0;
+        for (uint32_t i = 0; i < count && i < C3_AREA_MAX_ACTORS; ++i) {
+            if (!scene->loaded || scene->floor != floor) { if (!load(floor, entrance, previous)) return 0; }
+            const C3AreaActor *who = scene->area.actors + i;
+            if (!who->talk_script) continue;
+            uint32_t index = who->index, script = who->talk_script;
+            C3StoryActor *actor = c3_field_story_actor(&scene->story, index);
+            if (!actor || !actor->visible) {
+                fprintf(report, "route_talk floor=%03lx person=%lu script=%08lx status=absent\n", (unsigned long)floor,
+                        (unsigned long)index, (unsigned long)script);
+                continue;
+            }
+            char sub[32]; snprintf(sub, sizeof sub, "talk %lu", (unsigned long)index);
+            error[0] = 0; ++talked;
+            int ok = step(sub);
+            if (scene->loaded) flag_writes();
+            fprintf(report, "route_talk floor=%03lx person=%lu script=%08lx status=%s next=%03lx reason=%s\n",
+                    (unsigned long)floor, (unsigned long)index, (unsigned long)script, ok ? "ok" : "failed",
+                    (unsigned long)(scene->loaded && scene->floor != floor ? scene->floor : 0), ok ? "" : error);
+            if (!ok) { ++failed; unload(); }
+        }
+        if (!scene->loaded || scene->floor != floor) { if (!load(floor, entrance, previous)) return 0; }
+        if (failed) { snprintf(error, sizeof error, "%u of %u conversations failed", failed, talked); return 0; }
+        return 1;
     }
     if (!strcmp(word, "talk")) {
         CHECK(sscanf(line, "%li", (long *)&a) == 1);
