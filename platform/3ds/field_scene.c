@@ -471,9 +471,11 @@ static int field_renderer_init(C3Title *storage,const C3Title *const *models,uin
 /* Optional door route (sdmc:/3ds/Colosseum3DS/probe-route.txt): a first
  * line "start <floor>" and then lines "<floor> <door source>", hex, taken
  * in order. In a listed floor the probe fires that door's transition (the
- * original door script picks the target floor and entrance); other floors
- * leave for the world map as before. */
-static struct { uint32_t start, floor[32], source[32]; unsigned count, next; int loaded; } probe_route;
+ * original door script picks the target floor and entrance); a source
+ * written "i<source>" is an A-button surface instead: the hero is stood in
+ * front of it, facing it, and interacts (open dialogue is answered with A).
+ * Other floors leave for the world map as before. */
+static struct { uint32_t start, floor[32], source[32]; uint8_t interact[32]; unsigned count, next; int loaded; } probe_route;
 static void probe_route_load(void)
 {
     if(probe_route.loaded)return;
@@ -483,6 +485,9 @@ static void probe_route_load(void)
     while(fgets(line,sizeof line,f)){
         unsigned long a,b;
         if(sscanf(line,"start %lx",&a)==1)probe_route.start=(uint32_t)a;
+        else if(sscanf(line,"%lx i%lx",&a,&b)==2&&probe_route.count<32){
+            probe_route.floor[probe_route.count]=(uint32_t)a;probe_route.interact[probe_route.count]=1;
+            probe_route.source[probe_route.count++]=(uint32_t)b;}
         else if(sscanf(line,"%lx %lx",&a,&b)==2&&probe_route.count<32){
             probe_route.floor[probe_route.count]=(uint32_t)a;probe_route.source[probe_route.count++]=(uint32_t)b;}
     }
@@ -733,6 +738,10 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     previous=c3_n3ds_active_time_us();result=1;
     while(c3_n3ds_poll(&input)){
         c3_debug_overlay_input(&input);
+#ifdef C3_ROUNDTRIP_PROBE
+        /* Probe: answer open dialogue with A, one press a second. */
+        if(view&&(view->dialogue||view->choice)&&frames%60u==0u)input.pressed|=C3_PAD_A;
+#endif
         if(!npc.attached&&!npc_stream_attach(&npc,0,storage,models,actor_models,model_paths,&story,count,skin_actors,
                                              tv_index,view?view->tv_enabled:1,frames,trace,error,capacity)){result=-1;break;}
 #ifdef C3_CAMPAIGN
@@ -1374,9 +1383,33 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
 #ifdef C3_ROUNDTRIP_PROBE
         /* Leave for the world map once the people have joined; keep the
          * last frame of each area for review (the capture lags one frame). */
-        {   static int door_fired;
-            if(frames<=1u)door_fired=0;
-            if(npc.attached&&frames>=90u&&!door_fired){
+        {   static int door_fired;static unsigned next_step;
+            if(frames<=1u){door_fired=0;next_step=90u;}
+            probe_route_load();
+            if(npc.attached&&frames>=next_step&&view->control&&!door_fired&&probe_route.next<probe_route.count&&
+               probe_route.floor[probe_route.next]==map.floor&&probe_route.interact[probe_route.next]){
+                uint32_t source=probe_route.source[probe_route.next++];const C3FieldTriangle *hit=NULL;
+                for(uint32_t i=0;i<area.interaction_count&&!hit;++i)if(area.interactions[i].source_id==source)hit=area.interactions+i;
+                if(hit){
+                    float c[3]={0},n[2]={hit->normal[0],hit->normal[2]},len;
+                    for(int v=0;v<3;++v)for(int k=0;k<3;++k)c[k]+=hit->vertices[v*3+k]/3.0f;
+                    len=hypotf(n[0],n[1]);if(len<1e-4f){n[0]=0;n[1]=1;len=1;}
+                    n[0]/=len;n[1]/=len;
+                    /* The side with ground: in front of the surface, facing it. */
+                    for(int side=0;side<2;++side){
+                        float sgn=side?-1.0f:1.0f,spot[3]={c[0]+n[0]*sgn*0.5f,c[1],c[2]+n[1]*sgn*0.5f},ground;
+                        if(!c3_field_ground(&map,spot,&ground))continue;
+                        player.position[0]=spot[0];player.position[1]=ground;player.position[2]=spot[2];
+                        memcpy(player.proposed,player.position,sizeof player.position);
+                        player.yaw=atan2f(c[0]-spot[0],c[2]-spot[2]);break;
+                    }
+                }
+                if(trace){fprintf(trace,"probe_interact floor=%03lx source=%lu surface=%d\n",(unsigned long)map.floor,
+                                  (unsigned long)source,hit!=NULL);fflush(trace);}
+                if(!c3_field_story_interact(&story,story_error))goto story_failed;
+                next_step=frames+120u;
+            }
+            if(npc.attached&&frames>=next_step&&view->control&&!door_fired){
                 char shot[80];
                 mkdir("sdmc:/3ds/Colosseum3DS/probe",0777);
                 snprintf(shot,sizeof shot,"sdmc:/3ds/Colosseum3DS/probe/area_%03lx_top.bmp",(unsigned long)map.floor);
