@@ -14,7 +14,7 @@
 
 typedef enum { W_NONE, W_SECONDS, W_TASK, W_MOTION, W_MOVE, W_CAMERA,
                W_CAMERA_MOVE, W_FADE, W_MESSAGE, W_CHOICE, W_TV, W_BATTLE, W_NAME, W_ITEM, W_DOOR, W_SHOP, W_DIALOG,
-               W_RELIVE } Wait;
+               W_RELIVE, W_FALL } Wait;
 typedef struct {
     uint16_t key, child;
     C3StoryCall call;
@@ -27,6 +27,7 @@ typedef struct {
      * this task; each message or yes/no choice resumes the program. */
     uint32_t program; int prog_state, prog_yes, prog_no, prog_asking;
     uint32_t relive_mode, relive_slot; /* native C2's arguments and the picked slot */
+    float fall_ground; /* native B2: the person's ground height (W_FALL) */
 } RunTask;
 typedef struct Person {
     C3StoryActor public;
@@ -132,7 +133,7 @@ static int validate_native(const Impl *s,const C3StoryCall *c,char *error)
         /* Phenac City exterior bank 013E0E00 (native table lbl_802E1CF0). */
         {0x02,1,0},{0x16,2,0},{0x23,1,0},{0x31,0,0},{0x66,1,0},{0x7e,2,0},
         {0x82,3,0},{0x83,3,0},{0x89,3,0},{0xa1,3,0},{0xa4,6,0x3c},{0xa5,5,0x10},
-        {0x77,2,0},{0x84,2,0},{0x60,3,0},{0x73,4,0},{0x75,2,0},{0x8d,5,0x1e},{0x9a,5,0},{0xa0,1,0},{0xb5,4,0},{0xa9,2,0},{0xb1,6,0x10},{0xb4,0,0},{0xd8,1,0},{0xda,1,0},{0xe8,2,0},
+        {0x77,2,0},{0x84,2,0},{0x60,3,0},{0x73,4,0},{0x75,2,0},{0x8d,5,0x1e},{0x9a,5,0},{0xa0,1,0},{0xb5,4,0},{0xa9,2,0},{0xb1,6,0x10},{0xb2,3,4},{0xb4,0,0},{0xd8,1,0},{0xda,1,0},{0xe8,2,0},
         /* Whole-game survey (tests/test_world_story.c), table lbl_802E1CF0. */
         {0x97,3,0},{0xaa,7,0x3c},{0xab,1,0},{0xad,1,0},{0xe1,0,0},
         {0xa2,0,0},{0xac,3,0},{0xcb,3,0},{0xd4,0,0},{0x61,5,0},{0xe2,0,0},{0x90,2,0},{0x7b,0,0},{0xc5,4,0},
@@ -990,6 +991,20 @@ static int run_native(Impl *s,RunTask *t,char *error)
             }
         }
         }break;
+    case 0xb2:
+        /* fn_801821B8 (peopleFallAppear): the person is shown, flag 8 is
+         * cleared, sound 0x49E plays and it drops from 40 source units above
+         * its position, 1.3 units per 60 Hz frame (fn_800D3088), with motion
+         * 7; on the ground motion 8 plays to its end, then motion 1. The
+         * table row's third word is not read by the original. The sound is
+         * recorded as unrendered. */
+        p=person(s,a[0],a[1]);if(!p)break;
+        p->want_visible=1;p->public.visible=p->public.model!=NULL;p->public.flags&=~8u;
+        note_presentation(s,0xb2,"fall_sound_049e_unrendered");
+        t->fall_ground=pose(s,p)->position[1];t->remaining=40.0f;
+        pose(s,p)->position[1]=t->fall_ground+40.0f*s->map->scale;
+        if(!set_motion(s,p,7,0,1,error))return 0;
+        t->stage=0;t->wait=W_FALL;return 1;
     case 0xb1:{
         /* fn_8018A700: walk up to `distance` (tens of source units) from
          * another person, along the line between them; already inside that
@@ -1196,6 +1211,19 @@ static int wait_task(Impl *s,RunTask *t,float seconds,uint16_t *pressed,char *er
         if(t->child_finished)return resume(s,t,t->value,error);
         if(c3_story_active(&s->vm,t->child))return 1;
         return resume(s,t,c3_story_result(&s->vm,t->child),error);
+    case W_FALL:
+        p=person(s,t->call.args[0],t->call.args[1]);
+        if(!p)return resume(s,t,0,error);
+        if(!t->stage){
+            t->remaining-=1.3f*60.0f*seconds;if(t->remaining<0)t->remaining=0;
+            pose(s,p)->position[1]=t->fall_ground+t->remaining*s->map->scale;
+            if(t->remaining>0)return 1;
+            if(!set_motion(s,p,8,0,0,error))return 0;
+            t->stage=1;return 1;
+        }
+        if(p->public.playing&&!p->public.loop&&pose(s,p)->animation_seconds<clip_seconds(&p->public))return 1;
+        if(!set_motion(s,p,1,0,1,error))return 0;
+        return resume(s,t,0,error);
     case W_MOTION:
         p=person(s,t->call.args[0],t->call.args[1]);
         if(p&&p->public.playing&&!p->public.loop&&pose(s,p)->animation_seconds<clip_seconds(&p->public))return 1;
