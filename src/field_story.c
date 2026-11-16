@@ -134,7 +134,7 @@ static int validate_native(const Impl *s,const C3StoryCall *c,char *error)
         /* Phenac City exterior bank 013E0E00 (native table lbl_802E1CF0). */
         {0x02,1,0},{0x16,2,0},{0x23,1,0},{0x31,0,0},{0x66,1,0},{0x7e,2,0},
         {0x82,3,0},{0x83,3,0},{0x89,3,0},{0xa1,3,0},{0xa4,6,0x3c},{0xa5,5,0x10},
-        {0x77,2,0},{0x84,2,0},{0x60,3,0},{0x73,4,0},{0x75,2,0},{0x8d,5,0x1e},{0x9a,5,0},{0xa0,1,0},{0xb5,4,0},{0xa9,2,0},{0xb1,6,0x10},{0x6f,0,0},{0xb2,3,4},{0xb4,0,0},{0xd8,1,0},{0xda,1,0},{0xe8,2,0},
+        {0x77,2,0},{0x84,2,0},{0x60,3,0},{0x73,4,0},{0x75,2,0},{0x8d,5,0x1e},{0x9a,5,0},{0xa0,1,0},{0xb5,4,0},{0xa9,2,0},{0xb1,6,0x10},{0x6f,0,0},{0xf6,3,0},{0xb2,3,4},{0xb4,0,0},{0xd8,1,0},{0xda,1,0},{0xe8,2,0},
         /* Whole-game survey (tests/test_world_story.c), table lbl_802E1CF0. */
         {0x97,3,0},{0xaa,7,0x3c},{0xab,1,0},{0xad,1,0},{0xe1,0,0},
         {0xa2,0,0},{0xac,3,0},{0xcb,3,0},{0xd4,0,0},{0x61,5,0},{0xe2,0,0},{0x90,2,0},{0x7b,0,0},{0xc5,4,0},
@@ -647,6 +647,16 @@ static int run_native(Impl *s,RunTask *t,char *error)
      * into hero motion, so a walking or running hero counts as the stick;
      * the D-pad is this tick's pressed directions. Eagun's house (floor
      * 02C) waits on it after his talk before telling Wes about the lab. */
+    /* fn_801140DC: write the save's resume floor, previous floor and spawn
+     * (game-data status 5, 7 and 8, which New Game sets to 2/1/1 and
+     * fn_80113FE8 reads on Continue). Mt. Battle's reception (floor 04B)
+     * points it back at itself when a challenge ends. */
+    case 0xf6:
+        if(!a[0]||a[0]>0xffffu||a[1]>0xffffu||a[2]>0xffu)return fail(error,"Native F6 resume point %lu/%lu/%lu is invalid",
+            (unsigned long)a[0],(unsigned long)a[1],(unsigned long)a[2]);
+        if(!c3_game_state_set_floor(s->game,a[0],a[1],(uint8_t)a[2]))return fail(error,"Native F6 could not write the resume point");
+        log_line(s,"story_resume_point floor=%03lx previous=%03lx spawn=%lu",(unsigned long)a[0],(unsigned long)a[1],(unsigned long)a[2]);
+        break;
     case 0x6f:value=(s->tick_pressed&PAD_DIRECTIONS)||(s->view.control&&s->hero->motion!=0);break;
     case 0xc3:value=s->arrival_spawn;break; /* floorGetNextPosIndex: the entrance used */
     case 0xd9:
