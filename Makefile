@@ -80,8 +80,8 @@ WORLD_BATTLE_SOURCES = src/battle_general.c src/battle_story.c src/battle_rng.c 
 build/test_world_story: tests/test_world_story.c $(FIELD_STORY_SOURCES) $(WORLD_BATTLE_SOURCES) build/battle_rng_source.h $(HEADERS) $(UPSTREAM)
 	$(CC) $(CPPFLAGS) -Ibuild -Isrc $(CFLAGS) tests/test_world_story.c $(FIELD_STORY_SOURCES) $(WORLD_BATTLE_SOURCES) $(LDFLAGS) -lm -o $@
 
-build/test_story_route: tests/test_story_route.c src/pda.c $(FIELD_STORY_SOURCES) $(HEADERS)
-	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_story_route.c src/pda.c $(FIELD_STORY_SOURCES) $(LDFLAGS) -lm -o $@
+build/test_story_route: tests/test_story_route.c src/pda.c src/inventory.c $(FIELD_STORY_SOURCES) $(HEADERS)
+	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_story_route.c src/pda.c src/inventory.c $(FIELD_STORY_SOURCES) $(LDFLAGS) -lm -o $@
 
 RELIVE_SOURCES = src/relive.c src/relive_purify.c src/game_state.c src/save.c src/decomp_pokemon.c build/save_codec.c src/battle_general.c src/battle_rng.c src/decomp_rng.c
 build/test_relive: tests/test_relive.c $(RELIVE_SOURCES) build/battle_rng_source.h $(HEADERS) $(UPSTREAM)
