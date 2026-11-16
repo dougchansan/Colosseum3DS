@@ -4,6 +4,7 @@
 #include "ingame_menu.h"
 #include "pack_cache.h"
 #include "area_prefetch.h"
+#include "colosseum3ds/world_map.h"
 #include "debug_overlay.h"
 #include "pack_loader.h"
 #include "battle_general_scene.h"
@@ -1440,12 +1441,21 @@ int c3_field_scene_tour(C3GameState *state,FILE *trace,char *error,size_t capaci
 #ifdef C3_ROUNDTRIP_PROBE
 int c3_field_scene_roundtrip_probe(C3GameState *state,FILE *trace,char *error,size_t capacity)
 {
-    enum{AREAS=7};
+    enum{AREAS=11};
     char stage[64];int result=0;
     c3_n3ds_log_memory(trace,"roundtrip_baseline");
-    /* Start in Phenac; the world map then alternates between the two
-     * destinations the save has unlocked. */
-    if(!c3_game_state_set_floor(state,3,C3_FLOOR_WORLD_MAP_ID,0)){snprintf(error,capacity,"floor rejected");return -1;}
+    /* Start in the save's own world-map area (its floor, else the floor it
+     * came from, as when a save sits in a building), else Phenac; the world
+     * map then visits the unlocked destinations in turn. */
+    uint32_t start=3;
+    {   C3GameSummary s;
+        if(c3_game_state_summary(state,&s))
+            for(uint32_t i=0;i<c3_world_map_entry_count();++i){C3WorldMapEntry e;
+                if(!c3_world_map_entry(i,&e)||!c3_field_scene_supports(e.floor))continue;
+                if(e.floor==s.floor){start=s.floor;break;}
+                if(e.floor==s.previous_floor)start=s.previous_floor;} }
+    if(trace){fprintf(trace,"roundtrip_start floor=%03lx\n",(unsigned long)start);fflush(trace);}
+    if(!c3_game_state_set_floor(state,start,C3_FLOOR_WORLD_MAP_ID,0)){snprintf(error,capacity,"floor rejected");return -1;}
     for(unsigned i=0;i<AREAS;++i){
         C3GameSummary summary;uint32_t floor=c3_game_state_summary(state,&summary)?summary.floor:0;
         result=run_area(state,0,"sdmc:/3ds/Colosseum3DS/probe-unused.gci",trace,error,capacity);

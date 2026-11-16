@@ -181,3 +181,39 @@ frames), so the reference was aligned at 30 frames per second.
   at the same times: shadow shape, direction and darkness and the map
   dissolve match. The wheel particles were added last: placement and
   debris match; the soft dust cloud is fainter than the original's.
+
+## Completed-save ride survey (2026-11-16)
+
+Port (Azahar, round-trip probe, the 99:59 completed save `e16f2c42…`,
+read-only copy): starting in Agate Village (the save sits in its Pokemon
+Center), the world map visited every destination with packs in turn; every
+ride played and loaded the destination before its fade, and `used_bytes`
+returned to 2.02 MB after every area.
+
+| Ride | Row | Route | Camera | Prefetch |
+| --- | --- | --- | --- | --- |
+| Agate -> Outskirt Stand | 10 (east) | 0 | `0C7B1800` | 4/4 |
+| Outskirt -> Shadow Pokemon Lab (0x41) | 0 (west) | 5 | `0C761800` | 5/5 |
+| Lab -> Mt. Battle (0x4A) | 11 | 1 | `0C7A1800` | 2/2 |
+| Mt. Battle -> Realgam Tower (0x7B, flag `0x45D`) | 12 | 2 | `0C791800` | 12/12 |
+| Realgam -> Phenac City | 13 | 3 | `0C781800` | 7/7 |
+| Phenac -> Pyrite Town | 1 (west) | 6 | `0C751800` | 4/4 |
+| Pyrite -> Agate Village | 2 (west) | 7 | `0C741800` | 3/3 |
+| Agate -> The Under (0x7A) | 14 | 4 | `0C771800` | 2/2 |
+| The Under -> next | 15 | 10 | `0C711800` | done |
+| next | 3 (west) | 8 | `0C731800` | done |
+
+Snagem Hideout (0x88) has no prepared field packs and was not ridden to.
+
+Original (Dolphin): Agate's terraced village blocked a quick walk to its
+exit, so the original rides came from the console save instead (Phenac and
+Outskirt only, one Dolphin session): Phenac -> Outskirt (row 10),
+Outskirt -> Phenac (row 0, route 5, `0C761800`), Phenac -> Outskirt (row 11,
+route 1, `0C7A1800`). Each matched the port's ride of the same row at every
+half second from 0.5 s to 3.0 s (camera, cuts, route, bike with Rui, shadow,
+debris), and the original reached black at 4.87-4.90 s against the port's
+4.91 s.
+
+Observed, not changed: from Outskirt the original opened the map with the
+cursor on Phenac City; the port starts on the floor the player came from
+(`fn_80025730` as decompiled). The ride row did not depend on it.
