@@ -585,6 +585,11 @@ static void probe_route_load(void)
          * Pokemon whose heart is open, in memory only (the probe saves to
          * probe-unused.gci), to try the Relic Stone. */
         else if(sscanf(line,"shadow %lx %lx",&a,&b)==2&&a<6&&b){probe_route.shadow_slot=(unsigned)a;probe_route.shadow_id=(unsigned)b;}
+        /* "<floor> p<person>": stand in front of that person (area index),
+         * facing it, and talk (interact value 2). */
+        else if(sscanf(line,"%lx p%lx",&a,&b)==2&&probe_route.count<32){
+            probe_route.floor[probe_route.count]=(uint32_t)a;probe_route.interact[probe_route.count]=2;
+            probe_route.source[probe_route.count++]=(uint32_t)b;}
         else if(sscanf(line,"%lx i%lx",&a,&b)==2&&probe_route.count<32){
             probe_route.floor[probe_route.count]=(uint32_t)a;probe_route.interact[probe_route.count]=1;
             probe_route.source[probe_route.count++]=(uint32_t)b;}
@@ -1512,8 +1517,24 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
             probe_route_load();
             if(npc.attached&&frames>=next_step&&view->control&&!door_fired&&probe_route.next<probe_route.count&&
                probe_route.floor[probe_route.next]==map.floor&&probe_route.interact[probe_route.next]){
+                int talk=probe_route.interact[probe_route.next]==2;
                 uint32_t source=probe_route.source[probe_route.next++];const C3FieldTriangle *hit=NULL;
-                for(uint32_t i=0;i<area.interaction_count&&!hit;++i)if(area.interactions[i].source_id==source)hit=area.interactions+i;
+                if(!talk)for(uint32_t i=0;i<area.interaction_count&&!hit;++i)if(area.interactions[i].source_id==source)hit=area.interactions+i;
+                if(talk&&source<area.actor_count){
+                    /* In front of the person (its facing), 0.9 units away. */
+                    C3StoryActor *actor=c3_field_story_actor(&story,area.actors[source].index);
+                    const float *at=actor?actor->pose.position:area.actors[source].position;
+                    float yaw=actor?actor->pose.yaw:area.actors[source].yaw,ground;
+                    for(int turn=0;turn<4;++turn){
+                        float a=yaw+(float)turn*1.5707963f,spot[3]={at[0]+sinf(a)*0.9f,at[1],at[2]+cosf(a)*0.9f};
+                        if(!c3_field_ground(&map,spot,&ground))continue;
+                        player.position[0]=spot[0];player.position[1]=ground;player.position[2]=spot[2];
+                        memcpy(player.proposed,player.position,sizeof player.position);
+                        player.yaw=atan2f(at[0]-spot[0],at[2]-spot[2]);break;
+                    }
+                    if(trace){fprintf(trace,"probe_talk floor=%03lx person=%lu index=%lu\n",(unsigned long)map.floor,
+                                      (unsigned long)source,(unsigned long)area.actors[source].index);fflush(trace);}
+                }
                 if(hit){
                     float c[3]={0},n[2]={hit->normal[0],hit->normal[2]},len;
                     for(int v=0;v<3;++v)for(int k=0;k<3;++k)c[k]+=hit->vertices[v*3+k]/3.0f;
@@ -1533,6 +1554,24 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                 if(!c3_field_story_interact(&story,story_error))goto story_failed;
                 next_step=frames+120u;
             }
+            /* Dialogue: each new page's bottom screen and its text (markup
+             * removed), 20 frames after it opened, at most 64 per run. */
+            {static uint32_t page_id,page_hash,page_frame,page_shots;
+             uint32_t hash=2166136261u;
+             if(view->dialogue){for(const char *c=view->message;*c;++c)hash=(hash^(unsigned char)*c)*16777619u;}
+             if(!view->dialogue){page_id=0;page_hash=0;page_frame=0;}
+             else if(view->message_id!=page_id||hash!=page_hash){page_id=view->message_id;page_hash=hash;page_frame=frames+20u;}
+             if(page_frame&&frames>=page_frame&&page_shots<64u){
+                 char shot[96],text[C3_STORY_MESSAGE];mkdir("sdmc:/3ds/Colosseum3DS/probe",0777);
+                 snprintf(shot,sizeof shot,"sdmc:/3ds/Colosseum3DS/probe/msg_%03lx_%05lx_%02lu.bmp",(unsigned long)map.floor,
+                          (unsigned long)page_id,(unsigned long)page_shots);
+                 int shot_ok=c3_n3ds_capture_bottom(shot)==0;
+                 snprintf(text,sizeof text,"%s",view->message);c3_story_text_plain(text);
+                 for(char *c=text;*c;++c)if(*c=='\n')*c='|';
+                 if(trace){fprintf(trace,"probe_message floor=%03lx id=%05lx shot=%d text=\"%s\"\n",(unsigned long)map.floor,
+                                   (unsigned long)page_id,shot_ok,text);fflush(trace);}
+                 page_frame=0;++page_shots;
+             }}
             /* Film: consecutive top frames once the hero has control. */
             {static uint32_t filmed;
              if(probe_route.film_frames&&probe_route.film_floor==map.floor&&npc.attached&&view->control&&filmed<probe_route.film_frames){
