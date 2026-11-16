@@ -480,6 +480,20 @@ static void synthetic_regressions(void)
       CHECK(c3_field_story_bind_doors(&s->story,&closed_row,1,no_model,error));
       CHECK(c3_field_object_enabled(&s->map,1)&&c3_field_object_enabled(&s->map,0));
       close_scene(s);}
+     /* Subway03A elevator142 has travel clips0/1 but no open clip;
+      * row143 has no clips at all. Both bind at rest on clip0. */
+     {C3AreaDoor elevator[2]={
+        {.index=142,.resource=0x00d81002,.part_index=1,.open_anim=-1,.close_anim=-1,
+         .open_end_anim=-1,.close_end_anim=-1,.alternate_a=0,.alternate_b=1,.collision_id=-1},
+        {.index=143,.resource=0x00d81002,.open_anim=-1,.close_anim=-1,
+         .open_end_anim=-1,.close_end_anim=-1,.alternate_a=-1,.alternate_b=-1,.collision_id=-1}};
+      C3Title *elevator_models[2]={&door_model,&door_model};uint32_t clips=door_model.clip_count;door_model.clip_count=2;
+      memset(code,0,sizeof code);synthetic_load(s,&game,file,code,0,0,0x1000003);
+      CHECK(c3_field_story_bind_doors(&s->story,elevator,2,elevator_models,error));
+      for(unsigned i=0;i<2;++i){door=c3_field_story_door(&s->story,i);CHECK(door&&door->clip==0&&door->seconds==0&&!door->playing);}
+      elevator[0].alternate_b=2;CHECK(!c3_field_story_bind_doors(&s->story,elevator,2,elevator_models,error)&&strstr(error,"lacks animation 2"));
+      close_scene(s);door_model.clip_count=clips;
+     }
      CHECK(!c3_field_story_bind_doors(NULL,rows,2,door_models,error));
      free(door_model.file_data);free(door_model.vertices);free(door_model.draw_vertices);free(door_model.batches);}
     /* Native 23 writes the partner-present byte; 4C/4D without arguments,

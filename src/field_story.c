@@ -1478,10 +1478,19 @@ int c3_field_story_bind_doors(C3FieldStory *story,const C3AreaDoor *rows,uint32_
         if(rows[i].open_flag&&!flag(s,rows[i].open_flag,&open,error))return 0;
         if(rows[i].collision_id>=0)c3_field_set_object_enabled(s->map,(uint32_t)rows[i].collision_id,!open);
         if(!door->model)continue;
-        if(door->model->fps<=0||rows[i].open_anim<0||(uint32_t)rows[i].open_anim>=door->model->clip_count)
-            return fail(error,"Door %lu model lacks its open animation",(unsigned long)rows[i].index);
-        door->clip=(uint32_t)rows[i].open_anim;
-        door->seconds=open?(float)(door->model->clips[door->clip].frame_count-1u)/door->model->fps:0;
+        if(door->model->fps<=0||!door->model->clip_count)
+            return fail(error,"Door %lu model has no rest frame",(unsigned long)rows[i].index);
+        /* Elevator rows may have travel animations only, or no animations.
+         * floorEvent elevator control starts openAnim only when >=0. */
+        const int8_t animations[]={rows[i].open_anim,rows[i].close_anim,rows[i].open_end_anim,
+            rows[i].close_end_anim,rows[i].alternate_a,rows[i].alternate_b};
+        for(unsigned j=0;j<sizeof animations/sizeof animations[0];++j)
+            if(animations[j]>=0&&(uint32_t)animations[j]>=door->model->clip_count)
+                return fail(error,"Door %lu model lacks animation %d",(unsigned long)rows[i].index,animations[j]);
+        door->clip=rows[i].open_anim>=0?(uint32_t)rows[i].open_anim:0;
+        door->seconds=open&&rows[i].open_anim>=0?
+            (float)(door->model->clips[door->clip].frame_count-1u)/door->model->fps:0;
+
     }
     return 1;
 }
