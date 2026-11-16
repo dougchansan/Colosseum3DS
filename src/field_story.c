@@ -10,6 +10,7 @@
 #define PAD_A 0x0100u
 #define PAD_B 0x0200u
 #define PAD_DIRECTIONS 0x000fu
+#define DYNAMIC_MARKER 0x43334459u /* C3DY: private prepared model reservation. */
 #define MAX_WAYPOINTS 64u /* Phenac actor 24 allocates 36 points (bank 013E0E00 fn 34). */
 
 typedef enum { W_NONE, W_SECONDS, W_TASK, W_MOTION, W_MOVE, W_CAMERA,
@@ -36,6 +37,7 @@ typedef struct Person {
     int moving, turning, talking, looking, talk_lock;
     /* Streamed models (field_scene loads people after the room): what the
      * scripts asked for while the model was absent, applied on attach. */
+    int dynamic_active;
     int want_visible, pending_motion;uint32_t pending_clip,pending_frame,pending_loop;
     float waypoints[MAX_WAYPOINTS][3];
     uint32_t waypoint_capacity, waypoint_count, waypoint_cursor;
@@ -71,6 +73,7 @@ typedef struct {
     float return_time,return_duration;
     Person *camera_person;
     int target_moving,camera_returning;
+    uint8_t dynamic_serial;
     uint32_t sound_id, previous_floor, pending_floor, pending_spawn, arrival_spawn;
     uint32_t fight_result; /* fn_801EF634: last original fight result ID */
     uint32_t whiteout_floor,whiteout_previous,whiteout_spawn;int whiteout_valid;
@@ -126,6 +129,7 @@ static int validate_native(const Impl *s,const C3StoryCall *c,char *error)
         {0x46,5,0},{0x47,2,0},{0x48,3,0},{0x49,5,28},{0x4a,3,0},
         {0x19,1,0},{0x4c,2,0},{0x4d,2,0},{0x4e,1,0},{0x4f,1,0},{0x50,2,0},{0x51,1,0},{0x52,1,0},
         {0x5c,0,0},{0x5d,0,0},{0x5e,0,0},{0x5f,2,0},{0x64,2,0},{0x65,4,14},
+        {0x70,1,0},{0x71,1,0},{0xdd,3,0},
         {0x67,0,0},{0x68,3,0},{0x69,3,0},{0x6a,2,0},{0x6d,2,0},{0x72,2,0},{0x76,2,0},
         {0x7d,3,0},{0x7f,3,7},{0x88,0,0},{0x8a,4,0},{0x8c,5,30},{0x98,3,0},{0xd9,1,0},{0xe0,2,0},{0xc3,0,0},
         {0xc2,2,0},{0x99,1,0},{0x9d,1,1},{0xb3,2,1},{0xb6,1,0},{0xd1,5,0},{0xd3,0,0},{0xe4,0,0},
@@ -203,7 +207,8 @@ static Person *person(Impl *s,uint32_t group,uint32_t id)
     if(!group&&id==101)return s->partner_actor.public.model?&s->partner_actor:NULL;
     /* people.c peopleFindSelf: an exact group match first, then the index
      * in any group. Floor actors are the only other people here. */
-    for(uint32_t i=0;i<s->area->actor_count;++i)if(s->actors[i].public.index==id)return s->actors+i;
+    for(uint32_t i=0;i<s->area->actor_count;++i)if(s->actors[i].public.index==id&&
+        (s->actors[i].source->aux3!=DYNAMIC_MARKER||s->actors[i].dynamic_active))return s->actors+i;
     return NULL;
 }
 static C3FieldPlayer *pose(Impl *s,Person *p)
@@ -871,6 +876,33 @@ static int run_native(Impl *s,RunTask *t,char *error)
         break;
     case 0x8a:case 0x99:
         note_presentation(s,c->native,"field_audio_backend_pending");break;
+    case 0x70:{
+        /* fn_801CBA0C: peopleOpen of an original model, with signed-byte
+         * serial ORed into the original transient person namespace. Packs
+         * are reserved and streamed by the scene, never fabricated here. */
+        uint32_t id=(uint32_t)(int32_t)(int8_t)s->dynamic_serial++|0x7ffe0000u;p=NULL;
+        for(uint32_t i=0;i<s->area->actor_count;++i){Person *candidate=s->actors+i;
+            if(candidate->source->aux3==DYNAMIC_MARKER&&!candidate->dynamic_active&&candidate->source->resource==a[0]){p=candidate;break;}}
+        if(!p||!p->public.model)return fail(error,"Dynamic original model %08lx is not prepared",(unsigned long)a[0]);
+        if(person(s,s->area->group,id))break; /* Source duplicate open returns zero. */
+        p->dynamic_active=1;p->public.index=id;p->want_visible=1;p->public.visible=1;
+        p->public.clip=0;p->public.loop=1;p->public.playing=1;p->public.pose.animation_seconds=0;
+        memcpy(p->public.pose.position,p->source->position,sizeof p->source->position);p->public.pose.yaw=p->source->yaw;
+        value=id;log_line(s,"story_dynamic_open resource=%08lx id=%08lx",(unsigned long)a[0],(unsigned long)id);
+        }break;
+    case 0x71:
+        /* fn_801CB9D8 closes a transient person and releases its slot. The
+         * prepared GPU pack stays resident for a later original allocation. */
+        p=person(s,s->area->group,a[0]);
+        if(p&&p->source&&p->source->aux3==DYNAMIC_MARKER){
+            p->dynamic_active=0;p->want_visible=0;p->public.visible=0;p->public.playing=0;
+            p->moving=p->turning=p->waypoint_active=0;p->parent=NULL;
+            log_line(s,"story_dynamic_close id=%08lx",(unsigned long)a[0]);}
+        break;
+    case 0xdd:
+        /* fn_801CB530 binds the source particle bank to a model. Generic
+         * HSD particles have no renderer; preserve this visible limitation. */
+        note_presentation(s,c->native,"particle_bank_attachment_unrendered");break;
     case 0x72:
         /* fn_801CB954: a resource that is a floor person changes that
          * person's visibility (as native 32); otherwise the map model's.
@@ -1421,10 +1453,10 @@ int c3_field_story_bind_doors(C3FieldStory *story,const C3AreaDoor *rows,uint32_
         if(rows[i].open_flag&&!flag(s,rows[i].open_flag,&open,error))return 0;
         if(rows[i].collision_id>=0)c3_field_set_object_enabled(s->map,(uint32_t)rows[i].collision_id,!open);
         if(!door->model)continue;
-        if(door->model->fps<=0||rows[i].open_anim<0||(uint32_t)rows[i].open_anim>=door->model->clip_count)
+        if(door->model->fps<=0||(rows[i].open_anim>=0&&(uint32_t)rows[i].open_anim>=door->model->clip_count))
             return fail(error,"Door %lu model lacks its open animation",(unsigned long)rows[i].index);
-        door->clip=(uint32_t)rows[i].open_anim;
-        door->seconds=open?(float)(door->model->clips[door->clip].frame_count-1u)/door->model->fps:0;
+        door->clip=rows[i].open_anim>=0?(uint32_t)rows[i].open_anim:0;
+        door->seconds=open&&rows[i].open_anim>=0?(float)(door->model->clips[door->clip].frame_count-1u)/door->model->fps:0;
     }
     return 1;
 }
@@ -1515,7 +1547,7 @@ int c3_field_story_load(C3FieldStory *story,const char *path,C3GameState *game,
         Person *p=s->actors+i;const C3AreaActor *a=area->actors+i;p->source=a;
         p->public.model=actor_models[i];p->public.index=a->index;
         memcpy(p->public.pose.position,a->position,sizeof a->position);p->public.pose.yaw=a->yaw;
-        p->want_visible=(a->flags>>31)&1;p->public.visible=p->want_visible;p->public.clip=a->motions[0];
+        p->want_visible=a->aux3==DYNAMIC_MARKER?0:(a->flags>>31)&1;p->public.visible=p->want_visible;p->public.clip=a->motions[0];
         p->public.flags=0x0cu|(a->talk_start==1?0x10u:a->talk_start==2?0x20u:0u)|(a->talk_end==1?0x40u:0u);
         p->public.loop=1;p->public.playing=1;p->speed=1;
         if(p->public.model&&p->public.clip>=p->public.model->clip_count){
@@ -1551,7 +1583,13 @@ int c3_field_story_enter(C3FieldStory *story,char *error)
 const C3FieldStoryView *c3_field_story_view(const C3FieldStory *story)
 {const Impl *s=story?story->impl:NULL;return s?&s->view:NULL;}
 C3StoryActor *c3_field_story_actor(C3FieldStory *story,uint32_t index)
-{Impl *s=story?story->impl:NULL;Person *p=s?person(s,s->area->group,index):NULL;return p?&p->public:NULL;}
+{Impl *s=story?story->impl:NULL;Person *p=s?person(s,s->area->group,index):NULL;
+ /* The renderer addresses streamed rows by prepared index, even after the
+  * original native assigns a transient person ID. Script lookup stays closed
+  * until allocation, while this scene-facing accessor retains the row. */
+ if(!p&&s)for(uint32_t i=0;i<s->area->actor_count;++i)
+     if(s->actors[i].source->aux3==DYNAMIC_MARKER&&s->actors[i].source->index==index){p=s->actors+i;break;}
+ return p?&p->public:NULL;}
 
 static float normalize_yaw(float yaw)
 {

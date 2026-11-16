@@ -221,6 +221,23 @@ static void synthetic_regressions(void)
     char directory[]="/tmp/c3-field-story-unit-XXXXXX",file[1024];CHECK(mkdtemp(directory));path(file,directory,"unit.c3s");
     C3GameState game={0};synthetic_game(&game);Scene *s=calloc(1,sizeof(*s));CHECK(s);
     Program code[8]={0};uint32_t args[6]={3,0};
+    /* Original transient models need a prepared slot and a real model. */
+    args[0]=0x115a0400;native(code+3,0x70,1,args,1);
+    args[0]=bits(1);native(code+3,0x9d,1,args,1);
+    args[0]=0x7ffe0000;native(code+3,0x71,1,args,1);
+    synthetic_load(s,&game,file,code,0,0,0x1000003);
+    C3StoryActor *dynamic_actor=c3_field_story_actor(&s->story,3);
+    s->area.actors[0].aux3=0x43334459;s->area.actors[0].resource=0x115a0400;
+    dynamic_actor->visible=0;
+    CHECK(c3_field_story_enter(&s->story,error));CHECK(c3_field_story_tick(&s->story,0,0,error));
+    CHECK(dynamic_actor->index==0x7ffe0000&&dynamic_actor->visible);
+    CHECK(c3_field_story_actor(&s->story,0x7ffe0000)==dynamic_actor);
+    CHECK(c3_field_story_tick(&s->story,1.1f,0,error));
+    CHECK(!dynamic_actor->visible&&!c3_field_story_actor(&s->story,0x7ffe0000));close_scene(s);
+    memset(code,0,sizeof code);args[0]=0x115a0400;native(code+3,0x70,1,args,1);
+    synthetic_load(s,&game,file,code,0,0,0x1000003);CHECK(c3_field_story_enter(&s->story,error));
+    CHECK(!c3_field_story_tick(&s->story,0,0,error));CHECK(strstr(error,"not prepared"));close_scene(s);
+    memset(code,0,sizeof code);args[0]=3;args[1]=0;
     /* An absent init cannot suppress a present pre hook. */
     native(code+2,0x64,2,args,1);synthetic_load(s,&game,file,code,0,0x1000002,0);
     CHECK(!c3_field_story_actor(&s->story,3)->visible);close_scene(s);
@@ -432,6 +449,12 @@ static void synthetic_regressions(void)
                          {.index=6,.open_anim=0,.close_anim=1,.open_end_anim=-1,.close_end_anim=-1,.collision_id=0,.resource=2}};
      C3Title door_model={0};C3Title *door_models[2]={&door_model,NULL};const C3StoryDoor *door;
      synthetic_model(&door_model);
+     /* Source D4_out_2 row163 has a real rest model but no animations. */
+     {C3AreaDoor still={.index=163,.open_anim=-1,.close_anim=-1,.open_end_anim=-1,.close_end_anim=-1,.collision_id=-1,.resource=1};
+      memset(code,0,sizeof code);synthetic_load(s,&game,file,code,0,0,0);
+      CHECK(c3_field_story_bind_doors(&s->story,&still,1,door_models,error));
+      CHECK(c3_field_story_door(&s->story,0)->clip==0&&!c3_field_story_door(&s->story,0)->playing);close_scene(s);}
+
      memset(code,0,sizeof code);args[0]=1;args[1]=5;args[2]=0;native(code+3,0x60,3,args,1);args[0]=3;args[1]=0;native(code+3,0x64,2,args,1);
      synthetic_load(s,&game,file,code,0,0,0x1000003);s->map.object_count=2;
      CHECK(c3_field_story_bind_doors(&s->story,rows,2,door_models,error));
