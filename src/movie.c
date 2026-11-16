@@ -4,7 +4,7 @@
 #include <string.h>
 
 #define C3_MOVIE_HEADER_BYTES 64u
-#define C3_MOVIE_MAX_BYTES (512u * 1024u * 1024u)
+#define C3_MOVIE_MAX_BYTES (1024u * 1024u * 1024u) /* 5250-frame staffroll: 806400064 bytes */
 
 static uint32_t le32(const unsigned char *p)
 {

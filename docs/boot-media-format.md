@@ -27,7 +27,7 @@ The header is exactly 64 bytes (`<4s15I`). There are no alignment gaps.
 | 8 | Total file bytes | End of PCM data, or end of video when absent |
 | 12 | Width | 320 |
 | 16 | Height | 240 |
-| 20 | Frame count | Runtime bound 1–18,000; reviewed sources use 75, 130 and 1,926; total file bound is 512 MiB |
+| 20 | Frame count | Runtime bound 1–18,000; reviewed sources use 75, 130, 1,926 and 5,250 (staffroll); total file bound is 1 GiB |
 | 24 | FPS numerator | 30000 |
 | 28 | FPS denominator | 1001 |
 | 32 | Video offset | 64 |
