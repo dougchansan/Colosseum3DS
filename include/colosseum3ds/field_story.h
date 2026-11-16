@@ -120,6 +120,19 @@ void c3_field_story_set_random(C3FieldStory *story,uint16_t (*next16)(void *cont
  * index into its original name (returns 0 when it cannot). */
 void c3_field_story_set_species_namer(C3FieldStory *story,
     int (*name)(void *context,unsigned species,char *out,size_t capacity),void *context);
+/* Names the message controls print from the game's data tables (item,
+ * move, species and trainer-class names): set value->message to the name's
+ * original message ID, or value->text. Return 0 when unknown. */
+enum { C3_STORY_NAME_ITEM = 1, C3_STORY_NAME_MOVE, C3_STORY_NAME_SPECIES, C3_STORY_NAME_TRAINER_KIND };
+typedef int (*C3StoryNamer)(void *context, unsigned kind, uint32_t id, C3StoryValue *value);
+void c3_field_story_set_namer(C3FieldStory *story, C3StoryNamer namer, void *context);
+/* A string variable (msgctrlSetValue with a GSchar pointer: 0D/0E/41
+ * EvStrBuf, 23 TrainerName,
+ * 33, 36 MenuPokemon, 37/51 MenuMsg, 4D/57 String) the next
+ * messages print. Returns 0 for a control that is not a value control. */
+int c3_field_story_set_message_string(C3FieldStory *story, uint8_t control, const char *text);
+/* 1 when the field message source answers this value control. */
+int c3_field_story_message_control(uint8_t control);
 /* A person's model that was loaded after the story (field_scene streams
  * people in after the room): binds it and applies the visibility and the
  * last motion the scripts asked for meanwhile. area_index is the person's
