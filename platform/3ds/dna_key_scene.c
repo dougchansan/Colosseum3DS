@@ -22,7 +22,7 @@ int c3_dna_key_scene_run(const uint16_t expected[3],FILE *trace,char *error,size
     unsigned phase=0,frames=0;float time=0;uint64_t previous=c3_n3ds_active_time_us();uint32_t wait_sound=0;float cursor_wait=0;
     c3_sfx_play(0x27,127);
 #ifdef C3_DNA_KEY_PROBE
-    unsigned probe_step=0,probe_capture=0;float probe_next=.15f;
+    unsigned probe_step=0,probe_capture=0,probe_solved_frames=0;float probe_next=.15f;
     static const uint16_t probe_inputs[]={0x10,5,0x10,8,0x10,2,0x10,0x20,0x10,6,0x10,8,8,0x10};
 #endif
     if(trace){fprintf(trace,"dna_scene floor=387 lifecycle=05960014 native=ce expected=%04x,%04x,%04x models=12\n",expected[0],expected[1],expected[2]);fflush(trace);}
@@ -54,7 +54,9 @@ int c3_dna_key_scene_run(const uint16_t expected[3],FILE *trace,char *error,size
         C3TitleRenderStats stats={0};int draw=c3_stage_renderer_draw(models,12,&camera,1,&stats,error,capacity);if(draw==C3_RENDER_BUSY){gspWaitForVBlank();continue;}if(draw)goto done;++frames;
 #ifdef C3_DNA_KEY_PROBE
         if(phase==1&&time>.1f&&!probe_capture){c3_n3ds_capture_top("sdmc:/3ds/Colosseum3DS/dna-key.bmp");probe_capture=1;}
-        if(phase==1&&state.count==3&&state.result==0&&probe_capture==1){c3_n3ds_capture_top("sdmc:/3ds/Colosseum3DS/dna-key-selected.bmp");probe_capture=2;}
+        /* Capture a settled GPU frame, rather than the previous two-pick
+         * framebuffer immediately after the third selection is submitted. */
+        if(state.count==3&&state.result==0&&probe_capture==1&&++probe_solved_frames>=3){c3_n3ds_capture_top("sdmc:/3ds/Colosseum3DS/dna-key-selected.bmp");probe_capture=2;}
 #endif
         if(phase==2&&time>=(tracks[1].frame_count-1)/tracks[1].fps){result=state.result;break;}
     }
