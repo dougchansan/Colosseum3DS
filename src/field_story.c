@@ -1594,6 +1594,15 @@ int c3_field_story_enter(C3FieldStory *story,char *error)
             if(!start(s,p->source->move_script,args,4,&key,error))return 0;
         }
     }
+    /* movie.c fn_80035F64 installs this entry override after floorLink(2,1).
+     * The card checkpoint uses previous1, so a fresh Continue does not replay it. */
+    if(s->area->floor==2&&s->previous_floor==0x39f){
+        /* Staffroll finish fn_80035F34 leaves the screen black. */
+        s->view.fade=0;s->fade_from=s->fade_to=0;s->fade_elapsed=s->fade_duration=0;
+        uint16_t key;
+        if(!start(s,0x05960008u,NULL,0,&key,error))return 0;
+        log_line(s,"story_entry_fade script=05960008 previous=039f");
+    }
     return start_floor_script(s,s->area->main_script,&s->main_key,error);
 }
 const C3FieldStoryView *c3_field_story_view(const C3FieldStory *story)

@@ -159,17 +159,22 @@ static unsigned bank(uint8_t *out,unsigned id,const Program programs[8])
     for(unsigned i=0;i<8;++i){be32(out+24+4*i,size);memcpy(out+size,programs[i].data,programs[i].size);size+=programs[i].size;out[size++]=5;}
     return size;
 }
-static void write_programs(const char *file,const Program programs[8])
+static void write_programs(const char *file,const Program programs[8],uint32_t floor)
 {
     uint8_t bytes[16384]={0},common[256]={0};
     unsigned a=bank(bytes+96,0x100,programs),b=64;
     be16(common,0x596);be16(common+4,10);be32(common+16,64);
-    for(unsigned i=0;i<10;++i){be32(common+24+4*i,b);common[b++]=5;}
-    /* Synthetic common fade function9, used by production departure. */
-    Program fade={0};uint32_t args[2]={3,bits(.1f)};native(&fade,0x1c,2,args,1);
-    args[0]=1;native(&fade,0x1d,1,args,1);b=73;memcpy(common+b,fade.data,fade.size);b+=fade.size;common[b++]=5;
+    /* Source common8 entry fade and common9 departure fade. */
+    for(unsigned i=0;i<10;++i){
+        be32(common+24+4*i,b);Program fade={0};
+        if(i==8||i==9){uint32_t args[2]={i==8?2u:3u,bits(i==8?.5f:.1f)};
+            native(&fade,0x1c,2,args,1);
+            if(i==9){args[0]=1;native(&fade,0x1d,1,args,1);}
+            memcpy(common+b,fade.data,fade.size);b+=fade.size;}
+        common[b++]=5;
+    }
     CHECK(96+a+b<=sizeof bytes);memcpy(bytes+96+a,common,b);
-    memcpy(bytes,"C3S1",4);le32(bytes+4,1);le32(bytes+8,96+a+b);le32(bytes+12,1);
+    memcpy(bytes,"C3S1",4);le32(bytes+4,1);le32(bytes+8,96+a+b);le32(bytes+12,floor);
     le32(bytes+16,2);le32(bytes+24,64);le32(bytes+28,96);
     le32(bytes+64,0x100);le32(bytes+68,96);le32(bytes+72,a);
     le32(bytes+80,0x596);le32(bytes+84,96+a);le32(bytes+88,b);
@@ -199,10 +204,10 @@ static void synthetic_model(C3Title *model)
         le32(frame+140+4*9,bits(100));le32(frame+140+4*10,bits(1));
     }
 }
-static void synthetic_load(Scene *scene,C3GameState *game,const char *file,const Program programs[8],
-                           uint32_t init,uint32_t pre,uint32_t main_script)
+static void synthetic_load_at(Scene *scene,C3GameState *game,const char *file,const Program programs[8],
+                           uint32_t init,uint32_t pre,uint32_t main_script,uint32_t floor)
 {
-    write_programs(file,programs);scene->map.floor=scene->area.floor=1;scene->area.group=29;
+    write_programs(file,programs,floor);scene->map.floor=scene->area.floor=floor;scene->area.group=29;
     scene->map.scale=1;scene->map.radius=.4f;scene->map.walk_distance=.9f;scene->map.run_distance=1.3f;
     scene->map.walk_frames=scene->map.run_frames=30;scene->map.idle_clip=0;scene->map.walk_clip=1;scene->map.run_clip=2;
     scene->area.actor_count=1;scene->area.actors=calloc(1,sizeof(*scene->area.actors));CHECK(scene->area.actors);
@@ -216,11 +221,27 @@ static void synthetic_load(Scene *scene,C3GameState *game,const char *file,const
     for(unsigned i=0;i<10&&!c3_field_story_view(&scene->story)->prepared;++i)CHECK(c3_field_story_tick(&scene->story,0,0,error));
     CHECK(c3_field_story_view(&scene->story)->prepared);
 }
+static void synthetic_load(Scene *scene,C3GameState *game,const char *file,const Program programs[8],
+                           uint32_t init,uint32_t pre,uint32_t main_script)
+{synthetic_load_at(scene,game,file,programs,init,pre,main_script,1);}
 static void synthetic_regressions(void)
 {
     char directory[]="/tmp/c3-field-story-unit-XXXXXX",file[1024];CHECK(mkdtemp(directory));path(file,directory,"unit.c3s");
     C3GameState game={0};synthetic_game(&game);Scene *s=calloc(1,sizeof(*s));CHECK(s);
     Program code[8]={0};uint32_t args[6]={3,0};
+    /* The source staffroll return installs common8; Continue does not. */
+    CHECK(c3_game_state_set_floor(&game,2,0x39f,1));
+    synthetic_load_at(s,&game,file,code,0,0,0,2);
+    CHECK(c3_field_story_enter(&s->story,error));CHECK(c3_field_story_tick(&s->story,0,0,error));
+    CHECK(c3_field_story_view(&s->story)->fade==0);
+    CHECK(c3_field_story_tick(&s->story,.25f,0,error));CHECK(c3_field_story_view(&s->story)->fade==.5f);
+    CHECK(c3_field_story_tick(&s->story,.25f,0,error));CHECK(c3_field_story_view(&s->story)->fade==1);close_scene(s);
+    CHECK(c3_game_state_set_floor(&game,2,1,1));
+    synthetic_load_at(s,&game,file,code,0,0,0,2);
+    CHECK(c3_field_story_enter(&s->story,error));CHECK(c3_field_story_tick(&s->story,0,0,error));
+    CHECK(c3_field_story_view(&s->story)->fade==1);close_scene(s);
+    CHECK(c3_game_state_set_floor(&game,1,0,0));
+
     /* Original transient models need a prepared slot and a real model. */
     args[0]=0x115a0400;native(code+3,0x70,1,args,1);
     args[0]=bits(1);native(code+3,0x9d,1,args,1);

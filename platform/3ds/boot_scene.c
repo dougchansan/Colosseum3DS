@@ -358,7 +358,7 @@ int c3_boot_scene_run(int core_status)
         c3_music_close();c3_game_state_free(&state);return played?1:0;
     }
 #endif
-#ifdef C3_CLEAR_CONTINUE_PROBE
+#if defined(C3_CLEAR_CONTINUE_PROBE) || defined(C3_RETURN_FADE_PROBE)
     {
         const char *copy="sdmc:/3ds/Colosseum3DS/ending-probe/copy.gci";
         C3GameSummary checkpoint;uint32_t clear=0,saved_clear=0;int continued=-1;
@@ -368,6 +368,11 @@ int c3_boot_scene_run(int core_status)
            c3_game_state_get_flag(&state,0x478,&saved_clear)&&
            checkpoint.floor==2&&checkpoint.previous_floor==1&&checkpoint.spawn==1&&clear==1&&saved_clear==1){
             if(trace){fprintf(trace,"clear_continue_load fresh_process=1 floor=%03lx previous=%03lx spawn=%u clear=%lu saved_clear=%lu saved_count=%lu\n",(unsigned long)checkpoint.floor,(unsigned long)checkpoint.previous_floor,checkpoint.spawn,(unsigned long)clear,(unsigned long)saved_clear,(unsigned long)checkpoint.saved_count);fflush(trace);}
+#ifdef C3_RETURN_FADE_PROBE
+            /* Isolated return-override check, not a fresh Continue claim. */
+            if(!c3_game_state_set_floor(&state,2,0x39f,1)){c3_game_state_free(&state);return 1;}
+            if(trace){fprintf(trace,"return_fade_probe fixture=staffroll_destination_tuple save_writes=0\n");fflush(trace);}
+#endif
             continued=c3_field_scene_run(&state,0,copy,trace,error,sizeof error);
         }
         if(trace){fprintf(trace,"clear_continue_end result=%d error=%s\n",continued,error);fclose(trace);}

@@ -59,7 +59,7 @@ int c3_ending_scene_run(C3GameState *state,const char *save_path,FILE *trace,cha
     int result=c3_ending_run(state,save_path,&services,&saved,e.error);
     c3_story_free(&e.story);
     if(e.failed)result=-1;
-    if(trace){fprintf(trace,"ending_return result=%d saved=%d floor=002 entrance=1 fade_script=05960008 fade_handoff=unported\n",result,saved);fflush(trace);}
+    if(trace){fprintf(trace,"ending_return result=%d saved=%d floor=002 entrance=1 fade_script=05960008 fade_handoff=destination_entry_script\n",result,saved);fflush(trace);}
     if(result<0)snprintf(error,capacity,"%s",e.error);
     return result?result:2;
 }

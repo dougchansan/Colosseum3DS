@@ -1518,7 +1518,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         }
 #endif
         ++frames;
-#if defined(C3_CLEAR_CONTINUE_PROBE) || defined(C3_FINAL_EVENT_PROBE)
+#if defined(C3_CLEAR_CONTINUE_PROBE) || defined(C3_FINAL_EVENT_PROBE) || defined(C3_RETURN_FADE_PROBE)
         /* Observe the loaded Continue checkpoint; never warp or synthesize
          * a story choice. Capture only once the native entry yields control. */
         if(map.floor==2&&npc.attached&&view->control&&frames>=90u){
