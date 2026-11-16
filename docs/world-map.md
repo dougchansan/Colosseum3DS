@@ -158,6 +158,22 @@ and alternates area and world map with no input, logging
 | with the fix | 2.12, 2.12, 2.12 MB | 2.12 MB through the seventh area |
 | with the fix and the journey | 2.02, 2.02, 2.02 MB | 2.02 MB through the seventh area; each journey played and the field took the prefetched packs |
 
+### Round-trip memory check (2026-11-16)
+
+The probe now checks the allocator after every area exit: `used_bytes` must
+stay within 1 MiB of the first exit (`roundtrip_memory` per exit,
+`roundtrip_memory_check status=pass|fail` at the end). `map <floor>` lines in
+`probe-route.txt` choose the world-map destinations in order.
+
+The console trace from build 31e6d04 (before the fix above) ran Phenac ->
+Outskirt -> world map -> Phenac: `used_bytes` was 36.6 MB with Phenac
+loaded, still 73.0 MB with only the Outskirt Stand loaded, and the second
+Phenac load failed on `phenac_map5.c3t` at 84.6 MB ("Not enough memory for
+title file"). The same route from the same save on Azahar with the fix
+(nine exits, Phenac and Outskirt alternating through the journey) stays
+within 0.9 KB of the first exit: 2.02 MB after every area, 20.6-21.0 MB at
+each world-map exit (the next floor's prefetched packs), status `pass`.
+
 ## Original-game reference (Dolphin A/B, 2026-11-15)
 
 Same save on both sides: the console's `saves/pokemon_colosseum.gci` (read
@@ -261,7 +277,10 @@ story packs; their people's names are in the common names group.
 Doors: the round-trip probe takes an optional route
 (`sdmc:/3ds/Colosseum3DS/probe-route.txt`: `start <floor>`, then
 `<floor> <door source>` lines) and fires each door's original transition
-script. On Azahar it walked exterior -> 1F (entrance 1) -> 2F (0) -> 3F (0)
+script. `start <floor> <entrance>` picks the first floor's entrance (Agate
+Village 0x24: 1 Relic Cave, 5 Pokemon Center door), and `frames <floor>
+<count>` saves that many consecutive top-screen frames there
+(`probe/film_<floor>_<n>.bmp`) for animation comparisons. On Azahar it walked exterior -> 1F (entrance 1) -> 2F (0) -> 3F (0)
 -> 2F (4) -> 1F (2) -> exterior (1) -> world map, each door's script choosing
 the floor and entrance, with no entrance fallbacks or script errors.
 `used_bytes` rose once from 2.02 to 2.12 MB on the first 1F visit and then

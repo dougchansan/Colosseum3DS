@@ -1,4 +1,5 @@
 #include "battle_general_scene.h"
+#include "battle_general_3d.h"
 #include "bottom_screen.h"
 #include "n3ds_platform.h"
 #include "music_player.h"
@@ -38,10 +39,27 @@ static const C3GeneralMon *hero(const C3GeneralBattle *b, unsigned pos)
     uint8_t m = pos < b->active_count ? b->active[0][pos] : 255;
     return m != 255 ? &b->party[0][m] : NULL;
 }
-/* First hero position at or after `from` that still needs a command. */
-static int next_position(const C3GeneralBattle *b, unsigned from)
+/* Balls the hero holds (item ids), for the Snag Machine page. */
+static unsigned ball_list(const C3GeneralBattle *b, unsigned out[12])
 {
-    for (unsigned p = from; p < b->active_count; ++p) { const C3GeneralMon *m = hero(b, p); if (m && m->hp) return (int)p; }
+    unsigned n = 0;
+    if (!b->snag || b->link) return 0;
+    for (unsigned ball = 1; ball <= 12; ++ball) if (b->balls[ball]) out[n++] = ball;
+    return n;
+}
+static unsigned snag_targets(const C3GeneralBattle *b, const C3BattlePack *pack, unsigned pos, unsigned ball, unsigned out[2])
+{
+    unsigned n = 0;
+    for (unsigned t = 2; t < 2u + b->active_count; ++t) if (c3_general_battle_can_snag(b, pack, pos, ball, t)) out[n++] = t;
+    return n;
+}
+/* First hero position at or after `from` that still needs a command. */
+static int next_position(const C3GeneralUi *ui, const C3GeneralBattle *b, unsigned from)
+{
+    for (unsigned p = from; p < b->active_count; ++p) {
+        if (ui->control_mask && !(ui->control_mask >> p & 1u)) continue;
+        const C3GeneralMon *m = hero(b, p); if (m && m->hp) return (int)p;
+    }
     return -1;
 }
 
@@ -65,7 +83,8 @@ void c3_general_ui_draw(const C3BattlePack *pack, const C3GeneralBattle *b, cons
     c3_ui_panel(s, 5, 94, 310, 50);
     const char *message = e ? e->text : ui->error[0] ? ui->error : "";
     if (ui->page == C3_GUI_RESULT && b->event_count) message = b->events[b->event_count - 1].text;
-    if (ui->page == C3_GUI_MOVES || ui->page == C3_GUI_TARGET || ui->page == C3_GUI_SWITCH) {
+    if (ui->page == C3_GUI_WAIT) message = "Waiting for the other players...";
+    if (ui->page == C3_GUI_MOVES || ui->page == C3_GUI_TARGET || ui->page == C3_GUI_SWITCH || ui->page == C3_GUI_BALL) {
         const C3GeneralMon *m = hero(b, ui->position);
         snprintf(text, sizeof text, "What will %s do?", m ? m->name : "?");
         message = ui->error[0] ? ui->error : text;
@@ -79,7 +98,19 @@ void c3_general_ui_draw(const C3BattlePack *pack, const C3GeneralBattle *b, cons
             if (m->moves[i]) { c3_battle_pack_move_name(pack, m->moves[i], name); snprintf(pp, sizeof pp, "%u/%u", m->pp[i], m->pp_max[i]); }
             c3_ui_row_value(s, 148 + (int)i * 19, name, pp, ui->cursor == i, !(legal >> i & 1u));
         }
-        c3_ui_footer(s, b->party_count[0] > b->active_count ? "A: use  B: back  Y: switch" : "A: use  B: back");
+        unsigned balls[12];
+        int can_ball = ball_list(b, balls) > 0, can_switch = b->party_count[0] > b->active_count;
+        c3_ui_footer(s, can_switch && can_ball ? "A: use  B: back  Y: switch  X: ball" : can_switch ? "A: use  B: back  Y: switch" :
+                        can_ball ? "A: use  B: back  X: ball" : "A: use  B: back");
+    } else if (ui->page == C3_GUI_BALL) {
+        unsigned balls[12], n = ball_list(b, balls);
+        for (unsigned i = 0; i < n && i < 4; ++i) {
+            unsigned first = ui->cursor >= 4 ? ui->cursor - 3 : 0, k = first + i;
+            if (k >= n) break;
+            snprintf(text, sizeof text, "x%u", b->balls[balls[k]]);
+            c3_ui_row_value(s, 148 + (int)i * 19, c3_general_ball_name(balls[k]), text, ui->cursor == k, 0);
+        }
+        c3_ui_footer(s, "A: throw  B: back");
     } else if (ui->page == C3_GUI_TARGET) {
         unsigned foes[2], n = living_foes(b, foes);
         for (unsigned i = 0; i < n; ++i) {
@@ -104,12 +135,13 @@ void c3_general_ui_draw(const C3BattlePack *pack, const C3GeneralBattle *b, cons
     c3_bottom_screen_present();
 }
 
-void c3_general_ui_commands(C3GeneralUi *ui, const C3GeneralBattle *b)
+int c3_general_ui_commands(C3GeneralUi *ui, const C3GeneralBattle *b)
 {
     memset(ui->commands, 0, sizeof ui->commands);
-    int p = next_position(b, 0);
+    int p = next_position(ui, b, 0);
     ui->position = p < 0 ? 0 : (unsigned)p;
     ui->cursor = 0; ui->page = C3_GUI_MOVES;
+    return p >= 0;
 }
 
 int c3_general_ui_press(C3GeneralUi *ui, const C3BattlePack *pack, C3GeneralBattle *b, uint16_t pressed, FILE *trace)
@@ -121,10 +153,15 @@ int c3_general_ui_press(C3GeneralUi *ui, const C3BattlePack *pack, C3GeneralBatt
         uint8_t legal = c3_general_battle_legal_moves(b, pack, ui->position);
         if (pressed & C3_PAD_UP) ui->cursor = (ui->cursor + 3) % 4;
         if (pressed & C3_PAD_DOWN) ui->cursor = (ui->cursor + 1) % 4;
-        if ((pressed & C3_PAD_Y) && b->party_count[0] > b->active_count) { ui->page = C3_GUI_SWITCH; ui->cursor = 0; }
+        unsigned balls[12];
+        if ((pressed & C3_PAD_X) && ball_list(b, balls)) { ui->page = C3_GUI_BALL; ui->cursor = 0; }
+        else if ((pressed & C3_PAD_Y) && b->party_count[0] > b->active_count) { ui->page = C3_GUI_SWITCH; ui->cursor = 0; }
         else if (pressed & C3_PAD_B) {
             int back = -1;
-            for (int p = (int)ui->position - 1; p >= 0; --p) { const C3GeneralMon *m = hero(b, (unsigned)p); if (m && m->hp) { back = p; break; } }
+            for (int p = (int)ui->position - 1; p >= 0; --p) {
+                if (ui->control_mask && !(ui->control_mask >> p & 1u)) continue;
+                const C3GeneralMon *m = hero(b, (unsigned)p); if (m && m->hp) { back = p; break; }
+            }
             if (back >= 0) { ui->position = (unsigned)back; ui->cursor = 0; }
         } else if (pressed & C3_PAD_A) {
             C3GeneralCommand *c = &ui->commands[ui->position];
@@ -141,11 +178,31 @@ int c3_general_ui_press(C3GeneralUi *ui, const C3BattlePack *pack, C3GeneralBatt
                 else submit = 1;
             }
         }
+    } else if (ui->page == C3_GUI_BALL) {
+        unsigned balls[12], n = ball_list(b, balls);
+        if (!n) { ui->page = C3_GUI_MOVES; ui->cursor = 0; }
+        else if (pressed & C3_PAD_UP) ui->cursor = (ui->cursor + n - 1) % n;
+        else if (pressed & C3_PAD_DOWN) ui->cursor = (ui->cursor + 1) % n;
+        else if (pressed & C3_PAD_B) { ui->page = C3_GUI_MOVES; ui->cursor = 0; }
+        else if (pressed & C3_PAD_A) {
+            /* The Snag Machine: a ball only at a Shadow Pokemon. */
+            unsigned ball = balls[ui->cursor % n], targets[2], t = snag_targets(b, pack, ui->position, ball, targets);
+            C3GeneralCommand *c = &ui->commands[ui->position];
+            if (!t) snprintf(ui->error, sizeof ui->error, "There is no Shadow Pokemon to snag.");
+            else { c->kind = 2; c->slot = (uint8_t)ball; c->target = (uint8_t)targets[0];
+                   if (t > 1) { ui->page = C3_GUI_TARGET; ui->target_cursor = 0; } else submit = 1; }
+        }
     } else if (ui->page == C3_GUI_TARGET) {
         unsigned foes[2], n = living_foes(b, foes);
+        C3GeneralCommand *c = &ui->commands[ui->position];
         if (pressed & (C3_PAD_UP | C3_PAD_DOWN | C3_PAD_LEFT | C3_PAD_RIGHT)) ui->target_cursor = n ? (ui->target_cursor + 1) % n : 0;
-        if (pressed & C3_PAD_B) ui->page = C3_GUI_MOVES;
-        else if ((pressed & C3_PAD_A) && n) { ui->commands[ui->position].target = (uint8_t)foes[ui->target_cursor % n]; submit = 1; }
+        if (pressed & C3_PAD_B) { ui->page = c->kind == 2 ? C3_GUI_BALL : C3_GUI_MOVES; ui->cursor = 0; }
+        else if ((pressed & C3_PAD_A) && n) {
+            unsigned target = foes[ui->target_cursor % n];
+            if (c->kind == 2 && !c3_general_battle_can_snag(b, pack, ui->position, c->slot, target))
+                snprintf(ui->error, sizeof ui->error, "Only a Shadow Pokemon can be snagged.");
+            else { c->target = (uint8_t)target; submit = 1; }
+        }
     } else if (ui->page == C3_GUI_SWITCH) {
         if (pressed & C3_PAD_UP) ui->cursor = (ui->cursor + b->party_count[0] - 1) % b->party_count[0];
         if (pressed & C3_PAD_DOWN) ui->cursor = (ui->cursor + 1) % b->party_count[0];
@@ -154,13 +211,15 @@ int c3_general_ui_press(C3GeneralUi *ui, const C3BattlePack *pack, C3GeneralBatt
             int active = 0;
             for (unsigned a = 0; a < b->active_count; ++a) active |= b->active[0][a] == ui->cursor;
             for (unsigned p = 0; p < ui->position; ++p) active |= ui->commands[p].kind == 1 && ui->commands[p].slot == ui->cursor;
-            if (active || !b->party[0][ui->cursor].hp) snprintf(ui->error, sizeof ui->error, "That Pokemon cannot battle now.");
+            if (b->owner_split && b->owner[0][ui->cursor] != ui->position) snprintf(ui->error, sizeof ui->error, "That Pokemon belongs to your partner.");
+            else if (active || !b->party[0][ui->cursor].hp) snprintf(ui->error, sizeof ui->error, "That Pokemon cannot battle now.");
             else { ui->commands[ui->position].kind = 1; ui->commands[ui->position].slot = (uint8_t)ui->cursor; submit = 1; }
         }
     }
     if (!submit) return 0;
-    int p = next_position(b, ui->position + 1);
+    int p = next_position(ui, b, ui->position + 1);
     if (p >= 0) { ui->position = (unsigned)p; ui->cursor = 0; ui->page = C3_GUI_MOVES; return 0; }
+    if (ui->defer) { ui->page = C3_GUI_WAIT; return 2; }
     char error[C3_GB_ERROR_SIZE];
     if (!c3_general_battle_turn(b, pack, ui->commands, error)) {
         if (trace) { fprintf(trace, "general_battle_error turn=%lu error=%s\n", (unsigned long)b->turn, error); fflush(trace); }
@@ -198,12 +257,23 @@ int c3_battle_general_scene_run(const C3BattlePack *pack, C3GeneralBattle *b, FI
                 }
             }
         } else if (ui.page == C3_GUI_RESULT) {
-            if (pressed & C3_PAD_A) {
+            if ((pressed & C3_PAD_A) || c3_battle_general_autoplaying()) {
                 if (trace) { fprintf(trace, "general_battle_end encounter=%lu outcome=%d turns=%lu\n",
                     (unsigned long)b->encounter, (int)b->outcome, (unsigned long)b->turn); fflush(trace); }
                 c3_battle_music_end(&music);
                 return 0;
             }
+        } else if (c3_battle_general_autoplaying()) {
+            /* Probe builds: the probe hero's commands, no input. */
+            C3GeneralCommand c[2]; char error[C3_GB_ERROR_SIZE];
+            c3_battle_general_probe_commands(b, pack, c);
+            if (!c3_general_battle_turn(b, pack, c, error)) {
+                if (trace) { fprintf(trace, "general_battle_error turn=%lu error=%s\n", (unsigned long)b->turn, error); fflush(trace); }
+                c3_battle_music_end(&music); return -1;
+            }
+            if (trace) { fprintf(trace, "general_battle_turn turn=%lu events=%lu outcome=%d autoplay=1 scene=2d\n",
+                (unsigned long)b->turn, (unsigned long)b->event_count, (int)b->outcome); fflush(trace); }
+            ui.page = C3_GUI_EVENTS; event = 0; event_start = now; dirty = 1;
         } else if (pressed) {
             dirty = 1;
             if (c3_general_ui_press(&ui, pack, b, pressed, trace)) { event = 0; event_start = now; }

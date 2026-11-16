@@ -32,7 +32,10 @@ typedef enum {
 
 typedef enum {
     C3_MENU_EVENT_NONE, C3_MENU_EVENT_NEW_GAME, C3_MENU_EVENT_CONTINUE,
-    C3_MENU_EVENT_RETURN_TITLE, C3_MENU_EVENT_OPTIONS_CHANGED
+    C3_MENU_EVENT_RETURN_TITLE, C3_MENU_EVENT_OPTIONS_CHANGED,
+    /* fn_800210F0 choices 2 and 3: menuColosseumBattle(0) / (3), here
+     * over local wireless (docs/link-play.md). */
+    C3_MENU_EVENT_COLOSSEUM_BATTLE, C3_MENU_EVENT_BATTLE_NOW
 } C3GameMenuEventKind;
 
 typedef struct {

@@ -1,4 +1,5 @@
 #include "colosseum3ds/field_story.h"
+#include "colosseum3ds/hero_follow.h"
 #include "colosseum3ds/battle.h"
 
 #include <math.h>
@@ -10,10 +11,12 @@
 #define PAD_A 0x0100u
 #define PAD_B 0x0200u
 #define PAD_DIRECTIONS 0x000fu
+#define DYNAMIC_MARKER 0x43334459u /* C3DY: private prepared model reservation. */
 #define MAX_WAYPOINTS 64u /* Phenac actor 24 allocates 36 points (bank 013E0E00 fn 34). */
 
 typedef enum { W_NONE, W_SECONDS, W_TASK, W_MOTION, W_MOVE, W_CAMERA,
-               W_CAMERA_MOVE, W_FADE, W_MESSAGE, W_CHOICE, W_TV, W_BATTLE, W_NAME, W_ITEM, W_DOOR, W_SHOP, W_DIALOG } Wait;
+               W_CAMERA_MOVE, W_FADE, W_MESSAGE, W_CHOICE, W_TV, W_BATTLE, W_NAME, W_ITEM, W_DOOR, W_SHOP, W_MENU_FLOOR, W_JINGLE, W_DIALOG,
+               W_RELIVE, W_FALL, W_ITEM_MENU } Wait;
 typedef struct {
     uint16_t key, child;
     C3StoryCall call;
@@ -25,6 +28,9 @@ typedef struct {
     /* Native menu programs (etctool.c 54-57): their state machine runs in
      * this task; each message or yes/no choice resumes the program. */
     uint32_t program; int prog_state, prog_yes, prog_no, prog_asking;
+    uint32_t relive_mode, relive_slot; /* native C2's arguments and the picked slot */
+    uint32_t jingle; float jingle_seconds; /* W_JINGLE / the item jingle of W_ITEM */
+    float fall_ground; /* native B2: the person's ground height (W_FALL) */
 } RunTask;
 typedef struct Person {
     C3StoryActor public;
@@ -34,11 +40,13 @@ typedef struct Person {
     int moving, turning, talking, looking, talk_lock;
     /* Streamed models (field_scene loads people after the room): what the
      * scripts asked for while the model was absent, applied on attach. */
+    int dynamic_active;
     int want_visible, pending_motion;uint32_t pending_clip,pending_frame,pending_loop;
     float waypoints[MAX_WAYPOINTS][3];
     uint32_t waypoint_capacity, waypoint_count, waypoint_cursor;
     int waypoint_active, waypoint_loop;
     struct Person *parent;
+    uint32_t parent_bone_plus_one;int parent_root;
     float local_position[3],local_rotation[3],world_rotation[3],world_scale[3];
 } Person;
 typedef struct {
@@ -60,6 +68,7 @@ typedef struct {
     uint16_t setup_key, talk_key, event_key, post_key, main_key, exit_fade_key;
     int setup_stage, preparing, entered, hero_ready, event_depth, departure_started;
     int event_depth_base; /* event_depth when the current talk/event script started */
+    int hero_event; /* heroMoveInitEvent (native 20) until heroMoveTermEvent (21) */
     int camera_mode, camera_playing;
     float fade_elapsed, fade_duration, fade_from, fade_to, camera_rate;
     float camera_from[3],camera_to[3],camera_direction[3],camera_move_time,camera_move_duration;
@@ -69,20 +78,33 @@ typedef struct {
     float return_time,return_duration;
     Person *camera_person;
     int target_moving,camera_returning;
+    uint8_t dynamic_serial;
     uint32_t sound_id, previous_floor, pending_floor, pending_spawn, arrival_spawn;
+    uint16_t tick_pressed; /* this tick's newly pressed buttons (native 6F) */
     uint32_t fight_result; /* fn_801EF634: last original fight result ID */
     uint32_t whiteout_floor,whiteout_previous,whiteout_spawn;int whiteout_valid;
     int name_entry_enabled;
     int shop_enabled;
+    uint32_t menu_floors[8]; unsigned menu_floor_count; /* c3_field_story_enable_menu_floor */
     uint16_t (*random16)(void *context);void *random_context;
     int (*species_name)(void *context,unsigned species,char *out,size_t capacity);void *species_context;
     C3FieldStoryReceive receive;void *receive_context;
+    C3FieldStoryItemChange item_change;void *item_change_context;
+    C3FieldStoryTake take;void *take_context;
     C3FieldStoryAudio audio;void *audio_context;
     const C3AreaDoor *door_rows;C3StoryDoor doors[C3_AREA_MAX_DOORS];uint32_t door_count;
     C3FieldStoryRestore restore;void *restore_context;
+    C3FieldStoryRestore clear_poison;void *poison_context;
+    C3FieldStoryPurify purify;void *purify_context;
+    C3FieldStoryPurified purified; /* the last purification, for its messages */
     uint32_t message_values[256]; /* msgctrlSetValue: one word per control byte */
-    char item_name[64],number_text[16];const char *message_speaker;
+    char item_name[64],number_text[24],value_text[64];const char *message_speaker;
+    C3StoryNamer namer;void *namer_context;
+    char value_strings[C3_STORY_CONTROLS][32]; /* string variables (msgctrlSetValue of a GSchar pointer) */
+    char species_text[32];
     Person partner_actor; /* (0,101); invisible until native 23 */
+    C3AreaActor partner_source; /* its PeopleInfo stand-in: pack clips, Wes's distances */
+    C3Follow follow;            /* hero_move.c follower history */
     int (*floor_supported)(uint32_t floor);
     uint32_t dialog_owner;
     size_t page_start, page_end;
@@ -92,7 +114,29 @@ typedef struct {
     struct { uint16_t species; uint32_t personality; } temochi[6]; /* lbl_804670B4 (E1/E2) */
     uint32_t fade_begin, fade_poll; /* floorSetFadeScript (native 90) */
     uint32_t auto_event[5];         /* heroMoveAddAutoEvent (native 22) */
+    /* fn_800190D8 (native 11): item -> script pairs the pause menu runs
+     * when that item is used (lbl_803A1B90, eight entries). */
+    struct { uint16_t item; uint32_t script; } item_events[8];
+    unsigned item_event_count;
+    int item_menu_enabled;
+    uint32_t pending_item_script;   /* queued by an item use, started when the event ends */
+    uint32_t pending_item;          /* its first argument (fn_800F7434(script,4,item,value,0,0)) */
+    float hero_regions[32][4];      /* native 3A boxes asked about the hero (x0,z0,x1,z1, map units) */
+    unsigned hero_region_count;
+    /* The floor's treasure people (floor.c _floorInitTresure, 0x7FFF0000|n). */
+    C3StoryTreasure treasure[32];
+    int8_t treasure_display[32];    /* floorEventSetTresureDisp: -1 none, else shown */
+    unsigned treasure_count;
+    RunTask treasure_task;          /* floorEventCtrlTresure mode 2, run as a program */
+    int treasure_active;
+    unsigned treasure_row;
+    int treasure_result;
+    int move_input;                /* scriptIsMoveButtonPush (native 6F) */
 } Impl;
+/* floorEventChangeTresure rewrites a row of the common treasure table, which
+ * stays in memory for the whole session (common REL125 is never unloaded):
+ * the change outlives the floor that made it, as on the console. */
+static struct { uint8_t changed, count; uint32_t item; } treasure_session[512];
 
 static int fail(char *error,const char *format,...)
 {
@@ -104,7 +148,32 @@ static void log_line(Impl *s,const char *format,...)
     va_list ap;va_start(ap,format);vfprintf(s->trace,format,ap);va_end(ap);fputc('\n',s->trace);fflush(s->trace);
 }
 static float as_float(uint32_t x){float f;memcpy(&f,&x,4);return f;}
+/* A jingle (fn_80165668) and the wait for its end (fn_801666BC != 2).
+ * Bounded at ten seconds; the music resumes when it ends. */
+static int start_jingle(Impl *s,RunTask *t,uint32_t sound,uint32_t fade,uint32_t volume)
+{
+    if(!s->audio||s->audio(s->audio_context,C3_STORY_AUDIO_JINGLE,sound,fade,volume)<=0)return 0;
+    t->jingle=sound;t->jingle_seconds=0;t->wait=W_JINGLE;
+    log_line(s,"story_jingle sound=%03lx status=playing",(unsigned long)sound);
+    return 1;
+}
+static int jingle_playing(Impl *s,RunTask *t,float seconds)
+{
+    t->jingle_seconds+=seconds;
+    /* The stream starts on the worker thread: give it a moment to report. */
+    int playing=s->audio(s->audio_context,C3_STORY_AUDIO_STATUS,t->jingle,0,0)==2;
+    if((playing||t->jingle_seconds<0.25f)&&t->jingle_seconds<10.0f)return 1;
+    s->audio(s->audio_context,C3_STORY_AUDIO_JINGLE_END,t->jingle,0,0);
+    log_line(s,"story_jingle sound=%03lx status=ended seconds=%.2f",(unsigned long)t->jingle,(double)t->jingle_seconds);
+    t->jingle=0;return 0;
+}
 static float angle_delta(float x){return remainderf(x,2*PI);}
+/* fn_801C8834 / fn_801C8688: species of a DNA disc item (0 for others). */
+static unsigned disc_species(unsigned item)
+{
+    static const uint16_t species[9]={0x99,0x9c,0x9f,0xb9,0xc8,0x11f,0xf3,0xf4,0xf5};
+    return item>=0x200&&item<=0x211?species[(item-0x200)/2]:0;
+}
 /* The pinned native table describes words, not C pointers. Validate the
  * complete call before changing any scene state; absent arguments must not
  * acquire the VM's zero-filled defaults. Float masks follow the table's type2.
@@ -112,7 +181,7 @@ static float angle_delta(float x){return remainderf(x,2*PI);}
 static int validate_native(const Impl *s,const C3StoryCall *c,char *error)
 {
     static const struct {uint8_t id,argc,floats;} signature[]={
-        {0x03,6,0},{0x04,1,0},{0x06,1,0},{0x07,3,0},{0x08,1,0},{0x0b,0,0},
+        {0x00,0,0},{0x03,6,0},{0x04,1,0},{0x06,1,0},{0x07,3,0},{0x08,1,0},{0x0b,0,0},
         {0x1c,2,2},{0x1d,1,0},{0x1e,0,0},{0x1f,0,0},{0x20,0,0},{0x21,0,0},
         {0x24,1,0},{0x25,2,0},{0x26,3,7},{0x27,3,7},{0x28,3,7},{0x29,3,7},
         {0x2a,4,0},{0x2b,0,0},{0x2c,0,0},{0x2d,0,0},{0x2e,1,0},{0x30,4,8},
@@ -122,20 +191,23 @@ static int validate_native(const Impl *s,const C3StoryCall *c,char *error)
         {0x46,5,0},{0x47,2,0},{0x48,3,0},{0x49,5,28},{0x4a,3,0},
         {0x19,1,0},{0x4c,2,0},{0x4d,2,0},{0x4e,1,0},{0x4f,1,0},{0x50,2,0},{0x51,1,0},{0x52,1,0},
         {0x5c,0,0},{0x5d,0,0},{0x5e,0,0},{0x5f,2,0},{0x64,2,0},{0x65,4,14},
+        {0x70,1,0},{0x71,1,0},{0xdd,3,0},{0xa6,3,0},
         {0x67,0,0},{0x68,3,0},{0x69,3,0},{0x6a,2,0},{0x6d,2,0},{0x72,2,0},{0x76,2,0},
         {0x7d,3,0},{0x7f,3,7},{0x88,0,0},{0x8a,4,0},{0x8c,5,30},{0x98,3,0},{0xd9,1,0},{0xe0,2,0},{0xc3,0,0},
-        {0x99,1,0},{0x9d,1,1},{0xb3,2,1},{0xb6,1,0},{0xd1,5,0},{0xd3,0,0},{0xe4,0,0},
+        {0xc2,2,0},{0x99,1,0},{0x9d,1,1},{0xb3,2,1},{0xb6,1,0},{0xd1,5,0},{0xd3,0,0},{0xe4,0,0},
         /* Phenac City exterior bank 013E0E00 (native table lbl_802E1CF0). */
         {0x02,1,0},{0x16,2,0},{0x23,1,0},{0x31,0,0},{0x66,1,0},{0x7e,2,0},
         {0x82,3,0},{0x83,3,0},{0x89,3,0},{0xa1,3,0},{0xa4,6,0x3c},{0xa5,5,0x10},
-        {0x77,2,0},{0x84,2,0},{0x60,3,0},{0x73,4,0},{0x75,2,0},{0x8d,5,0x1e},{0x9a,5,0},{0xa0,1,0},{0xb5,4,0},{0xa9,2,0},{0xb1,6,0x10},{0xb4,0,0},{0xd8,1,0},{0xda,1,0},{0xe8,2,0},
+        {0x77,2,0},{0x84,2,0},{0x60,3,0},{0x73,4,0},{0x74,1,0},{0x75,2,0},{0x8d,5,0x1e},{0x9a,5,0},{0xa0,1,0},{0xb5,4,0},{0xa9,2,0},{0xb1,6,0x10},{0x6f,0,0},{0xf6,3,0},{0xb2,3,4},{0xb4,0,0},{0xd8,1,0},{0xda,1,0},{0xe8,2,0},
         /* Whole-game survey (tests/test_world_story.c), table lbl_802E1CF0. */
         {0x97,3,0},{0xaa,7,0x3c},{0xab,1,0},{0xad,1,0},{0xe1,0,0},
         {0xa2,0,0},{0xac,3,0},{0xcb,3,0},{0xd4,0,0},{0x61,5,0},{0xe2,0,0},{0x90,2,0},{0x7b,0,0},{0xc5,4,0},
         {0xe7,3,0},{0x22,5,0},
-        {0x78,1,0},{0x7c,0,0},{0xf2,0,0},{0xa8,2,0},{0xd6,2,0},{0x53,3,0},{0x9b,3,0},{0xc7,5,0},
+        {0x62,1,0}, /* fn_800FF730 menu floor (systems lane) */
+        {0x78,1,0},{0x7c,0,0},{0xf1,0,0},{0xf2,0,0},{0xa8,2,0},{0xd6,2,0},{0x53,3,0},{0x9b,3,0},{0xc7,5,0},
         {0xc4,0,0},{0xdc,0,0},{0xc8,2,0},{0x80,3,0},{0xbd,0,0},{0x9e,1,0},{0x54,0,0},{0x55,0,0},{0x56,0,0},{0x57,0,0},
-        {0x86,0,0},{0xbc,1,0},{0xca,0,0},{0xeb,0,0},{0x85,1,0}
+        {0xdb,2,0},{0x86,0,0},{0xbb,0,0},{0xbc,1,0},{0xca,0,0},{0xeb,0,0},{0x85,1,0},
+        {0xd0,0,0},{0x11,2,0},{0xcc,3,0},{0xcd,1,0},{0xcf,0,0},{0xbe,2,0},{0xbf,4,0},{0xc1,2,0},{0xf3,2,0}
     };
     for(unsigned i=0;i<sizeof signature/sizeof signature[0];++i){
         if(signature[i].id!=c->native)continue;
@@ -148,9 +220,16 @@ static int validate_native(const Impl *s,const C3StoryCall *c,char *error)
         if((c->native==0x4c||c->native==0x4d)&&c->argc<2)return 1;
         /* Some banks call 32 with (group,index) only: visible reads zero. */
         if(c->native==0x32&&c->argc==2)return 1;
+        /* Realgam bar function 7 omits the loop word of 33. The original
+         * dispatcher leaves that trailing register zero (nonlooping). */
+        if(c->native==0x33&&c->argc==4)return 1;
         /* Floor 022 starts a battle with the encounter alone (98 with one
          * word); the zero-filled register image gives the other two zero. */
         if(c->native==0x98&&c->argc>=1)return 1;
+        /* The Pyrite windmill bank (floor 017) calls B5 (fn_80188FA0, head
+         * aim) as (group, index, target) with three words; the fourth is the
+         * zero of the register image, so the target is person (target, 0). */
+        if(c->native==0xb5&&c->argc==3)return 1;
         /* Extra script words are legal: the dispatcher reads only the table
          * row's typed arguments and the call pops the rest (the mayor's-house
          * bank passes five words to the three-argument native 36). Missing
@@ -196,8 +275,15 @@ static Person *person(Impl *s,uint32_t group,uint32_t id)
     if(!group&&id==101)return s->partner_actor.public.model?&s->partner_actor:NULL;
     /* people.c peopleFindSelf: an exact group match first, then the index
      * in any group. Floor actors are the only other people here. */
-    for(uint32_t i=0;i<s->area->actor_count;++i)if(s->actors[i].public.index==id)return s->actors+i;
+    for(uint32_t i=0;i<s->area->actor_count;++i)if(s->actors[i].public.index==id&&
+        (s->actors[i].source->aux3!=DYNAMIC_MARKER||s->actors[i].dynamic_active))return s->actors+i;
     return NULL;
+}
+static void partner_place_behind(Impl *s);
+/* Every person the scene draws: the floor's people, Wes, then the partner. */
+static Person *person_at(Impl *s,uint32_t i)
+{
+    return i<s->area->actor_count?s->actors+i:i==s->area->actor_count?&s->hero_actor:&s->partner_actor;
 }
 static C3FieldPlayer *pose(Impl *s,Person *p)
 {return p==&s->hero_actor?s->hero:&p->public.pose;}
@@ -250,21 +336,65 @@ static void page(Impl *s)
     memcpy(s->view.message,begin,n);s->view.message[n]=0;
 }
 /* Value controls of the message decoder (the control byte is the msgctrl
- * variable): hero, partner and speaker names, the item named by variable
- * 2D (its name is supplied by the item service) and the number in 2F. */
-static const char *message_source(void *context,uint8_t control)
+ * variable, msgctrlcode modes 1/2). Every control a field message can use
+ * is answered here; c3_field_story_message_control() lists them for the
+ * message sweep (tests/test_message_sweep.c). */
+static int message_source(void *context,uint8_t control,C3StoryValue *v)
 {
-    Impl *s=context;
+    Impl *s=context;uint32_t value=s->message_values[control];
+    if(c3_story_format_number(control,s->message_values,s->number_text,sizeof s->number_text)){v->text=s->number_text;return 1;}
     switch(control){
-    case 0x2b:return s->hero_name;
-    case 0x2c:return s->partner_name;
-    case 0x59:return s->message_speaker?s->message_speaker:"";
-    case 0x2d:return s->item_name[0]?s->item_name:NULL;
-    case 0x2f:snprintf(s->number_text,sizeof s->number_text,"%lu",(unsigned long)s->message_values[0x2f]);return s->number_text;
-    /* msgctrl 4B: the number msgctrlSetValue(0x4B) stored (_msgctrlMakeDigit). */
-    case 0x4b:snprintf(s->number_text,sizeof s->number_text,"%lu",(unsigned long)s->message_values[0x4b]);return s->number_text;
-    default:return NULL;
+    case 0x2b:v->text=s->hero_name;return 1;   /* msgctrlHero */
+    case 0x2c:v->text=s->partner_name;return 1;/* msgctrlHizuki */
+    case 0x59:                                 /* msgctrlNpc: the speaker */
+        if(s->message_speaker&&*s->message_speaker){v->text=s->message_speaker;return 1;}
+        if(value){v->message=value;return 1;}
+        v->text="";return 1;
+    /* msgctrlMsgID / MenuMsgID / MenuMsgID2: print that message. */
+    case 0x31:case 0x55:case 0x56:if(!value)return 0;v->message=value;return 1;
+    /* msgctrlItem / Item2: the item's name message (2B6E when it has none). */
+    case 0x2d:case 0x2e:
+        if(control==0x2d&&s->item_name[0]){v->text=s->item_name;return 1;}
+        if(s->namer&&s->namer(s->namer_context,C3_STORY_NAME_ITEM,value,v))return 1;
+        return 0;
+    /* msgctrlPokemon: the purified Pokemon's nickname (reliveCeremonyAll's
+     * msgctrlSetValue(0x32)); msgctrlWaza: a move name. */
+    case 0x32:if(!s->purified.nickname[0])return 0;v->text=s->purified.nickname;return 1;
+    case 0x39:
+        if(s->purified.move_name[0]){v->text=s->purified.move_name;return 1;}
+        return s->namer&&s->namer(s->namer_context,C3_STORY_NAME_MOVE,value,v);
+    /* msgctrlTribe: the trainer class prefix ("COOLTRAINER"). */
+    case 0x58:return s->namer&&s->namer(s->namer_context,C3_STORY_NAME_TRAINER_KIND,value,v);
+    /* String variables a native or menu stored with msgctrlSetValue
+     * (TrainerName, MenuPokemon, MenuMsg, MenuMsg2, String, String2,
+     * EvStrBuf0-2). */
+    case 0x0d:case 0x0e:case 0x23:case 0x41:case 0x33:case 0x36:case 0x37:case 0x51:case 0x4d:case 0x57:
+        if(!s->value_strings[control][0])return 0;
+        v->text=s->value_strings[control];return 1;
+    /* msgctrlPokemonID: a species name. */
+    case 0x4e:
+        if(s->namer&&s->namer(s->namer_context,C3_STORY_NAME_SPECIES,value,v))return 1;
+        if(s->species_name&&s->species_name(s->species_context,value,s->value_text,sizeof s->value_text)){v->text=s->value_text;return 1;}
+        return 0;
+    default:return 0;
     }
+}
+int c3_field_story_message_control(uint8_t control)
+{
+    static const uint8_t controls[]={0x0d,0x0e,0x23,0x2b,0x2c,0x2d,0x2e,0x2f,0x30,0x31,0x32,0x33,0x34,0x35,0x36,
+        0x37,0x39,0x41,0x45,0x46,0x47,0x48,0x49,0x4a,0x4b,0x4c,0x4d,0x4e,0x4f,0x50,0x51,0x55,0x56,0x57,0x58,0x59};
+    for(size_t i=0;i<sizeof controls;++i)if(controls[i]==control)return 1;
+    return 0;
+}
+int c3_field_story_set_message_string(C3FieldStory *story,uint8_t control,const char *text)
+{
+    Impl *s=story?story->impl:NULL;
+    if(!s||!c3_story_control_is_value(control))return 0;
+    snprintf(s->value_strings[control],sizeof s->value_strings[control],"%s",text?text:"");return 1;
+}
+void c3_field_story_set_namer(C3FieldStory *story,C3StoryNamer namer,void *context)
+{
+    Impl *s=story?story->impl:NULL;if(s){s->namer=namer;s->namer_context=context;}
 }
 static int message(Impl *s,RunTask *t,uint32_t id,const char *speaker,char *error)
 {
@@ -274,7 +404,7 @@ static int message(Impl *s,RunTask *t,uint32_t id,const char *speaker,char *erro
     C3GameSummary names;
     if(!c3_game_state_summary(s->game,&names))return fail(error,"Game state names are unavailable");
     snprintf(s->partner_name,sizeof s->partner_name,"%s",names.partner);s->message_speaker=speaker;
-    if(!c3_story_message_with(&s->vm,id,message_source,s,s->full_message,sizeof s->full_message,error))return 0;
+    if(!c3_story_render(&s->vm,id,message_source,s,C3_STORY_TEXT_MARKUP,s->full_message,sizeof s->full_message,error))return 0;
     s->dialog_owner=t->key;s->page_start=0;s->view.message_id=id;s->view.dialogue=1;s->view.choice=0;
     page(s);t->wait=W_MESSAGE;t->remaining=.12f;
     log_line(s,"story_message script=%08lx pc=%08lx id=%05lx",(unsigned long)t->call.script_id,
@@ -308,6 +438,13 @@ static int set_motion(Impl *s,Person *p,uint32_t source_clip,uint32_t frame,uint
         /* prepare_area preserves [source1,source2,source3] and appends the
          * distinct source0 at bundle3. Never alias that animation to idle. */
         clip=source_clip==0?3:source_clip==1?s->map->idle_clip:source_clip==2?s->map->walk_clip:s->map->run_clip;
+    }
+    if(p==&s->partner_actor){
+        /* The partner pack's clip order (floor_profiles.PARTNER["clips"]). */
+        static const uint8_t order[]={1,2,3,0,4,7,14,21,22,23,27,28,29,42,43,44};
+        clip=UINT32_MAX;
+        for(uint32_t i=0;i<sizeof order;++i)if(order[i]==source_clip)clip=i;
+        if(clip==UINT32_MAX){note_presentation(s,0x33,"partner_motion_not_prepared_kept_current");return 1;}
     }
     if(!p->public.model&&p!=&s->hero_actor){
         p->pending_motion=1;p->pending_clip=source_clip;p->pending_frame=frame;p->pending_loop=loop;return 1;
@@ -359,13 +496,25 @@ static int run_native(Impl *s,RunTask *t,char *error)
 {
     C3StoryCall *c=&t->call;uint32_t *a=c->args,value=0;Person *p;
     if(c->kind==C3_STORY_WAIT_FRAMES){t->wait=W_SECONDS;t->remaining=(float)a[0]/60.0f;return 1;}
-    if(c->kind!=C3_STORY_NATIVE)return fail(error,"Original GSVM print request needs a string adapter");
+    /* Opcode 23 is fn_800F16C0 (gs_vm.c): it formats a debug string into
+     * the developer log and returns no value. Retail shows nothing, so the
+     * call is logged by position only (Pyrite's windmill cutscene, town
+     * function 30, starts with one). */
+    if(c->kind==C3_STORY_PRINT){
+        log_line(s,"story_print task=%u script=%08lx pc=%08lx argc=%lu",t->key,(unsigned long)c->script_id,
+                 (unsigned long)c->pc,(unsigned long)c->argc);
+        return resume(s,t,0,error);
+    }
+    if(c->kind!=C3_STORY_NATIVE)return fail(error,"Unknown original GSVM call kind %u",(unsigned)c->kind);
     if(!validate_native(s,c,error))return 0;
     if(c->native!=0x51&&c->native!=0x47&&c->native!=0x1f&&c->native!=0x3a)
         log_line(s,"story_native task=%u script=%08lx pc=%08lx id=%02lx argc=%lu a=%08lx,%08lx,%08lx,%08lx,%08lx,%08lx",
             t->key,(unsigned long)c->script_id,(unsigned long)c->pc,(unsigned long)c->native,(unsigned long)c->argc,
             (unsigned long)a[0],(unsigned long)a[1],(unsigned long)a[2],(unsigned long)a[3],(unsigned long)a[4],(unsigned long)a[5]);
     switch(c->native){
+    case 0x00:
+        /* lbl_802E1CF0[0] is NULL: fn_800F10E8 unwinds with result 0. */
+        break;
     case 0x03:
         if(!start(s,a[0],a+2,4,&t->child,error))return 0;
         value=t->child;break;
@@ -396,8 +545,12 @@ static int run_native(Impl *s,RunTask *t,char *error)
         if(s->fade_elapsed<s->fade_duration){if(a[0]){t->wait=W_FADE;return 1;}value=1;}break;
     case 0x1e: break; /* Hero initialization alone does not execute movement. */
     case 0x1f: s->hero_ready=1;t->wait=W_SECONDS;t->remaining=1.0f/60.0f;return 1;
-    case 0x20: ++s->event_depth;s->hero_ready=0;break;
-    case 0x21: if(s->event_depth)--s->event_depth;break;
+    /* heroMoveInitEvent/heroMoveTermEvent (hero_move.c) set and clear the
+     * party's event people flags; they do not nest. Pyrite cave function 21
+     * (Miror B.) starts an event, battles and returns without 21, then main
+     * wraps function 11 in 20/21: retail gives control back after that 21. */
+    case 0x20: s->hero_event=1;s->hero_ready=0;break;
+    case 0x21: s->hero_event=0;break;
     case 0x24:
         if(a[0]!=0&&a[0]!=3&&a[0]!=4)return fail(error,"Camera mode %lu is not prepared",(unsigned long)a[0]);
         value=(uint32_t)s->camera_mode;s->camera_mode=(int)a[0];
@@ -486,6 +639,11 @@ static int run_native(Impl *s,RunTask *t,char *error)
         return message_when_free(s,t,a[2],s->speaker,error);
     case 0x37:close_message(s);restore_speakers(s);break;
     case 0x3a:
+        if(a[1]==100){ /* the hero: keep the box for diagnostics (c3_field_story_hero_regions) */
+            float box[4]={as_float(a[2]),as_float(a[3]),as_float(a[4]),as_float(a[5])};unsigned k=0;
+            while(k<s->hero_region_count&&memcmp(s->hero_regions[k],box,sizeof box))++k;
+            if(k==s->hero_region_count&&k<32){memcpy(s->hero_regions[k],box,sizeof box);++s->hero_region_count;}
+        }
         p=person(s,a[0],a[1]);if(p){C3FieldPlayer *q=pose(s,p);float x=q->position[0]/s->map->scale,z=q->position[2]/s->map->scale;
             value=x>=fminf(as_float(a[2]),as_float(a[4]))&&x<=fmaxf(as_float(a[2]),as_float(a[4]))&&
                   z>=fminf(as_float(a[3]),as_float(a[5]))&&z<=fmaxf(as_float(a[3]),as_float(a[5]));}break;
@@ -496,7 +654,11 @@ static int run_native(Impl *s,RunTask *t,char *error)
         p=person(s,a[0],a[1]);
         if(p){
             if(p->parent){for(unsigned i=0;i<3;++i)p->local_rotation[i]=as_float(a[i+2])*PI/180.0f;}
-            else {if(as_float(a[2])!=0||as_float(a[4])!=0)return fail(error,"Actor pitch/roll is not prepared");
+            else {
+                /* A field pose holds yaw only. Eagun's house (floor 02C)
+                 * tilts Wes by a few degrees of pitch and roll as he wakes
+                 * there; the tilt is recorded as unrendered. */
+                if(as_float(a[2])!=0||as_float(a[4])!=0)note_presentation(s,0x3c,"actor_pitch_roll_unrendered");
                 p->turn_target=pose(s,p)->yaw=as_float(a[3])*PI/180.0f;}
         }break;
     case 0x3d:
@@ -531,7 +693,8 @@ static int run_native(Impl *s,RunTask *t,char *error)
         }
         /* GSmodelAttachToGSpart(type7,updateOnce0,reset1). The reviewed
          * vehicle has an identity source root and one sampled part node. */
-        p->parent=parent;p->moving=p->turning=p->waypoint_active=0;
+        p->parent=parent;p->parent_bone_plus_one=parent->source->part1_bone_plus_one;p->parent_root=0;
+        p->moving=p->turning=p->waypoint_active=0;
         memset(p->local_position,0,sizeof p->local_position);memset(p->local_rotation,0,sizeof p->local_rotation);
         value=1;break;
     }
@@ -567,10 +730,13 @@ static int run_native(Impl *s,RunTask *t,char *error)
      * flag's whole stored value. Phenac Stadium's receptionist (function 7)
      * reads flag 0x9A0 with it. */
     case 0x52:if(!flag(s,a[0],&value,error))return 0;break;
-    /* fn_8018CA20: show or hide one person. A person without a model
-     * (animId 0) stays hidden, as in retail. */
+    /* fn_8018CA20 (people.c peopleSetShadowVisible): show or hide the
+     * person's ground shadow only; the person itself keeps its visibility
+     * (native 32 does that). The port draws no person shadows, so the call
+     * is recorded as unrendered. Hiding the person here removed the Pyrite
+     * windmill keeper (floor 017 init hides his shadow while he waits). */
     case 0x97:
-        p=person(s,a[0],a[1]);if(p){p->want_visible=!!a[2];p->public.visible=a[2]&&p->public.model;}break;
+        p=person(s,a[0],a[1]);if(p)note_presentation(s,0x97,"person_shadow_unrendered");break;
     /* fn_80186620: does the person touch the vertical wall over segment
      * (x0,z0)-(x1,z1) within its PeopleInfo radius? The script passes
      * group, index, the segment, a float the original ignores and an
@@ -628,6 +794,21 @@ static int run_native(Impl *s,RunTask *t,char *error)
     case 0xa2:break;
     /* GbaMisc_HasActiveContextState: no Game Boy Advance is connected. */
     case 0xd4:value=0;break;
+    /* scriptIsMoveButtonPush: 1 while the D-pad (pad mask 0xF) is pushed
+     * or the control stick is deflected past 2. The scene turns the stick
+     * into hero motion, so a walking or running hero counts as the stick;
+     * the D-pad is this tick's pressed directions. Eagun's house (floor
+     * 02C) waits on it after his talk before telling Wes about the lab. */
+    /* fn_801140DC: write the save's resume floor, previous floor and spawn
+     * (game-data status 5, 7 and 8, which New Game sets to 2/1/1 and
+     * fn_80113FE8 reads on Continue). Mt. Battle's reception (floor 04B)
+     * points it back at itself when a challenge ends. */
+    case 0xf6:
+        if(!a[0]||a[0]>0xffffu||a[1]>0xffffu||a[2]>0xffu)return fail(error,"Native F6 resume point %lu/%lu/%lu is invalid",
+            (unsigned long)a[0],(unsigned long)a[1],(unsigned long)a[2]);
+        if(!c3_game_state_set_floor(s->game,a[0],a[1],(uint8_t)a[2]))return fail(error,"Native F6 could not write the resume point");
+        log_line(s,"story_resume_point floor=%03lx previous=%03lx spawn=%lu",(unsigned long)a[0],(unsigned long)a[1],(unsigned long)a[2]);
+        break;
     case 0xc3:value=s->arrival_spawn;break; /* floorGetNextPosIndex: the entrance used */
     case 0xd9:
         /* fn_801CADA8(kind): the hero receives a gift Pokemon (1..6; 3 at
@@ -645,7 +826,10 @@ static int run_native(Impl *s,RunTask *t,char *error)
     /* floorEventChangeTresure rewrites a treasure-table row; treasure
      * pickups are not ported, so the row change is recorded only. */
     case 0xcb:
-        log_line(s,"story_treasure index=%lu item=%lu state=%lu status=unported_table",(unsigned long)a[0],(unsigned long)a[1],(unsigned long)a[2]);
+        if(a[0]>=512){value=(uint32_t)-1;break;}
+        treasure_session[a[0]].changed=1;treasure_session[a[0]].item=a[1]&0xffffu;treasure_session[a[0]].count=(uint8_t)a[2];
+        for(unsigned i=0;i<s->treasure_count;++i)if(s->treasure[i].index==a[0]){s->treasure[i].item=a[1]&0xffffu;s->treasure[i].count=(uint8_t)a[2];}
+        log_line(s,"story_treasure_change index=%lu item=%lu count=%lu",(unsigned long)a[0],(unsigned long)(a[1]&0xffffu),(unsigned long)(a[2]&0xffu));
         value=0;break;
     /* floorEventCtrlElevator / fn_801C9B6C: elevator animations and
      * riding the platform. The animation is not rendered and its duration
@@ -671,6 +855,11 @@ static int run_native(Impl *s,RunTask *t,char *error)
     /* scriptGetDarkPokemonNum / scriptGetDarkPointZeroPokemonNum: party
      * Shadow Pokemon (darkpokemonDataId at 0xD8 with dp >= 0), and those
      * whose heart gauge (dp at 0xDC) is empty. */
+    /* preReliveDisplayHokoraParticle: the shrine's glow while a party
+     * Shadow Pokemon's heart is open (a particle thread). Not drawn. */
+    case 0xf1:log_line(s,"story_shrine_particle drawn=0");value=0;break;
+    /* field_range_801CB180.c: held D-pad or either axis outside [-2,2]. */
+    case 0x6f:value=(uint32_t)s->move_input;break;
     case 0x7c:case 0xf2:{C3GameSummary party;uint8_t record[0x138];
         if(!c3_game_state_summary(s->game,&party))return fail(error,"Native %02lx needs the party",(unsigned long)c->native);
         value=0;
@@ -683,7 +872,10 @@ static int run_native(Impl *s,RunTask *t,char *error)
     case 0xa8:p=person(s,a[0],a[1]);if(p&&p->parent){p->parent=NULL;}break;
     /* floorEventSetTresureDisp: show or hide a treasure object; treasure
      * objects are not floor people here, so the change is recorded. */
-    case 0xd6:log_line(s,"story_treasure_display index=%lu visible=%lu status=unported_table",(unsigned long)a[0],(unsigned long)a[1]);break;
+    /* floorEventSetTresureDisp(table index, shown). */
+    case 0xd6:
+        for(unsigned i=0;i<s->treasure_count;++i)if(s->treasure[i].index==a[0])s->treasure_display[i]=(int8_t)(a[1]!=0);
+        log_line(s,"story_treasure_display index=%lu visible=%lu",(unsigned long)a[0],(unsigned long)a[1]);break;
     /* fn_801D0BD0: the Poke Ball battle-intro animation (mode 0) and its
      * cleanup (modes 1-3). Not rendered. */
     case 0x53:note_presentation(s,0x53,"battle_intro_balls");break;
@@ -715,6 +907,7 @@ static int run_native(Impl *s,RunTask *t,char *error)
         if(!c3_game_state_add_money(s->game,money-(int64_t)hero.money))return fail(error,"Money cannot be changed");
         log_line(s,"story_money delta=%ld total=%ld",(long)(int32_t)a[0],(long)money);value=(uint32_t)money;}break;
     /* scriptSetPremium: flag 0A9E. */
+    case 0xbb:if(!flag(s,0xa9e,&value,error))return 0;break; /* scriptGetPremium */
     case 0xbc:if(!set_flag(s,0xa9e,a[0],error))return 0;break;
     /* fn_80035D70 pushes menu floor 0x393 and yields until it returns.
      * That menu floor is not ported; it returns at once. */
@@ -725,8 +918,73 @@ static int run_native(Impl *s,RunTask *t,char *error)
      * the save menu is not opened, which the original reports as 0. */
     case 0xeb:s->view.unported_menu=0xeb;
         log_line(s,"story_save_menu status=unported_not_saved");value=0;break;
+    /* fn_801C8688(item, item, item): the three DNA disc items (0x200-0x211,
+     * each pair one species) must all name species of the 3x3 grid
+     * lbl_8026F488; then gbaConvCheckIds pushes floor 0x387 (the disc
+     * puzzle) and returns its result; 1 when that result is 0. Floor 0x387
+     * is not ported here (realgam lane): the puzzle is taken as solved and
+     * recorded, the way battles are skipped as wins. */
+    case 0xcc:{
+        static const uint16_t grid[9]={0xb9,0xc8,0xf4,0x11f,0x9c,0xf3,0x99,0xf5,0x9f};
+        int ok=1;
+        for(unsigned i=0;i<3;++i){unsigned sp=disc_species(a[i]&0xffffu);int found=0;
+            for(unsigned j=0;j<9;++j){found|=sp&&grid[j]==sp;}
+            ok&=found;}
+        if(ok)log_line(s,"story_menu_floor floor=387 status=unported_solved temporary=1 discs=%lx,%lx,%lx",
+                       (unsigned long)a[0],(unsigned long)a[1],(unsigned long)a[2]);
+        else log_line(s,"story_dna_check discs=%lx,%lx,%lx result=2",(unsigned long)a[0],(unsigned long)a[1],(unsigned long)a[2]);
+        value=ok;break;}
+    /* fn_801C8834(item): on floor 0x43 the disc's Pokemon turns as a
+     * hologram (menu 0xD8, fn_800756C8); the disc becomes its used twin
+     * (item + 1). Returns the species. */
+    case 0xcd:{
+        unsigned sp=disc_species(a[0]&0xffffu);value=sp;
+        if(!sp)break;
+        if(s->area->floor==0x43)note_presentation(s,0xcd,"dna_hologram_menu_d8");
+        if((a[0]&1u)==0){ /* gsAddItem(item,-1); gsAddItem(item+1,1) */
+            if(!s->item_change)return fail(error,"Native CD needs the signed item service, which this scene did not bind");
+            if(s->item_change(s->item_change_context,a[0]&0xffffu,-1)<0||s->item_change(s->item_change_context,(a[0]&0xffffu)+1u,1)<0)
+                return fail(error,"DNA disc %lu could not be exchanged",(unsigned long)a[0]);
+        }
+        log_line(s,"story_dna_disc item=%lu species=%u",(unsigned long)(a[0]&0xffffu),sp);
+        break;}
+    /* fn_801C8804: close the hologram menu if it is open. */
+    case 0xcf:break;
+    /* Light animations (fn_801C9DC4 set, fn_801C9E7C active, fn_801C9CDC
+     * wait for the end): the floor's animated lights are not rendered, so
+     * an animation has ended at once. */
+    case 0xbe:case 0xbf:case 0xc1:note_presentation(s,c->native,"light_animation_unrendered");value=0;break;
+    /* fn_801EE67C(row, value): record row of the common table lbl_80478F6C
+     * (data+0x1439D8, 0x38-byte rows; the PDA's notes): its order slot in
+     * the save, flag +0x0C set and flag +0x1C = value. The table is not
+     * prepared here; the call is recorded (the PDA notes are the systems
+     * lane's). */
+    case 0xf3:log_line(s,"story_pda_record row=%lu value=%lu status=unported_table",(unsigned long)a[0],(unsigned long)a[1]);break;
+    /* fn_800190D8: register an item whose use from the pause menu runs a
+     * script (eight entries; a ninth is ignored, as in the original). */
+    case 0x11:
+        if(s->item_event_count<8){s->item_events[s->item_event_count].item=(uint16_t)a[0];
+            s->item_events[s->item_event_count++].script=a[1];}
+        log_line(s,"story_item_event item=%lu script=%08lx count=%u",(unsigned long)(a[0]&0xffffu),(unsigned long)a[1],s->item_event_count);
+        break;
+    /* fn_801C8628: put the pause-menu cursor on its Items row (menu 0x59
+     * item 0x20C) and run the pause menu (fn_8000D710(1)), so the player
+     * can use a key item, e.g. at the Shadow Pokemon Lab's key slot. Using
+     * an item looks it up in the native 11 list (fn_80019070, which also
+     * empties the list) and queues its script as an auto event. The pause
+     * menu is the scene's own: with it enabled the script waits with
+     * view.item_menu set; otherwise it closes at once (the cancel branch). */
+    case 0xd0:
+        t->program=0xd0;t->prog_state=0;t->prog_asking=0;t->prog_yes=0;
+        return program_step(s,t,0,error);
     case 0x54:case 0x55:case 0x56:case 0x57:
         t->program=c->native;t->prog_state=0;t->prog_asking=0;
+        return program_step(s,t,0,error);
+    /* preReliveSetParameter(mode, index): modes 0 and 1 run preReliveMain
+     * (the Relic Stone's purification), as a program of this task. */
+    case 0xc2:
+        if(a[0]!=0&&a[0]!=1){value=0;break;}
+        t->program=0xc2;t->prog_state=0;t->prog_asking=0;t->relive_mode=a[0];t->relive_slot=a[1];t->stage=0;
         return program_step(s,t,0,error);
     /* floorSetFadeScript: the scripts run around the next floor fade. */
     case 0x90:s->fade_begin=a[0];s->fade_poll=a[1];
@@ -735,7 +993,9 @@ static int run_native(Impl *s,RunTask *t,char *error)
     case 0x5d:value=s->area->group;break;
     case 0x5e:value=s->previous_floor;break;
     case 0x5f:case 0x7d:
-        if(s->floor_supported?!s->floor_supported(a[0]):(a[0]!=1&&a[0]!=2)){snprintf(s->view.blocked,sizeof s->view.blocked,"Area %lu is not prepared in this build.",(unsigned long)a[0]);t->wait=W_BATTLE;return 1;}
+        if(s->floor_supported?!s->floor_supported(a[0]):(a[0]!=1&&a[0]!=2)){snprintf(s->view.blocked,sizeof s->view.blocked,"Area %lu is not prepared in this build. Press A to stay here.",(unsigned long)a[0]);
+            log_line(s,"story_floor_unprepared from=%lu to=%lu spawn=%lu",(unsigned long)s->area->floor,(unsigned long)a[0],(unsigned long)a[1]);
+            t->wait=W_BATTLE;return 1;}
         s->pending_floor=a[0];s->pending_spawn=a[1];break;
     case 0x64:
         p=person(s,s->area->group,a[0]);if(p){p->want_visible=!!a[1];p->public.visible=a[1]&&p->public.model;
@@ -764,6 +1024,21 @@ static int run_native(Impl *s,RunTask *t,char *error)
         log_line(s,"story_name_entry mode=%lu index=%lu status=default_name_kept menu_ported=0",
                  (unsigned long)a[0],(unsigned long)a[1]);
         value=1;break;
+    case 0x62:{
+        /* fn_800FF730(floor): push a menu floor (0x391 PC box, 0x38F bag,
+         * 0x392 P*DA, 0x386 evolution ...) and yield until it returns. A
+         * floor the scene shows waits with view.menu_floor set; any other
+         * is not ported and returns at once, recorded. */
+        unsigned i;
+        for(i=0;i<s->menu_floor_count&&s->menu_floors[i]!=a[0];++i){}
+        if(i<s->menu_floor_count){
+            s->view.menu_floor=a[0];
+            log_line(s,"story_menu_floor floor=%03lx status=waiting_scene",(unsigned long)a[0]);
+            t->wait=W_MENU_FLOOR;return 1;
+        }
+        s->view.unported_menu=0x62;
+        log_line(s,"story_menu_floor floor=%03lx status=unported_returned",(unsigned long)a[0]);
+        break;}
     case 0x19:
         /* menuShopOpen (native table entry 0x19) stores the shop number and
          * links to menu floor 0x38F, which runs the shop and returns. That
@@ -780,7 +1055,8 @@ static int run_native(Impl *s,RunTask *t,char *error)
     case 0x23:
         /* fn_801C9F00: heroSetStatus(0,0x18,active) and the follower state. */
         if(!c3_game_state_set_partner(s->game,a[0]!=0))return fail(error,"The partner state cannot be written");
-        s->partner_actor.public.visible=a[0]!=0;
+        if(a[0]&&!s->partner_actor.public.visible&&s->partner_actor.public.model)partner_place_behind(s);
+        s->partner_actor.public.visible=a[0]!=0&&s->partner_actor.public.model;s->partner_actor.want_visible=a[0]!=0;
         log_line(s,"story_partner present=%d",a[0]!=0);
         break;
     case 0x31:
@@ -848,6 +1124,47 @@ static int run_native(Impl *s,RunTask *t,char *error)
         break;
     case 0x8a:case 0x99:
         note_presentation(s,c->native,"field_audio_backend_pending");break;
+    case 0x70:{
+        /* fn_801CBA0C: peopleOpen of an original model, with signed-byte
+         * serial ORed into the original transient person namespace. Packs
+         * are reserved and streamed by the scene, never fabricated here. */
+        uint32_t id=(uint32_t)(int32_t)(int8_t)s->dynamic_serial++|0x7ffe0000u;p=NULL;
+        for(uint32_t i=0;i<s->area->actor_count;++i){Person *candidate=s->actors+i;
+            if(candidate->source->aux3==DYNAMIC_MARKER&&!candidate->dynamic_active&&candidate->source->resource==a[0]){p=candidate;break;}}
+        if(!p||!p->public.model)return fail(error,"Dynamic original model %08lx is not prepared",(unsigned long)a[0]);
+        if(person(s,s->area->group,id))break; /* Source duplicate open returns zero. */
+        p->dynamic_active=1;p->public.index=id;p->want_visible=1;p->public.visible=1;
+        p->public.clip=0;p->public.loop=1;p->public.playing=1;p->public.pose.animation_seconds=0;
+        memcpy(p->public.pose.position,p->source->position,sizeof p->source->position);p->public.pose.yaw=p->source->yaw;
+        value=id;log_line(s,"story_dynamic_open resource=%08lx id=%08lx",(unsigned long)a[0],(unsigned long)id);
+        }break;
+    case 0xa6:{
+        /* fn_801CB61C -> fn_801845E4: source child resource follows the
+         * original animated carrier's root part0, retained as C3DY aux2. */
+        p=person(s,s->area->group,a[0]);Person *parent=person(s,s->area->group,a[1]);
+        if(!p||!parent)break;
+        if(a[2]||!parent->source||parent->source->aux3!=DYNAMIC_MARKER||
+           !parent->source->aux2||!parent->public.model||parent->parent||p==parent||
+           parent->source->aux2>parent->public.model->bone_count)
+            return fail(error,"Original root attachment is not prepared");
+        p->parent=parent;p->parent_bone_plus_one=parent->source->aux2;p->parent_root=1;
+        p->moving=p->turning=p->waypoint_active=0;
+        memset(p->local_position,0,sizeof p->local_position);memset(p->local_rotation,0,sizeof p->local_rotation);
+        value=1;break;
+    }
+    case 0x71:
+        /* fn_801CB9D8 closes a transient person and releases its slot. The
+         * prepared GPU pack stays resident for a later original allocation. */
+        p=person(s,s->area->group,a[0]);
+        if(p&&p->source&&p->source->aux3==DYNAMIC_MARKER){
+            p->dynamic_active=0;p->want_visible=0;p->public.visible=0;p->public.playing=0;
+            p->moving=p->turning=p->waypoint_active=0;p->parent=NULL;
+            log_line(s,"story_dynamic_close id=%08lx",(unsigned long)a[0]);}
+        break;
+    case 0xdd:
+        /* fn_801CB530 binds the source particle bank to a model. Generic
+         * HSD particles have no renderer; preserve this visible limitation. */
+        note_presentation(s,c->native,"particle_bank_attachment_unrendered");break;
     case 0x72:
         /* fn_801CB954: a resource that is a floor person changes that
          * person's visibility (as native 32); otherwise the map model's.
@@ -876,13 +1193,30 @@ static int run_native(Impl *s,RunTask *t,char *error)
         for(unsigned i=0;i<3;++i){s->camera_from[i]=s->view.camera.eye[i];s->camera_to[i]=as_float(a[i+1])*s->map->scale;
             s->camera_direction[i]=s->view.camera.target[i]-s->view.camera.eye[i];}
         break;
+    case 0xdb:{
+        /* scriptAddItem (field_range_801CA7EC.c): a direct bag mutation,
+         * without native 77's jingle, message or PC-overflow handling.
+         * The retail ABI narrows itemId and the magnitude to u16. */
+        int32_t count=(int32_t)a[1];
+        if(!count)return fail(error,"Native DB zero item count has no defined retail result");
+        if(!s->item_change)return fail(error,"Native DB needs the signed item service, which this scene did not bind");
+        uint32_t item=(uint16_t)a[0],amount=(uint16_t)(count<0?0u-a[1]:a[1]);
+        int32_t signed_amount=count<0?-(int32_t)amount:(int32_t)amount;
+        int result=s->item_change(s->item_change_context,item,signed_amount);
+        value=(uint32_t)result;
+        log_line(s,"story_item_direct item=%lu count=%ld result=%d",(unsigned long)item,(long)signed_amount,result);
+        }break;
     case 0x77:
         /* scriptGetItem -> floorEventGetTresure(4,item,count): the item
          * jingle 0x3CA plays to its end first (a fixed wait here), then the
          * bag receives the item and the result message is shown. */
         if(!s->receive)return fail(error,"Native 77 needs the item service, which this scene did not bind");
-        note_presentation(s,c->native,"item_jingle_backend_pending_wait_1s");
-        t->wait=W_ITEM;t->remaining=1.0f;return 1;
+        /* floorEventGetTresure plays jingle 0x3CA (fn_80165668(0x3CA,0,0xFF))
+         * and waits for it; W_ITEM then waits for the window. */
+        if(s->audio&&s->audio(s->audio_context,C3_STORY_AUDIO_JINGLE,0x3ca,0,0xff)>0){
+            t->jingle=0x3ca;t->jingle_seconds=0;t->wait=W_ITEM;t->remaining=0;return 1;}
+        note_presentation(s,c->native,"item_jingle_stream_missing_wait_1s");
+        t->jingle=0;t->wait=W_ITEM;t->remaining=1.0f;return 1;
     case 0x84:
         /* msgctrlSetValue(variable,value). */
         if(a[0]>255)return fail(error,"Message variable %lu is out of range",(unsigned long)a[0]);
@@ -897,6 +1231,13 @@ static int run_native(Impl *s,RunTask *t,char *error)
         if(p){if(!set_motion(s,p,a[shift+1],a[shift+2],a[shift+3],error))return 0;}
         else if(c->native==0x73)note_presentation(s,c->native,"map_object_animation_unrendered");
         }break;
+    case 0x74:
+        /* fn_801CB7C4: stop a person's resource animation, else the raw
+         * floor model. Map-object clocks are not bound to this adapter yet. */
+        p=person(s,s->area->group,a[0]);
+        if(p){p->public.playing=0;p->pending_motion=0;}
+        else note_presentation(s,c->native,"map_object_animation_stop_unrendered");
+        break;
     case 0x75:
         /* scriptWaitSyncMotion(resource,wait): a person waits like native 35;
          * a model resource that is not a person reports finished. */
@@ -931,10 +1272,12 @@ static int run_native(Impl *s,RunTask *t,char *error)
         note_presentation(s,c->native,"head_tracking_unrendered");
         value=a[1]<=1&&(a[0]==0||(a[0]==1&&s->partner_actor.public.visible));break;
     case 0x82:
-        /* fn_80165668 pauses the BGM, plays a jingle and blocks until it ends.
-         * The length lives in the sound data; without the audio backend the
-         * script waits a fixed substitute time. */
-        note_presentation(s,c->native,"jingle_backend_pending_wait_2s");
+        /* fn_80165668 pauses the BGM, plays a jingle and blocks until it ends:
+         * the wait follows the rendered song (0x3C9/0x3CA are one-shot
+         * songs of the music pack). Without the stream the script waits a
+         * fixed substitute time, recorded. */
+        if(start_jingle(s,t,a[0],a[1],a[2]))return 1;
+        note_presentation(s,c->native,"jingle_stream_missing_wait_2s");
         t->wait=W_SECONDS;t->remaining=2.0f;return 1;
     case 0x83:
         /* fn_80181EB0: "!" emote attached to the person's head part. */
@@ -973,6 +1316,20 @@ static int run_native(Impl *s,RunTask *t,char *error)
             }
         }
         }break;
+    case 0xb2:
+        /* fn_801821B8 (peopleFallAppear): the person is shown, flag 8 is
+         * cleared, sound 0x49E plays and it drops from 40 source units above
+         * its position, 1.3 units per 60 Hz frame (fn_800D3088), with motion
+         * 7; on the ground motion 8 plays to its end, then motion 1. The
+         * table row's third word is not read by the original. The sound is
+         * recorded as unrendered. */
+        p=person(s,a[0],a[1]);if(!p)break;
+        p->want_visible=1;p->public.visible=p->public.model!=NULL;p->public.flags&=~8u;
+        note_presentation(s,0xb2,"fall_sound_049e_unrendered");
+        t->fall_ground=pose(s,p)->position[1];t->remaining=40.0f;
+        pose(s,p)->position[1]=t->fall_ground+40.0f*s->map->scale;
+        if(!set_motion(s,p,7,0,1,error))return 0;
+        t->stage=0;t->wait=W_FALL;return 1;
     case 0xb1:{
         /* fn_8018A700: walk up to `distance` (tens of source units) from
          * another person, along the line between them; already inside that
@@ -995,17 +1352,18 @@ static int run_native(Impl *s,RunTask *t,char *error)
         }
         }break;
     case 0xd8:{
-        /* fn_801C852C: nothing unless flag value 08AE is zero. Mode 0 is
-         * fn_801D0AFC(0): pokemonAllKaihuku on every valid party member.
-         * Mode 1 clears two per-member attributes that are not identified. */
+        /* fn_801C852C: guarded by 08AE. Mode0 heals fully; mode1
+         * clears only condition IDs 3 and4 (poison/toxic), without HP/PP. */
         uint32_t battle_mode=0;
         if(!flag(s,0x8ae,&battle_mode,error))return 0;
         if(battle_mode)break;
-        if(a[0]!=0)return fail(error,"Native D8 mode %lu is not ported",(unsigned long)a[0]);
-        if(!s->restore)return fail(error,"Native D8 needs the party service, which this scene did not bind");
-        int restored=s->restore(s->restore_context);
-        if(restored<0)return fail(error,"The party could not be restored");
-        log_line(s,"story_party_restore mode=0 members=%d",restored);
+        if(a[0]>1)break; /* the original switch has no default action */
+        C3FieldStoryRestore service=a[0]?s->clear_poison:s->restore;
+        void *context=a[0]?s->poison_context:s->restore_context;
+        if(!service)return fail(error,"Native D8 mode %lu needs the %s service",(unsigned long)a[0],a[0]?"poison":"party");
+        int restored=service(context);
+        if(restored<0)return fail(error,"Native D8 mode %lu party service failed",(unsigned long)a[0]);
+        log_line(s,"story_party_restore mode=%lu members=%d",(unsigned long)a[0],restored);
         }break;
     case 0xe8:
         /* fn_801C7730 moves the follower out of the hero-to-NPC corridor
@@ -1059,6 +1417,19 @@ static void unported_menu(Impl *s,RunTask *t,const char *what)
     s->view.unported_menu=t->program;
     log_line(s,"story_menu_program native=%02lx step=%s status=unported_cancel_branch",(unsigned long)t->program,what);
 }
+static int near_surface(const Impl *s,uint32_t source_id,float reach)
+{
+    const C3FieldTriangle *sets[2]={s->area->transitions,s->area->interactions};
+    uint32_t counts[2]={s->area->transition_count,s->area->interaction_count};
+    for(unsigned k=0;k<2;++k)for(uint32_t i=0;i<counts[k];++i){const C3FieldTriangle *tr=sets[k]+i;
+        if(tr->source_id!=source_id)continue;
+        for(unsigned v=0;v<3;++v){float dx=tr->vertices[v*3]-s->hero->position[0],dz=tr->vertices[v*3+2]-s->hero->position[2];
+            if(dx*dx+dz*dz<=reach*reach)return 1;}
+        float cx=(tr->vertices[0]+tr->vertices[3]+tr->vertices[6])/3,cz=(tr->vertices[2]+tr->vertices[5]+tr->vertices[8])/3;
+        float dx=cx-s->hero->position[0],dz=cz-s->hero->position[2];if(dx*dx+dz*dz<=reach*reach)return 1;
+    }
+    return 0;
+}
 static int program_step(Impl *s,RunTask *t,uint32_t answer,char *error)
 {
     if(t->prog_asking==1){ /* message shown: open the yes/no menu */
@@ -1068,11 +1439,87 @@ static int program_step(Impl *s,RunTask *t,uint32_t answer,char *error)
     if(t->prog_asking==2){t->prog_state=answer==0?t->prog_yes:t->prog_no;t->prog_asking=0;}
     for(unsigned guard=0;guard<32;++guard){
         int st=t->prog_state;
+        if(st==END&&t==&s->treasure_task){
+            t->program=0;s->view.dialogue=0;s->dialog_owner=0;t->wait=W_NONE;s->view.message_id=0;s->view.message[0]=0;
+            s->treasure_active=0;t->key=0;log_line(s,"story_treasure_end");return 1;
+        }
         if(st==END){
             t->program=0;s->view.dialogue=0;s->dialog_owner=0;t->wait=W_NONE;
             return c3_story_resume(&s->vm,t->key,0)||fail(error,"Cannot resume original story task %u",t->key);
         }
         switch(t->program){
+        case 0xb2:{
+            Person *fall=person(s,t->call.args[0],t->call.args[1]);
+            if(st==0){t->prog_state=1;
+                if(fall){if(!set_motion(s,fall,8,0,0,error))return 0;
+                    if(fall->public.playing&&!fall->public.loop){t->wait=W_MOTION;return 1;}}
+                continue;}
+            if(fall&&!set_motion(s,fall,1,0,1,error))return 0;
+            t->prog_state=END;continue;}
+        case 0x7fff:{ /* floorEventCtrlTresure(mode 2) -> floorEventGetTresure */
+            C3StoryTreasure *r=s->treasure+s->treasure_row;
+            switch(st){
+            case 0:
+                if(r->taken_flag&&!set_flag(s,r->taken_flag,1,error))return 0;
+                r->taken=1;
+                if(r->kind==1)log_line(s,"story_presentation native=treasure status=unrendered reason=chest_open_motion");
+                log_line(s,"story_treasure_take index=%lu type=%lu item=%lu count=%lu",(unsigned long)r->index,
+                         (unsigned long)r->type,(unsigned long)r->item,(unsigned long)r->count);
+                log_line(s,"story_presentation native=treasure status=unrendered reason=jingle_3ca");
+                if(r->type==2){ /* money */
+                    s->message_values[0x4b]=r->item;return say(s,t,0x3cb5,10,error);
+                }
+                if(r->type==1||r->type==4||r->type==3){
+                    uint32_t count=r->type==3?1:r->count;
+                    if(!count){t->prog_state=END;continue;}
+                    if(!s->receive)return fail(error,"Treasure pickup needs the item service, which this scene did not bind");
+                    s->message_values[0x2d]=r->item;s->message_values[0x2f]=count;s->item_name[0]=0;
+                    s->treasure_result=s->receive(s->receive_context,r->item,count,s->item_name,sizeof s->item_name);
+                    log_line(s,"story_item item=%lu count=%lu result=%d",(unsigned long)r->item,(unsigned long)count,s->treasure_result);
+                    if(s->treasure_result<0){t->prog_state=END;continue;}
+                    if(r->type==3)return say(s,t,0x3cbc,20,error);
+                    if(r->type==1)return say(s,t,count==1?0x3cb4:0x3cb9,1,error);
+                    t->prog_state=1;continue;
+                }
+                t->prog_state=END;continue;
+            case 1: /* type 1/4: into the bag, or the PC when it is full */
+                if(s->treasure_result>0)return say(s,t,r->count==1?0x3cba:0x3cbb,END,error);
+                return say(s,t,r->count==1?0x3cb8:0x3cbd,END,error);
+            case 10:{
+                C3GameSummary hero;
+                if(!c3_game_state_summary(s->game,&hero))return fail(error,"Game state is unavailable");
+                int64_t money=(int64_t)hero.money+r->item;if(money>9999999)money=9999999;
+                if(!c3_game_state_add_money(s->game,money-(int64_t)hero.money))return fail(error,"Money cannot be changed");
+                return say(s,t,0x3cb7,END,error);}
+            case 20: /* type 3: the e-Reader card follow-ups (fn_8001E184, GBA) are not shown */
+                log_line(s,"story_presentation native=treasure status=unported reason=type3_gba_followup");
+                return say(s,t,0x3cb6,END,error);
+            }
+            t->prog_state=END;continue;}
+        case 0xd0: /* fn_8000D710(1): the pause menu */
+            if(st==0){
+                /* Opening the menu dispatches kind 4 for the event surfaces
+                 * the hero is on (heroMoveCheckEvent, fn_80116D30(4, id)):
+                 * the key slot's registers its key with native 11. Here a
+                 * surface counts when one of its triangles is within 1.5
+                 * units of the hero. prog_yes is the next link to try. */
+                while((uint32_t)t->prog_yes<s->area->link_count){
+                    const C3AreaLink *l=s->area->links+t->prog_yes++;
+                    if(l->kind!=4||!near_surface(s,l->source_id,1.5f))continue;
+                    log_line(s,"story_pause_menu_event source=%lu script=%08lx",(unsigned long)l->source_id,(unsigned long)l->script);
+                    if(!start(s,l->script,l->args,4,&t->child,error))return 0;
+                    t->child_finished=0;t->wait=W_TASK;return 1;
+                }
+                t->prog_state=1;
+                if(s->item_menu_enabled){
+                    s->view.item_menu=1;
+                    log_line(s,"story_pause_menu row=items status=waiting_scene registered=%u",s->item_event_count);
+                    t->wait=W_ITEM_MENU;return 1;
+                }
+                s->view.unported_menu=0xd0;s->item_event_count=0;
+                log_line(s,"story_pause_menu row=items status=closed menu_ported=0");
+            }
+            t->prog_state=END;continue;
         case 0x54: /* fn_801E03D4: rename */
             switch(st){
             case 0:return ask(s,t,0x3b21,2,1,error);
@@ -1121,6 +1568,45 @@ static int program_step(Impl *s,RunTask *t,uint32_t answer,char *error)
             case 4:return say(s,t,0x5574,END,error);
             default:break;
             }break;}
+        case 0xc2:{ /* preReliveMain + reliveMain + reliveCeremonyAll */
+            C3ReliveResult *r=&s->purified.result;
+            switch(st){
+            case 0:{C3ReliveCounts counts;
+                if(!c3_relive_counts(s->game,&counts))return fail(error,"Purification needs the party");
+                int action=c3_relive_action((int)t->relive_mode,&counts);
+                log_line(s,"story_relive mode=%lu action=%d remaining=%u ready=%u item=%d",(unsigned long)t->relive_mode,
+                         action,counts.remaining,counts.ready,counts.has_item);
+                if(action==C3_RELIVE_PICK){t->prog_state=1;continue;}
+                if(action==C3_RELIVE_PURIFY){t->prog_state=4;continue;}
+                t->prog_state=END;continue;}
+            case 1:return say(s,t,0x3b0f,2,error);
+            case 2: /* winMsgCloseField, then menuPokemonOpen(7) in the scene */
+                close_message(s);s->view.relive_pick=1;t->prog_state=3;t->wait=W_RELIVE;return 1;
+            case 3:
+                s->view.relive_pick=0;
+                if(answer>=6){log_line(s,"story_relive pick=cancel");t->prog_state=END;continue;}
+                t->relive_slot=answer;t->relive_mode=0;t->prog_state=4;continue;
+            case 4:{ /* reliveMain on floor 0x385: the ceremony, then the purification */
+                if(!s->purify)return fail(error,"Native C2 needs the purification service");
+                memset(&s->purified,0,sizeof s->purified);
+                int done=s->purify(s->purify_context,t->relive_slot,t->relive_mode==1,&s->purified);
+                log_line(s,"story_relive slot=%lu forced=%lu purified=%d species=%u shadow=%u pool_exp=%lu levels=%u learned=%u skipped=%u"
+                         " ceremony_scene=unported",(unsigned long)t->relive_slot,(unsigned long)t->relive_mode,done,r->species,r->shadow_id,
+                         (unsigned long)r->pool_exp,r->exp.level_count,r->exp.learned_count,r->exp.skipped_count);
+                if(done<0)return fail(error,"Purification of party slot %lu failed",(unsigned long)t->relive_slot);
+                t->stage=0;t->prog_state=done?5:END;continue;}
+            case 5:
+                if(!r->move0){t->prog_state=6;continue;}
+                return say(s,t,0x3b10,6,error);
+            case 6:s->message_values[0x2f]=r->pool_exp;return say(s,t,0x3b0b,7,error);
+            case 7: /* each level reached: 44CE with the level in 2F */
+                if(t->stage>=r->exp.level_count){t->prog_state=8;continue;}
+                s->message_values[0x2f]=r->exp.levels[t->stage++];return say(s,t,0x44ce,7,error);
+            case 8:return say(s,t,0x3b0c,9,error);
+            case 9:return ask(s,t,0x3b0d,10,END,error);
+            case 10:unported_menu(s,t,"nickname_entry");t->prog_state=END;continue;
+            default:break;
+            }break;}
         default:break;
         }
         return fail(error,"Menu program %02lx reached unported state %d",(unsigned long)t->program,st);
@@ -1136,10 +1622,26 @@ static int wait_task(Impl *s,RunTask *t,float seconds,uint16_t *pressed,char *er
     case W_SECONDS:
         t->remaining-=seconds;if(t->remaining>0)return 1;
         return resume(s,t,0,error);
+    case W_JINGLE:
+        if(jingle_playing(s,t,seconds))return 1;
+        return resume(s,t,0,error);
     case W_TASK:
         if(t->child_finished)return resume(s,t,t->value,error);
         if(c3_story_active(&s->vm,t->child))return 1;
         return resume(s,t,c3_story_result(&s->vm,t->child),error);
+    case W_FALL:
+        p=person(s,t->call.args[0],t->call.args[1]);
+        if(!p)return resume(s,t,0,error);
+        if(!t->stage){
+            t->remaining-=1.3f*60.0f*seconds;if(t->remaining<0)t->remaining=0;
+            pose(s,p)->position[1]=t->fall_ground+t->remaining*s->map->scale;
+            if(t->remaining>0)return 1;
+            if(!set_motion(s,p,8,0,0,error))return 0;
+            t->stage=1;return 1;
+        }
+        if(p->public.playing&&!p->public.loop&&pose(s,p)->animation_seconds<clip_seconds(&p->public))return 1;
+        if(!set_motion(s,p,1,0,1,error))return 0;
+        return resume(s,t,0,error);
     case W_MOTION:
         p=person(s,t->call.args[0],t->call.args[1]);
         if(p&&p->public.playing&&!p->public.loop&&pose(s,p)->animation_seconds<clip_seconds(&p->public))return 1;
@@ -1190,7 +1692,7 @@ static int wait_task(Impl *s,RunTask *t,float seconds,uint16_t *pressed,char *er
         {uint32_t answer=(uint32_t)s->view.choice_no;
          log_line(s,"story_choice answer=%lu",(unsigned long)answer);
          close_message(s);return resume(s,t,answer,error);}
-    case W_BATTLE:case W_NAME:case W_SHOP:return 1;
+    case W_BATTLE:case W_NAME:case W_SHOP:case W_MENU_FLOOR:case W_RELIVE:case W_ITEM_MENU:return 1;
     case W_DOOR:
         if(t->stage<s->door_count&&s->doors[t->stage].playing)return 1;
         if(s->event_depth)--s->event_depth;
@@ -1198,6 +1700,7 @@ static int wait_task(Impl *s,RunTask *t,float seconds,uint16_t *pressed,char *er
     case W_ITEM:{
         /* Wait for the shared window before adding the item, so a retry
          * never adds it twice. */
+        if(t->jingle&&jingle_playing(s,t,seconds))return 1;
         if(s->dialog_owner&&s->dialog_owner!=t->key)return 1;
         t->remaining-=seconds;if(t->remaining>0)return 1;
         uint32_t item=t->call.args[0];int32_t count=(int32_t)t->call.args[1];
@@ -1223,11 +1726,11 @@ void c3_field_story_close(C3FieldStory *story)
 void c3_field_story_describe_waits(const C3FieldStory *story,char *out,size_t capacity)
 {
     static const char *const names[]={"none","seconds","task","motion","move","camera","camera_move",
-        "fade","message","choice","tv","battle","name","item","door","shop","dialog"};
+        "fade","message","choice","tv","battle","name","item","door","shop","dialog","relive"};
     const Impl *s=story?story->impl:NULL;size_t used=0;
     if(!out||!capacity)return;
     out[0]=0;if(!s)return;
-    {int n=snprintf(out,capacity,"depth=%d ready=%d event=%u/%d talk=%u ",s->event_depth,s->hero_ready,
+    {int n=snprintf(out,capacity,"depth=%d ready=%d event=%u/%d talk=%u ",s->event_depth+s->hero_event,s->hero_ready,
         (unsigned)s->event_key,s->event_key?c3_story_active(&((Impl*)s)->vm,s->event_key):0,(unsigned)s->talk_key);
      if(n>0)used=(size_t)n<capacity?(size_t)n:capacity-1;}
     for(unsigned i=0;i<C3_STORY_TASKS&&used+1<capacity;++i){
@@ -1300,6 +1803,114 @@ void c3_field_story_enable_shop(C3FieldStory *story,int enabled)
 {
     Impl *s=story?story->impl:NULL;if(s)s->shop_enabled=enabled!=0;
 }
+void c3_field_story_enable_menu_floor(C3FieldStory *story,uint32_t floor,int enabled)
+{
+    Impl *s=story?story->impl:NULL;unsigned i;if(!s)return;
+    for(i=0;i<s->menu_floor_count&&s->menu_floors[i]!=floor;++i){}
+    if(enabled&&i==s->menu_floor_count&&i<8)s->menu_floors[s->menu_floor_count++]=floor;
+    if(!enabled&&i<s->menu_floor_count)s->menu_floors[i]=s->menu_floors[--s->menu_floor_count];
+}
+int c3_field_story_menu_floor_done(C3FieldStory *story,char *error)
+{
+    Impl *s=story?story->impl:NULL;
+    if(!s)return fail(error,"Invalid menu floor result");
+    for(unsigned i=0;i<C3_STORY_TASKS;++i){RunTask *t=s->tasks+i;
+        if(!t->key||t->wait!=W_MENU_FLOOR)continue;
+        log_line(s,"story_menu_floor floor=%03lx status=returned",(unsigned long)s->view.menu_floor);
+        s->view.menu_floor=0;
+        return resume(s,t,0,error);
+    }
+    return fail(error,"No menu floor is waiting");
+}
+/* A common/floor message as plain text, with value control 32/36 (the
+ * Pokemon a menu names) given and the rest from the field source. */
+typedef struct { Impl *s; const char *name; } MenuText;
+static int menu_text_source(void *context,uint8_t control,C3StoryValue *v)
+{
+    MenuText *m=context;
+    if((control==0x32||control==0x36)&&m->name){v->text=m->name;return 1;}
+    return message_source(m->s,control,v);
+}
+int c3_field_story_text(C3FieldStory *story,uint32_t id,const char *name,char *out,size_t capacity)
+{
+    Impl *s=story?story->impl:NULL;char error[C3_STORY_ERROR];MenuText m={s,name};
+    if(!s||!out||!capacity)return 0;
+    C3GameSummary names;
+    if(c3_game_state_summary(s->game,&names))snprintf(s->partner_name,sizeof s->partner_name,"%s",names.partner);
+    if(!c3_story_render(&s->vm,id,menu_text_source,&m,0,out,capacity,error))return 0;
+    for(char *c=out;*c;++c)if(*c=='\n'||*c=='\f')*c=' ';
+    return 1;
+}
+static uint32_t le32_at(const uint8_t *p){return (uint32_t)p[0]|(uint32_t)p[1]<<8|(uint32_t)p[2]<<16|(uint32_t)p[3]<<24;}
+static float lef32_at(const uint8_t *p){uint32_t v=le32_at(p);float f;memcpy(&f,&v,4);return f;}
+int c3_field_story_load_treasure(C3FieldStory *story,const char *path,char *error)
+{
+    Impl *s=story?story->impl:NULL;
+    if(!s||!path)return fail(error,"Invalid treasure pack request");
+    FILE *f=fopen(path,"rb");
+    if(!f)return 1; /* a floor without treasure has no pack */
+    uint8_t header[16],row[32];
+    if(fread(header,1,16,f)!=16||memcmp(header,"C3R1",4)||le32_at(header+4)!=1||le32_at(header+8)!=s->area->floor||le32_at(header+12)>32){
+        fclose(f);return fail(error,"Invalid treasure pack %s",path);
+    }
+    unsigned n=le32_at(header+12);s->treasure_count=0;
+    for(unsigned i=0;i<n;++i){
+        if(fread(row,1,32,f)!=32){fclose(f);return fail(error,"Truncated treasure pack %s",path);}
+        C3StoryTreasure *r=s->treasure+i;memset(r,0,sizeof *r);
+        r->index=(uint32_t)(row[0]|row[1]<<8);r->type=(row[2]>>2)&7u;r->kind=(row[2]>>5)&7u;r->count=row[3];
+        int16_t rotation=(int16_t)(row[6]|row[7]<<8);
+        r->taken_flag=(uint32_t)(row[8]|row[9]<<8);r->hide_flag=(uint32_t)(row[10]|row[11]<<8);r->item=le32_at(row+12);
+        for(unsigned k=0;k<3;++k)r->position[k]=lef32_at(row+16+4*k);
+        r->yaw=(float)rotation*PI/180.0f;
+        if(r->index<512&&treasure_session[r->index].changed){r->item=treasure_session[r->index].item;r->count=treasure_session[r->index].count;}
+        s->treasure_display[i]=-1;
+    }
+    fclose(f);s->treasure_count=n;
+    log_line(s,"story_treasure_rows floor=%lu count=%u",(unsigned long)s->area->floor,n);
+    return 1;
+}
+unsigned c3_field_story_hero_regions(const C3FieldStory *story,float out[][4],unsigned max)
+{
+    const Impl *s=story?story->impl:NULL;unsigned n=0;
+    if(!s)return 0;
+    for(;n<s->hero_region_count&&n<max;++n)for(unsigned k=0;k<4;++k)out[n][k]=s->hero_regions[n][k]*s->map->scale;
+    return n;
+}
+unsigned c3_field_story_treasure_count(const C3FieldStory *story)
+{const Impl *s=story?story->impl:NULL;return s?s->treasure_count:0;}
+const C3StoryTreasure *c3_field_story_treasure(const C3FieldStory *story,unsigned index)
+{const Impl *s=story?story->impl:NULL;return s&&index<s->treasure_count?s->treasure+index:NULL;}
+void c3_field_story_set_item_take_service(C3FieldStory *story,C3FieldStoryTake take,void *context)
+{
+    Impl *s=story?story->impl:NULL;if(s){s->take=take;s->take_context=context;}
+}
+void c3_field_story_enable_item_menu(C3FieldStory *story,int enabled)
+{
+    Impl *s=story?story->impl:NULL;if(s)s->item_menu_enabled=enabled!=0;
+}
+unsigned c3_field_story_item_menu_items(const C3FieldStory *story,uint32_t items[8])
+{
+    const Impl *s=story?story->impl:NULL;unsigned n=0;
+    if(!s)return 0;
+    for(;n<s->item_event_count&&n<8;++n)items[n]=s->item_events[n].item;
+    return n;
+}
+int c3_field_story_item_menu_result(C3FieldStory *story,uint32_t item,char *error)
+{
+    Impl *s=story?story->impl:NULL;
+    if(!s)return fail(error,"Invalid item menu result");
+    for(unsigned i=0;i<C3_STORY_TASKS;++i){RunTask *t=s->tasks+i;
+        if(!t->key||t->wait!=W_ITEM_MENU)continue;
+        uint32_t script=0;
+        if(item)for(unsigned j=0;j<s->item_event_count;++j)if(s->item_events[j].item==(uint16_t)item){script=s->item_events[j].script;break;}
+        s->item_event_count=0;s->view.item_menu=0;
+        if(script){s->pending_item_script=script;s->pending_item=item;}
+        log_line(s,"story_pause_menu row=items item=%lu script=%08lx status=%s",(unsigned long)item,(unsigned long)script,
+                 script?"used":item?"no_event":"cancelled");
+        return resume(s,t,0,error);
+    }
+    return fail(error,"No item menu is waiting");
+}
 int c3_field_story_shop_done(C3FieldStory *story,char *error)
 {
     Impl *s=story?story->impl:NULL;
@@ -1316,9 +1927,31 @@ void c3_field_story_set_audio_service(C3FieldStory *story,C3FieldStoryAudio audi
 {
     Impl *s=story?story->impl:NULL;if(s){s->audio=audio;s->audio_context=context;}
 }
+void c3_field_story_set_purify_service(C3FieldStory *story,C3FieldStoryPurify purify,void *context)
+{
+    Impl *s=story?story->impl:NULL;if(s){s->purify=purify;s->purify_context=context;}
+}
+int c3_field_story_relive_pick(C3FieldStory *story,int slot,char *error)
+{
+    Impl *s=story?story->impl:NULL;
+    if(!s)return fail(error,"No field story");
+    for(unsigned i=0;i<C3_STORY_TASKS;++i){RunTask *t=s->tasks+i;
+        if(!t->key||t->wait!=W_RELIVE)continue;
+        return resume(s,t,slot<0||slot>5?UINT32_MAX:(uint32_t)slot,error);
+    }
+    return fail(error,"No purification is waiting for a party choice");
+}
+void c3_field_story_set_item_change_service(C3FieldStory *story,C3FieldStoryItemChange change,void *context)
+{
+    Impl *s=story?story->impl:NULL;if(s){s->item_change=change;s->item_change_context=context;}
+}
 void c3_field_story_set_item_service(C3FieldStory *story,C3FieldStoryReceive receive,void *context)
 {
     Impl *s=story?story->impl:NULL;if(s){s->receive=receive;s->receive_context=context;}
+}
+void c3_field_story_set_poison_service(C3FieldStory *story,C3FieldStoryRestore clear,void *context)
+{
+    Impl *s=story?story->impl:NULL;if(s){s->clear_poison=clear;s->poison_context=context;}
 }
 void c3_field_story_set_party_service(C3FieldStory *story,C3FieldStoryRestore restore,void *context)
 {
@@ -1338,10 +1971,19 @@ int c3_field_story_bind_doors(C3FieldStory *story,const C3AreaDoor *rows,uint32_
         if(rows[i].open_flag&&!flag(s,rows[i].open_flag,&open,error))return 0;
         if(rows[i].collision_id>=0)c3_field_set_object_enabled(s->map,(uint32_t)rows[i].collision_id,!open);
         if(!door->model)continue;
-        if(door->model->fps<=0||rows[i].open_anim<0||(uint32_t)rows[i].open_anim>=door->model->clip_count)
-            return fail(error,"Door %lu model lacks its open animation",(unsigned long)rows[i].index);
-        door->clip=(uint32_t)rows[i].open_anim;
-        door->seconds=open?(float)(door->model->clips[door->clip].frame_count-1u)/door->model->fps:0;
+        if(door->model->fps<=0||!door->model->clip_count)
+            return fail(error,"Door %lu model has no rest frame",(unsigned long)rows[i].index);
+        /* Elevator rows may have travel animations only, or no animations.
+         * floorEvent elevator control starts openAnim only when >=0. */
+        const int8_t animations[]={rows[i].open_anim,rows[i].close_anim,rows[i].open_end_anim,
+            rows[i].close_end_anim,rows[i].alternate_a,rows[i].alternate_b};
+        for(unsigned j=0;j<sizeof animations/sizeof animations[0];++j)
+            if(animations[j]>=0&&(uint32_t)animations[j]>=door->model->clip_count)
+                return fail(error,"Door %lu model lacks animation %d",(unsigned long)rows[i].index,animations[j]);
+        door->clip=rows[i].open_anim>=0?(uint32_t)rows[i].open_anim:0;
+        door->seconds=open&&rows[i].open_anim>=0?
+            (float)(door->model->clips[door->clip].frame_count-1u)/door->model->fps:0;
+
     }
     return 1;
 }
@@ -1383,22 +2025,67 @@ int c3_field_story_battle_result(C3FieldStory *story,uint32_t result,char *error
     }
     return fail(error,"No original battle request is waiting for a result");
 }
+/* A floor link (native 5F/7D) to a floor this build cannot load waits with
+ * view.blocked set. Refusing it resumes the script as if the link had been
+ * registered and stays on this floor: the common door script (05960004 is
+ * native 7D, then return) ends and the hero gets control back. */
+int c3_field_story_floor_refused(const C3FieldStory *story,uint32_t *floor)
+{
+    const Impl *s=story?story->impl:NULL;
+    if(!s)return 0;
+    for(unsigned i=0;i<C3_STORY_TASKS;++i){const RunTask *t=s->tasks+i;
+        if(t->key&&t->wait==W_BATTLE&&(t->call.native==0x5f||t->call.native==0x7d)){if(floor)*floor=t->call.args[0];return 1;}
+    }
+    return 0;
+}
+int c3_field_story_stay_on_floor(C3FieldStory *story,char *error)
+{
+    Impl *s=story?story->impl:NULL;
+    if(!s)return fail(error,"Invalid field story");
+    for(unsigned i=0;i<C3_STORY_TASKS;++i){RunTask *t=s->tasks+i;
+        if(!t->key||t->wait!=W_BATTLE||(t->call.native!=0x5f&&t->call.native!=0x7d))continue;
+        s->view.blocked[0]=0;
+        log_line(s,"story_floor_refused from=%lu to=%lu stayed=1",(unsigned long)s->area->floor,(unsigned long)t->call.args[0]);
+        return resume(s,t,0,error);
+    }
+    return fail(error,"No floor link is waiting");
+}
 /* A lost battle whose encounter has the zenmetu flag: fn_8020DAD0 halves the
- * money, restores the party and sends the hero to the temporary whiteout
- * point (fn_80113FE8, set by native A1) instead of resuming the script. The
- * scene applies money and party; this leaves the floor through the normal
- * departure. Without a recorded point the script resumes with result 3. */
+ * money (the scene does that), sets flag 0E05, restores the party through the
+ * bound party service and sends the hero to the temporary whiteout point
+ * (fn_80113FE8, set by native A1) or else to the last save's floor, instead
+ * of resuming the script. The floor is left through the normal departure.
+ * With neither point known the script resumes with result 3. */
 int c3_field_story_battle_whiteout(C3FieldStory *story,char *error)
 {
     Impl *s=story?story->impl:NULL;
+    uint32_t floor=0,previous=0;uint8_t spawn=0;const char *source="temporary";
     if(!s||!c3_field_story_battle_pending(story,NULL))return fail(error,"No original battle request is waiting for a result");
-    if(!s->whiteout_valid){
+    /* fn_8020DAD0 after the money: flag 0E05, fn_801D0AFC(1) (every valid
+     * member pokemonAllKaihuku), fn_80113FE8, fade script 05960008. */
+    if(!set_flag(s,0x0e05,1,error))return 0;
+    if(s->restore){
+        int restored=s->restore(s->restore_context);
+        if(restored<0)return fail(error,"The party could not be restored after the loss");
+        log_line(s,"story_party_restore mode=whiteout members=%d",restored);
+    }
+    /* fn_80113FE8: the point native A1 left, else the last card save's
+     * floor/previous floor/entrance (gamedatasaveGetStatus 5/7/8). */
+    if(s->whiteout_valid){floor=s->whiteout_floor;previous=s->whiteout_previous;spawn=(uint8_t)s->whiteout_spawn;}
+    else if(c3_game_state_save_point(s->game,&floor,&previous,&spawn))source="save";
+    s->whiteout_valid=0;
+    if(!floor){
         log_line(s,"story_battle_whiteout return_point=missing resumed_with=3");
         return c3_field_story_battle_result(story,3,error);
     }
     s->fight_result=3;s->view.blocked[0]=0;s->view.battle_id=0;
-    s->pending_floor=s->whiteout_floor;s->pending_spawn=s->whiteout_spawn;s->whiteout_valid=0;
-    log_line(s,"story_battle_whiteout floor=%lu spawn=%lu",(unsigned long)s->pending_floor,(unsigned long)s->pending_spawn);
+    /* The waiting request ends here: the floor is left, not resumed. */
+    for(unsigned i=0;i<C3_STORY_TASKS;++i){RunTask *t=s->tasks+i;
+        if(!t->key||t->wait!=W_BATTLE||(t->call.native!=0x98&&t->call.native!=0x66))continue;
+        c3_story_stop(&s->vm,t->key);t->key=0;t->wait=W_NONE;}
+    s->pending_floor=floor;s->pending_spawn=spawn;
+    log_line(s,"story_battle_whiteout floor=%lu previous=%lu spawn=%lu source=%s flag=0e05 fade_script=05960008",
+             (unsigned long)floor,(unsigned long)previous,(unsigned long)spawn,source);
     return 1;
 }
 int c3_field_story_bind_battle(C3FieldStory *story,const char *path,char *error)
@@ -1432,7 +2119,7 @@ int c3_field_story_load(C3FieldStory *story,const char *path,C3GameState *game,
         Person *p=s->actors+i;const C3AreaActor *a=area->actors+i;p->source=a;
         p->public.model=actor_models[i];p->public.index=a->index;
         memcpy(p->public.pose.position,a->position,sizeof a->position);p->public.pose.yaw=a->yaw;
-        p->want_visible=(a->flags>>31)&1;p->public.visible=p->want_visible;p->public.clip=a->motions[0];
+        p->want_visible=a->aux3==DYNAMIC_MARKER?0:(a->flags>>31)&1;p->public.visible=p->want_visible;p->public.clip=a->motions[0];
         p->public.flags=0x0cu|(a->talk_start==1?0x10u:a->talk_start==2?0x20u:0u)|(a->talk_end==1?0x40u:0u);
         p->public.loop=1;p->public.playing=1;p->speed=1;
         if(p->public.model&&p->public.clip>=p->public.model->clip_count){
@@ -1463,12 +2150,29 @@ int c3_field_story_enter(C3FieldStory *story,char *error)
             if(!start(s,p->source->move_script,args,4,&key,error))return 0;
         }
     }
+    /* movie.c fn_80035F64 installs this entry override after floorLink(2,1).
+     * The card checkpoint uses previous1, so a fresh Continue does not replay it. */
+    if(s->area->floor==2&&s->previous_floor==0x39f){
+        /* Staffroll finish fn_80035F34 leaves the screen black. */
+        s->view.fade=0;s->fade_from=s->fade_to=0;s->fade_elapsed=s->fade_duration=0;
+        uint16_t key;
+        if(!start(s,0x05960008u,NULL,0,&key,error))return 0;
+        log_line(s,"story_entry_fade script=05960008 previous=039f");
+    }
     return start_floor_script(s,s->area->main_script,&s->main_key,error);
 }
 const C3FieldStoryView *c3_field_story_view(const C3FieldStory *story)
 {const Impl *s=story?story->impl:NULL;return s?&s->view:NULL;}
+C3StoryActor *c3_field_story_person(C3FieldStory *story,uint32_t group,uint32_t index)
+{Impl *s=story?story->impl:NULL;Person *p=s?person(s,group,index):NULL;return p?&p->public:NULL;}
 C3StoryActor *c3_field_story_actor(C3FieldStory *story,uint32_t index)
-{Impl *s=story?story->impl:NULL;Person *p=s?person(s,s->area->group,index):NULL;return p?&p->public:NULL;}
+{Impl *s=story?story->impl:NULL;Person *p=s?person(s,s->area->group,index):NULL;
+ /* The renderer addresses streamed rows by prepared index, even after the
+  * original native assigns a transient person ID. Script lookup stays closed
+  * until allocation, while this scene-facing accessor retains the row. */
+ if(!p&&s)for(uint32_t i=0;i<s->area->actor_count;++i)
+     if(s->actors[i].source->aux3==DYNAMIC_MARKER&&s->actors[i].source->index==index){p=s->actors+i;break;}
+ return p?&p->public:NULL;}
 
 static float normalize_yaw(float yaw)
 {
@@ -1510,7 +2214,8 @@ static int advance_turn(Impl *s,Person *p,float elapsed,char *error)
 static int advance_people(Impl *s,float elapsed,char *error)
 {
     float movement_dt=fminf(elapsed,.25f);
-    for(uint32_t i=0;i<=s->area->actor_count;++i){Person *p=i==s->area->actor_count?&s->hero_actor:s->actors+i;
+    for(uint32_t i=0;i<=s->area->actor_count+1u;++i){Person *p=person_at(s,i);
+        if(p==&s->partner_actor&&!p->public.model)continue;
         C3FieldPlayer *q=pose(s,p);
         if(p->public.playing&&(p!=&s->hero_actor||!s->view.control))q->animation_seconds+=elapsed;
         if(!advance_turn(s,p,elapsed,error))return 0;
@@ -1568,13 +2273,78 @@ static int advance_people(Impl *s,float elapsed,char *error)
     }
     return 1;
 }
+/* Rui behind Wes (hero_move.c heroMoveMain: fn_8012DE94 / fn_8012D7F0 for
+ * the follower, then moveLeader's record) while the player has control and
+ * no script is moving her. Pack clips 0/1/2 are her idle, walk and run. */
+static void partner_place_behind(Impl *s)
+{
+    Person *p=&s->partner_actor;float sc=s->map->scale,ground;
+    float spot[3]={s->hero->position[0]-sinf(s->hero->yaw)*12.0f*sc,s->hero->position[1],
+                   s->hero->position[2]-cosf(s->hero->yaw)*12.0f*sc};
+    if(!c3_field_ground(s->map,spot,&ground)){memcpy(spot,s->hero->position,sizeof spot);ground=spot[1];}
+    spot[1]=ground;memcpy(p->public.pose.position,spot,sizeof spot);memcpy(p->public.pose.proposed,spot,sizeof spot);
+    p->public.pose.yaw=s->hero->yaw;c3_follow_reset(&s->follow);
+}
+static void follow_partner(Impl *s,float seconds)
+{
+    Person *p=&s->partner_actor;float sc=s->map->scale;
+    if(!p->public.model||!s->view.control)return;
+    if(p->public.visible&&!p->moving&&!p->parent){
+        C3FieldPlayer *q=&p->public.pose;C3FollowStep step;float before[3];
+        float dt=fminf(seconds,.25f);
+        memcpy(before,q->position,sizeof before);
+        c3_follow_step(&s->follow,s->hero->position,q->position,12.0f*sc,sc,dt,&step);
+        q->position[0]+=step.move[0];q->position[2]+=step.move[1];
+        memcpy(q->proposed,q->position,sizeof q->proposed);
+        if(!c3_field_resolve_position(s->map,q,before))memcpy(q->position,before,sizeof before);
+        if(step.facing[0]!=0||step.facing[1]!=0)q->yaw=atan2f(step.facing[0],step.facing[1]);
+        uint32_t clip=step.speed<0.05f?0u:(step.speed>0.9f&&s->hero->motion==2?2u:1u);
+        if(clip>=p->public.model->clip_count)clip=0;
+        if(clip!=p->public.clip){p->public.clip=clip;q->animation_seconds=0;}
+        p->public.loop=1;p->public.playing=1;
+        if(c3_follow_far(&s->follow,s->hero->position,q->position,sc,dt)){
+            float record[3],ground;
+            for(unsigned i=0;c3_follow_record_at(&s->follow,i,record);++i)
+                if(c3_field_ground(s->map,record,&ground)){record[1]=ground;memcpy(q->position,record,sizeof record);break;}
+            c3_follow_caught_up(&s->follow);
+            log_line(s,"story_partner_catch_up x=%.3f z=%.3f",(double)q->position[0],(double)q->position[2]);
+        }
+    }
+    c3_follow_record(&s->follow,s->hero->position,sc);
+}
+int c3_field_story_attach_partner(C3FieldStory *story,C3Title *model,char *error)
+{
+    Impl *s=story?story->impl:NULL;
+    if(!s||!model)return fail(error,"Invalid partner model");
+    if(model->clip_count<3)return fail(error,"The partner pack lacks its idle, walk and run motions");
+    Person *p=&s->partner_actor;
+    memset(&s->partner_source,0,sizeof s->partner_source);
+    s->partner_source.index=101;s->partner_source.motions[0]=0;s->partner_source.motions[1]=1;s->partner_source.motions[2]=2;
+    s->partner_source.walk_distance=s->map->walk_distance;s->partner_source.run_distance=s->map->run_distance;
+    s->partner_source.radius=s->map->radius;
+    p->source=&s->partner_source;p->public.model=model;p->public.index=101;
+    p->public.clip=0;p->public.loop=1;p->public.playing=1;p->speed=1;
+    p->public.visible=c3_game_state_partner(s->game);p->want_visible=p->public.visible;
+    partner_place_behind(s);
+    log_line(s,"story_partner_model visible=%d x=%.3f z=%.3f",p->public.visible,
+             (double)p->public.pose.position[0],(double)p->public.pose.position[2]);
+    return 1;
+}
+void c3_field_story_set_move_input(C3FieldStory *story,uint16_t held,int stick_x,int stick_y)
+{
+    Impl *s=story?story->impl:NULL;
+    if(s)s->move_input=(held&PAD_DIRECTIONS)||stick_x>2||stick_x< -2||stick_y>2||stick_y< -2;
+}
+
 int c3_field_story_tick(C3FieldStory *story,float seconds,uint16_t pressed,char *error)
 {
     Impl *s=story?story->impl:NULL;
     if(!s||!isfinite(seconds)||seconds<0)return fail(error,"Invalid field story tick");
+    s->tick_pressed=pressed;
     /* Animation, camera, waits and fades share active elapsed time. Only
      * collision-sensitive translation retains a bounded movement step. */
     if(!advance_people(s,seconds,error))return 0;
+    follow_partner(s,seconds);
     for(uint32_t i=0;i<s->door_count;++i){C3StoryDoor *door=s->doors+i;
         if(!door->playing||!door->model)continue;
         float end=(float)(door->model->clips[door->clip].frame_count-1u)/door->model->fps;
@@ -1652,10 +2422,12 @@ int c3_field_story_tick(C3FieldStory *story,float seconds,uint16_t pressed,char 
          * an event branch may return early (Phenac fn 27 when flag 9a2 is
          * set). The hero move lock belongs to the event, so it ends with it. */
         if(!s->event_key&&s->event_depth>s->event_depth_base)s->event_depth=s->event_depth_base;
+        if(!s->event_key)s->hero_event=0;
     }
     if(s->event_key&&!c3_story_active(&s->vm,s->event_key)){
         s->event_key=0;
         if(!s->talk_key&&s->event_depth>s->event_depth_base)s->event_depth=s->event_depth_base;
+        if(!s->talk_key)s->hero_event=0;
     }
     if(s->pending_floor&&!s->departure_started){
         /* The original scene runs its post callback on departure. Suspend
@@ -1671,8 +2443,21 @@ int c3_field_story_tick(C3FieldStory *story,float seconds,uint16_t pressed,char 
         log_line(s,"story_floor_link from=%lu to=%lu spawn=%lu post_complete=1",(unsigned long)s->area->floor,
                  (unsigned long)s->view.next_floor,(unsigned long)s->view.next_spawn);
     }
-    s->view.control=s->entered&&s->hero_ready&&!s->event_depth&&!s->talk_key&&!s->event_key&&
-        !s->view.dialogue&&!s->pending_floor&&!s->view.blocked[0];
+    if(s->treasure_active&&!wait_task(s,&s->treasure_task,seconds,&pressed,error))return 0;
+    for(unsigned i=0;i<s->treasure_count;++i){C3StoryTreasure *r=s->treasure+i;uint32_t v=0;
+        if(r->taken_flag){c3_game_state_get_flag(s->game,r->taken_flag,&v);r->taken=v!=0;}
+        uint32_t shown=1;if(r->hide_flag)c3_game_state_get_flag(s->game,r->hide_flag,&shown);
+        r->visible=s->treasure_display[i]>=0?s->treasure_display[i]:(r->kind==1||!r->taken)&&shown;
+    }
+    /* heroMoveAddAutoEvent from the pause menu: the used item's script
+     * runs once the event that opened the menu has ended. */
+    if(s->pending_item_script&&!s->talk_key&&!s->event_key&&!s->pending_floor&&!s->view.dialogue){
+        uint32_t script=s->pending_item_script,args[4]={s->pending_item,0,0,0};s->pending_item_script=0;
+        log_line(s,"story_item_use script=%08lx item=%lu",(unsigned long)script,(unsigned long)args[0]);
+        if(!start(s,script,args,4,&s->event_key,error))return 0;
+    }
+    s->view.control=s->entered&&s->hero_ready&&!s->event_depth&&!s->hero_event&&!s->talk_key&&!s->event_key&&
+        !s->view.dialogue&&!s->pending_floor&&!s->view.blocked[0]&&!s->treasure_active;
     return 1;
 }
 
@@ -1692,6 +2477,21 @@ static int line_triangle(const float from[3],const float to[3],const C3FieldTria
 int c3_field_story_interact(C3FieldStory *story,char *error)
 {
     Impl *s=story?story->impl:NULL;if(!s||!s->view.control)return 1;
+    /* hero_move.c: the chat search (fn_8018CD08) also finds the 0x7FFF
+     * treasure people; one not yet taken runs floorEventCtrlTresure(2). */
+    for(unsigned i=0;i<s->treasure_count;++i){C3StoryTreasure *r=s->treasure+i;
+        if(!r->visible||r->taken)continue;
+        float dx=r->position[0]-s->hero->position[0],dz=r->position[2]-s->hero->position[2];
+        float distance=hypotf(dx,dz),angle=angle_delta(atan2f(dx,dz)-s->hero->yaw);
+        if(distance>12*s->map->scale+2*s->map->radius||fabsf(angle)>40.0f*PI/180.0f||
+           fabsf(r->position[1]-s->hero->position[1])>2.0f)continue;
+        memset(&s->treasure_task,0,sizeof s->treasure_task);
+        s->treasure_task.key=0xffff;s->treasure_task.program=0x7fff;s->treasure_row=i;s->treasure_active=1;
+        s->hero->yaw=atan2f(dx,dz);s->hero->motion=0;s->hero->animation_seconds=0;
+        s->view.control=0;
+        log_line(s,"story_treasure index=%lu",(unsigned long)r->index);
+        return program_step(s,&s->treasure_task,0,error);
+    }
     Person *best=NULL;float best_score=10000,best_angle=0;
     for(uint32_t i=0;i<s->area->actor_count;++i){Person *p=s->actors+i;
         if(!p->public.visible||!p->source->talk_script||p->source->talk_start==3||(p->public.flags&1))continue;
@@ -1792,7 +2592,7 @@ static void rotation_matrix(const float euler[3],float r[9])
 static int attachment_pose(Impl *s,Person *p,char *error)
 {
     Person *parent=p->parent;if(!parent)return 1;
-    const float *m=parent->public.model->pose.matrices[parent->source->part1_bone_plus_one-1u];
+    const float *m=parent->public.model->pose.matrices[p->parent_bone_plus_one-1u];
     float scale[3],r[9],angles[3];
     for(unsigned col=0;col<3;++col){
         scale[col]=sqrtf(m[col]*m[col]+m[4+col]*m[4+col]+m[8+col]*m[8+col]);
@@ -1803,7 +2603,7 @@ static int attachment_pose(Impl *s,Person *p,char *error)
      * stay within +/-0.033rad. GSpartGetTransform SUMS ancestor Eulers;
      * decomposing a parent-yaw * joint matrix would give a different answer. */
     angles[0]=atan2f(r[7],r[8]);angles[1]=asinf(fmaxf(-1,fminf(1,-r[6])));angles[2]=atan2f(r[3],r[0]);
-    for(unsigned i=0;i<3;++i)if(!isfinite(angles[i])||fabsf(angles[i])>.25f)
+    for(unsigned i=0;i<3;++i)if(!isfinite(angles[i])||(!p->parent_root&&fabsf(angles[i])>.25f))
         return fail(error,"Original attachment part exceeds its reviewed Euler range");
     angles[1]+=parent->public.pose.yaw;rotation_matrix(angles,r);
     float sine=sinf(parent->public.pose.yaw),cosine=cosf(parent->public.pose.yaw);
@@ -1846,7 +2646,7 @@ static void transform(C3Title *model,const C3FieldPlayer *q,const Person *p)
 int c3_field_story_sample(C3FieldStory *story,char *error)
 {
     Impl *s=story?story->impl:NULL;if(!s)return fail(error,"Missing story sample context");
-    for(uint32_t i=0;i<=s->area->actor_count;++i){Person *p=i==s->area->actor_count?&s->hero_actor:s->actors+i;
+    for(uint32_t i=0;i<=s->area->actor_count+1u;++i){Person *p=person_at(s,i);
         C3Title *model=p->public.model;if(!model)continue;
         uint32_t clip=p->public.clip;
         if(p==&s->hero_actor&&s->view.control)clip=s->hero->motion==2?s->map->run_clip:s->hero->motion==1?s->map->walk_clip:s->map->idle_clip;
@@ -1864,9 +2664,9 @@ int c3_field_story_sample(C3FieldStory *story,char *error)
     }
     /* All parent samples are current before resolving a passenger. Original
      * actor-table order places passengers before the vehicle. */
-    for(uint32_t i=0;i<=s->area->actor_count;++i)
-        if(!attachment_pose(s,i==s->area->actor_count?&s->hero_actor:s->actors+i,error))return 0;
-    for(uint32_t i=0;i<=s->area->actor_count;++i){Person *p=i==s->area->actor_count?&s->hero_actor:s->actors+i;
+    for(uint32_t i=0;i<=s->area->actor_count+1u;++i)
+        if(!attachment_pose(s,person_at(s,i),error))return 0;
+    for(uint32_t i=0;i<=s->area->actor_count+1u;++i){Person *p=person_at(s,i);
         C3Title *model=p->public.model;if(!model||!p->parent)continue;
         transform(model,pose(s,p),p);
         if(!p->public.visible)for(uint32_t b=0;b<model->batch_count;++b)model->pose.materials[b].visible=0;

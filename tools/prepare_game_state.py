@@ -173,6 +173,12 @@ def make_pack(disc):
         put16(body, off+0x14, 0xFFFF)
         put16(body, off+0x10, u16(rel, row+2) if i else 0)
         put16(body, off+0x16, u16(rel, row+8) if i else 0)
+    # src/relive.c computes the purify flag of Shadow data ID i (fn_801EECD8
+    # reads it from this table's +0x14) as 0x4EE + i - 1: keep them equal.
+    for i in range(1, 0x61):
+        flag = u16(rel, data_base+0x1439D8+i*0x38+0x14)
+        if flag != 0x4EE+i-1:
+            raise SystemExit(f"Shadow table row {i:#x} purify flag {flag:#x} differs from src/relive.c")
 
     starters = bytearray()
     for species, level, experience, moves in STARTERS:

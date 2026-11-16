@@ -166,6 +166,27 @@ remain explicit. These expressions come from
 [`tobj.c`](https://github.com/Count-Sheep/pkmn-colosseum/blob/51bfe4314a218dfaf9592fc80723c50498d0ee55/src/hsd/tobj.c)
 and [`mobj.c`](https://github.com/Count-Sheep/pkmn-colosseum/blob/51bfe4314a218dfaf9592fc80723c50498d0ee55/src/hsd/mobj.c).
 
+### Two-layer modulated water (Phenac, Agate Village)
+
+Phenac City's (M1_out) BLEND-factor-1 + MODULATE pair and Agate Village's
+(M3_out) water, two MODULATE layers over a constant white material color
+(render mode diffuse = material, no alpha map, TEV blocks absent or
+inactive), both reduce to texture0 x texture1 with the material alpha. They
+are serialized as the dual-modulate stage with a white raster and konst 1.
+Each layer keeps its own UV channel and SRT animation: Agate's five water
+meshes (pond, streams, the lake under the entrance bridge) scroll the same
+256x256 or 128x128 CMPR image at two offsets, and the product of the two is
+the moving, sparse ripple the original draws additively (SRCALPHA, ONE) at
+alpha 0.5-1.0. An inactive TEV block (active 0) is not applied by HSD, so the
+material sampler ignores its registers (two Agate meshes carry an inactive
+block with konst 0, which would have blacked the layer out).
+
+Before 2026-11-16 Agate's pair was not recognized and the warp-tour
+approximation drew texture0 alone: a dense, even net of bright lines with
+about twice the original's contrast. Dolphin and Azahar at the Pokemon Center
+door (completed save; stream mean RGB / spread): original 70,91,90 /
+15,19,23; port before 82,113,97 / 27,29,46; port after 68,94,76 / 12,17,28.
+
 ## C3T2 and C3T3 extensions
 
 The canonical little-endian header, section order and native bounds remain as

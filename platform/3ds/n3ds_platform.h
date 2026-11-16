@@ -40,13 +40,17 @@ uint64_t c3_n3ds_active_time_us(void);
 /* Actual process heap grants and current linear free space. Call after trace
  * creation and scene allocation; New 3DS detection does not imply a grant. */
 void c3_n3ds_log_memory(FILE *trace, const char *stage);
+/* Bytes the allocator has handed out (mallinfo uordblks). */
+size_t c3_n3ds_heap_used(void);
 /* Write the top screen (400x240) as a 24-bit BMP. The framebuffer read is the
  * one libctru hands out for drawing, so it holds a frame from just before the
  * call. Returns 0 on success. */
 int c3_n3ds_capture_top(const char *path);
 int c3_n3ds_capture_bottom(const char *path);
-/* Top-screen loading indicator: a spinning ring of dots and a progress bar
- * (fraction 0..1), drawn straight into the top framebuffer and presented. */
+/* Top-screen loading indicator: the original UI Poke Ball (ui.c3ui sprite
+ * C3_UI_BALL) spinning above a progress bar (fraction 0..1), drawn by the
+ * CPU straight into the top framebuffer and presented; no GPU state. Falls
+ * back to a ring of dots when the pack lacks the sprite. */
 void c3_n3ds_top_loading(float fraction);
 
 #ifdef C3_CAMPAIGN
@@ -56,6 +60,9 @@ void c3_n3ds_autopress(int enabled, float interval);
 #endif
 const char *c3_n3ds_data_root(void);
 void c3_n3ds_wait_for_exit(void);
+#ifdef C3_LINK_PROBE
+void c3_n3ds_set_script(const char *script, unsigned every_frames);
+#endif
 void c3_n3ds_shutdown(void);
 
 int c3_n3ds_renderer_init(char *error, size_t capacity);

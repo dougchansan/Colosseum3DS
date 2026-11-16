@@ -822,9 +822,23 @@ int c3_world_map_scene_run(C3GameState *state, FILE *trace, char *error, size_t 
 #endif
 #ifdef C3_ROUNDTRIP_PROBE
             /* Probe: once the preview is up, go to the next destination in
-             * table order that is not the one just left (each visit moves on). */
-            { static unsigned waited, rotation; ++waited;
-              if (waited >= 120 && preview && preview->ready) {
+             * table order that is not the one just left (each visit moves on).
+             * "map <floor>" lines in probe-route.txt name the destinations
+             * to take instead, in order, one per world-map visit. */
+            { static unsigned waited, rotation, map_count, map_next; static uint32_t map_floor[32]; static int map_loaded; ++waited;
+              if (!map_loaded) { FILE *f = fopen("sdmc:/3ds/Colosseum3DS/probe-route.txt", "r"); char line[64]; unsigned long a;
+                  map_loaded = 1;
+                  while (f && fgets(line, sizeof line, f)) if (sscanf(line, "map %lx", &a) == 1 && map_count < 32) map_floor[map_count++] = (uint32_t)a;
+                  if (f) fclose(f); }
+              if (waited >= 120 && preview && preview->ready && map_next < map_count) {
+                  waited = 0;
+                  for (uint32_t i = 0; i < map.visible_count; ++i) {
+                      C3WorldMapEntry e; int idx = c3_world_map_visible(&map, i);
+                      if (idx >= 0 && c3_world_map_entry((uint32_t)idx, &e) && e.floor == map_floor[map_next]) { map.cursor = i; choice = (int)i; break; }
+                  }
+                  if (trace) { fprintf(trace, "probe_map_choice floor=%03lx found=%d\n", (unsigned long)map_floor[map_next], choice >= 0); fflush(trace); }
+                  ++map_next;
+              } else if (waited >= 120 && preview && preview->ready) {
                   waited = 0;
                   for (uint32_t n = 0; n < map.visible_count; ++n) {
                       uint32_t i = (rotation + n) % map.visible_count;

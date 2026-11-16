@@ -128,6 +128,20 @@ static int group_valid(const uint8_t *b, uint32_t size) {
     return 1;
 }
 
+int c3_story_add_messages(C3Story *story, const void *data, size_t size, char *error) {
+    Impl *p; MessageGroup *group;
+    if (!story || !data || size > MAX_PACK_BYTES || !group_valid(data, (uint32_t)size))
+        return fail(error, "Invalid message group");
+    p = story->impl;
+    if (!p) { p = calloc(1, sizeof(*p)); if (!p) return fail(error, "GSVM context allocation failed"); story->impl = p; }
+    if (p->group_count >= MAX_GROUPS) return fail(error, "Message group limit reached");
+    group = &p->groups[p->group_count]; group->data = malloc(size);
+    if (!group->data) return fail(error, "Message group allocation failed");
+    memcpy(group->data, data, size); group->size = (uint32_t)size; ++p->group_count;
+    if (error) error[0] = 0;
+    return 1;
+}
+
 int c3_story_decode(C3Story *story, const void *data, size_t size, char *error) {
     const uint8_t *b = data; C3Story next = {0}; Impl *p; uint32_t i, nb, ng, offset;
     if (!story || !data || size < 64 || size > MAX_PACK_BYTES || memcmp(b, "C3S1", 4) ||
@@ -457,8 +471,214 @@ uint32_t c3_story_result(const C3Story *story,uint16_t key){
 }
 uint32_t c3_story_floor(const C3Story *story){Impl*p=story?story->impl:NULL;return p?p->floor:0;}
 
+/* ---- Original message text (gs_msg.c / msgctrl.c) ----
+ *
+ * A message is a big-endian GSchar string. 0xFFFF introduces a control
+ * byte that indexes msgctrlcode[] (data_80363774.c, 0x5F entries). Each
+ * entry's mode says what its callback returns: nothing (presentation or
+ * flow), a GSchar string to print in place (mode 1), or a message ID to
+ * print in place (mode 2). Some callbacks consume parameter bytes. */
+enum {
+    K_UNKNOWN = 0, K_NEWLINE, K_END, K_PAGE, K_RUBY_BASE, K_RUBY_TOP, K_RUBY_END,
+    K_FONT, K_COLOR, K_WAIT, K_PALETTE, K_ALIGN, K_IGNORE1, K_NONE,
+    K_SOUND_PLAY, K_SOUND_WAIT, K_VALUE
+};
+static uint8_t control_kind(uint8_t c)
+{
+    switch (c) {
+    case 0x00: case 0x01: return K_NEWLINE;          /* msgctrlCR */
+    case 0x02: return K_END;                          /* msgctrlKeyEnd (stop) */
+    case 0x03: return K_PAGE;                         /* msgctrlKeyWait */
+    case 0x04: return K_RUBY_BASE;                    /* msgctrlRubyStart */
+    case 0x05: return K_RUBY_TOP;                     /* msgctrlRubyTop */
+    case 0x06: return K_RUBY_END;                     /* msgctrlRubyEnd */
+    case 0x07: return K_FONT;                         /* msgctrlFont, 1 byte */
+    case 0x08: return K_COLOR;                        /* msgctrlColor, RGBA */
+    case 0x09: return K_WAIT;                         /* msgctrlWait, frames */
+    case 0x38: return K_PALETTE;                      /* msgctrlPalette, index */
+    case 0x53: return K_ALIGN;                        /* msgctrlAlign, mode */
+    /* msgctrlShadow, msgctrlTalkSE, msgctrlLineSpace, msgctrlBaseLineBias:
+     * one parameter byte of window styling and no text. */
+    case 0x52: case 0x54: case 0x5B: case 0x5C: return K_IGNORE1;
+    /* Entries without a callback, msgctrlSeOff/SeOn and msgctrlIndentOff:
+     * no text and no parameters. */
+    case 0x0A: case 0x0B: case 0x0C: case 0x3A: case 0x3B: case 0x3C:
+    case 0x3D: case 0x3E: case 0x3F: case 0x40: case 0x5A: return K_NONE;
+    case 0x5D: return K_SOUND_PLAY;                   /* msgctrlSndPlay */
+    case 0x5E: return K_SOUND_WAIT;                   /* msgctrlSndWait */
+    default: return c < C3_STORY_CONTROLS ? K_VALUE : K_UNKNOWN;
+    }
+}
+int c3_story_control_known(uint8_t control) { return control_kind(control) != K_UNKNOWN; }
+int c3_story_control_is_value(uint8_t control) { return control_kind(control) == K_VALUE; }
+
+typedef struct Render {
+    const Impl *p;
+    C3StoryValueSource source;
+    void *context;
+    unsigned flags;
+    char *out, *error;
+    size_t capacity, used;
+    int drop_prefix;
+} Render;
+
 static int append(char *out,size_t capacity,size_t *used,const char*text){
     size_t n=strlen(text);if(n>=capacity-*used)return 0;memcpy(out+*used,text,n);*used+=n;out[*used]=0;return 1;
+}
+static int put(Render *r,const char *text)
+{
+    if(!append(r->out,r->capacity,&r->used,text))return fail(r->error,"Story message output is too small");
+    return 1;
+}
+static int markup(Render *r,char code,uint32_t value,unsigned digits)
+{
+    char text[16];
+    if(!(r->flags&C3_STORY_TEXT_MARKUP))return 1;
+    snprintf(text,sizeof text,"\x1b%c%0*lx",code,(int)digits,(unsigned long)value);
+    return put(r,text);
+}
+static const uint8_t *find_message(const Impl *p,uint32_t id,uint32_t *length)
+{
+    for(uint32_t i=0;i<p->group_count;++i){
+        const MessageGroup*g=&p->groups[i];uint32_t count=be16(g->data+4),start=0,end=g->size,j;
+        if(be16(g->data)!=(id>>20))continue;
+        for(j=0;j<count;++j)if(be32(g->data+16+j*8)==(id&0xfffff))start=be32(g->data+20+j*8);
+        if(!start)continue;
+        for(j=0;j<count;++j){uint32_t off=be32(g->data+20+j*8);if(off>start&&off<end)end=off;}
+        *length=end-start;return g->data+start;
+    }
+    return NULL;
+}
+/* GSchar -> the field text (UTF-8). */
+static int glyph_text(Render *r,uint16_t glyph,int ruby)
+{
+    char encoded[5]={0};const char *text=encoded;
+    /* After an unnamed speaker slot, drop its ": " separator too. */
+    if(r->drop_prefix==2&&glyph==':'){r->drop_prefix=1;return 1;}
+    if(r->drop_prefix==1&&glyph==' '){r->drop_prefix=0;return 1;}
+    r->drop_prefix=0;
+    /* Ruby (furigana) above a base word: the reading is not drawn. */
+    if(ruby==2)return 1;
+    if(glyph==0x2031){
+        /* The speaker slot that opens a field line ("<name>: text"). It
+         * takes the talking person's name when the scene supplies one
+         * (control 59); a person or Pokemon without a name gets no label
+         * rather than "???". */
+        C3StoryValue v={0};
+        if(r->source&&r->source(r->context,0x59,&v)&&v.text&&*v.text)text=v.text;
+        else{text="";r->drop_prefix=2;}
+    }
+    /* Full-width spaces pad some original messages; typographic
+     * punctuation the field font lacks gets its ASCII form. Every other
+     * character (POKeMON's e-acute, the gender signs, kana) is UTF-8 and
+     * drawn with the original font's glyph (bottom_ui pack version 3). */
+    else if(r->flags&C3_STORY_TEXT_RAW){
+        if(glyph<32)return fail(r->error,"Unexpected text control glyph");
+        goto encode;
+    }
+    else if(glyph==0x3000)text=" ";
+    else if(glyph==0x2026)text="...";
+    else if(glyph==0x2018||glyph==0x2019)text="'";
+    else if(glyph==0x201c||glyph==0x201d)text="\"";
+    else if(glyph==0x2013||glyph==0x2014)text="-";
+    else if(glyph<0x80){if(glyph<32)return fail(r->error,"Unexpected text control glyph");encoded[0]=(char)glyph;}
+    else{
+encode:
+        if(glyph<0x80)encoded[0]=(char)glyph;
+        else if(glyph<0x800){encoded[0]=(char)(0xc0|(glyph>>6));encoded[1]=(char)(0x80|(glyph&63));}
+        else if(glyph<0xd800||glyph>0xdfff){encoded[0]=(char)(0xe0|(glyph>>12));encoded[1]=(char)(0x80|((glyph>>6)&63));encoded[2]=(char)(0x80|(glyph&63));}
+        else return fail(r->error,"Unsupported surrogate GSchar");
+    }
+    return put(r,text);
+}
+/* Returns 1 at the terminator, 2 at control 02 (KeyEnd stops the printer:
+ * the window closes after its key press, so nothing after it is shown),
+ * 0 on failure. depth follows GSmsgDispatchControl's three nested levels. */
+static int render_text(Render *r,uint32_t id,const uint8_t *data,uint32_t length,unsigned depth)
+{
+    static const uint8_t parameters[K_VALUE+1]={[K_FONT]=1,[K_COLOR]=4,[K_WAIT]=1,[K_PALETTE]=1,[K_ALIGN]=1,[K_IGNORE1]=1};
+    uint32_t i;int ruby=0;
+    for(i=0;i+2<=length;){
+        uint16_t glyph=be16(data+i);i+=2;
+        if(!glyph)return 1;
+        if(glyph!=0xffff){if(!glyph_text(r,glyph,ruby))return 0;continue;}
+        if(i>=length)return fail(r->error,"Truncated message control");
+        uint8_t control=data[i++],kind=control_kind(control);
+        uint32_t n=parameters[kind],value=0;
+        if(n>length-i)return fail(r->error,"Truncated message control parameters");
+        for(uint32_t k=0;k<n;++k)value=value<<8|data[i+k];
+        i+=n;
+        switch(kind){
+        case K_NEWLINE:if(!put(r,"\n"))return 0;break;
+        case K_END:return 2;
+        case K_PAGE:if(!put(r,"\f"))return 0;break;
+        case K_RUBY_BASE:ruby=1;break;
+        case K_RUBY_TOP:ruby=2;break;
+        case K_RUBY_END:ruby=0;break;
+        case K_FONT:if(!markup(r,'F',value,2))return 0;break;
+        case K_COLOR:if(!markup(r,'C',value,8))return 0;break;
+        case K_WAIT:if(!markup(r,'W',value,2))return 0;break;
+        case K_PALETTE:if(!markup(r,'P',value,2))return 0;break;
+        case K_ALIGN:if(!markup(r,'A',value,2))return 0;break;
+        case K_SOUND_PLAY:if(!markup(r,'S',0,1))return 0;break;
+        case K_SOUND_WAIT:if(!markup(r,'S',1,1))return 0;break;
+        case K_IGNORE1:case K_NONE:break;
+        case K_VALUE:{
+            C3StoryValue v={0};
+            if(!r->source||!r->source(r->context,control,&v)||(!v.text&&!v.message))
+                return fail(r->error,"Message %08x uses unsupported control %02x",(unsigned)id,control);
+            if(v.text){if(!put(r,v.text))return 0;break;}
+            /* Mode 2: print the message the control names, in place. */
+            if(depth>=3)return fail(r->error,"Message %08x nests controls too deeply",(unsigned)id);
+            uint32_t nested_length=0;const uint8_t *nested=find_message(r->p,v.message,&nested_length);
+            if(!nested)return fail(r->error,"Message %08x control %02x names message %08x, which is not loaded",
+                                   (unsigned)id,control,(unsigned)v.message);
+            int status=render_text(r,v.message,nested,nested_length,depth+1);
+            if(!status)return 0;
+            break;}
+        default:return fail(r->error,"Message %08x uses unsupported control %02x",(unsigned)id,control);
+        }
+    }
+    return fail(r->error,"Original message is unterminated");
+}
+int c3_story_render(const C3Story *story,uint32_t id,C3StoryValueSource source,void *context,unsigned flags,
+                    char *out,size_t capacity,char *error)
+{
+    Impl*p=story?story->impl:NULL;uint32_t length=0;const uint8_t *data;
+    if(!p||!id||!out||!capacity)return fail(error,"Invalid story message request");
+    out[0]=0;
+    if(!(data=find_message(p,id,&length)))return fail(error,"Original message %08x is not loaded",(unsigned)id);
+    Render r={p,source,context,flags,out,error,capacity,0,0};
+    if(!render_text(&r,id,data,length,0))return 0;
+    if(error)error[0]=0;
+    return 1;
+}
+int c3_story_has_message(const C3Story *story,uint32_t id)
+{
+    const Impl*p=story?story->impl:NULL;uint32_t length;
+    return p&&id&&find_message(p,id,&length)!=NULL;
+}
+size_t c3_story_text_plain(char *text)
+{
+    static const uint8_t lengths[128]={['C']=8,['P']=2,['W']=2,['F']=2,['A']=2,['S']=1};
+    size_t in=0,out=0;
+    if(!text)return 0;
+    while(text[in]){
+        if(text[in]=='\x1b'&&text[in+1]&&(unsigned char)text[in+1]<128){
+            size_t n=lengths[(unsigned char)text[in+1]],k;
+            for(k=0;k<n&&text[in+2+k];++k){}
+            in+=2+k;continue;
+        }
+        text[out++]=text[in++];
+    }
+    text[out]=0;return out;
+}
+typedef struct { C3StoryTextSource source; void *context; } TextAdapter;
+static int text_adapter(void *context,uint8_t control,C3StoryValue *value)
+{
+    const TextAdapter *a=context;
+    value->text=a->source?a->source(a->context,control):NULL;
+    return value->text!=NULL;
 }
 typedef struct { const char *hero, *partner, *speaker; } Names;
 static const char *names_source(void *context,uint8_t control){
@@ -473,66 +693,45 @@ int c3_story_message(const C3Story *story,uint32_t id,const char*hero,const char
 }
 int c3_story_message_with(const C3Story *story,uint32_t id,C3StoryTextSource source,void *context,
                     char*out,size_t capacity,char*error){
-    Impl*p=story?story->impl:NULL;const uint8_t*data=NULL;uint32_t length=0,i,j;size_t used=0;int ruby=0,drop_prefix=0;
-    if(!p||!id||!out||!capacity)return fail(error,"Invalid story message request");
-    out[0]=0;
-    for(i=0;i<p->group_count&&!data;++i){
-        MessageGroup*g=&p->groups[i];uint32_t count=be16(g->data+4),start=0,end=g->size;
-        if(be16(g->data)!=(id>>20))continue;
-        for(j=0;j<count;++j)if(be32(g->data+16+j*8)==(id&0xfffff))start=be32(g->data+20+j*8);
-        if(!start)continue;
-        for(j=0;j<count;++j){uint32_t off=be32(g->data+20+j*8);if(off>start&&off<end)end=off;}
-        data=g->data+start;length=end-start;
+    TextAdapter adapter={source,context};
+    return c3_story_render(story,id,text_adapter,&adapter,0,out,capacity,error);
+}
+/* _msgctrlMakeDigit (msgctrl.c): type 0 signed decimal, 1 unsigned, 2 ten
+ * zero-padded digits, 3 eight hex digits, 4 decimal with thousands commas,
+ * 5 full-width decimal (drawn here with ASCII digits). Zero prints "0". */
+static void make_digit(char *out,size_t capacity,uint32_t value,int type)
+{
+    char buffer[32];int index=31,count=0,width=type==2?10:type==3?8:1;
+    unsigned radix=type==3?16u:10u;int negative=0;
+    buffer[index]=0;
+    if((type==0||type==5)&&(int32_t)value<0){value=0u-value;negative=1;}
+    while(value){
+        if(type==4&&count&&count%3==0)buffer[--index]=',';
+        buffer[--index]="0123456789ABCDEF"[value%radix];value/=radix;++count;
     }
-    if(!data)return fail(error,"Original message %08x is not loaded",(unsigned)id);
-    for(i=0;i+2<=length;){
-        uint16_t glyph=be16(data+i);char encoded[5]={0};const char*text=encoded;i+=2;
-        if(!glyph){if(error)error[0]=0;return 1;}
-        /* After an unnamed speaker slot, drop its ": " separator too. */
-        if(drop_prefix==2&&glyph==':'){drop_prefix=1;continue;}
-        if(drop_prefix==1&&glyph==' '){drop_prefix=0;continue;}
-        drop_prefix=0;
-        if(glyph==0xffff){
-            uint8_t control;if(i>=length)return fail(error,"Truncated message control");control=data[i++];
-            switch(control){
-            case 0:text="\n";break;
-            case 2:break; /* final acknowledgement is owned by the scene */
-            case 3:text="\f";break;
-            case 4:ruby=0;break;
-            case 5:ruby=1;break;
-            case 6:ruby=0;break;
-            case 7:if(i>=length)return fail(error,"Truncated font control");++i;break;
-            case 0x3d:break; /* message sound disabled; no text payload */
-            default:
-                text=source?source(context,control):NULL;
-                if(!text)return fail(error,"Message %08x uses unsupported control %02x",(unsigned)id,control);
-                break;
-            }
-        }else if(!ruby){
-            if(glyph==0x2031){
-                /* The speaker slot that opens a field line ("<name>: text").
-                 * It takes the talking person's name when the scene supplies
-                 * one (control 59); a person or Pokemon without a name gets
-                 * no label rather than "???". */
-                const char *speaker=source?source(context,0x59):NULL;
-                if(speaker&&*speaker)text=speaker;else{text="";drop_prefix=2;}
-            }
-            else if(glyph==0xe9)text="e"; /* libctru console font */
-            /* The field text is drawn with an ASCII font, which prints any
-             * other byte as '?'. Full-width spaces pad some original
-             * messages (three after "became a partner!"); typographic
-             * punctuation gets its ASCII form. */
-            else if(glyph==0x3000)text=" ";
-            else if(glyph==0x2026)text="...";
-            else if(glyph==0x2018||glyph==0x2019)text="'";
-            else if(glyph==0x201c||glyph==0x201d)text="\"";
-            else if(glyph==0x2013||glyph==0x2014)text="-";
-            else if(glyph<0x80){if(glyph<32)return fail(error,"Unexpected text control glyph");encoded[0]=(char)glyph;}
-            else if(glyph<0x800){encoded[0]=(char)(0xc0|(glyph>>6));encoded[1]=(char)(0x80|(glyph&63));}
-            else if(glyph<0xd800||glyph>0xdfff){encoded[0]=(char)(0xe0|(glyph>>12));encoded[1]=(char)(0x80|((glyph>>6)&63));encoded[2]=(char)(0x80|(glyph&63));}
-            else return fail(error,"Unsupported surrogate GSchar");
-        }
-        if(!append(out,capacity,&used,text))return fail(error,"Story message output is too small");
+    while(count<width){buffer[--index]='0';++count;}
+    if(negative)buffer[--index]='-';
+    snprintf(out,capacity,"%s",buffer+index);
+}
+int c3_story_format_number(uint8_t control,const uint32_t *values,char *out,size_t capacity)
+{
+    if(!values||!out||!capacity)return 0;
+    switch(control){
+    case 0x2f:case 0x30:case 0x34:case 0x35:make_digit(out,capacity,values[control],0);return 1;
+    case 0x45:make_digit(out,capacity,values[0x34],1);return 1;  /* msgctrlMenuUDigit */
+    case 0x46:make_digit(out,capacity,values[0x35],1);return 1;  /* msgctrlMenuUDigit2 */
+    /* msgctrlMenuHex2 reads the first menu value too, as in retail. */
+    case 0x47:case 0x48:make_digit(out,capacity,values[0x34],3);return 1;
+    case 0x49:make_digit(out,capacity,values[0x34],2);return 1;  /* msgctrlMenuZDigit */
+    case 0x4a:make_digit(out,capacity,values[0x35],2);return 1;  /* msgctrlMenuZDigit2 */
+    case 0x4b:make_digit(out,capacity,values[0x4b],4);return 1;  /* msgctrlMoney */
+    case 0x4f:make_digit(out,capacity,values[0x34],5);return 1;  /* msgctrlMenuFullDigit */
+    case 0x50:make_digit(out,capacity,values[0x50],4);return 1;  /* msgctrlMenuMoney */
+    case 0x4c:{ /* msgctrlTime: [h]hh:mm from seconds */
+        uint32_t seconds=values[0x4c],hours=seconds/3600u,minutes=seconds%3600u/60u;char h[4]={0};size_t n=0;
+        if(hours>=100u){char d[16];make_digit(d,sizeof d,hours/100u,0);h[n++]=d[0];hours%=100u;}
+        h[n++]=(char)('0'+hours/10u);h[n++]=(char)('0'+hours%10u);h[n]=0;
+        snprintf(out,capacity,"%s:%c%c",h,(char)('0'+minutes/10u),(char)('0'+minutes%10u));return 1;}
+    default:return 0;
     }
-    return fail(error,"Original message is unterminated");
 }

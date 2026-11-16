@@ -243,10 +243,16 @@ static uint32_t specular_light_mask(const C3Title *title)
 
 static int validate_asset(const C3Title *title, char *error, size_t capacity)
 {
+    /* Original ending carriers have animated joints and no mesh at all.
+     * Keep their source transforms in the scene without inventing geometry;
+     * the existing zero-count loops allocate no textures and submit no draws. */
+    bool transform_only = title && !title->vertex_count && !title->batch_count &&
+                          !title->texture_count && title->bone_count && title->clip_count && title->file_data;
     if (!title || !title->draw_vertices || !title->batches || !title->textures ||
-        !title->vertex_count || title->vertex_count > C3_TITLE_MAX_VERTICES ||
-        !title->batch_count || title->batch_count > C3_TITLE_MAX_BATCHES ||
-        !title->texture_count || title->texture_count > C3_TITLE_MAX_TEXTURES ||
+        (!transform_only && (!title->vertex_count || !title->batch_count || !title->texture_count)) ||
+        title->vertex_count > C3_TITLE_MAX_VERTICES ||
+        title->batch_count > C3_TITLE_MAX_BATCHES ||
+        title->texture_count > C3_TITLE_MAX_TEXTURES ||
         title->light_count > C3_TITLE_MAX_LIGHTS)
         return fail(error, capacity, "Title renderer needs a valid bounded title asset.");
     uint32_t next_vertex = 0;
@@ -298,6 +304,8 @@ int c3_stage_renderer_init(const C3Title *const *models, size_t count,
             return fail(error, capacity, "Combined stage vertex arena exceeds its bound.");
         total_vertices += models[i]->vertex_count;
     }
+    if (!total_vertices)
+        return fail(error, capacity, "A stage needs visible geometry beside transform-only carriers.");
     /* Citro3D retains its current shaderProgram pointer across C3D_Fini/Init.
      * Recreating our static program at that same address could skip the next
      * bind's shader upload, or leave the context referring to freed storage.
@@ -834,7 +842,11 @@ static void combiner(const C3TitleBatch *batch, const C3TitleMaterialState *mate
         C3D_TexEnv *reflection = C3D_GetTexEnv(4);
         C3D_TexEnvColor(reflection, color4(batch->texture2_blend, batch->texture2_blend, batch->texture2_blend, 1));
         C3D_TexEnvSrc(reflection, C3D_RGB, GPU_TEXTURE1, GPU_PREVIOUS, GPU_CONSTANT);
-        C3D_TexEnvFunc(reflection, C3D_RGB, GPU_INTERPOLATE);
+        /* HSD TEX_LIGHTMAP_EXT ADD follows diffuse lighting. A synthetic
+         * neutral base carries the raster; the original normal-generated
+         * texture is added here with the source clamp, never lit again. */
+        C3D_TexEnvFunc(reflection, C3D_RGB,
+                      batch->texture_flags==0x70081u ? GPU_ADD : GPU_INTERPOLATE);
     }
     C3D_TexEnv *fade_stage = C3D_GetTexEnv(5);
     C3D_TexEnvColor(fade_stage, color4(fade, fade, fade, 1.0f));
@@ -1070,6 +1082,8 @@ static void draw_battle_hud(C3TitleRenderStats *stats)
         stats->draw_calls++;stats->vertices+=count-background_count;
     }
 }
+
+#include "title_characters_renderer.inc"
 
 #include "particle_renderer.inc"
 #include "particle_line_renderer.inc"
@@ -1328,7 +1342,7 @@ int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
                              * HSD. Only the prior lighting contribution is
                              * attenuated; its texture term was drawn once. */
                             C3D_TexEnv *ext=C3D_GetTexEnv(4);
-                            float remaining=1.f-batch->texture2_blend;
+                            float remaining=batch->texture_flags==0x70081u?1.f:1.f-batch->texture2_blend;
                             C3D_TexEnvColor(ext,color4(remaining,remaining,remaining,1));
                             C3D_TexEnvSrc(ext,C3D_RGB,GPU_PREVIOUS,GPU_CONSTANT,GPU_PRIMARY_COLOR);
                             C3D_TexEnvFunc(ext,C3D_RGB,GPU_MODULATE);
@@ -1355,6 +1369,7 @@ int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
     if(!draw_particles(camera,&mvp,stats,error,capacity)){
         stage_frame_abort();return C3_RENDER_ERROR;
     }
+    draw_title_characters(stats);
     draw_overlay(stats);
     draw_battle_hud(stats);
     fade = clamp01(fade);
@@ -1438,6 +1453,8 @@ void c3_title_renderer_shutdown(void)
     if (vertices) { linearFree(vertices); vertices = NULL; }
     if (hud_vertices) { linearFree(hud_vertices); hud_vertices = NULL; }
     if (overlay_vertices) { linearFree(overlay_vertices); overlay_vertices = NULL; }
+    if (character_vertices) { linearFree(character_vertices); character_vertices = NULL; }
+    character_pack = NULL; characters_visible = false;
     if (particle_vertices) { linearFree(particle_vertices); particle_vertices=NULL; }
     particle_pack=NULL;particle_system=NULL;particle_srt_system=NULL;particle_order_system=NULL;particle_render_frame=0;
     memset(particle_bindings,0,sizeof particle_bindings);

@@ -47,14 +47,27 @@ class BottomUiPreparationTests(unittest.TestCase):
                 ui.crop(image, rect)
 
     def test_pack_counts_dimensions_and_glyph_bounds(self):
-        sprites = [(8, 8, bytes(256))] * 10
+        sprites = [(8, 8, bytes(256))] * 11
         glyphs = [(8, bytes(256))] * 95
         data = ui.encode_pack(sprites, glyphs)
         self.assertEqual(data[:4], b"C3UI")
-        self.assertEqual(struct.unpack_from("<I", data, 8)[0], len(data))
+        self.assertEqual(struct.unpack_from("<IIIII", data, 4), (3, len(data), 11, 95, 0))
         for bad_sprites, bad_glyphs in ((sprites[:-1], glyphs), (sprites, glyphs[:-1]), (sprites, [(17, bytes(256))] * 95)):
             with self.assertRaises(ValueError):
                 ui.encode_pack(bad_sprites, bad_glyphs)
+        # Version 3: non-ASCII glyphs follow the ASCII table, sorted by code.
+        extra = [(0xE9, (7, bytes(256))), (0x2642, (8, bytes(256)))]
+        data = ui.encode_pack(sprites, glyphs, extra)
+        self.assertEqual(struct.unpack_from("<IIIII", data, 4), (3, len(data), 11, 95, 2))
+        table = 32 + 16 * 11 + 8 * 95
+        self.assertEqual(struct.unpack_from("<II", data, table), (0xE9, 7))
+        self.assertEqual(struct.unpack_from("<II", data, table + 16), (0x2642, 8))
+        with self.assertRaises(ValueError):
+            ui.encode_pack(sprites, glyphs, [(0x41, (7, bytes(256)))])
+
+    def test_ball_sprite_follows_the_original_ten(self):
+        self.assertEqual(len(ui.SPRITES), 11)
+        self.assertEqual(ui.SPRITES[10], ("common.fsys", 0x00EE1200, (198, 4, 16, 16)))
 
     def test_dol_section_mapping_rejects_outside_and_truncated(self):
         dol = bytearray(512)

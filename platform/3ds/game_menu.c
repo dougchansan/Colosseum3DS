@@ -262,8 +262,7 @@ C3GameMenuEvent c3_game_menu_update(C3GameMenu *menu, const C3N3dsInput *input, 
                 page(menu, C3_MENU_NOTICE);
             }
         } else if (accept && (menu->selection == 2 || menu->selection == 3)) {
-            snprintf(menu->notice, sizeof(menu->notice), "%s is not available in this native build.", menu_labels[menu->selection]);
-            page(menu, C3_MENU_NOTICE);
+            event.kind = menu->selection == 2 ? C3_MENU_EVENT_COLOSSEUM_BATTLE : C3_MENU_EVENT_BATTLE_NOW;
         } else if (accept && menu->selection == 4) {
             menu->initial_options = menu->options;
             menu->selection = 0;

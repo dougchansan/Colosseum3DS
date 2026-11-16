@@ -170,6 +170,16 @@ def admitted_spline(node):
         raise ValueError("HSD path track has no spline object")
     kind, count = node.flags >> 8, node.n
     cv, lengths, poly = node.s1, node.s2, node.s3
+    if kind == 0:
+        # Linear (spline.c type 0): n points, n cumulative normalised
+        # lengths, no arc-length polynomials.
+        if (not 2 <= count <= 64 or not isinstance(cv, list) or len(cv) != count or
+                not isinstance(lengths, list) or len(lengths) != count or any(len(row) != 3 for row in cv)):
+            raise ValueError("Malformed HSD linear path spline")
+        values = [node.f1, *lengths, *(v for row in cv for v in row)]
+        if any(not math.isfinite(v) for v in values) or lengths[0] != 0 or any(b <= a for a, b in zip(lengths, lengths[1:])):
+            raise ValueError("HSD linear path spline lengths are not increasing")
+        return {"kind": 0, "count": count, "total": node.f1, "cv": [tuple(row) for row in cv], "lengths": list(lengths)}
     if kind != 3:
         raise ValueError("Unreviewed HSD path spline type")
     if (not 2 <= count <= 64 or not isinstance(cv, list) or len(cv) != count + 2 or
@@ -181,7 +191,7 @@ def admitted_spline(node):
         raise ValueError("Nonfinite HSD path spline")
     if lengths[0] != 0 or any(b < a for a, b in zip(lengths, lengths[1:])) or node.f1 <= 0:
         raise ValueError("HSD path spline lengths are not cumulative")
-    return {"count": count, "tension": node.f0, "total": node.f1, "cv": [tuple(row) for row in cv],
+    return {"kind": 3, "count": count, "tension": node.f0, "total": node.f1, "cv": [tuple(row) for row in cv],
             "lengths": list(lengths), "poly": [tuple(row) for row in poly]}
 
 
@@ -214,6 +224,9 @@ def spline_parameter(spline, distance):
     lengths, index = spline["lengths"], 0
     while lengths[index + 1] < distance:
         index += 1
+    if spline.get("kind") == 0:
+        result = (distance - lengths[index]) / (lengths[index + 1] - lengths[index])
+        return (result + index) / (spline["count"] - 1.0)
     remaining = spline["total"] * (distance - lengths[index])
     start, end, result = 0.0, 1.0, 0.0
     while abs(start - end) >= 0.00001:
@@ -228,10 +241,17 @@ def spline_parameter(spline, distance):
 
 
 def spline_point(spline, u):
-    """spline.c:fn_801B2038 (splGetSplinePoint), cardinal case."""
+    """spline.c:fn_801B2038 (splGetSplinePoint), linear and cardinal cases."""
     cv, count = spline["cv"], spline["count"]
     if not 0 <= u <= 1:
         raise ValueError("HSD path parameter outside the spline")
+    if spline.get("kind") == 0:  # linear case
+        if u >= 1:
+            return cv[count - 1]
+        u *= count - 1
+        index = int(u)
+        u -= index
+        return tuple(u * (cv[index + 1][axis] - cv[index][axis]) + cv[index][axis] for axis in range(3))
     if u >= 1:
         return cv[count]
     u *= count - 1
@@ -663,10 +683,17 @@ def build_mesh(model, mesh_index, max_envelope_weights=3, source_materials=False
     # color, then an inactive-TEV MODULATE layer multiplies texture1. The
     # result is exactly T0*T1 with material alpha; it is serialized as the
     # dual-modulate stage with konst1 and a white diffuse raster.
-    blend_modulate = (len(raw_textures) == 2 and
-                      [t.flags for t in raw_textures] == [0x30010, 0x40010] and
-                      raw_textures[0].blending == 1 and raw_textures[0].tev is None and
-                      (raw_textures[1].tev is None or raw_textures[1].tev.active == 0) and
+    # M3_out (Agate Village water): texture0 MODULATEs a constant white
+    # material color instead (render mode diffuse = material, diffuse
+    # 255,255,255, no alpha map), which is the same T0*T1; texture1 scrolls
+    # independently, so the two layers' product is the moving ripple.
+    def inactive_tev(tex):
+        return tex.tev is None or tex.tev.active == 0
+    white_diffuse = all(round(c * 255) == 255 for c in dobj.mobject.material.diffuse.asRGBList())
+    blend_modulate = (len(raw_textures) == 2 and raw_textures[1].flags == 0x40010 and
+                      ((raw_textures[0].flags == 0x30010 and raw_textures[0].blending == 1) or
+                       (raw_textures[0].flags == 0x40010 and white_diffuse)) and
+                      inactive_tev(raw_textures[0]) and inactive_tev(raw_textures[1]) and
                       [t.source for t in raw_textures] == [4, 5] and len(mesh.uv_layers) == 2 and
                       dobj.mobject.render_mode & 7 == 1)
     dual = len(raw_textures) == 2 and raw_textures[1].flags == 0x40010 and not blend_modulate
@@ -682,6 +709,21 @@ def build_mesh(model, mesh_index, max_envelope_weights=3, source_materials=False
             raise ValueError("Unreviewed second field texture expression")
         raw_textures = raw_textures[:1]
         reflection = False
+    # Retain a normal-generated ADD EXT after the existing explicit source
+    # layer admission above. Its inactive TEV record has no effect. Like a
+    # reflection-only BLEND, it needs a neutral base plus normal texture2;
+    # unlike BLEND, ADD ignores the authored blending scalar entirely.
+    source_normal_add = (len(raw_textures) == 1 and raw_textures[0].flags == 0x70081 and
+                         (raw_textures[0].tev is None or raw_textures[0].tev.active == 0))
+    if source_normal_add:
+        source_reflection_only = True
+        reflection_texture = copy.copy(raw_textures[0])
+        reflection_texture.source, reflection_texture.tev = 5, None
+        neutral = copy.copy(raw_textures[0])
+        neutral.flags, neutral.blending, neutral.source, neutral.tev = 0x40010, 1., 4, None
+        neutral.scale, neutral.rotation, neutral.translation = (1., 1., 1.), (0., 0., 0.), (0., 0., 0.)
+        raw_textures = [neutral, reflection_texture]
+        reflection = True
     if dual:
         if len(mesh.uv_layers) != 2 or [t.source for t in raw_textures] != [4,5]:
             raise ValueError("Unsupported dual field texture generators")
@@ -751,7 +793,11 @@ def build_mesh(model, mesh_index, max_envelope_weights=3, source_materials=False
         batch[3] = pixel_engine_flags(pe, batch[3])
         batch[20:26] = [pe.reference_0,pe.reference_1,pe.alpha_component_0,
                        pe.alpha_component_1,pe.alpha_op,pe.z_comp]
-    if dual or reflection or source_blend or source_normal_pair or blend_modulate:
+    # A source reflection BLEND with factor zero returns the incoming RGB
+    # exactly. Omit that inert stage, including its normal-generated texture,
+    # so unlit vertex-color geometry need not satisfy a lit reflection path.
+    # Keep the source reflection classification above for base-stage handling.
+    if dual or (reflection and (source_normal_add or raw_textures[1].blending != 0)) or source_blend or source_normal_pair or blend_modulate:
         textures.append(_texture(raw_textures[1],mesh.material.texture_layers[0 if source_reflection_only else 1].image))
         batch[3] |= DUAL_MODULATE | title.TEV_LERP if blend_modulate else DUAL_MODULATE if dual else REFLECTION_BLEND
         if source_blend:batch[3] |= 16384
@@ -760,6 +806,10 @@ def build_mesh(model, mesh_index, max_envelope_weights=3, source_materials=False
         if reflection or source_blend:
             batch[27] = raw_textures[1].blending
         if source_normal_pair:batch[27]=raw_textures[0].blending
+        if source_normal_add:
+            # Original source flags distinguish post-lighting ADD from BLEND
+            # without changing the C3T layout or consuming a new batch flag.
+            batch[7], batch[27] = 0x70081, 1.
     if source_materials:
         # HSD_TExpSetupTev converts F32 constants to int(255*x), then clamps
         # to u8. Original Slugma's authored factor2 therefore becomes255.
@@ -876,9 +926,12 @@ def material_state(mesh, clip, frame, visible):
         transforms.append(transform)
         crosses.append(cross)
         if index == 0:
-            tev0 = tex.tev.tev0.asRGBList() if tex.tev else [0.,0.,0.]
-            konst = tex.tev.konst.asRGBList() if tex.tev else [1.,1.,1.]
-            for component in range(3):
+            # An inactive TEV block (active 0) is not applied by HSD, so its
+            # registers do not reach the combiner.
+            active = tex.tev is not None and tex.tev.active != 0
+            tev0 = tex.tev.tev0.asRGBList() if active else [0.,0.,0.]
+            konst = tex.tev.konst.asRGBList() if active else [1.,1.,1.]
+            for component in range(3 if active else 0):
                 if 16+component in tracks:
                     tev0[component] = title.tev_byte(title.curve_value(tracks[16+component],frame))
                 if 12+component in tracks:

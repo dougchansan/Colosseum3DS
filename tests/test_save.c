@@ -137,9 +137,16 @@ static void test_decode_and_validation(uint8_t *image, uint8_t *body,
     CHECK(c3_save_inspect(NULL, C3_SAVE_GCI_SIZE, NULL) == C3_SAVE_ARGUMENT);
 
     memcpy(copy, image, C3_SAVE_GCI_SIZE);
+    /* Japanese and European cards use the same format. */
     copy[3] = 'P';
+    CHECK(c3_save_inspect(copy, C3_SAVE_GCI_SIZE, NULL) == C3_SAVE_OK);
+    copy[3] = 'J';
+    CHECK(c3_save_inspect(copy, C3_SAVE_GCI_SIZE, NULL) == C3_SAVE_OK);
+    copy[3] = 'X';
     CHECK(c3_save_inspect(copy, C3_SAVE_GCI_SIZE, NULL) == C3_SAVE_GCI_HEADER);
-    copy[3] = 'E'; copy[0x39] = 47;
+    copy[3] = 'E'; copy[4] = '0'; copy[5] = '2';
+    CHECK(c3_save_inspect(copy, C3_SAVE_GCI_SIZE, NULL) == C3_SAVE_GCI_HEADER);
+    copy[4] = '0'; copy[5] = '1'; copy[0x39] = 47;
     CHECK(c3_save_inspect(copy, C3_SAVE_GCI_SIZE, NULL) == C3_SAVE_GCI_HEADER);
     copy[0x39] = 48; copy[8] = 'X';
     CHECK(c3_save_inspect(copy, C3_SAVE_GCI_SIZE, NULL) == C3_SAVE_GCI_HEADER);

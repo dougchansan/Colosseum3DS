@@ -102,6 +102,35 @@ int main(int argc,char **argv){char directory[]="/tmp/c3-inventory-XXXXXX",path[
   CHECK(c3_inventory_receive(&state,&a,2,99)==99&&r16(bag+0x7f6)==1);
   CHECK(c3_inventory_receive(&state,&a,999,1)==-1&&c3_inventory_receive(&state,&a,1,0)==-1);
   CHECK(c3_inventory_receive(NULL,&a,1,1)==-1&&c3_inventory_receive(&state,NULL,1,1)==-1);}
+ /* Script removal consumes important items too, compacts emptied slots,
+  * and reports the unmet quantity after a partial removal. */
+ {uint8_t *bag=(uint8_t*)c3_game_state_body(&state,NULL);memset(bag+0x7f0,0,80);
+  CHECK(c3_inventory_receive(&state,&a,1,3)==0&&c3_inventory_receive(&state,&a,2,1)==0);
+  CHECK(c3_inventory_remove(&state,&a,1,2)==0&&r16(bag+0x7f2)==1);
+  CHECK(c3_inventory_remove(&state,&a,1,5)==4&&r16(bag+0x7f0)==2&&r16(bag+0x7f2)==1&&!r16(bag+0x7f4));
+  CHECK(c3_inventory_remove(&state,&a,1,1)==1);
+  CHECK(c3_inventory_receive(&state,&a,4,1)==0&&r16(bag+0x840)==4);
+  CHECK(c3_inventory_remove(&state,&a,4,1)==0&&!r16(bag+0x840));
+  CHECK(c3_inventory_remove(&state,&a,2,1)==0&&!r16(bag+0x7f0));
+  CHECK(c3_inventory_remove(NULL,&a,1,1)==-1&&c3_inventory_remove(&state,NULL,1,1)==-1);
+  CHECK(c3_inventory_remove(&state,&a,999,1)==-1);
+ }
+ /* D8 mode1 cures only poison/toxic. Check every condition, all six
+  * valid slots, and preserve HP, PP and status padding byte-for-byte. */
+ {uint8_t *raw=(uint8_t*)c3_game_state_body(&state,NULL),saved[6*312],expected[6*312];
+  memcpy(saved,raw+PARTY,sizeof saved);
+  for(unsigned status=3;status<=8;++status){
+   memcpy(raw+PARTY,saved,sizeof saved);
+   for(unsigned slot=0;slot<6;++slot){uint8_t *mon=raw+PARTY+slot*312;memcpy(mon,saved,312);w16(mon,197);memset(mon+0x64,0x91,16);w16(mon+0x64,status);}
+   memcpy(expected,raw+PARTY,sizeof expected);
+   if(status==3||status==4)for(unsigned slot=0;slot<6;++slot){memset(expected+slot*312+0x64,0,7);memset(expected+slot*312+0x6c,0,6);}
+   CHECK(c3_inventory_clear_party_poison(&state)==(status<=4?6:0));
+   CHECK(!memcmp(raw+PARTY,expected,sizeof expected));
+  }
+  memcpy(raw+PARTY,saved,sizeof saved);w16(raw+PARTY,0);w16(raw+PARTY+0x64,3);
+  memcpy(expected,raw+PARTY,sizeof expected);CHECK(c3_inventory_clear_party_poison(&state)==0&&!memcmp(raw+PARTY,expected,sizeof expected));
+  memcpy(raw+PARTY,saved,sizeof saved);CHECK(c3_inventory_clear_party_poison(NULL)==-1);
+ }
  /* Party restore: HP, PP of valid moves and a status condition record. */
  {uint8_t *q0=(uint8_t*)c3_game_state_body(&state,NULL)+PARTY;unsigned members=0;
   for(unsigned i=0;i<6;++i)members+=r16(q0+i*312)!=0;

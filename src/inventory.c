@@ -174,6 +174,62 @@ int c3_inventory_receive(C3GameState *state,const C3PdaAssets *assets,unsigned i
     free(before);free(after);return result;
 }
 
+int c3_inventory_remove(C3GameState *state,const C3PdaAssets *assets,unsigned id,unsigned count)
+{
+    size_t bytes=0;const uint8_t *body=c3_game_state_body(state,&bytes);C3InventoryItem info;
+    if(!body||!assets||count>65535||!c3_inventory_item(assets,id,&info)||pocket(info.kind)<0)return -1;
+    unsigned p=(unsigned)pocket(info.kind),remaining=count;
+    uint8_t *before=malloc(bytes),*after=malloc(bytes);int result=-1;
+    if(before&&after){
+        memcpy(before,body,bytes);memcpy(after,body,bytes);
+        for(unsigned slot=0;slot<capacities[p]&&remaining;){
+            uint8_t *entry=bag(after,p,slot);unsigned held=r16(entry+2);
+            if(r16(entry)!=id||!held){++slot;continue;}
+            unsigned taken=held<remaining?held:remaining;
+            remove_item(after,p,slot,taken);remaining-=taken;
+            if(taken<held)++slot;
+        }
+        result=c3_game_state_inventory_commit(state,before,after,bytes)?(int)remaining:-1;
+    }
+    free(before);free(after);return result;
+}
+
+int c3_inventory_take(C3GameState *state,const C3PdaAssets *assets,unsigned id,unsigned count)
+{
+    size_t bytes=0;const uint8_t *body=c3_game_state_body(state,&bytes);C3InventoryItem info;
+    if(!body||!assets||!count||count>999||!c3_inventory_item(assets,id,&info)||pocket(info.kind)<0)return -1;
+    uint8_t *before=malloc(bytes),*after=malloc(bytes);int result=-1;
+    if(before&&after){
+        unsigned left=count,p=(unsigned)pocket(info.kind);
+        memcpy(before,body,bytes);memcpy(after,body,bytes);
+        for(unsigned s=0;s<capacities[p]&&left;){uint8_t *d=bag(after,p,s);
+            if(r16(d)!=id||!r16(d+2)){++s;continue;}
+            unsigned have=r16(d+2),q=have<left?have:left;remove_item(after,p,s,q);left-=q;
+            if(q<have)++s;
+        }
+        result=left?(int)left:(c3_game_state_inventory_commit(state,before,after,bytes)?0:-1);
+    }
+    free(before);free(after);return result;
+}
+
+int c3_inventory_clear_party_poison(C3GameState *state)
+{
+    size_t bytes=0;const uint8_t *body=c3_game_state_body(state,&bytes);
+    if(!body)return -1;
+    uint8_t *before=malloc(bytes),*after=malloc(bytes);int cured=-1;
+    if(before&&after){
+        memcpy(before,body,bytes);memcpy(after,body,bytes);cured=0;
+        for(unsigned slot=0;slot<6;++slot){
+            uint8_t *p=after+0xa0+slot*312;unsigned condition=r16(p+0x64);
+            if(!r16(p)||(condition!=3&&condition!=4))continue;
+            /* fn_80121B4C clears the seven status fields, preserving padding. */
+            memset(p+0x64,0,7);memset(p+0x6c,0,6);++cured;
+        }
+        if(!c3_game_state_inventory_commit(state,before,after,bytes))cured=-1;
+    }
+    free(before);free(after);return cured;
+}
+
 int c3_inventory_restore_party(C3GameState *state,const C3PdaAssets *assets)
 {
     size_t bytes=0;const uint8_t *body=c3_game_state_body(state,&bytes);

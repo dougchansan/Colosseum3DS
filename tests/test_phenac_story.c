@@ -38,11 +38,23 @@ static int logged(const char *text)
     while(fgets(line,sizeof line,trace))if(strstr(line,text)){found=1;break;}
     CHECK(!ferror(trace)&&fsetpos(trace,&position)==0);return found;
 }
+static C3Title partner; /* closed after the story that borrows it */
 static int reachable(uint32_t floor){return floor>=1&&floor<=3;}
 static unsigned gifts;static uint32_t gift_item,gift_count;
 static int receive(void *context,uint32_t item,uint32_t count,char *name,size_t capacity)
 {
     (void)context;++gifts;gift_item=item;gift_count=count;snprintf(name,capacity,"TEST ITEM");return 0;
+}
+/* A stand-in for the music player: a jingle "plays" for its rendered
+ * length (0x3C9 3.3 s, 0x3CA 2.1 s, prepare_music.py) counted in ticks. */
+static uint32_t jingle_sound;static unsigned jingle_ticks,jingles_started;
+static int audio(void *context,unsigned op,uint32_t a,uint32_t b,uint32_t c)
+{
+    (void)context;(void)b;(void)c;
+    if(op==C3_STORY_AUDIO_JINGLE){jingle_sound=a;jingle_ticks=a==0x3c9?198u:a==0x3ca?126u:0u;++jingles_started;return jingle_ticks>0;}
+    if(op==C3_STORY_AUDIO_STATUS){if(a!=jingle_sound||!jingle_ticks)return 0;--jingle_ticks;return 2;}
+    if(op==C3_STORY_AUDIO_JINGLE_END){jingle_sound=0;jingle_ticks=0;return 1;}
+    return 1;
 }
 static void tick(Scene *s,unsigned frame)
 {
@@ -61,15 +73,13 @@ static int present(const char *root,const char *name)
  * recorded with its reason (typically an unported native) and does not stop
  * the run; it shows what the floor still needs. Returns 1 when the floor
  * reached control or kept running without an error. */
-static int smoke(C3GameState *game,const char *root,uint32_t floor,uint32_t previous)
+/* Load a prepared floor's packs and story, run its load/init/pre scripts and
+ * enter it at entrance <spawn>. 0 with error set on failure. */
+static int open_floor(Scene *s,C3GameState *game,const char *root,uint32_t floor,uint32_t spawn)
 {
-    const C3FloorProfile *profile=c3_floor_profile(floor);Scene *s=calloc(1,sizeof *s);char file[1024],name[96];
-    int ok=0;unsigned frame=0;
-    CHECK(profile&&s);
+    const C3FloorProfile *profile=c3_floor_profile(floor);char file[1024],name[96];unsigned frame;
+    CHECK(profile);
     snprintf(name,sizeof name,"%s.c3f",profile->prefix);
-    if(!present(root,name)){free(s);return -1;}
-    error[0]=0;
-    CHECK(c3_game_state_set_floor(game,floor,previous,0));
     path(file,root,name);
     if(!c3_field_load(&s->map,file,error,sizeof error))goto done;
     snprintf(name,sizeof name,"%s.c3a",profile->prefix);path(file,root,name);
@@ -84,7 +94,7 @@ static int smoke(C3GameState *game,const char *root,uint32_t floor,uint32_t prev
     }
     snprintf(name,sizeof name,"%s_camera.c3c",profile->prefix);
     if(present(root,name)){path(file,root,name);if(!c3_area_camera_load(&s->camera,file,error,sizeof error))goto done;}
-    if(!c3_field_spawn(&s->map,0,&s->hero)){snprintf(error,sizeof error,"entrance 0 is unavailable");goto done;}
+    if(!c3_field_spawn(&s->map,spawn,&s->hero)){snprintf(error,sizeof error,"entrance %lu is unavailable",(unsigned long)spawn);goto done;}
     path(file,root,profile->story);
     if(!c3_field_story_load(&s->story,file,game,&s->map,&s->area,&s->hero,&s->wes,s->models,&s->camera,trace,error))goto done;
     c3_field_story_set_floor_support(&s->story,reachable);
@@ -95,6 +105,25 @@ static int smoke(C3GameState *game,const char *root,uint32_t floor,uint32_t prev
         if(!c3_field_story_tick(&s->story,1.0f/60.0f,0,error))goto done;
     if(!c3_field_story_view(&s->story)->prepared){snprintf(error,sizeof error,"preparation did not finish");goto done;}
     if(!c3_field_story_enter(&s->story,error))goto done;
+    return 1;
+done:
+    return 0;
+}
+static void close_floor(Scene *s)
+{
+    c3_field_story_close(&s->story);c3_field_close(&s->map);c3_area_close(&s->area);c3_area_camera_close(&s->camera);
+    c3_title_close(&s->wes);for(unsigned i=0;i<C3_AREA_MAX_ACTORS;++i)c3_title_close(s->actors+i);
+}
+static int smoke(C3GameState *game,const char *root,uint32_t floor,uint32_t previous)
+{
+    const C3FloorProfile *profile=c3_floor_profile(floor);Scene *s=calloc(1,sizeof *s);char name[96];
+    int ok=0;unsigned frame=0;
+    CHECK(profile&&s);
+    snprintf(name,sizeof name,"%s.c3f",profile->prefix);
+    if(!present(root,name)){free(s);return -1;}
+    error[0]=0;
+    CHECK(c3_game_state_set_floor(game,floor,previous,0));
+    if(!open_floor(s,game,root,floor,0))goto done;
     for(frame=0;frame<600;++frame){
         const C3FieldStoryView *v=c3_field_story_view(&s->story);
         uint16_t pressed=v->dialogue&&frame%15==0?0x100:0;
@@ -108,9 +137,47 @@ done:
             (unsigned long)s->area.transition_count,(unsigned long)s->area.interaction_count,
             ok?c3_field_story_view(&s->story)->control:0,frame,ok?"":error);
     printf("floor %02lx %-18s %s %s\n",(unsigned long)floor,profile->prefix,ok?"ok    ":"FAILED",ok?"":error);
-    c3_field_story_close(&s->story);c3_field_close(&s->map);c3_area_close(&s->area);c3_area_camera_close(&s->camera);
-    c3_title_close(&s->wes);for(unsigned i=0;i<C3_AREA_MAX_ACTORS;++i)c3_title_close(s->actors+i);
-    free(s);error[0]=0;return ok;
+    close_floor(s);free(s);error[0]=0;return ok;
+}
+/* A doorway into a floor this build cannot load: the mayor's stairs (floor 5
+ * source 4, common script 05960004 = native 7D(6,0,1)) with floor 6 reported
+ * unprepared. The link waits with a notice; staying resumes the door script,
+ * the hero gets control back on floor 5 and no floor link is made. With
+ * floor 6 available the same doorway links to it. */
+static int all_but_mayor2f(uint32_t floor){return floor>=1&&floor<0x380&&floor!=6;}
+static int with_mayor2f(uint32_t floor){return floor>=1&&floor<0x380;}
+static void unprepared_doorway(C3GameState *game,const char *root)
+{
+    Scene *s=calloc(1,sizeof *s);unsigned frame;uint32_t refused=0;CHECK(s);
+    if(!present(root,"phenac_mayor1f.c3f")){free(s);return;}
+    for(int pass=0;pass<2;++pass){
+        CHECK(c3_game_state_set_floor(game,5,3,0));
+        CHECK(open_floor(s,game,root,5,0));
+        c3_field_story_set_floor_support(&s->story,pass?with_mayor2f:all_but_mayor2f);
+        for(frame=0;frame<6000&&!c3_field_story_view(&s->story)->control;++frame)tick(s,frame);
+        CHECK(c3_field_story_view(&s->story)->control);
+        CHECK(c3_field_story_transition(&s->story,4,error));
+        for(frame=0;frame<6000&&!c3_field_story_floor_refused(&s->story,&refused)&&!c3_field_story_view(&s->story)->next_floor;++frame)
+            tick(s,frame);
+        if(!pass){
+            CHECK(refused==6&&c3_field_story_view(&s->story)->blocked[0]&&!c3_field_story_view(&s->story)->control);
+            CHECK(strstr(c3_field_story_view(&s->story)->blocked,"Area 6 ")&&logged("story_floor_unprepared from=5 to=6 spawn=0"));
+            CHECK(!c3_field_story_battle_pending(&s->story,NULL));
+            CHECK(c3_field_story_stay_on_floor(&s->story,error));
+            CHECK(!c3_field_story_floor_refused(&s->story,NULL)&&!c3_field_story_stay_on_floor(&s->story,error));
+            for(frame=0;frame<600&&!c3_field_story_view(&s->story)->control;++frame)tick(s,frame);
+            CHECK(c3_field_story_view(&s->story)->control&&!c3_field_story_view(&s->story)->blocked[0]);
+            for(frame=0;frame<300;++frame)tick(s,frame);
+            CHECK(!c3_field_story_view(&s->story)->next_floor&&logged("story_floor_refused from=5 to=6 stayed=1"));
+            fprintf(trace,"phenac_unprepared_doorway floor=5 source=4 to=6 stayed=1 control=1\n");
+        }else{
+            for(;frame<6000&&!c3_field_story_view(&s->story)->next_floor;++frame)tick(s,frame);
+            CHECK(c3_field_story_view(&s->story)->next_floor==6&&c3_field_story_view(&s->story)->next_spawn==0);
+            fprintf(trace,"phenac_mayor_stairs floor=5 source=4 to=6 spawn=0\n");
+        }
+        close_floor(s);memset(s,0,sizeof *s);
+    }
+    free(s);
 }
 
 int main(int argc,char **argv)
@@ -162,6 +229,7 @@ int main(int argc,char **argv)
     c3_field_story_set_floor_support(&s->story,reachable);
     c3_field_story_enable_name_entry(&s->story,1);
     c3_field_story_set_item_service(&s->story,receive,NULL);
+    c3_field_story_set_audio_service(&s->story,audio,NULL);
     CHECK(c3_field_story_prepare(&s->story,error));
     unsigned frame;
     for(frame=0;frame<3600&&!c3_field_story_view(&s->story)->prepared;++frame)
@@ -195,6 +263,10 @@ int main(int argc,char **argv)
      CHECK(s->hero.position[0]>=-.8f&&s->hero.position[0]<=1.0f&&s->hero.position[2]>=31.4f&&s->hero.position[2]<=34.0f);
      s->hero.yaw=3.1415927f;
      CHECK(!c3_game_state_partner(&game)&&flag(&game,0x3e4)==0&&flag(&game,0x3e5)==0);
+     /* C3_PHENAC_PARTNER_SAVE=<path>: the state just before Rui's event
+      * as a save, for console and Azahar checks of the name entry. */
+     {const char *out=getenv("C3_PHENAC_PARTNER_SAVE");char save_error[C3_GAME_ERROR_SIZE];
+      if(out){CHECK(c3_game_state_save(&game,out,save_error));fprintf(trace,"phenac_partner_save path=%s\n",out);}}
      CHECK(c3_field_story_interact(&s->story,error));CHECK(logged("story_talk actor=0 script=01000021"));}
     /* The scene collects the partner's name when native 16 waits for it. */
     {int named=0,spoken=0;
@@ -216,7 +288,35 @@ int main(int argc,char **argv)
     CHECK(logged("story_partner present=1")&&logged("story_name_entry mode=1 index=0 status=waiting_scene"));
     for(frame=0;frame<6000&&!c3_field_story_view(&s->story)->control;++frame)tick(s,frame);
     CHECK(c3_field_story_view(&s->story)->control&&flag(&game,0xacf)==1&&flag(&game,0x3e4)==1);
+    /* The partner jingle (native 82, 0x3C9) held the event for its 3.3 s. */
+    CHECK(jingles_started>=1&&logged("story_jingle sound=3c9 status=playing")&&logged("story_jingle sound=3c9 status=ended seconds=3.3"));
     fprintf(trace,"phenac_partner_event_complete partner=1 flags03E5_0ACF=1 control=1\n");
+    /* Rui follows Wes (hero_move.c follower): her pack is attached as person
+     * (0,101); when Wes walks away she closes to her spacing (1.2 units =
+     * twelve source units) and faces him. */
+    {char file[1024];
+     if(present(argv[2],"phenac_partner.c3t")){
+         path(file,argv[2],"phenac_partner.c3t");
+         CHECK(c3_title_load(&partner,file,error,sizeof error));
+         CHECK(c3_field_story_attach_partner(&s->story,&partner,error)&&logged("story_partner_model visible=1"));
+         C3StoryActor *rui=c3_field_story_person(&s->story,0,101);CHECK(rui&&rui->visible&&rui->model==&partner);
+         float start[3]={rui->pose.position[0],rui->pose.position[1],rui->pose.position[2]};
+         float hero0[3]={s->hero.position[0],s->hero.position[1],s->hero.position[2]};
+         int walked=0;
+         for(frame=0;frame<240;++frame){
+             /* Wes walks straight ahead (his facing) for two seconds. */
+             if(frame<120){float d=0.04f,g,next[3]={s->hero.position[0]+sinf(s->hero.yaw)*d,s->hero.position[1],s->hero.position[2]+cosf(s->hero.yaw)*d};
+                 if(c3_field_ground(&s->map,next,&g)){s->hero.position[0]=next[0];s->hero.position[2]=next[2];s->hero.position[1]=g;}}
+             tick(s,frame);
+             if(rui->clip==1)walked=1;
+         }
+         float moved=hypotf(rui->pose.position[0]-start[0],rui->pose.position[2]-start[2]);
+         float gap=hypotf(rui->pose.position[0]-s->hero.position[0],rui->pose.position[2]-s->hero.position[2]);
+         float hero_moved=hypotf(s->hero.position[0]-hero0[0],s->hero.position[2]-hero0[2]);
+         fprintf(trace,"phenac_partner_follow hero_moved=%.3f rui_moved=%.3f gap=%.3f walked=%d clip=%lu\n",
+                 (double)hero_moved,(double)moved,(double)gap,walked,(unsigned long)rui->clip);
+         CHECK(hero_moved>1.0f&&moved>0.5f&&walked&&gap>0.85f&&gap<1.6f&&rui->clip==0);
+     }}
     /* The optional trainer, actor 15: main's function 40 tests native A9
      * (hero within 30 units and 15 degrees of the actor's facing), shows the
      * emote, walks the actor up with B1 and calls function 39: a YES/NO
@@ -244,7 +344,7 @@ int main(int argc,char **argv)
 
     c3_field_story_close(&s->story);c3_field_close(&s->map);c3_area_close(&s->area);
     c3_area_camera_close(&s->camera);
-    c3_title_close(&s->wes);for(unsigned i=0;i<C3_AREA_MAX_ACTORS;++i)c3_title_close(s->actors+i);
+    c3_title_close(&partner);c3_title_close(&s->wes);for(unsigned i=0;i<C3_AREA_MAX_ACTORS;++i)c3_title_close(s->actors+i);
     free(s);
     /* Report, floor by floor, how far each prepared interior gets from the
      * state reached above. Missing packs are skipped. */
@@ -254,6 +354,7 @@ int main(int argc,char **argv)
          if(result>0)++passed;else if(result<0)++absent;else ++failed;
      }
      fprintf(trace,"floor_smoke_summary passed=%u failed=%u absent=%u\n",passed,failed,absent);
+     unprepared_doorway(&game,argv[2]);
      printf("interior floors: %u ok, %u failed, %u without packs\n",passed,failed,absent);}
     c3_game_state_free(&game);
     fprintf(trace,"phenac_complete checks=%u\n",checks);

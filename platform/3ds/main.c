@@ -6,6 +6,9 @@
 #ifdef C3_GENERAL_3D_PROBE
 #include "battle_general_3d.h"
 #endif
+#ifdef C3_LINK_PROBE
+#include "link_probe.h"
+#endif
 #ifndef C3_BOOT_ONLY
 #include "model_scene.h"
 #endif
@@ -42,6 +45,9 @@ int main(void)
 #endif
 #ifdef C3_GENERAL_3D_PROBE
     if(core_status==0){int result=c3_battle_general_3d_probe_run(C3_GENERAL_3D_PROBE);c3_n3ds_shutdown();return result;}
+#endif
+#ifdef C3_LINK_PROBE
+    if(core_status==0){int result=c3_link_probe_run();c3_n3ds_shutdown();return result;}
 #endif
     data_result = c3_data_probe(c3_n3ds_data_root(), data_status, sizeof(data_status));
     if (c3_boot_scene_available()) {

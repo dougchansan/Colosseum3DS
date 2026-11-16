@@ -428,6 +428,10 @@ FLOORS = {
     },
 }
 
+# Reviewed M4 profiles stay separate so this shared registry remains compact.
+from under_profiles import UNDER_FLOORS
+FLOORS.update(UNDER_FLOORS)
+
 # The party's second member (hero_move.c getResID: group 0, ID 101). Its
 # PeopleInfo row is 2; the model sits beside Wes in field_common.fsys. The
 # model has more source motions than a pack may hold, so the pack carries a
@@ -537,6 +541,10 @@ def validate_partner(partner=None):
         raise ValueError("Partner clip list must start with idle, walk, run and fit one pack")
     return partner
 
+
+# Permanent regional identities are available without a private survey.
+from realgam_profiles import REALGAM_FLOORS
+FLOORS.update(REALGAM_FLOORS)
 
 validate()
 validate_partner()

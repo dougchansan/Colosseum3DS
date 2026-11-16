@@ -1,6 +1,10 @@
 #include "boot_scene.h"
+#include "link_play.h"
 #include "trace_writer.h"
 #include "field_scene.h"
+#include "ending_scene.h"
+#include "dna_key_scene.h"
+#include "realgam_stage_probe.h"
 #include "dev_floor_scene.h"
 #include "game_menu.h"
 #include "bottom_screen.h"
@@ -32,6 +36,15 @@ typedef enum {
     TITLE_INTRO, TITLE_SKIP_OUT, TITLE_SKIP_IN, TITLE_WAIT_START,
     TITLE_ACCEPTED, TITLE_MENU
 } TitlePhase;
+
+/* Original .sdata starts at 3; never persisted to a save or SD config. */
+static C3TitleCharacterState title_characters = {.page = 3};
+
+static void title_characters_enter(FILE *trace)
+{
+    c3_title_characters_enter(&title_characters);
+    if (trace) { fprintf(trace,"title_characters_enter page=%u\n",title_characters.page); fflush(trace); }
+}
 
 bool c3_boot_scene_available(void)
 {
@@ -106,12 +119,22 @@ static void load_card(C3GameState *state, C3GameMenuSave *view,
 /* Return 0 with a prepared in-memory game, 1 on application exit, -1 on
  * rendering/asset failure. Native menus borrow the live title background. */
 static int run_title(FILE *trace, C3GameState *state,
-                      int *new_game, int *dev_floor, int start_at_menu, C3GameMenuOptions *session_options,
+                      int *new_game, int *dev_floor, int *link_mode, int start_at_menu, C3GameMenuOptions *session_options,
                       int *options_edited, char *error, size_t capacity)
 {
     C3Title *title = calloc(1, sizeof(*title));
     C3GameMenu menu = {0};
-    if(trace)fprintf(trace,"bottom_ui original_assets=%d format=C3UI fallback=libctru\n",c3_bottom_screen_has_original_assets());
+    C3TitleCharacters characters = {0};
+    title_characters_enter(trace);
+#ifdef C3_TITLE_CHARACTERS_PROBE
+    unsigned probe_visits = 0;
+    int probe_captured = 0, probe_early = 0, probe_menu = 0;
+#endif
+    if(trace){
+        const C3UiAssets *ui=c3_bottom_screen_assets();const uint8_t *ball;unsigned bw,bh;
+        fprintf(trace,"bottom_ui original_assets=%d format=C3UI fallback=libctru sprites=%u loading_ball=%d\n",
+                c3_bottom_screen_has_original_assets(),ui?ui->sprites:0u,c3_ui_sprite_pixels(ui,C3_UI_BALL,&ball,&bw,&bh));
+    }
     C3GameMenuOptions options = *session_options;
     C3N3dsInput input = {0};
     C3TitleRenderStats stats = {0};
@@ -132,6 +155,9 @@ static int run_title(FILE *trace, C3GameState *state,
         goto done;
     }
     if (!c3_title_animate(title, clip, 0.0f) || c3_title_renderer_init(title, error, capacity)) goto done;
+    int have_characters = c3_title_characters_load(&characters, BOOT_ROOT "title_characters.c3tc") &&
+                          c3_title_renderer_set_characters(&characters);
+    if (trace) { fprintf(trace,"title_characters_pack loaded=%d bytes=%lu\n",have_characters,(unsigned long)characters.size); fflush(trace); }
     if (trace) {
         fprintf(trace, "title_begin vertices=%lu batches=%lu textures=%lu bones=%lu fps=%.3f\n",
                 (unsigned long)title->vertex_count, (unsigned long)title->batch_count,
@@ -155,6 +181,11 @@ static int run_title(FILE *trace, C3GameState *state,
         }
         clip_seconds += delta;
         phase_seconds += delta;
+#ifdef C3_TITLE_CHARACTERS_PROBE
+        /* Inject app-level edges only into this unattended diagnostic build. */
+        if (phase == TITLE_WAIT_START && probe_captured) input.pressed |= C3_PAD_START;
+        if (phase == TITLE_MENU && phase_seconds >= 1.0f) input.pressed |= C3_PAD_B;
+#endif
         float fade = 1.0f;
         if (phase == TITLE_INTRO && ((input.pressed & (C3_PAD_A | C3_PAD_B | C3_PAD_START)) || input.touch_pressed)) {
             phase = TITLE_SKIP_OUT;
@@ -212,6 +243,11 @@ static int run_title(FILE *trace, C3GameState *state,
             C3GameMenuEvent event = c3_game_menu_update(&menu, &input, delta);
             if (event.kind == C3_MENU_EVENT_RETURN_TITLE) {
                 phase = TITLE_WAIT_START; phase_seconds = 0.0f;
+                title_characters_enter(trace);
+#ifdef C3_TITLE_CHARACTERS_PROBE
+                ++probe_visits; probe_captured = probe_early = probe_menu = 0;
+                if (probe_visits == 4) { result = 1; break; }
+#endif
             } else if (event.kind == C3_MENU_EVENT_OPTIONS_CHANGED) {
                 options = event.options;
                 *session_options = options;
@@ -248,6 +284,10 @@ static int run_title(FILE *trace, C3GameState *state,
                         break;
                     } else c3_game_menu_set_error(&menu, game_error);
                 }
+            } else if (event.kind == C3_MENU_EVENT_COLOSSEUM_BATTLE || event.kind == C3_MENU_EVENT_BATTLE_NOW) {
+                *link_mode = event.kind == C3_MENU_EVENT_COLOSSEUM_BATTLE ? C3_LINK_MODE_COLOSSEUM : C3_LINK_MODE_BATTLE_NOW;
+                if (trace) { fprintf(trace, "link_play mode=%d\n", *link_mode); fflush(trace); }
+                result = 0; break;
             } else if (event.kind == C3_MENU_EVENT_CONTINUE) {
                 if (!c3_field_scene_available()) {
                     c3_game_menu_set_error(&menu, "Prepare the OUTSKIRT STAND assets before continuing.");
@@ -284,6 +324,9 @@ static int run_title(FILE *trace, C3GameState *state,
             c3_bottom_screen_title(phase == TITLE_WAIT_START,phase == TITLE_ACCEPTED);
             next_status = now + UINT64_C(250000);
         }
+        bool show_characters = phase == TITLE_WAIT_START || phase == TITLE_ACCEPTED;
+        if (show_characters) c3_title_characters_tick(&title_characters, delta);
+        c3_title_renderer_characters(&title_characters, show_characters);
         int draw_result = c3_title_renderer_draw(title, fade, &stats, error, capacity);
         if (draw_result == C3_RENDER_BUSY) {
             C3RenderRecoveryResult recovery = c3_render_recover(trace, "title", frames, C3_RECOVER_WAIT);
@@ -296,6 +339,23 @@ static int run_title(FILE *trace, C3GameState *state,
             continue;
         }
         if (draw_result) { result = -1; break; }
+#ifdef C3_TITLE_CHARACTERS_PROBE
+        if ((phase == TITLE_WAIT_START && ((!probe_early && phase_seconds >= 0.5f) ||
+                                           (!probe_captured && phase_seconds >= 6.0f))) ||
+            (phase == TITLE_MENU && !probe_menu && phase_seconds >= 0.5f)) {
+            char shot[128];
+            const char *kind = phase == TITLE_MENU ? "menu" : phase_seconds >= 6.0f ? "settled" : "slide";
+            snprintf(shot,sizeof shot,"sdmc:/3ds/Colosseum3DS/title-page-%u-%s.bmp",title_characters.page,kind);
+            int captured = c3_n3ds_capture_top(shot) == 0;
+            if (trace) { fprintf(trace,"title_probe page=%u kind=%s captured=%d offsets=%.3f,%.3f,%.3f,%.3f,%.3f,%.3f path=%s\n",
+                title_characters.page,kind,captured,(double)title_characters.offsets[0],(double)title_characters.offsets[1],
+                (double)title_characters.offsets[2],(double)title_characters.offsets[3],(double)title_characters.offsets[4],
+                (double)title_characters.offsets[5],shot); fflush(trace); }
+            if (phase == TITLE_MENU) probe_menu = 1;
+            else if (phase_seconds >= 6.0f) probe_captured = 1;
+            else probe_early = 1;
+        }
+#endif
         ++frames;
     }
     if (trace) {
@@ -307,6 +367,7 @@ done:
                           result == 1 ? C3_RECOVER_EXIT : C3_RECOVER_DRAIN) == C3_RECOVERY_EXIT)
         result = 1;
     if (menu_open) c3_game_menu_close(&menu);
+    c3_title_characters_close(&characters);
     c3_title_close(title);
     free(title);
     return result;
@@ -322,6 +383,80 @@ int c3_boot_scene_run(int core_status)
     FILE *trace = c3_trace_open("sdmc:/3ds/Colosseum3DS/boot-trace.log");
     if (trace) { fprintf(trace, "boot_build %s core=%d\n", C3_BUILD_ID, core_status); fflush(trace); }
     c3_n3ds_log_memory(trace, "boot_start");
+#ifdef C3_REALGAM_STAGE_PROBE
+    {
+        int stage_result=c3_realgam_stage_probe(trace,error,sizeof error);
+        if(trace){fprintf(trace,"realgam_stage_probe_exit result=%d error=%s\n",stage_result,error);fclose(trace);}
+        return stage_result?1:0;
+    }
+#endif
+#ifdef C3_DNA_KEY_PROBE
+    {
+        const uint16_t expected[3]={0x99,0x9c,0x9f};
+        int dna_result=c3_dna_key_scene_run(expected,trace,error,sizeof error);
+        if(trace){fprintf(trace,"dna_probe_exit result=%d expected=0099,009c,009f error=%s\n",dna_result,error);fclose(trace);}
+        return dna_result==0?0:1;
+    }
+#endif
+#ifdef C3_FINAL_EVENT_PROBE
+    /* Final-floor diagnostic, explicitly warped from an uncleared COPY.
+     * Never qualifies travel through the preceding chapters. */
+    {
+        int played=-1;uint32_t clear=1;
+        const char *copy="sdmc:/3ds/Colosseum3DS/final-probe/copy.gci";
+        c3_music_open("sdmc:/3ds/Colosseum3DS",error,sizeof error);
+        if(c3_game_state_load(&state,copy,GAME_DATA,error)&&
+           c3_game_state_get_flag(&state,0x476,&clear)&&!clear&&
+           c3_game_state_set_floor(&state,0x76,0x75,0)){
+            if(trace){fprintf(trace,"final_event_probe fixture=warped_uncleared_copy clear=0 battles=skip_as_win\n");fflush(trace);}
+            played=c3_field_scene_run(&state,0,copy,trace,error,sizeof error);
+        }
+        if(trace){fprintf(trace,"final_event_end result=%d error=%s\n",played,error);fclose(trace);}
+        c3_music_close();c3_game_state_free(&state);return played?1:0;
+    }
+#endif
+#if defined(C3_CLEAR_CONTINUE_PROBE) || defined(C3_RETURN_FADE_PROBE)
+    {
+        const char *copy="sdmc:/3ds/Colosseum3DS/ending-probe/copy.gci";
+        C3GameSummary checkpoint;uint32_t clear=0,saved_clear=0;int continued=-1;
+        if(c3_game_state_load(&state,copy,GAME_DATA,error)&&
+           c3_game_state_summary(&state,&checkpoint)&&
+           c3_game_state_get_flag(&state,0x476,&clear)&&
+           c3_game_state_get_flag(&state,0x478,&saved_clear)&&
+           checkpoint.floor==2&&checkpoint.previous_floor==1&&checkpoint.spawn==1&&clear==1&&saved_clear==1){
+            if(trace){fprintf(trace,"clear_continue_load fresh_process=1 floor=%03lx previous=%03lx spawn=%u clear=%lu saved_clear=%lu saved_count=%lu\n",(unsigned long)checkpoint.floor,(unsigned long)checkpoint.previous_floor,checkpoint.spawn,(unsigned long)clear,(unsigned long)saved_clear,(unsigned long)checkpoint.saved_count);fflush(trace);}
+#ifdef C3_RETURN_FADE_PROBE
+            /* Isolated return-override check, not a fresh Continue claim. */
+            if(!c3_game_state_set_floor(&state,2,0x39f,1)){c3_game_state_free(&state);return 1;}
+            if(trace){fprintf(trace,"return_fade_probe fixture=staffroll_destination_tuple save_writes=0\n");fflush(trace);}
+#endif
+            continued=c3_field_scene_run(&state,0,copy,trace,error,sizeof error);
+        }
+        if(trace){fprintf(trace,"clear_continue_end result=%d error=%s\n",continued,error);fclose(trace);}
+        c3_game_state_free(&state);return continued==0?0:1;
+    }
+#endif
+#ifdef C3_ENDING_PROBE
+    /* Explicit guard fixture: a COPY of post-game state, not proof of playing
+     * the final events. Never grants victory flags or touches imported saves. */
+    {
+        int probe_result=-1; uint32_t clear=0; C3GameSummary checkpoint;
+        const char *copy="sdmc:/3ds/Colosseum3DS/ending-probe/copy.gci";
+        c3_music_open("sdmc:/3ds/Colosseum3DS",error,sizeof error);
+        if(c3_game_state_load(&state,copy,GAME_DATA,error)&&
+           c3_game_state_get_flag(&state,0x476,&clear)&&clear==1&&
+           c3_game_state_set_floor(&state,0x39f,0x76,0))
+            probe_result=c3_ending_scene_run(&state,copy,trace,error,sizeof error);
+        if(trace){fprintf(trace,"ending_probe fixture=postgame_guard_only result=%d clear=%lu error=%s\n",probe_result,(unsigned long)clear,error);fflush(trace);}
+        c3_game_state_free(&state);
+        /* Read the written copy through the fresh Continue decoder. */
+        if(probe_result==2&&c3_game_state_load(&state,copy,GAME_DATA,error)&&c3_game_state_summary(&state,&checkpoint)&&trace){
+            fprintf(trace,"ending_probe_reload floor=%03lx previous=%03lx spawn=%u saved_count=%lu\n",(unsigned long)checkpoint.floor,(unsigned long)checkpoint.previous_floor,checkpoint.spawn,(unsigned long)checkpoint.saved_count);fflush(trace);
+        }
+        c3_music_close();c3_game_state_free(&state);if(trace)fclose(trace);
+        return probe_result==2?0:1;
+    }
+#endif
 #ifdef C3_CAMPAIGN
     /* Campaign build: play the story unattended from the campaign's own
      * save (resumed when present) or from a new game, never the player's
@@ -377,19 +512,29 @@ int c3_boot_scene_run(int core_status)
         if (!c3_music_open("sdmc:/3ds/Colosseum3DS", music_error, sizeof music_error) && trace)
             fprintf(trace, "music_open status=unavailable reason=%s\n", music_error);
     }
+#ifdef C3_TITLE_CHARACTERS_PROBE
+    int result = 0;
+#else
     int result = c3_movie_player_run(BOOT_ROOT "tpc.c3v", "tpc", trace, error, sizeof(error));
     /* movie.c fn_800364C8: the converted logo movie has no audio track; the
      * original plays its jingle as sound 0x4D1 (volume 0x7F) at movie start. */
     if (!result) c3_music_play(C3_MUSIC_SLOT_406, 0x4D1, 0x7F, 0);
     if (!result) result = c3_movie_player_run(BOOT_ROOT "gs_logo.c3v", "gs_logo", trace, error, sizeof(error));
+#endif
     c3_music_trace(trace, "gs_logo_end");
     int from_game = 0;
     while (!result) {
-        int new_game = 0, dev_floor = 0;
-        result = run_title(trace, &state, &new_game, &dev_floor, from_game,
+        int new_game = 0, dev_floor = 0, link_mode = 0;
+        result = run_title(trace, &state, &new_game, &dev_floor, &link_mode, from_game,
                            &session_options, &options_edited, error, sizeof(error));
         if (result) break;
         c3_music_stop_slot(C3_MUSIC_SLOT_406, 500);   /* the floor scripts start area music */
+        if (link_mode) {
+            /* Battle Mode over local wireless; returns to the title menu. */
+            result = c3_link_lobby_run(link_mode, &state, SAVE_PATH, trace);
+            from_game = 1;
+            continue;
+        }
         if (dev_floor) {
             /* No game state crosses this call; return to the title menu. */
             result = c3_dev_floor_scene_run(trace, error, sizeof(error));

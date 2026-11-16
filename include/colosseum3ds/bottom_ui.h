@@ -3,8 +3,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
-/* Borrowed, validated private asset pack; no GPU or frame ownership. */
-typedef struct { const unsigned char *data; size_t size; } C3UiAssets;
+/* Borrowed, validated private asset pack; no GPU or frame ownership.
+ * sprites: entries in the pack's sprite table (version 1: 10, version 2:
+ * 11, adding C3_UI_BALL). Older packs keep working without the extras. */
+typedef struct { const unsigned char *data; size_t size; unsigned sprites, extra_glyphs; } C3UiAssets;
 typedef struct {
     unsigned char *pixels;
     const C3UiAssets *assets;
@@ -24,12 +26,23 @@ typedef struct {
 } C3UiPager;
 enum { C3_UI_STORY, C3_UI_BATTLE, C3_UI_OPTIONS, C3_UI_QUIT,
        C3_UI_HAND, C3_UI_START, C3_UI_WINDOW, C3_UI_HP_FRAME,
-       C3_UI_MOVE_FRAME, C3_UI_ARROW, C3_UI_SPRITES };
+       C3_UI_MOVE_FRAME, C3_UI_ARROW, C3_UI_BALL, C3_UI_SPRITES };
+#define C3_UI_SPRITES_V1 10u
 #define C3_UI_WHITE 0xf5f5eeu
 #define C3_UI_MUTED 0xaab7b5u
 #define C3_UI_GOLD 0xffdc63u
 enum { C3_UI_RGB8, C3_UI_ROTATED_BGR8, C3_UI_ROTATED_RGB565 };
 int c3_ui_assets_open(C3UiAssets *assets,const void *data,size_t size);
+/* Borrowed RGBA8 pixels of one sprite; 0 when the pack lacks it. */
+int c3_ui_sprite_pixels(const C3UiAssets *assets,unsigned sprite,
+                        const uint8_t **rgba,unsigned *width,unsigned *height);
+/* Blend rgba (sw x sh) rotated by the angle whose cosine and sine are given
+ * (clockwise on screen, y down), scaled to size x size and
+ * centred on (cx,cy), into a rotated BGR8 framebuffer (libctru layout:
+ * screen_w columns of screen_h pixels, bottom to top). Bilinear, clipped. */
+void c3_ui_spin_rgba(unsigned char *rotated_bgr8,int screen_w,int screen_h,
+                     const uint8_t *rgba,unsigned sw,unsigned sh,
+                     int cx,int cy,int size,float cosine,float sine);
 /* Interval counters per drawing primitive, timed only while a microsecond
  * clock is installed (counts are always kept). take copies and clears. */
 typedef struct {

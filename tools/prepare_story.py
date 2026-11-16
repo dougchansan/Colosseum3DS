@@ -10,7 +10,8 @@ Without --floor this prepares Outskirt Stand's two floors exactly as before.
 --floor NAME (repeatable) prepares the named floor_profiles.py rows instead.
 --doors-only writes just area-doors.json: the common door/elevator records of
 the named floors (floor_event.c FloorDoorEntry), plus one C3D1 door pack
-(<floor prefix>.c3d) per floor that has door rows, for native 60.
+(<floor prefix>.c3d) per floor that has door rows, for native 60, and one
+C3R1 treasure pack (<floor prefix>.c3r) per floor that has treasure rows.
 """
 import argparse
 import hashlib
@@ -26,6 +27,13 @@ from prepare_outskirt import PROFILES as ARCHIVE_PROFILES, extent, member, rel_d
 SOURCE_COMMIT = "51bfe4314a218dfaf9592fc80723c50498d0ee55"
 COMMON_REL = "common_rel.rel"
 COMMON_REL_PROFILE = (1369520, "0c89e679305f5e84eff3c774b542120c727ff350a0841cfc516235b3556df69e")
+# Message banks a floor's natives show from another archive. Relic Forest
+# (0x27): native C2's purification runs reliveCeremonyAll on floor 0x385
+# (M3_shrine_1F_rl.fsys), whose bank holds messages 3B0B-3B0D, 3B10, 44CE.
+FOREIGN_MESSAGES = {
+    0x27: (("M3_shrine_1F_rl.fsys", 0x0DAE0A00,
+            (707552, "23c4d004e9022f26e40d76c90151aa57c26b6d4c4ac64c00d8e008ab84e2f921")),),
+}
 # The floors prepared when no --floor is given (the original first area).
 DEFAULT_FLOORS = ("outskirt", "shop")
 
@@ -36,6 +44,9 @@ def source_profiles(names):
     profiles = {floors[name]["archive"]: (floors[name]["bytes"], floors[name]["sha256"])
                 for name in names}
     profiles[COMMON_REL] = COMMON_REL_PROFILE
+    for name in names:
+        for archive, _ident, profile in FOREIGN_MESSAGES.get(floors[name]["floor"], ()):
+            profiles[archive] = profile
     return profiles
 
 
@@ -370,6 +381,46 @@ def encode_door_pack(floor, rows, files=None):
     return header + bytes(body)
 
 
+def extract_treasure(rel, floors):
+    """Original treasure rows (28 bytes) of the given floor numbers.
+
+    common_rel._prolog publishes lbl_80478EBC = data+0x11BFAC with its count
+    at data+0x14A6D0 (floor_event.c FloorTreasureEntry, floor.c
+    _floorInitTresure): flags (bits 2-4 the gift type of floorEventGetTresure,
+    bits 5-7 the kind: 1 chest, 2 and 3 items), count, rotation in degrees,
+    floor, the flag that records it taken, the flag that must be set for it
+    to show (high half of +8), the item (money for type 2) and x, y, z. The
+    table index is the one native CB (floorEventChangeTresure) receives.
+    """
+    common = rel_data(rel, 125)
+    count = u32(common, 0x14A6D0)
+    if not 1 <= count <= 512:
+        raise ValueError("Unexpected original treasure table count")
+    rows = extent(common, 0x11BFAC, count * 28)
+    out = []
+    for index in range(count):
+        flags, number, rotation, floor, taken, hide, low, item, x, y, z = struct.unpack_from(">BBhHHHHIfff", rows, index * 28)
+        if floor in floors:
+            out.append({"index": index, "floor": floor, "flags": flags, "count": number, "rotation": rotation,
+                        "taken_flag": taken, "hide_flag": hide, "word8_low": low, "item": item,
+                        "position": [x, y, z]})
+    return out
+
+
+def encode_treasure_pack(floor, rows):
+    """C3R1, read by c3_field_story_load_treasure (src/field_story.c): a
+    16-byte header and one 32-byte little-endian row per treasure of the
+    floor, in table order (the order floor.c numbers its 0x7FFF people)."""
+    rows = sorted(rows, key=lambda row: row["index"])
+    if not rows or len(rows) > 32 or any(row["floor"] != floor for row in rows):
+        raise ValueError("Treasure pack rows must belong to one floor and fit its bound")
+    body = bytearray()
+    for row in rows:
+        body += struct.pack("<HBBHhHHI3fI", row["index"], row["flags"], row["count"], row["floor"], row["rotation"],
+                            row["taken_flag"], row["hide_flag"], row["item"], *row["position"], 0)
+    return struct.pack("<4s3I", b"C3R1", 1, floor, len(rows)) + bytes(body)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--disc", type=Path, required=True)
@@ -385,7 +436,9 @@ def main():
         extra_messages = extra_message_table(names)
         disc, output = verify_disc(args.disc), check_output(args.output)
         if args.doors_only:
-            doors = extract_doors(admit_common_rel(disc / "files"), set(areas))
+            common_rel = admit_common_rel(disc / "files")
+            doors = extract_doors(common_rel, set(areas))
+            treasure = extract_treasure(common_rel, set(areas))
             encoded = (json.dumps(doors, indent=2)+"\n").encode("utf-8")
             output.mkdir(parents=True, exist_ok=True)
             (output / "area-doors.json").write_bytes(encoded)
@@ -401,6 +454,12 @@ def main():
                                                          for row, model in objects.items()})
                     (output / name).write_bytes(pack)
                     packs[name] = {"rows": len(own), "sha256": hashlib.sha256(pack).hexdigest()}
+                found = [row for row in treasure if row["floor"] == floor]
+                if found:
+                    name = story_pack[:-len(".c3s")] + ".c3r"
+                    pack = encode_treasure_pack(floor, found)
+                    (output / name).write_bytes(pack)
+                    packs[name] = {"rows": len(found), "sha256": hashlib.sha256(pack).hexdigest()}
             print(json.dumps({"output": str(output), "file": "area-doors.json", "records": len(doors),
                               "bytes": len(encoded), "sha256": hashlib.sha256(encoded).hexdigest(),
                               "door_packs": packs}, indent=2))
@@ -443,6 +502,7 @@ def main():
             if be16(bank, 0) != 0x100:
                 raise ValueError("Unexpected original field script bank")
             extra = [member(originals[filename], ident) for ident in extra_messages.get(floor, ())]
+            extra += [member(originals[archive], ident) for archive, ident, _p in FOREIGN_MESSAGES.get(floor, ())]
             own = [messages] if messages is not None else []
             packed = encode_pack(floor, [bank, common], [*own, *extra, common_messages, common_names])
             (output / outname).write_bytes(packed)

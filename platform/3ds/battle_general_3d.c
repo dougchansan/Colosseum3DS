@@ -78,6 +78,29 @@ static int battle_cue_pan(uint32_t sound, float pan)
     return 1;
 }
 static int autoplay; /* unattended probe: the hero uses the opponent policy */
+static char story_prefix[48];
+void c3_battle_general_3d_set_autoplay(int on, const char *prefix)
+{
+    autoplay = on ? 1 : 0;
+    snprintf(story_prefix, sizeof story_prefix, "%s", on && prefix ? prefix : "");
+}
+/* Probe hero: the best ball (Master, Ultra, Great, then the rest) at a
+ * Shadow Pokemon it may snag, else the opponent policy. */
+static void probe_hero_command(C3GeneralBattle *b, const C3BattlePack *pack, unsigned a, C3GeneralCommand *c)
+{
+    static const uint8_t order[12] = {1, 2, 3, 4, 6, 8, 9, 10, 11, 12, 5, 7};
+    for (unsigned k = 0; k < 12; ++k)
+        for (unsigned t = 2; t < 2u + b->active_count; ++t)
+            if (c3_general_battle_can_snag(b, pack, a, order[k], t)) { c->kind = 2; c->slot = order[k]; c->target = (uint8_t)t; return; }
+    c3_general_battle_choose(b, pack, a, c);
+}
+int c3_battle_general_autoplaying(void) { return autoplay != 0; }
+void c3_battle_general_probe_commands(C3GeneralBattle *b, const C3BattlePack *pack, C3GeneralCommand c[2])
+{
+    memset(c, 0, 2 * sizeof *c);
+    for (unsigned a = 0; a < b->active_count; ++a)
+        if (b->active[0][a] != 255 && b->party[0][b->active[0][a]].hp) probe_hero_command(b, pack, a, &c[a]);
+}
 
 static int silent(uint32_t cue, uint32_t sound, char *e, size_t n) { (void)cue; (void)sound; (void)e; (void)n; return 1; }
 
@@ -105,7 +128,25 @@ static int open_stage(C3BattleGeneralStage *s, const C3Battle3dIndex *index, con
     return 1;
 }
 
-int c3_battle_general_3d_run(const C3BattlePack *pack, C3GeneralBattle *b, FILE *trace)
+static int run(const C3BattlePack *pack, C3GeneralBattle *b, C3BattleLinkHooks *hooks, FILE *trace);
+int c3_battle_general_3d_run(const C3BattlePack *pack, C3GeneralBattle *b, FILE *trace) { return run(pack, b, NULL, trace); }
+int c3_battle_general_3d_run_link(const C3BattlePack *pack, C3GeneralBattle *view, C3BattleLinkHooks *hooks, FILE *trace)
+{
+    int saved = autoplay;
+    autoplay = hooks && hooks->autoplay;
+    int r = run(pack, view, hooks, trace);
+    autoplay = saved;
+    return r;
+}
+
+/* Link: send this console's commands and wait on C3_GUI_WAIT. */
+static void link_submit(C3BattleLinkHooks *hooks, C3GeneralUi *ui, const C3GeneralCommand c[2])
+{
+    hooks->submit(hooks->ctx, c);
+    ui->page = C3_GUI_WAIT;
+}
+
+static int run(const C3BattlePack *pack, C3GeneralBattle *b, C3BattleLinkHooks *hooks, FILE *trace)
 {
     C3Battle3dIndex index; C3BattleGeneralCast cast; C3GeneralView view; C3GeneralUi ui; C3N3dsInput input = {0};
     char error[192] = "";
@@ -115,6 +156,8 @@ int c3_battle_general_3d_run(const C3BattlePack *pack, C3GeneralBattle *b, FILE 
     unsigned frames = 0;
     memset(&view, 0, sizeof view); memset(&ui, 0, sizeof ui);
     ui.page = C3_GUI_EVENTS;
+    if (hooks) { ui.control_mask = hooks->control_mask; ui.defer = 1; }
+    C3BattleRng local_rng; c3_battle_rng_init(&local_rng, 0x1u + (uint32_t)c3_n3ds_time_us());
     if (!stage) return -1;
     if (!c3_battle3d_index_load(&index, C3_BATTLE3D_ROOT "/index.c3n", error, sizeof error)) { free(stage); return -1; }
     opening_cast(b, &cast);
@@ -141,6 +184,12 @@ int c3_battle_general_3d_run(const C3BattlePack *pack, C3GeneralBattle *b, FILE 
         uint64_t now = c3_n3ds_active_time_us();
         uint64_t delta = (now - previous) / 1000u; previous += delta * 1000u;
         uint32_t ms = delta > 1000 ? 1000 : (uint32_t)delta;
+        if (hooks) {
+            if (!hooks->pump(hooks->ctx, error, sizeof error)) { ended = 1; result = 0; goto done; }
+            if (ui.page == C3_GUI_WAIT && hooks->turn_ready(hooks->ctx, b)) {
+                ui.page = C3_GUI_EVENTS; c3_general_view_restart(&view, b); count = 0; dirty = 1;
+            }
+        }
         /* Feed the next part of the log once the stage has shown the last. */
         if (ui.page == C3_GUI_EVENTS && c3_battle_general_stage_idle(stage)) {
             uint32_t n = c3_general_view_batch(&view, b, batch, C3_PREVIEW_EVENT_LIMIT, &first);
@@ -179,15 +228,24 @@ int c3_battle_general_3d_run(const C3BattlePack *pack, C3GeneralBattle *b, FILE 
                 if (!c3_battle_general_stage_submit(stage, batch, n)) { snprintf(error, sizeof error, "Invalid battle event batch."); goto done; }
                 count = n; dirty = 1;
             } else if (b->outcome != C3_GB_RUNNING) { ui.page = C3_GUI_RESULT; dirty = 1; }
-            else { c3_general_ui_commands(&ui, b); dirty = 1; }
+            else {
+                int any = c3_general_ui_commands(&ui, b); dirty = 1;
+                if (hooks && !any) { C3GeneralCommand none[2]; memset(none, 0, sizeof none); link_submit(hooks, &ui, none); }
+            }
         }
         uint16_t pressed = input.pressed;
         /* Hold A or B to hurry the messages along. */
         stage->message_ms = (input.held & (C3_PAD_A | C3_PAD_B)) && ui.page == C3_GUI_EVENTS ? 300 : 1100;
-        if (autoplay && ui.page != C3_GUI_EVENTS && ui.page != C3_GUI_RESULT) {
+        if (autoplay && hooks && ui.page != C3_GUI_EVENTS && ui.page != C3_GUI_RESULT && ui.page != C3_GUI_WAIT) {
             C3GeneralCommand c[2]; memset(c, 0, sizeof c);
             for (unsigned a = 0; a < b->active_count; ++a)
-                if (b->active[0][a] != 255 && b->party[0][b->active[0][a]].hp) c3_general_battle_choose(b, pack, a, &c[a]);
+                if ((hooks->control_mask >> a & 1u) && b->active[0][a] != 255 && b->party[0][b->active[0][a]].hp)
+                    c3_general_battle_choose_with(b, pack, a, &local_rng, &c[a]);
+            link_submit(hooks, &ui, c); dirty = 1;
+        } else if (autoplay && !hooks && ui.page != C3_GUI_EVENTS && ui.page != C3_GUI_RESULT) {
+            C3GeneralCommand c[2]; memset(c, 0, sizeof c);
+            for (unsigned a = 0; a < b->active_count; ++a)
+                if (b->active[0][a] != 255 && b->party[0][b->active[0][a]].hp) probe_hero_command(b, pack, a, &c[a]);
             if (!c3_general_battle_turn(b, pack, c, error)) goto done;
             if (trace) { fprintf(trace, "general_battle_turn turn=%lu events=%lu outcome=%d autoplay=1\n",
                 (unsigned long)b->turn, (unsigned long)b->event_count, (int)b->outcome); fflush(trace); }
@@ -195,11 +253,13 @@ int c3_battle_general_3d_run(const C3BattlePack *pack, C3GeneralBattle *b, FILE 
         }
         if (ui.page == C3_GUI_RESULT) {
             if ((pressed & C3_PAD_A) || (autoplay && ++autoplay > 120)) { ended = 1; result = 0; break; }
-        } else if (ui.page != C3_GUI_EVENTS && pressed) {
+        } else if (ui.page != C3_GUI_EVENTS && ui.page != C3_GUI_WAIT && pressed) {
             dirty = 1;
-            if (c3_general_ui_press(&ui, pack, b, pressed, trace)) { c3_general_view_restart(&view, b); count = 0; }
+            int pr = c3_general_ui_press(&ui, pack, b, pressed, trace);
+            if (pr == 2 && hooks) link_submit(hooks, &ui, ui.commands);
+            else if (pr) { c3_general_view_restart(&view, b); count = 0; }
         }
-        c3_battle_general_stage_command_phase(stage, ui.page != C3_GUI_EVENTS);
+        c3_battle_general_stage_command_phase(stage, ui.page != C3_GUI_EVENTS && ui.page != C3_GUI_WAIT);
         if (!c3_battle_general_stage_step(stage, ms, error, sizeof error)) goto done;
         uint32_t cursor = stage->presentation.cursor < count ? stage->presentation.cursor : count ? count - 1 : 0;
         uint32_t now_shown = count ? first + cursor : UINT32_MAX;
@@ -222,9 +282,10 @@ int c3_battle_general_3d_run(const C3BattlePack *pack, C3GeneralBattle *b, FILE 
             ++frames;
             if (autoplay && (frames == 240 || frames == 900 || frames == 1800 || frames == 3000)) {
                 char shot[96];
-                snprintf(shot, sizeof shot, "sdmc:/3ds/Colosseum3DS/general3d_%u_top.bmp", frames);
+                const char *prefix = hooks && hooks->shot_prefix ? hooks->shot_prefix : story_prefix[0] ? story_prefix : "general3d";
+                snprintf(shot, sizeof shot, "sdmc:/3ds/Colosseum3DS/%s_%u_top.bmp", prefix, frames);
                 int top = c3_n3ds_capture_top(shot) == 0;
-                snprintf(shot, sizeof shot, "sdmc:/3ds/Colosseum3DS/general3d_%u_bottom.bmp", frames);
+                snprintf(shot, sizeof shot, "sdmc:/3ds/Colosseum3DS/%s_%u_bottom.bmp", prefix, frames);
                 int bottom = c3_n3ds_capture_bottom(shot) == 0;
                 if (trace) { fprintf(trace, "general3d_shot frame=%u top=%d bottom=%d\n", frames, top, bottom); fflush(trace); }
             }

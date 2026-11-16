@@ -4,7 +4,8 @@
 The pack holds original big-endian rows only: every encounter row with its
 floor, kind, type, opponent trainer, trainer kind and up to six trainer
 Pokemon records, plus the move, species, type-chart and growth tables the
-native general battle (src/battle_general.c) reads. Nothing is generated.
+native general battle (src/battle_general.c) reads, and (version 2) the
+Shadow table that snagging reads. Nothing is generated.
 
 With --stories, every C3S1 story pack in the given directories is scanned for
 native 0x98/0x66 call sites; the JSON report then lists each requested
@@ -37,6 +38,9 @@ TABLES = {
     "move": (0x11C7C4, 0x14A6D4, 56, 358),
     "species": (0x121A04, 0x14A6E0, 284, 413),
 }
+# Shadow table (fn_801EEE44 catch rate +0, field08 gauge +8, snag flag +0x12),
+# ids 0..0x60, appended as pack version 2.
+SHADOW = (0x1439D8, 0x38, 0x61)
 TYPE_CHART = (0x8035B500, 44, 18)   # rows x 0x2C, gs_colsys.c fn_8010C508
 GROWTH = (0x8035E940, 0x194, 8)     # u32 exp[101] per group
 NAME_SIZE = 16
@@ -191,9 +195,10 @@ def make_pack(rel_bytes, dol_bytes, source_commit=None, common_sha1=None, dol_sh
     types_at = species_at + len(species)
     growth_at = types_at + len(types)
     entries_at = growth_at + len(growth)
-    body = moves + species + types + growth + b"".join(entries) + names_section(rel, rel_bytes, entries)
+    shadow = rel_bytes[REL_DATA + SHADOW[0]:REL_DATA + SHADOW[0] + SHADOW[1] * SHADOW[2]]
+    body = moves + species + types + growth + b"".join(entries) + names_section(rel, rel_bytes, entries) + shadow
     header = bytearray(HEADER_SIZE)
-    struct.pack_into(">4s7I", header, 0, MAGIC, 1, HEADER_SIZE + len(body), count,
+    struct.pack_into(">4s7I", header, 0, MAGIC, 2, HEADER_SIZE + len(body), count,
                      rel.count("move"), rel.count("species"), TYPE_CHART[2], GROWTH[2])
     if source_commit:
         header[32:52] = bytes.fromhex(source_commit)

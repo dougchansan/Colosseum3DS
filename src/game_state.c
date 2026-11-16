@@ -25,6 +25,12 @@
 #define POKEMON_SIZE 0x138u
 #define MEMO 0x82a8u
 #define SLOT_BASE 0x6000u
+/* PC boxes (savedataGetStatus(0,3), pcbox.c): three boxes of a 0x14-byte
+ * header (the name, nine GSchars) and thirty Pokemon records. */
+#define BOX_BASE 0xb88u
+#define BOX_SIZE 0x24a4u
+#define BOX_COUNT 3u
+#define BOX_SLOTS 30u
 
 typedef struct GameStateImpl {
     uint8_t *body, *card, *pack;
@@ -32,6 +38,11 @@ typedef struct GameStateImpl {
     uint32_t random;
     double play_time;
     unsigned used_backup;
+    /* gamedatasaveGetStatus(0,5/7/8): the floor, previous floor and
+     * entrance of the last card save (fn_80113FE8's whiteout fallback). The
+     * body's own fields follow the hero, so the point is kept here. */
+    uint32_t saved_floor, saved_previous;
+    uint8_t saved_spawn;
 } GameStateImpl;
 
 static uint16_t be16(const uint8_t *p)
@@ -76,13 +87,15 @@ static int valid_body(const uint8_t *b)
 {
     unsigned i, party=0;
     float seconds;
-    /* The generation byte is provenance, not a save-layout version. Retail
-     * gamedataAttestCheckValid (80135530) accepts any nonzero generation;
-     * imported US cards can legitimately retain 02 instead of our freshly
-     * created 03. Keep the admitted Colosseum/US language and region here. */
-    if (b[0]!=0x0b || !b[1] || b[2]!=2 || b[3]!=2 ||
+    /* Bytes 1-3 are the generation, region (1 Japan, 2 America, 3 Europe)
+     * and language (1 Japanese, 2 English, 3 German, 4 French, 5 Italian,
+     * 6 Spanish). Retail gamedataAttestCheckValid (80135530) only requires
+     * them nonzero, and the Japanese, American and European games share
+     * this body layout, so any version's game loads. Money above the
+     * game's cap (edited saves) is capped by install. */
+    if (b[0]!=0x0b || !b[1] || !b[2] || !b[3] ||
         !terminated_name(b+HERO,11,1) || b[HERO+0xa80]>1 ||
-        be32(b+HERO+0xa84)>9999999u || b[0x29]>1 || b[0x2a]>1 ||
+        b[0x29]>1 || b[0x2a]>1 ||
         !be32(b+0x1c) || be32(b+0x1c)>65535u || be32(b+0x24)>65535u)
         return 0;
     seconds=read_float(b+0x20);
@@ -178,9 +191,13 @@ static int load_pack(GameStateImpl *s, const char *path, char *error)
 static int install(C3GameState *state, GameStateImpl *s, char *error)
 {
     if (!valid_body(s->body)) {
-        release(s); return fail(error,"Saved body is not a supported GC6E01 game state");
+        release(s); return fail(error,"Saved body is not a supported Colosseum game state");
     }
+    /* heroAddMoney keeps money at most 9,999,999; an edited save above it
+     * is brought to the cap (the shop and rewards assume it). */
+    if (be32(s->body+HERO+0xa84)>9999999u) put32(s->body+HERO+0xa84,9999999u);
     s->play_time=read_float(s->body+0x20);
+    s->saved_floor=be32(s->body+0x1c); s->saved_previous=be32(s->body+0x24); s->saved_spawn=s->body[0x28];
     release(state->impl); state->impl=s;
     if (error) error[0]=0;
     return 1;
@@ -369,15 +386,53 @@ int c3_game_state_new(C3GameState *state, const char *name, uint32_t seed,
     return install(state,s,error);
 }
 
+/* Kana -> romaji, indexed from U+3041 (hiragana) or U+30A1 (katakana):
+ * small vowels, then the gojuon order of the Unicode block. */
+static const char *const kana_romaji[86]={
+    "a","a","i","i","u","u","e","e","o","o","ka","ga","ki","gi","ku","gu","ke","ge","ko","go",
+    "sa","za","shi","ji","su","zu","se","ze","so","zo","ta","da","chi","ji","",  "tsu","zu","te","de","to","do",
+    "na","ni","nu","ne","no","ha","ba","pa","hi","bi","pi","fu","bu","pu","he","be","pe","ho","bo","po",
+    "ma","mi","mu","me","mo","ya","ya","yu","yu","yo","yo","ra","ri","ru","re","ro","wa","wa","wi","we","wo","n","vu"};
+
+size_t c3_game_text_ascii(const uint8_t *text, unsigned units, char *out, size_t capacity)
+{
+    size_t n=0; unsigned i; int double_next=0;
+    if (!out || !capacity) return 0;
+    for (i=0; i<units && text; ++i) {
+        uint16_t c=be16(text+2u*i);
+        const char *piece=NULL; char one[2]={0,0};
+        if (!c) break;
+        if (c>=0xff01 && c<=0xff5e) c=(uint16_t)(c-0xff01+0x21); /* fullwidth ASCII */
+        else if (c==0x3000) c=' ';
+        if (c>=32 && c<=126) { one[0]=(char)c; piece=one; }
+        else if (c>=0xc0 && c<=0xff) { /* Latin-1 letters without accents */
+            static const char latin[]="AAAAAAACEEEEIIIIDNOOOOOxOUUUUYTsaaaaaaaceeeeiiiidnooooo/ouuuuyty";
+            one[0]=latin[c-0xc0]; piece=one;
+        } else if (c==0x30fc || c==0x2015 || c==0x2212) piece="-";
+        else if (c==0x3063 || c==0x30c3) { double_next=1; continue; } /* small tsu */
+        else if ((c>=0x3041 && c<=0x3094) || (c>=0x30a1 && c<=0x30f4)) {
+            unsigned k=c-(c>=0x30a1?0x30a1u:0x3041u);
+            /* Small ya/yu/yo after an -i syllable: kya, sha, cho ... */
+            if ((k==66||k==68||k==70) && n>=1 && out[n-1]=='I') {
+                const char *y=kana_romaji[k];
+                if (n>=2 && (out[n-2]=='H' || out[n-2]=='J')) { out[n-1]=(char)(y[1]-32); continue; }
+                --n; piece=y;
+            } else piece=k<86?kana_romaji[k]:"?";
+            if (double_next && piece[0] && piece[0]!='a' && piece[0]!='i' && piece[0]!='u' && piece[0]!='e' && piece[0]!='o' && n+1<capacity)
+                out[n++]=(char)((piece[0]=='c'?'t':piece[0])-32);
+        } else { one[0]='?'; piece=one; }
+        double_next=0;
+        for (; *piece && n+1<capacity; ++piece) out[n++]=(char)((*piece>='a'&&*piece<='z'&&c>=0x3041&&c<=0x30ff)?*piece-32:*piece);
+    }
+    out[n]=0;
+    return n;
+}
+
 static void display_name(char out[32], const uint8_t *name)
 {
-    unsigned i;
-    for (i=0; i<10; ++i) {
-        uint16_t c=be16(name+2u*i);
-        if (!c) break;
-        out[i]=(c>=32 && c<=126)?(char)c:'?';
-    }
-    out[i]=0;
+    /* The name buffer holds 10 characters and a terminator; romaji may be
+     * longer than the kana it spells. */
+    c3_game_text_ascii(name,10,out,32);
 }
 
 int c3_game_state_summary(const C3GameState *state, C3GameSummary *summary)
@@ -395,6 +450,7 @@ int c3_game_state_summary(const C3GameState *state, C3GameSummary *summary)
     summary->floor=be32(b+0x1c); summary->previous_floor=be32(b+0x24);
     summary->spawn=b[0x28]; summary->rumble_disabled=b[0x29]; summary->sound_mono=b[0x2a];
     summary->used_backup=(uint8_t)s->used_backup;
+    summary->region=b[2]; summary->language=b[3];
     for (i=0; i<6; ++i) {
         const uint8_t *p=b+PARTY+i*POKEMON_SIZE;
         C3GamePokemon *q=&summary->party[i];
@@ -451,12 +507,24 @@ int c3_game_state_set_partner(C3GameState *state, int present)
  * GScharLenCpy(hero + 0xAC2, name, 0xB), eleven 16-bit units. */
 int c3_game_state_set_partner_name(C3GameState *state, const char *name)
 {
+    /* UTF-8 in: the name entry's keys include the gender signs and
+     * typographic punctuation of the original font. */
     GameStateImpl *s=state?state->impl:NULL;
-    size_t length=name?strlen(name):0, i;
-    if (!s || !length || length>10) return 0;
-    for (i=0; i<length; ++i) if ((unsigned char)name[i]<32 || (unsigned char)name[i]>126) return 0;
+    uint16_t units[10];size_t count=0;
+    const unsigned char *p=(const unsigned char *)name;
+    if (!s || !p || !*p) return 0;
+    while (*p) {
+        uint16_t c;
+        if (p[0]<0x80) { c=p[0]; p+=1; }
+        else if ((p[0]&0xe0)==0xc0 && (p[1]&0xc0)==0x80) { c=(uint16_t)((p[0]&0x1f)<<6|(p[1]&0x3f)); p+=2; }
+        else if ((p[0]&0xf0)==0xe0 && (p[1]&0xc0)==0x80 && (p[2]&0xc0)==0x80) {
+            c=(uint16_t)((p[0]&0x0f)<<12|(p[1]&0x3f)<<6|(p[2]&0x3f)); p+=3; }
+        else return 0;
+        if (c<32 || c==0x7f || c==0xffff || count==10) return 0;
+        units[count++]=c;
+    }
     memset(s->body+HERO+0xac2,0,22);
-    for (i=0; i<length; ++i) put16(s->body+HERO+0xac2+i*2,(uint8_t)name[i]);
+    for (size_t i=0; i<count; ++i) put16(s->body+HERO+0xac2+i*2,units[i]);
     return 1;
 }
 
@@ -596,6 +664,135 @@ int c3_game_state_set_pokemon(C3GameState *state,unsigned slot,const uint8_t rec
        !be16(record+0x8c)||be16(record+0x8a)>be16(record+0x8c))return 0;
     memcpy(p,record,POKEMON_SIZE);return 1;
 }
+/* pokemonInit / PokemonBios: an empty record's only nonzero defaults. */
+static void empty_record(uint8_t *p)
+{
+    memset(p,0,POKEMON_SIZE);p[0x10]=2;p[0xd0]=0xff;put32(p+0xdc,(uint32_t)-100);
+}
+static uint8_t *box_record(GameStateImpl *s,unsigned box,unsigned slot)
+{
+    return box<BOX_COUNT&&slot<BOX_SLOTS?s->body+BOX_BASE+box*BOX_SIZE+0x14+slot*POKEMON_SIZE:NULL;
+}
+int c3_game_state_box_pokemon(const C3GameState *state,unsigned box,unsigned slot,uint8_t record[0x138])
+{
+    GameStateImpl *s=state?state->impl:NULL;const uint8_t *p;
+    if(!s||!(p=box_record(s,box,slot)))return 0;
+    if(record)memcpy(record,p,POKEMON_SIZE);
+    return be16(p)!=0;
+}
+int c3_game_state_box_name(const C3GameState *state,unsigned box,char *out,size_t capacity)
+{
+    GameStateImpl *s=state?state->impl:NULL;
+    if(!s||box>=BOX_COUNT||!out||!capacity)return 0;
+    c3_game_text_ascii(s->body+BOX_BASE+box*BOX_SIZE,9,out,capacity);return 1;
+}
+int c3_game_state_box_used(const C3GameState *state,unsigned box)
+{
+    GameStateImpl *s=state?state->impl:NULL;int used=0;
+    if(!s||box>=BOX_COUNT)return -1;
+    for(unsigned i=0;i<BOX_SLOTS;++i)used+=be16(box_record(s,box,i))!=0;
+    return used;
+}
+int c3_game_state_box_store(C3GameState *state,unsigned box,const uint8_t record[0x138])
+{
+    /* pcboxAddPokemon: the first empty slot of the box. */
+    GameStateImpl *s=state?state->impl:NULL;
+    if(!s||box>=BOX_COUNT||!record||!be16(record))return -1;
+    for(unsigned i=0;i<BOX_SLOTS;++i){uint8_t *p=box_record(s,box,i);
+        if(!be16(p)){memcpy(p,record,POKEMON_SIZE);return (int)i;}}
+    return -1;
+}
+int c3_game_state_box_deposit(C3GameState *state,unsigned party_slot,unsigned box)
+{
+    GameStateImpl *s=state?state->impl:NULL;uint8_t *party;unsigned count=0;
+    if(!s||party_slot>=6||box>=BOX_COUNT)return -1;
+    party=s->body+PARTY;
+    for(unsigned i=0;i<6;++i)count+=be16(party+i*POKEMON_SIZE)!=0;
+    /* "That's your last POKeMON!": the party keeps at least one. */
+    if(count<2||!be16(party+party_slot*POKEMON_SIZE))return -1;
+    int slot=c3_game_state_box_store(state,box,party+party_slot*POKEMON_SIZE);
+    if(slot<0)return -1;
+    /* The party closes the gap. */
+    memmove(party+party_slot*POKEMON_SIZE,party+(party_slot+1)*POKEMON_SIZE,(5-party_slot)*POKEMON_SIZE);
+    empty_record(party+5*POKEMON_SIZE);
+    return slot;
+}
+int c3_game_state_box_withdraw(C3GameState *state,unsigned box,unsigned slot)
+{
+    GameStateImpl *s=state?state->impl:NULL;uint8_t *p,*party;
+    if(!s||!(p=box_record(s,box,slot))||!be16(p))return -1;
+    party=s->body+PARTY;
+    for(unsigned i=0;i<6;++i)if(!be16(party+i*POKEMON_SIZE)){
+        memcpy(party+i*POKEMON_SIZE,p,POKEMON_SIZE);empty_record(p);return (int)i;}
+    return -1; /* "Your party's full." */
+}
+/* heroAddPokemon into the first empty party slot, else pcboxAddPokemon
+ * (savedata section 3 at body+0xB88: three boxes of a 0x14-byte header and
+ * 30 records, 0x24A4 apart; the first free entry of the first box with
+ * one), which stores the restored copy (pokemonAllKaihuku). */
+#define PCBOX 0xb88u
+#define PCBOX_STRIDE 0x24a4u
+int c3_game_state_receive_pokemon(C3GameState *state,const uint8_t record[0x138],
+                                  const uint8_t restored[0x138],unsigned *where)
+{
+    GameStateImpl *s=state?state->impl:NULL;
+    if(!s||!record||!restored||!be16(record)||!record[0x60]||record[0x60]>100||
+       !be16(record+0x8c)||be16(record+0x8a)>be16(record+0x8c))return 0;
+    for(unsigned i=0;i<6;++i){uint8_t *p=s->body+PARTY+i*POKEMON_SIZE;
+        if(be16(p))continue;
+        memcpy(p,record,POKEMON_SIZE);if(where)*where=i;return 1;}
+    for(unsigned box=0;box<3;++box)for(unsigned i=0;i<30;++i){
+        uint8_t *p=s->body+PCBOX+box*PCBOX_STRIDE+0x14+i*POKEMON_SIZE;
+        if(be16(p))continue;
+        memcpy(p,restored,POKEMON_SIZE);if(where)*where=100+box*30+i;return 1;}
+    return 0;
+}
+/* Take `count` of item `id` from bag pocket `pocket` (the pockets of
+ * c3_game_state_item); an emptied slot is removed and the pocket closed up. */
+int c3_game_state_take_item(C3GameState *state,unsigned pocket,unsigned id,unsigned count)
+{
+    static const unsigned offsets[]={0x780,0x7d0,0x87c,0x8bc,0x9bc,0xa74};
+    static const unsigned counts[]={20,43,16,64,46,3};
+    GameStateImpl *s=state?state->impl:NULL;
+    if(!s||pocket>=6||!id)return 0;
+    uint8_t *base=s->body+HERO+offsets[pocket];unsigned have=0;
+    for(unsigned i=0;i<counts[pocket];++i)if(be16(base+i*4)==id)have+=be16(base+i*4+2);
+    if(have<count)return 0;
+    for(unsigned i=0;i<counts[pocket]&&count;++i){uint8_t *q=base+i*4;
+        if(be16(q)!=id)continue;
+        unsigned n=be16(q+2),t=n<count?n:count;put16(q+2,(uint16_t)(n-t));count-=t;}
+    unsigned w=0;
+    for(unsigned i=0;i<counts[pocket];++i){uint8_t *q=base+i*4;
+        if(!be16(q)||!be16(q+2))continue;
+        if(w!=i)memcpy(base+w*4,q,4);
+        ++w;}
+    for(;w<counts[pocket];++w)memset(base+w*4,0,4);
+    return 1;
+}
+/* Add count of item id to bag pocket: to its slot, else the first empty one
+ * (at most 999 a slot). For probes and tests; the menus use inventory.c. */
+int c3_game_state_put_item(C3GameState *state,unsigned pocket,unsigned id,unsigned count)
+{
+    static const unsigned offsets[]={0x780,0x7d0,0x87c,0x8bc,0x9bc,0xa74};
+    static const unsigned counts[]={20,43,16,64,46,3};
+    GameStateImpl *s=state?state->impl:NULL;
+    if(!s||pocket>=6||!id||id>0xffffu||!count)return 0;
+    uint8_t *base=s->body+HERO+offsets[pocket];int empty=-1;
+    for(unsigned i=0;i<counts[pocket];++i){uint8_t *q=base+i*4;
+        if(be16(q)==id){unsigned n=be16(q+2)+count;if(n>999)return 0;put16(q+2,(uint16_t)n);return 1;}
+        if(!be16(q)&&empty<0)empty=(int)i;}
+    if(empty<0||count>999)return 0;
+    put16(base+empty*4,(uint16_t)id);put16(base+empty*4+2,(uint16_t)count);return 1;
+}
+int c3_game_state_trade_pokemon(C3GameState *state,unsigned slot,const uint8_t record[0x138])
+{
+    GameStateImpl *s=state?state->impl:NULL;uint8_t *p;
+    if(!s||!record||slot>=6)return 0;
+    p=s->body+PARTY+slot*POKEMON_SIZE;
+    if(!be16(p)||!be16(record)||record[0xcb]||!record[0x60]||record[0x60]>100||
+       !be16(record+0x8c)||be16(record+0x8a)>be16(record+0x8c))return 0;
+    memcpy(p,record,POKEMON_SIZE);return 1;
+}
 int c3_game_state_mail_settings(const C3GameState *state,unsigned *sort,unsigned *tone)
 {
     const GameStateImpl *s=state?state->impl:NULL;if(!s||!sort||!tone)return 0;
@@ -707,6 +904,45 @@ int c3_game_state_save(C3GameState *state, const char *path,
     }
     free(s->card); free(s->body); s->card=card; s->body=body;
     s->random=random; s->used_backup=0;
+    s->saved_floor=be32(body+0x1c); s->saved_previous=be32(body+0x24); s->saved_spawn=body[0x28];
     if (error) error[0]=0;
+    return 1;
+}
+
+/* The staffroll restores the backed-up body after each card transaction.
+ * Save an owned snapshot through the existing atomic writer so neither a
+ * failed attempt nor a successful write advances the live session's RNG or
+ * counters. Prepared tables are not needed by the save encoder. */
+int c3_game_state_save_snapshot(const C3GameState *state, const char *path,
+                                 char error[C3_GAME_ERROR_SIZE])
+{
+    const GameStateImpl *source=state?state->impl:NULL;
+    GameStateImpl *copy;
+    C3GameState snapshot={0};
+    int result;
+    if(!source||!path)return fail(error,"No game state is available to save");
+    copy=calloc(1,sizeof *copy);
+    if(!copy)return fail(error,"Save snapshot allocation failed");
+    copy->body=malloc(C3_SAVE_BODY_SIZE);
+    copy->card=malloc(source->card_length);
+    if(!copy->body||!copy->card){release(copy);return fail(error,"Save snapshot allocation failed");}
+    memcpy(copy->body,source->body,C3_SAVE_BODY_SIZE);
+    memcpy(copy->card,source->card,source->card_length);
+    copy->card_length=source->card_length;
+    copy->random=source->random;
+    copy->play_time=source->play_time;
+    snapshot.impl=copy;
+    result=c3_game_state_save(&snapshot,path,error);
+    c3_game_state_free(&snapshot);
+    return result;
+}
+int c3_game_state_save_point(const C3GameState *state, uint32_t *floor,
+                             uint32_t *previous_floor, uint8_t *spawn)
+{
+    const GameStateImpl *s=state?state->impl:NULL;
+    if (!s || !s->saved_floor) return 0;
+    if (floor) *floor=s->saved_floor;
+    if (previous_floor) *previous_floor=s->saved_previous;
+    if (spawn) *spawn=s->saved_spawn;
     return 1;
 }

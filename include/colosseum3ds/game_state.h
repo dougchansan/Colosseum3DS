@@ -32,6 +32,7 @@ typedef struct C3GameSummary {
     uint8_t rumble_disabled;  /* Original no-vibration option: 0 on, 1 off. */
     uint8_t party_count;
     uint8_t used_backup;
+    uint8_t region, language; /* save body bytes 2-3: 1 Japan / 2 America / 3 Europe; 1 ja, 2 en, 3 de, 4 fr, 5 it, 6 es */
     C3GamePokemon party[C3_GAME_PARTY_COUNT];
 } C3GameSummary;
 
@@ -57,6 +58,11 @@ int c3_game_state_new(C3GameState *state, const char *name, uint32_t seed,
                       char error[C3_GAME_ERROR_SIZE]);
 
 int c3_game_state_summary(const C3GameState *state, C3GameSummary *summary);
+/* A save's big-endian UTF-16 text (names, nicknames) for the ASCII font:
+ * ASCII and fullwidth ASCII as is, accented Latin letters without accents,
+ * kana as upper-case romaji, anything else '?'. Stops at `units` or a 0;
+ * returns the length written to `out` (always terminated). */
+size_t c3_game_text_ascii(const uint8_t *text, unsigned units, char *out, size_t capacity);
 /* Reviewed native roster: ordinary Umbreon/Espeon use original growth bank 0.
  * Returns 0 for unsupported species/shadow records/levels, without guessing a
  * growth curve. At level 100 the valid range is zero (level cap). */
@@ -83,6 +89,21 @@ int c3_game_state_pokemon(const C3GameState *state,unsigned slot,uint8_t record[
 /* Battle writeback: replace party slot's record. The slot must already hold
  * the same species; level 1..100 and HP within the record's maximum. */
 int c3_game_state_set_pokemon(C3GameState *state,unsigned slot,const uint8_t record[0x138]);
+/* A received Pokemon (a snag): the first empty party slot gets `record`,
+ * else the first free PC box entry gets `restored` (pcboxAddPokemon heals).
+ * where: 0..5 party slot, 100 + box*30 + entry. Returns 0 when all are full. */
+int c3_game_state_receive_pokemon(C3GameState *state,const uint8_t record[0x138],
+                                  const uint8_t restored[0x138],unsigned *where);
+int c3_game_state_box_pokemon(const C3GameState *state,unsigned box,unsigned slot,uint8_t record[0x138]);
+/* Remove count of item id from bag pocket (0 normal, 1 key, 2 balls, 3 TMs,
+ * 4 berries, 5 colognes); returns 0, changing nothing, when there are fewer. */
+int c3_game_state_take_item(C3GameState *state,unsigned pocket,unsigned id,unsigned count);
+/* Add count of item id to a pocket (its slot, else the first empty one). */
+int c3_game_state_put_item(C3GameState *state,unsigned pocket,unsigned id,unsigned count);
+/* A traded Pokemon replaces the occupied party slot it was traded from
+ * (docs/link-play.md): any species, not an egg, level 1..100, HP within its
+ * maximum. Memory only; the explicit Save writes it. */
+int c3_game_state_trade_pokemon(C3GameState *state,unsigned slot,const uint8_t record[0x138]);
 /* Native mail read transaction follows mailMain fn_801D228C; original flag
  * metadata comes from the admitted private PDA pack. No disk I/O. */
 int c3_game_state_mail_read(C3GameState *state,const C3GameMailRead *action,int commit);
@@ -106,13 +127,30 @@ const uint8_t *c3_game_state_body(const C3GameState *state, size_t *length);
  * arbitrary player position. Changing these fields does not run scripts. */
 int c3_game_state_set_floor(C3GameState *state, uint32_t floor,
                             uint32_t previous_floor, uint8_t spawn);
+/* gamedatasaveGetStatus(0,5/7/8): where the last card save (or the loaded
+ * card) was made. c3_game_state_set_floor does not move it. Returns 0 when
+ * no save point is known (a fresh New Game before its first save). */
+int c3_game_state_save_point(const C3GameState *state, uint32_t *floor,
+                             uint32_t *previous_floor, uint8_t *spawn);
 /* The partner-present byte of the hero record (heroSetStatus selector 0x18,
  * hero +0xA98), written by script native 23 when the partner joins. */
 int c3_game_state_set_partner(C3GameState *state, int present);
 int c3_game_state_partner(const C3GameState *state);
 /* The partner's name (hero +0xAC2, ten characters and a terminator).
- * Accepts 1..10 printable ASCII characters. */
+ * Accepts 1..10 UTF-8 characters (GSchars, no controls). */
 int c3_game_state_set_partner_name(C3GameState *state, const char *name);
+/* PC boxes (pcbox.c; three boxes of thirty). box_pokemon copies a slot's
+ * record (record may be NULL) and returns 1 when it holds a Pokemon.
+ * box_store puts a record in the box's first empty slot (pcboxAddPokemon).
+ * deposit moves a party member into a box (the party keeps at least one
+ * and closes the gap); withdraw moves a box Pokemon into the first empty
+ * party slot. Each returns the slot it filled, or -1 when it cannot. */
+int c3_game_state_box_pokemon(const C3GameState *state, unsigned box, unsigned slot, uint8_t record[0x138]);
+int c3_game_state_box_name(const C3GameState *state, unsigned box, char *out, size_t capacity);
+int c3_game_state_box_used(const C3GameState *state, unsigned box);
+int c3_game_state_box_store(C3GameState *state, unsigned box, const uint8_t record[0x138]);
+int c3_game_state_box_deposit(C3GameState *state, unsigned party_slot, unsigned box);
+int c3_game_state_box_withdraw(C3GameState *state, unsigned box, unsigned slot);
 int c3_game_state_set_options(C3GameState *state, uint8_t sound_mono,
                               uint8_t rumble_disabled);
 int c3_game_state_add_play_time(C3GameState *state, double seconds);
@@ -135,6 +173,11 @@ uint16_t c3_game_state_random16(void *state);
  * using the save service's recoverable .tmp/.bak protocol. Failed stores
  * leave the in-memory payload/counters unchanged. The parent directory must
  * already exist. Caller must serialize save operations. */
+/* Explicit clear-save boundary: write a snapshot, retaining the live body,
+ * counters, RNG and card image as movie.c fn_80035F64 restores its backup. */
+int c3_game_state_save_snapshot(const C3GameState *state, const char *path,
+                                 char error[C3_GAME_ERROR_SIZE]);
+
 int c3_game_state_save(C3GameState *state, const char *path,
                        char error[C3_GAME_ERROR_SIZE]);
 

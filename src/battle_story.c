@@ -4,6 +4,64 @@
 #include <string.h>
 
 static int fail(char *e, const char *m) { if (e) snprintf(e, C3_GB_ERROR_SIZE, "%s", m); return 0; }
+static uint16_t rd16(const uint8_t *p) { return (uint16_t)(p[0] << 8 | p[1]); }
+static uint32_t rd32(const uint8_t *p) { return (uint32_t)p[0] << 24 | (uint32_t)p[1] << 16 | (uint32_t)p[2] << 8 | p[3]; }
+
+int c3_battle_story_prepare(const C3GameState *state, C3GeneralBattle *battle)
+{
+    if (!state || !battle) return 0;
+    battle->snag = 1;
+    memset(battle->balls, 0, sizeof battle->balls);
+    for (unsigned slot = 0; slot < 16; ++slot) {
+        C3GameItem item;
+        if (!c3_game_state_item(state, 2, slot, &item)) return 0;
+        if (item.id >= 1 && item.id <= 12) battle->balls[item.id] = (uint16_t)(battle->balls[item.id] + item.quantity);
+    }
+    return 1;
+}
+
+/* Snagged Shadow Pokemon into the party or PC box, the snag flag and the
+ * balls thrown out of the bag. The heart gauge comes from the save's Shadow
+ * runtime table (savedata section 15 at body+0x1B014, row id*0x18, +0x4A6:
+ * fn_801EEEB8), the pack's Shadow table when that is empty. */
+static int apply_snags(C3GameState *state, const C3GeneralBattle *battle, const C3BattlePack *pack,
+                       const C3GeneralRewards *rw, unsigned stored[C3_GB_PARTY], char *error)
+{
+    for (unsigned ball = 1; ball <= 12; ++ball)
+        if (rw->balls_used[ball] && !c3_game_state_take_item(state, 2, ball, rw->balls_used[ball]))
+            return fail(error, "The thrown balls are not in the bag.");
+    if (!rw->caught_count) return 1;
+    size_t bytes = 0; const uint8_t *body = c3_game_state_body(state, &bytes);
+    C3GameSummary summary; uint8_t first[C3_GB_POKEMON_SIZE];
+    if (!body || bytes < 0x1B014u + 0x4A8u + 0x61u * 0x18u || !c3_game_state_summary(state, &summary) ||
+        !c3_game_state_pokemon(state, 0, first)) return fail(error, "The save cannot take a snagged Pokemon.");
+    C3SnagOwner owner; memset(&owner, 0, sizeof owner);
+    memcpy(owner.name, body + 0x70, sizeof owner.name);
+    owner.trainer_id = rd32(body + 0x70 + 0x2c);
+    memcpy(owner.attest, first + 8, 4);
+    owner.floor = (uint16_t)summary.floor;
+    for (unsigned k = 0; k < rw->caught_count; ++k) {
+        unsigned index = rw->caught[k]; const C3GeneralMon *m = &battle->party[1][index]; C3ShadowInfo sh;
+        if (!c3_battle_pack_shadow(pack, m->shadow, &sh)) return fail(error, "Unknown Shadow Pokemon.");
+        uint16_t gauge = rd16(body + 0x1B014u + 0x4A6u + m->shadow * 0x18u);
+        if (!gauge) gauge = sh.gauge;
+        uint8_t record[C3_GB_POKEMON_SIZE], restored[C3_GB_POKEMON_SIZE];
+        if (!c3_general_snag_record(pack, battle, index, &owner, gauge, battle->rng.seed ^ (0x5a6u + index), record))
+            return fail(error, "The snagged Pokemon could not be created.");
+        memcpy(restored, record, sizeof restored);
+        memset(restored + 0x64, 0, 7); memset(restored + 0x6c, 0, 6);
+        for (unsigned j = 0; j < 4; ++j) {
+            C3GeneralMoveInfo mv; uint16_t id = rd16(restored + 0x78 + 4 * j);
+            if (id && c3_battle_pack_move(pack, id, &mv)) restored[0x7a + 4 * j] = mv.pp;
+        }
+        unsigned where = 0;
+        if (!c3_game_state_receive_pokemon(state, record, restored, &where))
+            return fail(error, "The party and PC boxes are full.");
+        if (sh.snag_flag && !c3_game_state_set_flag(state, sh.snag_flag, 1)) return fail(error, "Snag flag rejected.");
+        if (stored) stored[k] = where;
+    }
+    return 1;
+}
 
 int c3_battle_story_apply(C3FieldStory *story, C3GameState *state,
                           const C3GeneralBattle *battle, const C3BattlePack *pack,
@@ -25,6 +83,7 @@ int c3_battle_story_apply(C3FieldStory *story, C3GameState *state,
         unsigned slot = battle->party[0][i].party_slot;
         if (!c3_game_state_set_pokemon(state, slot, party[slot])) return fail(error, "Party record rejected.");
     }
+    if (rw.written && !apply_snags(state, battle, pack, &rw, rw.stored, error)) return 0;
     if (!c3_game_state_summary(state, &summary)) return fail(error, "Save summary failed.");
     if (rw.result_code == 2 && rw.prize) {
         uint32_t room = summary.money < 9999999u ? 9999999u - summary.money : 0;
@@ -52,6 +111,7 @@ int c3_battle_story_autoplay(C3FieldStory *story, C3GameState *state,
     for (unsigned i = 0; i < C3_GB_PARTY; ++i)
         if (!c3_game_state_pokemon(state, i, party[i])) { fail(error, "Party read failed."); goto done; }
     if (!c3_general_battle_begin(b, pack, encounter, party, seed, error)) goto done;
+    if (!c3_battle_story_prepare(state, b)) { fail(error, "Bag read failed."); goto done; }
     while (b->outcome == C3_GB_RUNNING) {
         C3GeneralCommand c[2];
         memset(c, 0, sizeof c);
