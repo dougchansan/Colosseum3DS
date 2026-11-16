@@ -38,6 +38,11 @@ typedef struct GameStateImpl {
     uint32_t random;
     double play_time;
     unsigned used_backup;
+    /* gamedatasaveGetStatus(0,5/7/8): the floor, previous floor and
+     * entrance of the last card save (fn_80113FE8's whiteout fallback). The
+     * body's own fields follow the hero, so the point is kept here. */
+    uint32_t saved_floor, saved_previous;
+    uint8_t saved_spawn;
 } GameStateImpl;
 
 static uint16_t be16(const uint8_t *p)
@@ -192,6 +197,7 @@ static int install(C3GameState *state, GameStateImpl *s, char *error)
      * is brought to the cap (the shop and rewards assume it). */
     if (be32(s->body+HERO+0xa84)>9999999u) put32(s->body+HERO+0xa84,9999999u);
     s->play_time=read_float(s->body+0x20);
+    s->saved_floor=be32(s->body+0x1c); s->saved_previous=be32(s->body+0x24); s->saved_spawn=s->body[0x28];
     release(state->impl); state->impl=s;
     if (error) error[0]=0;
     return 1;
@@ -720,6 +726,64 @@ int c3_game_state_box_withdraw(C3GameState *state,unsigned box,unsigned slot)
         memcpy(party+i*POKEMON_SIZE,p,POKEMON_SIZE);empty_record(p);return (int)i;}
     return -1; /* "Your party's full." */
 }
+/* heroAddPokemon into the first empty party slot, else pcboxAddPokemon
+ * (savedata section 3 at body+0xB88: three boxes of a 0x14-byte header and
+ * 30 records, 0x24A4 apart; the first free entry of the first box with
+ * one), which stores the restored copy (pokemonAllKaihuku). */
+#define PCBOX 0xb88u
+#define PCBOX_STRIDE 0x24a4u
+int c3_game_state_receive_pokemon(C3GameState *state,const uint8_t record[0x138],
+                                  const uint8_t restored[0x138],unsigned *where)
+{
+    GameStateImpl *s=state?state->impl:NULL;
+    if(!s||!record||!restored||!be16(record)||!record[0x60]||record[0x60]>100||
+       !be16(record+0x8c)||be16(record+0x8a)>be16(record+0x8c))return 0;
+    for(unsigned i=0;i<6;++i){uint8_t *p=s->body+PARTY+i*POKEMON_SIZE;
+        if(be16(p))continue;
+        memcpy(p,record,POKEMON_SIZE);if(where)*where=i;return 1;}
+    for(unsigned box=0;box<3;++box)for(unsigned i=0;i<30;++i){
+        uint8_t *p=s->body+PCBOX+box*PCBOX_STRIDE+0x14+i*POKEMON_SIZE;
+        if(be16(p))continue;
+        memcpy(p,restored,POKEMON_SIZE);if(where)*where=100+box*30+i;return 1;}
+    return 0;
+}
+/* Take `count` of item `id` from bag pocket `pocket` (the pockets of
+ * c3_game_state_item); an emptied slot is removed and the pocket closed up. */
+int c3_game_state_take_item(C3GameState *state,unsigned pocket,unsigned id,unsigned count)
+{
+    static const unsigned offsets[]={0x780,0x7d0,0x87c,0x8bc,0x9bc,0xa74};
+    static const unsigned counts[]={20,43,16,64,46,3};
+    GameStateImpl *s=state?state->impl:NULL;
+    if(!s||pocket>=6||!id)return 0;
+    uint8_t *base=s->body+HERO+offsets[pocket];unsigned have=0;
+    for(unsigned i=0;i<counts[pocket];++i)if(be16(base+i*4)==id)have+=be16(base+i*4+2);
+    if(have<count)return 0;
+    for(unsigned i=0;i<counts[pocket]&&count;++i){uint8_t *q=base+i*4;
+        if(be16(q)!=id)continue;
+        unsigned n=be16(q+2),t=n<count?n:count;put16(q+2,(uint16_t)(n-t));count-=t;}
+    unsigned w=0;
+    for(unsigned i=0;i<counts[pocket];++i){uint8_t *q=base+i*4;
+        if(!be16(q)||!be16(q+2))continue;
+        if(w!=i)memcpy(base+w*4,q,4);
+        ++w;}
+    for(;w<counts[pocket];++w)memset(base+w*4,0,4);
+    return 1;
+}
+/* Add count of item id to bag pocket: to its slot, else the first empty one
+ * (at most 999 a slot). For probes and tests; the menus use inventory.c. */
+int c3_game_state_put_item(C3GameState *state,unsigned pocket,unsigned id,unsigned count)
+{
+    static const unsigned offsets[]={0x780,0x7d0,0x87c,0x8bc,0x9bc,0xa74};
+    static const unsigned counts[]={20,43,16,64,46,3};
+    GameStateImpl *s=state?state->impl:NULL;
+    if(!s||pocket>=6||!id||id>0xffffu||!count)return 0;
+    uint8_t *base=s->body+HERO+offsets[pocket];int empty=-1;
+    for(unsigned i=0;i<counts[pocket];++i){uint8_t *q=base+i*4;
+        if(be16(q)==id){unsigned n=be16(q+2)+count;if(n>999)return 0;put16(q+2,(uint16_t)n);return 1;}
+        if(!be16(q)&&empty<0)empty=(int)i;}
+    if(empty<0||count>999)return 0;
+    put16(base+empty*4,(uint16_t)id);put16(base+empty*4+2,(uint16_t)count);return 1;
+}
 int c3_game_state_trade_pokemon(C3GameState *state,unsigned slot,const uint8_t record[0x138])
 {
     GameStateImpl *s=state?state->impl:NULL;uint8_t *p;
@@ -840,6 +904,7 @@ int c3_game_state_save(C3GameState *state, const char *path,
     }
     free(s->card); free(s->body); s->card=card; s->body=body;
     s->random=random; s->used_backup=0;
+    s->saved_floor=be32(body+0x1c); s->saved_previous=be32(body+0x24); s->saved_spawn=body[0x28];
     if (error) error[0]=0;
     return 1;
 }
@@ -870,4 +935,14 @@ int c3_game_state_save_snapshot(const C3GameState *state, const char *path,
     result=c3_game_state_save(&snapshot,path,error);
     c3_game_state_free(&snapshot);
     return result;
+}
+int c3_game_state_save_point(const C3GameState *state, uint32_t *floor,
+                             uint32_t *previous_floor, uint8_t *spawn)
+{
+    const GameStateImpl *s=state?state->impl:NULL;
+    if (!s || !s->saved_floor) return 0;
+    if (floor) *floor=s->saved_floor;
+    if (previous_floor) *previous_floor=s->saved_previous;
+    if (spawn) *spawn=s->saved_spawn;
+    return 1;
 }

@@ -22,7 +22,7 @@ void c3_battle_music_end(const C3BattleMusic *music);
 
 /* The bottom-screen command UI, shared with the 3D battle scene
  * (battle_general_3d.c), which shows the events on the top screen. */
-typedef enum { C3_GUI_EVENTS, C3_GUI_MOVES, C3_GUI_TARGET, C3_GUI_SWITCH, C3_GUI_RESULT, C3_GUI_WAIT } C3GeneralUiPage;
+typedef enum { C3_GUI_EVENTS, C3_GUI_MOVES, C3_GUI_TARGET, C3_GUI_SWITCH, C3_GUI_RESULT, C3_GUI_WAIT, C3_GUI_BALL } C3GeneralUiPage;
 typedef struct {
     C3GeneralUiPage page;
     unsigned cursor, position, target_cursor;

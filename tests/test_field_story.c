@@ -585,6 +585,20 @@ static void synthetic_regressions(void)
      for(unsigned i=0;i<3;++i)CHECK(c3_field_story_tick(&s->story,.1f,0,error));
      CHECK(!c3_field_story_actor(&s->story,3)->visible);}
     close_scene(s);
+    /* A lost wipeout battle writes flag 0E05 first (fn_8020DAD0); without
+     * the flag table the whiteout refuses and the battle stays pending. */
+    memset(code,0,sizeof code);args[0]=2;args[1]=3;args[2]=1;native(code+3,0xa1,3,args,1);
+    args[0]=14;native(code+3,0x66,1,args,1);args[0]=3;args[1]=0;native(code+3,0x64,2,args,1);
+    synthetic_load(s,&game,file,code,0,0,0x1000003);CHECK(c3_field_story_enter(&s->story,error));
+    for(unsigned i=0;i<10;++i)CHECK(c3_field_story_tick(&s->story,.1f,0x300,error));
+    CHECK(c3_field_story_battle_pending(&s->story,NULL));
+    CHECK(!c3_field_story_battle_whiteout(&s->story,error)&&strstr(error,"0e05"));
+    CHECK(c3_field_story_battle_pending(&s->story,NULL));
+    close_scene(s);
+    {uint32_t floor=0,previous=9;uint8_t spawn=9;
+     CHECK(c3_game_state_save_point(&game,&floor,&previous,&spawn)&&floor==1&&previous==0&&spawn==0);
+     CHECK(c3_game_state_set_floor(&game,5,1,2));
+     CHECK(c3_game_state_save_point(&game,&floor,NULL,NULL)&&floor==1);}
     free(s);c3_game_state_free(&game);CHECK(!unlink(file));CHECK(!rmdir(directory));
     printf("field-story synthetic regressions: %u checks passed\n",checks);
 }

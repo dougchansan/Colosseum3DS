@@ -112,7 +112,94 @@ static void synthetic(void)
     CHECK(rw.exp[0] + rw.exp[1] > 0 && rw.exp[0] <= 104 && rw.exp[1] <= 104);
     CHECK(g32(copy[0] + 0x5c) == 125000u + rw.exp[0]);
     CHECK(g16(copy[0] + 0x8a) == b.party[0][0].hp && copy[0][0x7a] == b.party[0][0].pp[0]);
+    CHECK(rw.written);
+    /* Effort: 2 Speed per foe faced, written to +0x98 (Speed is the sixth). */
+    CHECK(b.party[0][0].ev_gain[5] + b.party[0][1].ev_gain[5] >= 4 && b.party[0][0].ev_gain[5] <= 4);
+    for (unsigned i = 0; i < 2; ++i) CHECK(g16(copy[i] + 0x98 + 10) == b.party[0][i].ev_gain[5]);
+    {   /* backSaveDataFlag clear: result only, the party is untouched. */
+        C3BattlePack k = pack; k.bytes = malloc(pack.size); CHECK(k.bytes);
+        memcpy(k.bytes, pack.bytes, pack.size); k.bytes[k.entries_at + 88] = 0;
+        static C3GeneralBattle nb; unsigned t = 0;
+        CHECK(c3_general_battle_begin(&nb, &k, 0, party, 7, error) && play(&nb, &k, &t) == C3_GB_WON);
+        memcpy(copy, party, sizeof copy);
+        CHECK(c3_general_battle_writeback(&nb, &k, copy, &rw) && rw.result_code == 2 && !rw.written && !rw.prize);
+        CHECK(!memcmp(copy, party, sizeof copy));
+        /* getOkane clear: no prize; getExp clear: no experience or effort. */
+        k.bytes[k.entries_at + 88] = 1; k.bytes[k.entries_at + 97] = 0; k.bytes[k.entries_at + 96] = 0;
+        CHECK(c3_general_battle_begin(&nb, &k, 0, party, 7, error) && play(&nb, &k, &t) == C3_GB_WON);
+        memcpy(copy, party, sizeof copy);
+        CHECK(c3_general_battle_writeback(&nb, &k, copy, &rw) && rw.written && !rw.prize && !rw.exp[0] && !rw.exp[1]);
+        CHECK(g16(copy[0] + 0x98 + 10) == 0);
+        /* doCriticalAttackFlag clear: no critical hit in many battles. */
+        k.bytes[k.entries_at + 102] = 0;
+        for (unsigned seed = 0; seed < 40; ++seed) {
+            CHECK(c3_general_battle_begin(&nb, &k, 0, party, seed, error));
+            while (nb.outcome == C3_GB_RUNNING) {
+                C3GeneralCommand c[2] = {{0}};
+                for (unsigned a = 0; a < nb.active_count; ++a)
+                    if (nb.active[0][a] != 255 && nb.party[0][nb.active[0][a]].hp) CHECK(c3_general_battle_choose(&nb, &k, a, &c[a]));
+                CHECK(c3_general_battle_turn(&nb, &k, c, error));
+                for (unsigned e = 0; e < nb.event_count; ++e) CHECK(!strstr(nb.events[e].text, "critical"));
+            }
+        }
+        free(k.bytes);
+    }
+    {   /* A persistent burn enters the battle and is written back. */
+        uint8_t burned[6][0x138]; memcpy(burned, party, sizeof burned); p16(burned[0] + 0x64, 6);
+        static C3GeneralBattle nb; unsigned t = 0;
+        CHECK(c3_general_battle_begin(&nb, &pack, 0, burned, 7, error) && nb.party[0][0].status == C3_GB_BURN);
+        CHECK(play(&nb, &pack, &t) == C3_GB_WON);
+        memcpy(copy, burned, sizeof copy);
+        CHECK(c3_general_battle_writeback(&nb, &pack, copy, &rw));
+        CHECK(g16(copy[0] + 0x64) == (nb.party[0][0].hp ? 6u : 0u));
+    }
 
+    {   /* Snagging: no Snag Machine or no ball, no throw; a Master Ball snags
+         * the Shadow FOE (opponent 0), which then gives no experience. */
+        static C3GeneralBattle nb; C3GeneralCommand c[2] = {{0}}; C3ShadowInfo sh;
+        CHECK(c3_battle_pack_shadow(&pack, 1, &sh) && sh.catch_rate == 45 && sh.gauge == 30 && sh.snag_flag == 0x84e);
+        CHECK(c3_general_battle_begin(&nb, &pack, 0, party, 21, error));
+        CHECK(!c3_general_battle_can_snag(&nb, &pack, 0, 1, 2));
+        nb.snag = 1; CHECK(!c3_general_battle_can_snag(&nb, &pack, 0, 1, 2));
+        nb.balls[1] = 1; nb.balls[4] = 3;
+        CHECK(c3_general_battle_can_snag(&nb, &pack, 0, 1, 2) && !c3_general_battle_can_snag(&nb, &pack, 0, 1, 0));
+        CHECK(!c3_general_battle_can_snag(&nb, &pack, 0, 1, 3)); /* opponent 1 is not Shadow */
+        c[0].kind = 2; c[0].slot = 1; c[0].target = 2;
+        CHECK(c3_general_battle_choose(&nb, &pack, 1, &c[1]));
+        CHECK(c3_general_battle_turn(&nb, &pack, c, error));
+        CHECK(nb.caught[0] == 1 && nb.party[1][0].hp == 0 && nb.balls[1] == 0 && nb.balls_used[1] == 1);
+        int gotcha = 0; for (unsigned e = 0; e < nb.event_count; ++e) gotcha |= strstr(nb.events[e].text, "Gotcha!") != NULL;
+        CHECK(gotcha);
+        unsigned t = 0; CHECK(play(&nb, &pack, &t) == C3_GB_WON);
+        memcpy(copy, party, sizeof copy);
+        CHECK(c3_general_battle_writeback(&nb, &pack, copy, &rw) && rw.caught_count == 1 && rw.caught[0] == 0 && rw.balls_used[1] == 1);
+        /* Only opponent 1 (level 5, 50 base EXP) paid: 35 at most per hero. */
+        CHECK(rw.exp[0] + rw.exp[1] <= 2u * (50u * 5u / 7u * 3u / 2u));
+        C3SnagOwner owner; memset(&owner, 0, sizeof owner); owner.name[1] = 'W'; owner.trainer_id = 0x12345678u; owner.floor = 8; memcpy(owner.attest, "ATST", 4);
+        uint8_t rec[0x138];
+        CHECK(!c3_general_snag_record(&pack, &nb, 1, &owner, 30, 9, rec));
+        CHECK(c3_general_snag_record(&pack, &nb, 0, &owner, 30, 9, rec));
+        CHECK(g16(rec) == 2 && rec[0x60] == 5 && rec[0x0f] == 1 && g16(rec + 0xd8) == 1 && g32(rec + 0xdc) == 3000u);
+        CHECK(g32(rec + 0x14) == 0x12345678u && g16(rec + 0x0c) == 8 && !memcmp(rec + 8, "ATST", 4) && rec[0x19] == 'W');
+        CHECK(g32(rec + 4) % 25u == nb.party[1][0].nature && g16(rec + 0x8a) == g16(rec + 0x8c) && g16(rec + 0x78) == 1);
+        CHECK(g16(rec + 0x2e) == 'F' && g16(rec + 0x30) == 'O' && g16(rec + 0x32) == 'E' && !g16(rec + 0x34));
+        /* Poke Balls against a full-HP rate-45 Shadow: shakes follow the
+         * original formula; the throw always uses the ball up. */
+        unsigned caught = 0, thrown = 0;
+        for (uint32_t seed = 0; seed < 200; ++seed) {
+            CHECK(c3_general_battle_begin(&nb, &pack, 0, party, seed, error));
+            nb.snag = 1; nb.balls[4] = 1;
+            C3GeneralCommand d[2] = {{2, 4, 2}, {0}};
+            CHECK(c3_general_battle_choose(&nb, &pack, 1, &d[1]));
+            CHECK(c3_general_battle_turn(&nb, &pack, d, error));
+            ++thrown; caught += nb.caught[0] == 4;
+            CHECK(nb.balls[4] == 0 && nb.balls_used[4] == 1);
+        }
+        /* odds = 45*10/10*(3M-2M)/(3M) = 15: 0xFFFF0/sqrt(sqrt(0xFF0000/15)) = 0xFFFF0/32 = 32767.5 -> 32767,
+         * so each shake passes about half the time: four in a row ~ 1/16. */
+        CHECK(caught > 0 && caught < 40);
+        printf("battle-general: snag synthetic %u of %u Poke Balls caught\n", caught, thrown);
+    }
     /* Level up: a level-5 hero with almost enough experience. */
     make_party(party, 1, 5, 1, 0); p32(party[0] + 0x5c, 215); /* 6^3 = 216 */
     CHECK(c3_general_battle_begin(&b, &pack, 0, party, 3, error));
@@ -122,6 +209,9 @@ static void synthetic(void)
     if (rw.exp[0]) {
         CHECK(copy[0][0x60] > 5 && rw.levels_gained[0] == copy[0][0x60] - 5);
         CHECK(g16(copy[0] + 0x8c) > g16(party[0] + 0x8c));
+        /* Level 6 teaches GROWL into the free third slot with full PP. */
+        CHECK(rw.learned_count[0] == 1 && rw.learned[0][0] == 2 && !rw.skipped_count[0]);
+        CHECK(g16(copy[0] + 0x80) == 2 && copy[0][0x82] == 40);
     }
     CHECK(rw.result_code == (o == C3_GB_WON ? 2u : 3u));
 
@@ -151,6 +241,39 @@ static void synthetic(void)
     puts("battle-general: synthetic pack, win/loss, determinism and writeback ok");
 }
 
+/* Writeback invariants for one finished story battle against the
+ * untouched party: nothing changes without backSaveDataFlag; otherwise
+ * species and identity stay, HP/PP/levels/effort stay legal, experience
+ * never drops and matches the level, and the result follows the outcome. */
+static unsigned checked_writebacks;
+static void check_writeback(const C3BattlePack *pack, const C3GeneralBattle *b, const C3BattleEncounterInfo *info,
+                            uint8_t before[6][0x138], uint8_t after[6][0x138], const C3GeneralRewards *rw)
+{
+    CHECK(rw->result_code == (b->outcome == C3_GB_WON ? 2u : 3u));
+    CHECK(rw->wipeout == (b->outcome != C3_GB_WON && info->wipeout));
+    if (!info->back_save) { CHECK(!rw->written && !memcmp(before, after, 6 * 0x138)); return; }
+    CHECK(rw->written);
+    CHECK(info->get_money || !rw->prize);
+    CHECK(b->outcome == C3_GB_WON || !rw->prize);
+    for (unsigned i = 0; i < 6; ++i) {
+        const uint8_t *x = before[i], *y = after[i];
+        CHECK(g16(x) == g16(y) && !memcmp(x + 4, y + 4, 0x58));
+        if (!g16(x)) { CHECK(!memcmp(x, y, 0x138)); continue; }
+        CHECK(g16(y + 0x8a) <= g16(y + 0x8c));
+        CHECK(g32(y + 0x5c) >= g32(x + 0x5c) && y[0x60] >= x[0x60] && y[0x60] <= 100);
+        CHECK(info->get_exp || g32(y + 0x5c) == g32(x + 0x5c));
+        unsigned total = 0;
+        for (unsigned j = 0; j < 6; ++j) { unsigned ev = g16(y + 0x98 + 2 * j); CHECK(ev <= 255 && ev >= g16(x + 0x98 + 2 * j)); total += ev; }
+        CHECK(total <= 510 || total == 0);
+        unsigned status = g16(y + 0x64); CHECK(status == 0 || (status >= 3 && status <= 8));
+        if (!g16(y + 0x8a)) CHECK(status == 0);
+        for (unsigned j = 0; j < 4; ++j) if (g16(y + 0x78 + 4 * j)) {
+            C3GeneralMoveInfo mv; CHECK(c3_battle_pack_move(pack, g16(y + 0x78 + 4 * j), &mv));
+            CHECK(y[0x7a + 4 * j] <= mv.pp * (5u + (y[0x7b + 4 * j] > 3 ? 3u : y[0x7b + 4 * j])) / 5u);
+        }
+    }
+}
+
 static void private_sweep(const char *pack_path, const char *newgame_dir, const char *save)
 {
     C3BattlePack pack = {0}; C3GameState game = {0}; char file[1024], gerror[C3_GAME_ERROR_SIZE] = {0};
@@ -174,15 +297,62 @@ static void private_sweep(const char *pack_path, const char *newgame_dir, const 
         uint8_t copy[6][0x138]; C3GeneralRewards rw;
         memcpy(copy, party, sizeof copy);
         CHECK(c3_general_battle_writeback(&b, &pack, copy, &rw));
-        printf("battle encounter=%lu trainer=%s/%s party=%u active=%u turns=%u outcome=%s result=%lu prize=%lu\n",
-               (unsigned long)e, info.title, info.trainer, info.party_count, info.active_per_side, turns,
+        check_writeback(&pack, &b, &info, party, copy, &rw);
+        unsigned levels = 0, learned = 0, skipped = 0; unsigned long exp = 0;
+        for (unsigned i = 0; i < 6; ++i) { levels += rw.levels_gained[i]; learned += rw.learned_count[i]; skipped += rw.skipped_count[i]; exp += rw.exp[i]; }
+        printf("battle encounter=%lu trainer=%s/%s kind=%u party=%u active=%u turns=%u outcome=%s result=%lu prize=%lu written=%d exp=%lu levels=%u learned=%u skipped=%u wipeout=%d\n",
+               (unsigned long)e, info.title, info.trainer, info.kind, info.party_count, info.active_per_side, turns,
                o == C3_GB_WON ? "won" : o == C3_GB_LOST ? "lost" : "draw",
-               (unsigned long)rw.result_code, (unsigned long)rw.prize);
+               (unsigned long)rw.result_code, (unsigned long)rw.prize, rw.written, exp, levels, learned, skipped, rw.wipeout);
+        ++checked_writebacks;
         won += o == C3_GB_WON; lost += o == C3_GB_LOST; draw += o == C3_GB_DRAW;
     }
+    /* Snag pass: every encounter with a Shadow Pokemon again, the hero
+     * throwing Ultra Balls at it whenever it may; each snag becomes a record
+     * and is received into the save (party, else PC box). */
+    unsigned shadow_battles = 0, snagged = 0, stored_party = 0, stored_box = 0, full = 0, shadow_total = 0;
+    for (uint32_t e = 0; e < pack.encounters; ++e) {
+        C3BattleEncounterInfo info;
+        CHECK(c3_battle_pack_info(&pack, e, &info));
+        if (info.reason || !info.shadow_count) continue;
+        ++shadow_battles; shadow_total += info.shadow_count;
+        CHECK(c3_general_battle_begin(&b, &pack, e, party, 0x2000u + e, error));
+        b.snag = 1; b.balls[2] = 99;
+        while (b.outcome == C3_GB_RUNNING) {
+            C3GeneralCommand c[2] = {{0}};
+            for (unsigned a = 0; a < b.active_count; ++a) {
+                if (b.active[0][a] == 255 || !b.party[0][b.active[0][a]].hp) continue;
+                int thrown = 0;
+                for (unsigned t = 2; t < 2u + b.active_count && !thrown; ++t)
+                    if (c3_general_battle_can_snag(&b, &pack, a, 2, t)) { c[a].kind = 2; c[a].slot = 2; c[a].target = (uint8_t)t; thrown = 1; }
+                if (!thrown) CHECK(c3_general_battle_choose(&b, &pack, a, &c[a]));
+            }
+            CHECK(c3_general_battle_turn(&b, &pack, c, error));
+        }
+        uint8_t copy[6][0x138]; C3GeneralRewards rw;
+        memcpy(copy, party, sizeof copy);
+        CHECK(c3_general_battle_writeback(&b, &pack, copy, &rw));
+        check_writeback(&pack, &b, &info, party, copy, &rw);
+        C3SnagOwner owner; memset(&owner, 0, sizeof owner); owner.trainer_id = 1; owner.floor = info.floor_data_id;
+        for (unsigned k = 0; k < rw.caught_count; ++k) {
+            uint8_t rec[0x138]; unsigned where = 0; C3ShadowInfo sh;
+            const C3GeneralMon *m = &b.party[1][rw.caught[k]];
+            CHECK(c3_battle_pack_shadow(&pack, m->shadow, &sh) && sh.species == m->species);
+            CHECK(c3_general_snag_record(&pack, &b, rw.caught[k], &owner, sh.gauge, e, rec));
+            CHECK(g16(rec) == m->species && g16(rec + 0xd8) == m->shadow && g32(rec + 0xdc) == sh.gauge * 100u);
+            CHECK(g16(rec + 0x8a) == g16(rec + 0x8c) && rec[0x60] == m->level);
+            ++snagged;
+            if (!c3_game_state_receive_pokemon(&game, rec, rec, &where)) { ++full; continue; }
+            if (where < 6) ++stored_party; else ++stored_box;
+            printf("snag encounter=%lu species=%u shadow=%u level=%u rate=%u gauge=%u stored=%u\n", (unsigned long)e,
+                   m->species, m->shadow, m->level, sh.catch_rate, sh.gauge, where);
+        }
+    }
+    printf("battle-general: snag sweep %u Shadow battles (%u Shadow Pokemon): %u snagged, %u to the party, %u to boxes, %u with no room\n",
+           shadow_battles, shadow_total, snagged, stored_party, stored_box, full);
     printf("battle-general: view send_outs=%u hits_with_attacker=%u\n", send_outs, hits_with_actor);
-    printf("battle-general: private sweep %u admitted (%u refused): %u won, %u lost, %u draw, %lu turns\n",
-           admitted, refused, won, lost, draw, total_turns);
+    printf("battle-general: private sweep %u admitted (%u refused): %u won, %u lost, %u draw, %lu turns, %u writebacks checked\n",
+           admitted, refused, won, lost, draw, total_turns, checked_writebacks);
     c3_game_state_free(&game); c3_battle_pack_free(&pack);
 }
 

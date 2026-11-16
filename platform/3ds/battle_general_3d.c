@@ -78,6 +78,29 @@ static int battle_cue_pan(uint32_t sound, float pan)
     return 1;
 }
 static int autoplay; /* unattended probe: the hero uses the opponent policy */
+static char story_prefix[48];
+void c3_battle_general_3d_set_autoplay(int on, const char *prefix)
+{
+    autoplay = on ? 1 : 0;
+    snprintf(story_prefix, sizeof story_prefix, "%s", on && prefix ? prefix : "");
+}
+/* Probe hero: the best ball (Master, Ultra, Great, then the rest) at a
+ * Shadow Pokemon it may snag, else the opponent policy. */
+static void probe_hero_command(C3GeneralBattle *b, const C3BattlePack *pack, unsigned a, C3GeneralCommand *c)
+{
+    static const uint8_t order[12] = {1, 2, 3, 4, 6, 8, 9, 10, 11, 12, 5, 7};
+    for (unsigned k = 0; k < 12; ++k)
+        for (unsigned t = 2; t < 2u + b->active_count; ++t)
+            if (c3_general_battle_can_snag(b, pack, a, order[k], t)) { c->kind = 2; c->slot = order[k]; c->target = (uint8_t)t; return; }
+    c3_general_battle_choose(b, pack, a, c);
+}
+int c3_battle_general_autoplaying(void) { return autoplay != 0; }
+void c3_battle_general_probe_commands(C3GeneralBattle *b, const C3BattlePack *pack, C3GeneralCommand c[2])
+{
+    memset(c, 0, 2 * sizeof *c);
+    for (unsigned a = 0; a < b->active_count; ++a)
+        if (b->active[0][a] != 255 && b->party[0][b->active[0][a]].hp) probe_hero_command(b, pack, a, &c[a]);
+}
 
 static int silent(uint32_t cue, uint32_t sound, char *e, size_t n) { (void)cue; (void)sound; (void)e; (void)n; return 1; }
 
@@ -222,7 +245,7 @@ static int run(const C3BattlePack *pack, C3GeneralBattle *b, C3BattleLinkHooks *
         } else if (autoplay && !hooks && ui.page != C3_GUI_EVENTS && ui.page != C3_GUI_RESULT) {
             C3GeneralCommand c[2]; memset(c, 0, sizeof c);
             for (unsigned a = 0; a < b->active_count; ++a)
-                if (b->active[0][a] != 255 && b->party[0][b->active[0][a]].hp) c3_general_battle_choose(b, pack, a, &c[a]);
+                if (b->active[0][a] != 255 && b->party[0][b->active[0][a]].hp) probe_hero_command(b, pack, a, &c[a]);
             if (!c3_general_battle_turn(b, pack, c, error)) goto done;
             if (trace) { fprintf(trace, "general_battle_turn turn=%lu events=%lu outcome=%d autoplay=1\n",
                 (unsigned long)b->turn, (unsigned long)b->event_count, (int)b->outcome); fflush(trace); }
@@ -259,7 +282,7 @@ static int run(const C3BattlePack *pack, C3GeneralBattle *b, C3BattleLinkHooks *
             ++frames;
             if (autoplay && (frames == 240 || frames == 900 || frames == 1800 || frames == 3000)) {
                 char shot[96];
-                const char *prefix = hooks && hooks->shot_prefix ? hooks->shot_prefix : "general3d";
+                const char *prefix = hooks && hooks->shot_prefix ? hooks->shot_prefix : story_prefix[0] ? story_prefix : "general3d";
                 snprintf(shot, sizeof shot, "sdmc:/3ds/Colosseum3DS/%s_%u_top.bmp", prefix, frames);
                 int top = c3_n3ds_capture_top(shot) == 0;
                 snprintf(shot, sizeof shot, "sdmc:/3ds/Colosseum3DS/%s_%u_bottom.bmp", prefix, frames);

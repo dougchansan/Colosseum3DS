@@ -1659,21 +1659,41 @@ int c3_field_story_battle_result(C3FieldStory *story,uint32_t result,char *error
     return fail(error,"No original battle request is waiting for a result");
 }
 /* A lost battle whose encounter has the zenmetu flag: fn_8020DAD0 halves the
- * money, restores the party and sends the hero to the temporary whiteout
- * point (fn_80113FE8, set by native A1) instead of resuming the script. The
- * scene applies money and party; this leaves the floor through the normal
- * departure. Without a recorded point the script resumes with result 3. */
+ * money (the scene does that), sets flag 0E05, restores the party through the
+ * bound party service and sends the hero to the temporary whiteout point
+ * (fn_80113FE8, set by native A1) or else to the last save's floor, instead
+ * of resuming the script. The floor is left through the normal departure.
+ * With neither point known the script resumes with result 3. */
 int c3_field_story_battle_whiteout(C3FieldStory *story,char *error)
 {
     Impl *s=story?story->impl:NULL;
+    uint32_t floor=0,previous=0;uint8_t spawn=0;const char *source="temporary";
     if(!s||!c3_field_story_battle_pending(story,NULL))return fail(error,"No original battle request is waiting for a result");
-    if(!s->whiteout_valid){
+    /* fn_8020DAD0 after the money: flag 0E05, fn_801D0AFC(1) (every valid
+     * member pokemonAllKaihuku), fn_80113FE8, fade script 05960008. */
+    if(!set_flag(s,0x0e05,1,error))return 0;
+    if(s->restore){
+        int restored=s->restore(s->restore_context);
+        if(restored<0)return fail(error,"The party could not be restored after the loss");
+        log_line(s,"story_party_restore mode=whiteout members=%d",restored);
+    }
+    /* fn_80113FE8: the point native A1 left, else the last card save's
+     * floor/previous floor/entrance (gamedatasaveGetStatus 5/7/8). */
+    if(s->whiteout_valid){floor=s->whiteout_floor;previous=s->whiteout_previous;spawn=(uint8_t)s->whiteout_spawn;}
+    else if(c3_game_state_save_point(s->game,&floor,&previous,&spawn))source="save";
+    s->whiteout_valid=0;
+    if(!floor){
         log_line(s,"story_battle_whiteout return_point=missing resumed_with=3");
         return c3_field_story_battle_result(story,3,error);
     }
     s->fight_result=3;s->view.blocked[0]=0;s->view.battle_id=0;
-    s->pending_floor=s->whiteout_floor;s->pending_spawn=s->whiteout_spawn;s->whiteout_valid=0;
-    log_line(s,"story_battle_whiteout floor=%lu spawn=%lu",(unsigned long)s->pending_floor,(unsigned long)s->pending_spawn);
+    /* The waiting request ends here: the floor is left, not resumed. */
+    for(unsigned i=0;i<C3_STORY_TASKS;++i){RunTask *t=s->tasks+i;
+        if(!t->key||t->wait!=W_BATTLE||(t->call.native!=0x98&&t->call.native!=0x66))continue;
+        c3_story_stop(&s->vm,t->key);t->key=0;t->wait=W_NONE;}
+    s->pending_floor=floor;s->pending_spawn=spawn;
+    log_line(s,"story_battle_whiteout floor=%lu previous=%lu spawn=%lu source=%s flag=0e05 fade_script=05960008",
+             (unsigned long)floor,(unsigned long)previous,(unsigned long)spawn,source);
     return 1;
 }
 int c3_field_story_bind_battle(C3FieldStory *story,const char *path,char *error)

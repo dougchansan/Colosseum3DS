@@ -13,7 +13,7 @@ static inline unsigned g16(const uint8_t *p) { return (unsigned)p[0] << 8 | p[1]
 static inline uint32_t g32(const uint8_t *p) { return (uint32_t)p[0] << 24 | (uint32_t)p[1] << 16 | (uint32_t)p[2] << 8 | p[3]; }
 
 static inline size_t pack_size(void)
-{ return 128 + MOVES * 56 + SPECIES * 284 + 18 * 44 + 8 * 0x194 + ENCOUNTERS * ENTRY + (SPECIES + MOVES + 2 * ENCOUNTERS) * 16; }
+{ return 128 + MOVES * 56 + SPECIES * 284 + 18 * 44 + 8 * 0x194 + ENCOUNTERS * ENTRY + (SPECIES + MOVES + 2 * ENCOUNTERS) * 16 + 0x61 * 0x38; }
 
 /* opponent_level/species configure encounter 0's two-Pokemon party. */
 static inline uint8_t *make_pack(unsigned opponent_species, unsigned opponent_level, size_t *size)
@@ -22,7 +22,7 @@ static inline uint8_t *make_pack(unsigned opponent_species, unsigned opponent_le
     uint8_t *b = calloc(1, n);
     uint32_t moves = 128, species = moves + MOVES * 56, types = species + SPECIES * 284,
              growth = types + 18 * 44, entries = growth + 8 * 0x194, names = entries + ENCOUNTERS * ENTRY;
-    memcpy(b, "C3B2", 4); p32(b + 4, 1); p32(b + 8, (uint32_t)n); p32(b + 12, ENCOUNTERS);
+    memcpy(b, "C3B2", 4); p32(b + 4, 2); p32(b + 8, (uint32_t)n); p32(b + 12, ENCOUNTERS);
     p32(b + 16, MOVES); p32(b + 20, SPECIES); p32(b + 24, 18); p32(b + 28, 8);
     p32(b + 112, species); p32(b + 116, types); p32(b + 120, growth); p32(b + 124, entries);
     /* move 1 TACKLE (hit), 2 GROWL (Attack down, both foes), 3 EMBER-like
@@ -36,6 +36,8 @@ static inline uint8_t *make_pack(unsigned opponent_species, unsigned opponent_le
         r[0] = 0; p16(r + 6, s == 1 ? 100 : 50); r[0x30] = r[0x31] = s == 1 ? 0 : 10;
         for (unsigned j = 0; j < 6; ++j) p16(r + 0x84 + 2 * j, s == 1 ? 100 : 40);
         r[0xba] = 1; p16(r + 0xbc, 1); /* level-up: TACKLE at 1 */
+        if (s == 1) { r[0xbe] = 6; p16(r + 0xc0, 2); } /* HERO learns GROWL at 6 */
+        if (s == 2) p16(r + 0x90 + 2 * 5, 2);          /* FOE gives 2 Speed effort */
     }
     for (unsigned t = 0; t < 18; ++t) for (unsigned d = 0; d < 18; ++d) p16(b + types + t * 44 + 8 + d * 2, 0x3f);
     p16(b + types + 0 * 44 + 8 + 7 * 2, 0x43);      /* Normal vs Ghost: immune */
@@ -48,6 +50,8 @@ static inline uint8_t *make_pack(unsigned opponent_species, unsigned opponent_le
         p16(enc + 24, 1); p32(enc + 28, 1); p16(enc + 32, 10);
         p16(r + 64 + 2, 200); r[120] = 1; r[121] = 6; r[122] = 2;
         p16(r + 128 + 2, 26); p16(r + 180, 5);
+        /* fight kind 2 (story trainer): back-save, items, EXP, money, criticals, Hyper Mode */
+        r[88] = 1; r[92] = 1; r[96] = 1; r[97] = 1; r[102] = 1; r[110] = 1;
         if (e == 0) {
             r[2] = 2;
             for (unsigned k = 0; k < 2; ++k) {
@@ -62,6 +66,10 @@ static inline uint8_t *make_pack(unsigned opponent_species, unsigned opponent_le
     strcpy((char *)b + names + (SPECIES + 1) * 16, "TACKLE");
     strcpy((char *)b + names + (SPECIES + MOVES) * 16, "WILLIE");
     strcpy((char *)b + names + (SPECIES + MOVES + 1) * 16, "RIDER");
+    {   /* version 2 Shadow table: id 1 is FOE, catch rate 45, gauge 30, snag flag 0x84E */
+        uint8_t *sh = b + n - 0x61 * 0x38 + 1 * 0x38;
+        sh[0] = 45; p16(sh + 2, 2); p16(sh + 8, 30); p16(sh + 0x12, 0x84e);
+    }
     c3_save_codec_sha1(b + 72, b + 128, n - 128);
     *size = n;
     return b;

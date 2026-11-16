@@ -350,9 +350,14 @@ static int play_story_battle(C3FieldStory *story,C3GameState *state,uint32_t enc
         C3GeneralBattle *battle=malloc(sizeof *battle);int ok=battle!=NULL;
         for(unsigned i=0;ok&&i<C3_GB_PARTY;++i)ok=c3_game_state_pokemon(state,i,party[i]);
         if(ok)ok=c3_general_battle_begin(battle,&pack,encounter,party,seed,problem);
+        if(ok&&!c3_battle_story_prepare(state,battle)){ok=0;snprintf(problem,sizeof problem,"The bag could not be read for the battle.");}
         else if(!problem[0])snprintf(problem,sizeof problem,"The party could not be read for the battle.");
         if(ok){
             int scene=-1;char why[192]="";
+#ifdef C3_ROUNDTRIP_PROBE
+            {char prefix[32];snprintf(prefix,sizeof prefix,"probe/battle_%lu",(unsigned long)encounter);
+             mkdir("sdmc:/3ds/Colosseum3DS/probe",0777);c3_battle_general_3d_set_autoplay(1,prefix);}
+#endif
             if(host&&c3_battle_general_3d_ready(battle,trace,why,sizeof why)){
                 /* On its original stage: the field's models make room first. */
                 int released=field_battle_release(host,trace,problem,sizeof problem);
@@ -368,12 +373,24 @@ static int play_story_battle(C3FieldStory *story,C3GameState *state,uint32_t enc
                 if(scene<0&&trace){fprintf(trace,"field_battle_3d_fallback encounter=%lu turn=%lu\n",(unsigned long)encounter,(unsigned long)battle->turn);fflush(trace);}
             }else if(trace&&host){fprintf(trace,"field_battle_3d_unavailable encounter=%lu reason=%s\n",(unsigned long)encounter,why);fflush(trace);}
             if(scene<0)scene=c3_battle_general_scene_run(&pack,battle,trace);
+#ifdef C3_ROUNDTRIP_PROBE
+            c3_battle_general_3d_set_autoplay(0,NULL);
+#endif
             if(scene==1)result=2;
             else if(scene<0){if(!problem[0])snprintf(problem,sizeof problem,"The battle engine failed (see the trace).");}
             else result=c3_battle_story_apply(story,state,battle,&pack,NULL,&rewards,problem)?1:-1;
         }
         if(trace){fprintf(trace,"field_battle_engine encounter=%lu trainer=%s mode=played result=%d code=%u prize=%lu\n",
-                          (unsigned long)encounter,info.trainer,result,(unsigned)rewards.result_code,(unsigned long)rewards.prize);fflush(trace);}
+                          (unsigned long)encounter,info.trainer,result,(unsigned)rewards.result_code,(unsigned long)rewards.prize);
+            if(result>0){unsigned long exp=0;unsigned levels=0,learned=0,skipped=0,balls=0;
+                for(unsigned i=0;i<C3_GB_PARTY;++i){exp+=rewards.exp[i];levels+=rewards.levels_gained[i];learned+=rewards.learned_count[i];skipped+=rewards.skipped_count[i];}
+                for(unsigned i=1;i<=12;++i)balls+=rewards.balls_used[i];
+                fprintf(trace,"field_battle_writeback encounter=%lu written=%d exp=%lu levels=%u learned=%u forget_prompt_skipped=%u snagged=%u balls_used=%u wipeout=%d\n",
+                        (unsigned long)encounter,rewards.written,exp,levels,learned,skipped,(unsigned)rewards.caught_count,balls,rewards.wipeout);
+                for(unsigned k=0;k<rewards.caught_count;++k)
+                    fprintf(trace,"field_battle_snag encounter=%lu species=%u shadow=%u stored=%u\n",(unsigned long)encounter,
+                            battle->party[1][rewards.caught[k]].species,battle->party[1][rewards.caught[k]].shadow,rewards.stored[k]);}
+            fflush(trace);}
         free(battle);
     }
     c3_battle_pack_free(&pack);
@@ -585,7 +602,7 @@ static int field_renderer_init(C3Title *storage,const C3Title *const *models,uin
  * Other floors leave for the world map as before. */
 static struct { uint32_t start, start_spawn, floor[32], source[32]; uint8_t interact[32]; unsigned count, next; int loaded;
                 uint32_t film_floor, film_frames; unsigned shadow_slot, shadow_id;
-                uint32_t flag_id[16], flag_value[16]; unsigned flags, name_mode; int partner;
+                uint32_t flag_id[16], flag_value[16]; uint32_t ball_id[4], ball_count[4]; unsigned flags, balls, name_mode; int partner;
                 uint32_t walk_floor, walk_frames, walked; int walk_x, walk_y; } probe_route;
 static void probe_route_load(void)
 {
@@ -626,6 +643,8 @@ static void probe_route_load(void)
         else if(sscanf(line,"%lx p%lx",&a,&b)==2&&probe_route.count<32){
             probe_route.floor[probe_route.count]=(uint32_t)a;probe_route.interact[probe_route.count]=2;
             probe_route.source[probe_route.count++]=(uint32_t)b;}
+        else if(sscanf(line,"ball %lx %lx",&a,&b)==2&&probe_route.balls<4&&a>=1&&a<=12&&b){
+            probe_route.ball_id[probe_route.balls]=(uint32_t)a;probe_route.ball_count[probe_route.balls++]=(uint32_t)b;}
         else if(sscanf(line,"%lx i%lx",&a,&b)==2&&probe_route.count<32){
             probe_route.floor[probe_route.count]=(uint32_t)a;probe_route.interact[probe_route.count]=1;
             probe_route.source[probe_route.count++]=(uint32_t)b;}
@@ -910,6 +929,8 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                         rui?(double)rui->pose.position[0]:0.0,rui?(double)rui->pose.position[2]:0.0,rui?(unsigned long)rui->clip:0ul);
                 fflush(trace);}
         }
+        /* Probe: accept a waiting story battle (it then plays unattended). */
+        if(view&&view->blocked[0]&&view->battle_id&&view->battle_id!=10&&frames%60u==30u)input.pressed|=C3_PAD_A;
 #endif
         if(!npc.attached&&!npc_stream_attach(&npc,0,storage,models,actor_models,model_paths,&story,count,skin_actors,
                                              tv_index,view?view->tv_enabled:1,frames,trace,error,capacity)){result=-1;break;}
@@ -1905,6 +1926,8 @@ int c3_field_scene_roundtrip_probe(C3GameState *state,FILE *trace,char *error,si
         if(trace){fprintf(trace,"roundtrip_flag id=%03lx value=%lu ok=%d\n",(unsigned long)probe_route.flag_id[i],(unsigned long)probe_route.flag_value[i],ok);fflush(trace);}
     }
     if(probe_route.partner>=0)c3_game_state_set_partner(state,probe_route.partner);
+    for(unsigned i=0;i<probe_route.balls;++i){int ok=c3_game_state_put_item(state,2,probe_route.ball_id[i],probe_route.ball_count[i]);
+        if(trace){fprintf(trace,"roundtrip_ball item=%lu count=%lu ok=%d\n",(unsigned long)probe_route.ball_id[i],(unsigned long)probe_route.ball_count[i],ok);fflush(trace);}}
     if(!c3_game_state_set_floor(state,start,C3_FLOOR_WORLD_MAP_ID,(uint8_t)probe_route.start_spawn)){snprintf(error,capacity,"floor rejected");return -1;}
     for(unsigned i=0;i<AREAS;++i){
         C3GameSummary summary;uint32_t floor=c3_game_state_summary(state,&summary)?summary.floor:0;
