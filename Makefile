@@ -39,8 +39,8 @@ build/test_field: tests/test_field.c src/field.c include/colosseum3ds/field.h in
 build/test_world_map: tests/test_world_map.c src/world_map.c include/colosseum3ds/world_map.h vendor/colosseum/src/rel/worldmap_menu_rel/worldmap_menu_rel.c | build
 	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_world_map.c src/world_map.c $(LDFLAGS) -o $@
 
-build/test_name_entry: tests/test_name_entry.c src/name_entry.c src/bottom_ui.c include/colosseum3ds/name_entry.h include/colosseum3ds/bottom_ui.h | build
-	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_name_entry.c src/name_entry.c src/bottom_ui.c $(LDFLAGS) -lm -o $@
+build/test_name_entry: tests/test_name_entry.c src/name_entry.c src/story.c src/bottom_ui.c include/colosseum3ds/name_entry.h include/colosseum3ds/bottom_ui.h include/colosseum3ds/story.h | build
+	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_name_entry.c src/name_entry.c src/story.c src/bottom_ui.c $(LDFLAGS) -lm -o $@
 
 build/test_dev_floor: tests/test_dev_floor.c src/dev_floor.c src/field.c include/colosseum3ds/dev_floor.h include/colosseum3ds/field.h include/colosseum3ds/title.h | build
 	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_dev_floor.c src/dev_floor.c src/field.c $(LDFLAGS) -lm -o $@
