@@ -24,7 +24,7 @@ static int choice(void *context,uint32_t id,int initial_no)
     Ending *e=context;char text[C3_STORY_MESSAGE];int yes=!initial_no;
     if(!c3_story_message(&e->story,id,e->summary.name,"RUI",NULL,text,sizeof text,e->error)){e->failed=1;return -1;}
     if(e->trace){fprintf(e->trace,"ending_prompt message=%04lx initial_no=%d\n",(unsigned long)id,initial_no);fflush(e->trace);}
-#ifdef C3_ENDING_PROBE
+#if defined(C3_ENDING_PROBE) || defined(C3_FINAL_EVENT_PROBE)
     c3_n3ds_capture_top("sdmc:/3ds/Colosseum3DS/ending-last-frame.bmp");
     c3_bottom_screen_notice("Original clear-save prompt",text,"Probe: selecting Yes");
     c3_n3ds_capture_bottom("sdmc:/3ds/Colosseum3DS/ending-prompt.bmp");

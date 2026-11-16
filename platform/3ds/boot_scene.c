@@ -332,6 +332,23 @@ int c3_boot_scene_run(int core_status)
     FILE *trace = c3_trace_open("sdmc:/3ds/Colosseum3DS/boot-trace.log");
     if (trace) { fprintf(trace, "boot_build %s core=%d\n", C3_BUILD_ID, core_status); fflush(trace); }
     c3_n3ds_log_memory(trace, "boot_start");
+#ifdef C3_FINAL_EVENT_PROBE
+    /* Final-floor diagnostic, explicitly warped from an uncleared COPY.
+     * Never qualifies travel through the preceding chapters. */
+    {
+        int played=-1;uint32_t clear=1;
+        const char *copy="sdmc:/3ds/Colosseum3DS/final-probe/copy.gci";
+        c3_music_open("sdmc:/3ds/Colosseum3DS",error,sizeof error);
+        if(c3_game_state_load(&state,copy,GAME_DATA,error)&&
+           c3_game_state_get_flag(&state,0x476,&clear)&&!clear&&
+           c3_game_state_set_floor(&state,0x76,0x75,0)){
+            if(trace){fprintf(trace,"final_event_probe fixture=warped_uncleared_copy clear=0 battles=skip_as_win\n");fflush(trace);}
+            played=c3_field_scene_run(&state,0,copy,trace,error,sizeof error);
+        }
+        if(trace){fprintf(trace,"final_event_end result=%d error=%s\n",played,error);fclose(trace);}
+        c3_music_close();c3_game_state_free(&state);return played?1:0;
+    }
+#endif
 #ifdef C3_CLEAR_CONTINUE_PROBE
     {
         const char *copy="sdmc:/3ds/Colosseum3DS/ending-probe/copy.gci";

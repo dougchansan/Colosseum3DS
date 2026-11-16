@@ -824,7 +824,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     previous=c3_n3ds_active_time_us();result=1;
     while(c3_n3ds_poll(&input)){
         c3_debug_overlay_input(&input);
-#ifdef C3_ROUNDTRIP_PROBE
+#if defined(C3_ROUNDTRIP_PROBE) || defined(C3_FINAL_EVENT_PROBE)
         /* Probe: answer open dialogue with A, one press a second. */
         if(view&&(view->dialogue||view->choice)&&frames%60u==0u)input.pressed|=C3_PAD_A;
 #endif
@@ -840,6 +840,11 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         uint64_t now=c3_n3ds_active_time_us();float delta=(float)(now-previous)/1000000.0f;
         previous=now;elapsed+=delta;phase_seconds+=delta;
         c3_game_state_add_play_time(state,delta);
+#ifdef C3_FINAL_EVENT_PROBE
+        {
+            if(elapsed>1200){snprintf(error,capacity,"Final-event probe timed out");result=-1;break;}
+        }
+#endif
 #ifdef C3_WARP_TOUR
         if(page==PAUSE_CLOSED){
             if((view->dialogue||view->choice)&&frames%20==0)input.pressed|=C3_PAD_A;
@@ -1116,6 +1121,13 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
 
         if(page==PAUSE_CLOSED){
             if(!c3_field_story_tick(&story,delta,phase==FIELD_CONTROL?input.pressed:0,story_error))goto story_failed;
+#ifdef C3_FINAL_EVENT_PROBE
+            uint32_t encounter;
+            if(c3_field_story_battle_pending(&story,&encounter)){
+                if(trace){fprintf(trace,"final_event_battle encounter=%lu result=2 mode=skip_as_win party_writeback=0\n",(unsigned long)encounter);fflush(trace);}
+                if(!c3_field_story_battle_result(&story,2,story_error))goto story_failed;
+            }
+#endif
             if(view->next_floor){
 #ifdef C3_WARP_TOUR
                 /* The last drawn frame is still in the framebuffer. */
@@ -1491,15 +1503,15 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         }
         if(draw_result){result=-1;break;}
         ++frames;
-#ifdef C3_CLEAR_CONTINUE_PROBE
+#if defined(C3_CLEAR_CONTINUE_PROBE) || defined(C3_FINAL_EVENT_PROBE)
         /* Observe the loaded Continue checkpoint; never warp or synthesize
          * a story choice. Capture only once the native entry yields control. */
-        if(npc.attached&&view->control&&frames>=90u){
+        if(map.floor==2&&npc.attached&&view->control&&frames>=90u){
             int captured=c3_n3ds_capture_top("sdmc:/3ds/Colosseum3DS/clear-continue.bmp")==0;
             if(trace){fprintf(trace,"clear_continue_frame floor=%03lx previous=%03lx spawn=%u control=%d captured=%d frame=%u\n",(unsigned long)map.floor,(unsigned long)summary.previous_floor,summary.spawn,view->control,captured,frames);fflush(trace);}
             result=captured?0:-1;break;
         }
-        if(frames>1800u){snprintf(error,capacity,"Continue did not yield control");result=-1;break;}
+        if(map.floor==2&&frames>1800u){snprintf(error,capacity,"Continue did not yield control");result=-1;break;}
 #endif
 #ifdef C3_ROUNDTRIP_PROBE
         /* Leave for the world map once the people have joined; keep the
