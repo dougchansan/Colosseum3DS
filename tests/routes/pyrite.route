@@ -1,0 +1,105 @@
+# Pyrite Town (M2) main-story chapter for build/test_story_route
+# (docs/pyrite-story.md). Every expected flag is written by an original
+# script; "set" lines are recorded shortcuts.
+#   C3_ROUTE_PDA=<pda.c3pd> build/test_story_route <newgame dir> <boot dir>
+#       <copy of pokemon-colosseum.35188.gci> tests/routes/pyrite.route [report]
+# The boot directory holds the f%03x packs of tools/prepare_story.py and
+# tools/prepare_world.py for floors 0x0F-0x22, 0x78, 0x8E and 0x66. The save
+# steps write private checkpoints under private/pyrite/saves/.
+# Checkpoint: save 35188 (Phenac, WES/RUI) + Pyrite's world-map unlock.
+set 0x3f8 1
+floor 0x0f 0
+expect 0x3f9 1
+expect 0x9ab 1
+save private/pyrite/saves/pyrite-1-arrival.gci
+at -80 -120
+expect 0x3fb 1
+door 12
+expect 0x9d8 1
+door 3
+door 14
+door 4
+expect 0x3fd 1
+door 0
+expect 0x3ff 1
+door 3
+expect 0x400 1
+# The building's front door (row 15) is locked until 0x40A; town door 6
+# reaches the 4F rooftop, whose arrival (function 4) sets 0xA0A and 0x9DA.
+door 6
+expect 0x9da 1
+expect 0x9d9 1
+# Town main: with 0x9DA, the box by door 0xE starts the 0x403 event.
+at 24 -255
+expect 0x403 1
+door 4
+talk 1
+expect 0x404 1
+run 600
+expect 0x8d1 1
+expect 0x405 1
+door 6
+door 0
+floor 0x66 0
+inspect 0
+expect 0x407 1
+door 2
+floor 0x0f 0
+door 4
+at 18 -73
+expect 0xa17 1
+# Generator: A on surface 0 opens the pause menu at Items (native D0,
+# cipher lane, not landed); using the gear runs fn12, which sets 0xAB7.
+set 0xab7 1
+door 6
+# Town fn30: the camera follows the restarted windmill, then back inside.
+expect 0xab8 1
+expect 0x408 1
+# Pyrite Colosseum (entrance 0x78 through town door 9, function 31).
+door 6
+door 9
+press 9 1 180
+run 1200
+expect 0x409 1
+save private/pyrite/saves/pyrite-2-colosseum.gci
+door 2
+# Town fn24 (after the Colosseum): the grunt on the bridge, box by the gate.
+at 35 -339
+expect 0x40a 1
+# fn24 takes Wes into the building: 1F function 5, Cipher Peon battle 101.
+expect 0x40b 1
+expect_floor 0x19
+door 6
+door 5
+door 7
+expect_floor 0x1c
+# 4F (function 5): once Wes leaves the stair box, events 0x40C..0x40F in turn.
+at 1 10
+run 600
+talk 3
+expect 0x410 1
+run 300
+expect 0x411 1
+save private/pyrite/saves/pyrite-3-building.gci
+# Pyrite Cave: rooftop (town entrance 11) -> 3F_1 -> 2F_1 -> 1F_1 -> 1F_2.
+door 3
+door 8
+door 1
+door 2
+door 0
+# Cave 1F_2 (function 21): Miror B., battle 164, then 0x413.
+at 2 -35
+expect 0x413 1
+run 600
+expect 0x414 1
+# Plusle's room: person 7 (function 9) sets 0x415; main function 12 then
+# brings Duking and Silva (0x416).
+talk 7
+expect 0x415 1
+run 1200
+expect 0x417 1
+door 3
+talk 17
+expect 0x418 1
+expect 0x9df 1
+save private/pyrite/saves/pyrite-4-agate.gci
