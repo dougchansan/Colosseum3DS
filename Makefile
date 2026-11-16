@@ -10,7 +10,7 @@ UPSTREAM = vendor/colosseum/src/hsd/random.c vendor/colosseum/src/game/GScolsys2
 
 .PHONY: all test clean 3ds verify-source
 all: build/test_bottom_ui build/test_bottom_ui_golden build/test_first_person build/test_skin_uniforms
-all: build/test_core build/test_data build/test_pokemon build/test_model build/test_movie build/test_save build/test_title build/test_field build/test_dev_floor build/test_world_map build/test_name_entry build/test_game_menu build/test_game_state build/test_render_recovery build/test_area build/test_area_camera build/test_area_lights build/test_story build/test_field_story build/test_phenac_story build/test_world_story build/test_battle build/test_battle_action build/test_battle_rng
+all: build/test_core build/test_data build/test_pokemon build/test_model build/test_movie build/test_save build/test_title build/test_field build/test_dev_floor build/test_world_map build/test_name_entry build/test_game_menu build/test_game_state build/test_render_recovery build/test_area build/test_area_camera build/test_area_lights build/test_story build/test_field_story build/test_phenac_story build/test_world_story build/test_relive build/test_battle build/test_battle_action build/test_battle_rng
 
 build:
 	mkdir -p $@
@@ -66,7 +66,7 @@ build/test_area_lights: tests/test_area_lights.c src/area_lights.c include/colos
 build/test_story: tests/test_story.c src/story.c include/colosseum3ds/story.h | build
 	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_story.c src/story.c $(LDFLAGS) -lm -o $@
 
-FIELD_STORY_SOURCES = src/field_story.c src/story.c src/area.c src/area_camera.c src/field.c src/title.c src/game_state.c src/save.c src/decomp_pokemon.c src/battle.c build/save_codec.c
+FIELD_STORY_SOURCES = src/field_story.c src/story.c src/area.c src/area_camera.c src/field.c src/title.c src/game_state.c src/save.c src/decomp_pokemon.c src/battle.c src/relive.c build/save_codec.c
 build/test_field_story: tests/test_field_story.c $(FIELD_STORY_SOURCES) $(HEADERS)
 	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_field_story.c $(FIELD_STORY_SOURCES) $(LDFLAGS) -lm -o $@
 
@@ -76,6 +76,10 @@ build/test_phenac_story: tests/test_phenac_story.c src/floor_profile.c $(FIELD_S
 WORLD_BATTLE_SOURCES = src/battle_general.c src/battle_story.c src/battle_rng.c src/decomp_rng.c
 build/test_world_story: tests/test_world_story.c $(FIELD_STORY_SOURCES) $(WORLD_BATTLE_SOURCES) build/battle_rng_source.h $(HEADERS) $(UPSTREAM)
 	$(CC) $(CPPFLAGS) -Ibuild -Isrc $(CFLAGS) tests/test_world_story.c $(FIELD_STORY_SOURCES) $(WORLD_BATTLE_SOURCES) $(LDFLAGS) -lm -o $@
+
+RELIVE_SOURCES = src/relive.c src/relive_purify.c src/game_state.c src/save.c src/decomp_pokemon.c build/save_codec.c src/battle_general.c src/battle_rng.c src/decomp_rng.c
+build/test_relive: tests/test_relive.c $(RELIVE_SOURCES) build/battle_rng_source.h $(HEADERS) $(UPSTREAM)
+	$(CC) $(CPPFLAGS) -Ibuild -Isrc $(CFLAGS) tests/test_relive.c $(RELIVE_SOURCES) $(LDFLAGS) -lm -o $@
 
 build/test_battle: tests/test_battle.c src/battle.c include/colosseum3ds/battle.h build/save_codec.c
 	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_battle.c src/battle.c build/save_codec.c $(LDFLAGS) -o $@
@@ -158,6 +162,7 @@ test: all
 	./build/test_field_story
 	./build/test_phenac_story
 	./build/test_world_story
+	./build/test_relive
 	./build/test_battle
 	./build/test_battle_action
 	./build/test_battle_rng

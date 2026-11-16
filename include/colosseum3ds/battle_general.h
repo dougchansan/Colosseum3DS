@@ -127,6 +127,19 @@ int c3_battle_pack_move(const C3BattlePack *pack, uint16_t move, C3GeneralMoveIn
 /* The species' cry: its voice sound request (species row +14), 0 none. */
 uint16_t c3_battle_pack_species_voice(const C3BattlePack *pack, uint16_t species);
 
+/* Purification's experience payout (_expRecover); see battle_general.c. */
+#define C3_EXP_RECOVERY_MAX 16u
+typedef struct C3ExpRecovery {
+    int level_up;
+    unsigned level_count, learned_count, skipped_count;
+    uint8_t levels[C3_EXP_RECOVERY_MAX];          /* each level reached, in order */
+    uint16_t learned[C3_EXP_RECOVERY_MAX];        /* moves put into a free slot */
+    uint8_t learned_level[C3_EXP_RECOVERY_MAX];
+    uint16_t skipped[C3_EXP_RECOVERY_MAX];        /* moves that needed a forget prompt */
+} C3ExpRecovery;
+int c3_battle_pack_recover_exp(const C3BattlePack *pack, uint8_t record[C3_GB_POKEMON_SIZE],
+                               uint32_t add, C3ExpRecovery *out);
+
 /* party: the save body's six consecutive 0x138-byte records, read-only. */
 int c3_general_battle_begin(C3GeneralBattle *battle, const C3BattlePack *pack,
                             uint32_t encounter, const void *party,

@@ -51,8 +51,12 @@ do not agree with the actual functions. They are not the format specification.
 All multibyte fields in the original card data are **big-endian**. The raw file
 is exactly `0x60000` bytes, or 48 GameCube memory-card blocks. A GCI is exactly
 `0x60040` bytes (393280 bytes). The optional GCI entry must identify game/maker
-`GC6E01`, filename `pokemon_colosseum`, and a 48-block file. Other regions are
-outside this pinned target.
+`GC6E01` (America), `GC6J01` (Japan) or `GC6P01` (Europe), filename
+`pokemon_colosseum`, and a 48-block file. The three versions share the slot
+layout, cipher, SHA-1 and game body: Japanese and European cards from GameFAQs
+(two Japanese, three European, 2026-11-16) decode with this codec and load as
+game states (see game-state.md). A save keeps its own GCI envelope, so a
+Japanese card stays `GC6J01` when the port writes it.
 
 | Raw file offset | Size | Contents |
 | ---: | ---: | --- |

@@ -26,6 +26,13 @@ from prepare_outskirt import PROFILES as ARCHIVE_PROFILES, extent, member, rel_d
 SOURCE_COMMIT = "51bfe4314a218dfaf9592fc80723c50498d0ee55"
 COMMON_REL = "common_rel.rel"
 COMMON_REL_PROFILE = (1369520, "0c89e679305f5e84eff3c774b542120c727ff350a0841cfc516235b3556df69e")
+# Message banks a floor's natives show from another archive. Relic Forest
+# (0x27): native C2's purification runs reliveCeremonyAll on floor 0x385
+# (M3_shrine_1F_rl.fsys), whose bank holds messages 3B0B-3B0D, 3B10, 44CE.
+FOREIGN_MESSAGES = {
+    0x27: (("M3_shrine_1F_rl.fsys", 0x0DAE0A00,
+            (707552, "23c4d004e9022f26e40d76c90151aa57c26b6d4c4ac64c00d8e008ab84e2f921")),),
+}
 # The floors prepared when no --floor is given (the original first area).
 DEFAULT_FLOORS = ("outskirt", "shop")
 
@@ -36,6 +43,9 @@ def source_profiles(names):
     profiles = {floors[name]["archive"]: (floors[name]["bytes"], floors[name]["sha256"])
                 for name in names}
     profiles[COMMON_REL] = COMMON_REL_PROFILE
+    for name in names:
+        for archive, _ident, profile in FOREIGN_MESSAGES.get(floors[name]["floor"], ()):
+            profiles[archive] = profile
     return profiles
 
 
@@ -443,6 +453,7 @@ def main():
             if be16(bank, 0) != 0x100:
                 raise ValueError("Unexpected original field script bank")
             extra = [member(originals[filename], ident) for ident in extra_messages.get(floor, ())]
+            extra += [member(originals[archive], ident) for archive, ident, _p in FOREIGN_MESSAGES.get(floor, ())]
             own = [messages] if messages is not None else []
             packed = encode_pack(floor, [bank, common], [*own, *extra, common_messages, common_names])
             (output / outname).write_bytes(packed)

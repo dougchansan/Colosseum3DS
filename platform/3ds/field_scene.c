@@ -117,6 +117,77 @@ static int restore_party(void *context)
     int restored=data?c3_inventory_restore_party(context,&assets):-1;
     free(data);return restored;
 }
+/* A party record's nickname (PokemonBios +0x2E, big-endian UTF-16, 11
+ * characters), for the ASCII font. */
+static void record_nickname(const uint8_t *r,char *out,size_t capacity)
+{
+    c3_game_text_ascii(r+0x2e,11,out,capacity);
+}
+/* Native C2 (preReliveMain -> reliveCeremonyAll): purify party `slot` with
+ * the original rules (src/relive_purify.c) in the game state; the next save
+ * writes it. The battle pack supplies growth, stats and level-up moves. */
+static FILE *purify_trace;
+static int purify_party(void *context,unsigned slot,int forced,C3FieldStoryPurified *out)
+{
+    C3GameState *state=context;C3BattlePack pack;char problem[C3_GB_ERROR_SIZE]="";
+    uint8_t r[C3_GB_POKEMON_SIZE];
+    memset(&pack,0,sizeof pack);
+    if(!c3_game_state_pokemon(state,slot,r))return -1;
+    record_nickname(r,out->nickname,sizeof out->nickname);
+    if(!c3_battle_pack_load(&pack,C3_BATTLE_PACK_PATH,problem)){
+        if(purify_trace){fprintf(purify_trace,"relive_purify slot=%u status=no_pack reason=%s\n",slot,problem);fflush(purify_trace);}
+        return -1;
+    }
+    int done=c3_relive_purify(state,slot,forced,&pack,&out->result);
+    if(done&&out->result.move0)c3_battle_pack_move_name(&pack,out->result.move0,out->move_name);
+    if(done&&c3_game_state_pokemon(state,slot,r)&&purify_trace){
+        fprintf(purify_trace,"relive_purify slot=%u name=%s species=%u level=%u exp=%lu dp=%ld friendship=%u->%u move0=%s pool_exp=%lu ribbon=%u\n",
+                slot,out->nickname,(unsigned)out->result.species,(unsigned)r[0x60],
+                (unsigned long)((uint32_t)r[0x5c]<<24|(uint32_t)r[0x5d]<<16|(uint32_t)r[0x5e]<<8|r[0x5f]),
+                (long)(int32_t)((uint32_t)r[0xdc]<<24|(uint32_t)r[0xdd]<<16|(uint32_t)r[0xde]<<8|r[0xdf]),
+                (unsigned)out->result.friendship_before,(unsigned)out->result.friendship_after,out->move_name,
+                (unsigned long)out->result.pool_exp,(unsigned)r[0xc6]);
+        fflush(purify_trace);
+    }
+    c3_battle_pack_free(&pack);
+    return done?1:0;
+}
+/* menuPokemonOpen(7) for native C2: the party on the bottom screen; only a
+ * Shadow Pokemon whose heart is open can be chosen. */
+typedef struct { int open; unsigned cursor, count; char names[6][24]; uint8_t level[6], pickable[6]; } RelivePick;
+static void relive_pick_open(RelivePick *p,const C3GameState *state)
+{
+    C3GameSummary summary;memset(p,0,sizeof *p);p->open=1;p->cursor=6;
+    if(!c3_game_state_summary(state,&summary))return;
+    for(unsigned i=0;i<summary.party_count&&i<6;++i){
+        uint8_t r[C3_GB_POKEMON_SIZE];
+        if(!c3_game_state_pokemon(state,i,r)||!(r[0]|r[1]))break;
+        record_nickname(r,p->names[i],sizeof p->names[i]);
+        p->level[i]=r[0x60];p->pickable[i]=(uint8_t)c3_relive_pickable(r);
+        if(p->pickable[i]&&p->cursor==6)p->cursor=i;
+        p->count=i+1;
+    }
+    if(p->cursor==6)p->cursor=0;
+}
+/* Returns the chosen slot, -1 to cancel, -2 while still choosing. */
+static int relive_pick_update(RelivePick *p,uint32_t pressed)
+{
+    if(pressed&C3_PAD_B)return -1;
+    if(!p->count)return pressed&C3_PAD_A?-1:-2;
+    if(pressed&C3_PAD_UP)p->cursor=(p->cursor+p->count-1)%p->count;
+    if(pressed&C3_PAD_DOWN)p->cursor=(p->cursor+1)%p->count;
+    if((pressed&C3_PAD_A)&&p->pickable[p->cursor])return (int)p->cursor;
+    return -2;
+}
+static void relive_pick_draw(const RelivePick *p,C3BottomUi *ui)
+{
+    c3_ui_header(ui,"RELIC STONE","Purify which Pokemon?");
+    for(unsigned i=0;i<p->count;++i){
+        char level[16];snprintf(level,sizeof level,"Lv%u",(unsigned)p->level[i]);
+        c3_ui_row_value(ui,44+(int)i*24,p->names[i],p->pickable[i]?level:"---",i==p->cursor,!p->pickable[i]);
+    }
+    c3_ui_footer(ui,"A: purify   B: cancel");
+}
 /* Destinations the original doorway script may request from a field. */
 /* The in-game menu stays loaded while the hero walks: its hub is the
  * bottom screen, and X / START or a tap open it at once. Returns whether
@@ -476,7 +547,7 @@ static int field_renderer_init(C3Title *storage,const C3Title *const *models,uin
  * front of it, facing it, and interacts (open dialogue is answered with A).
  * Other floors leave for the world map as before. */
 static struct { uint32_t start, start_spawn, floor[32], source[32]; uint8_t interact[32]; unsigned count, next; int loaded;
-                uint32_t film_floor, film_frames; } probe_route;
+                uint32_t film_floor, film_frames; unsigned shadow_slot, shadow_id; } probe_route;
 static void probe_route_load(void)
 {
     if(probe_route.loaded)return;
@@ -492,6 +563,10 @@ static void probe_route_load(void)
         if(sscanf(line,"start %lx %lx",&a,&b)==2){probe_route.start=(uint32_t)a;probe_route.start_spawn=(uint32_t)b;}
         else if(sscanf(line,"start %lx",&a)==1)probe_route.start=(uint32_t)a;
         else if(sscanf(line,"frames %lx %lu",&a,&b)==2&&b<=600){probe_route.film_floor=(uint32_t)a;probe_route.film_frames=(uint32_t)b;}
+        /* "shadow <slot> <id>": the probe makes that party member a Shadow
+         * Pokemon whose heart is open, in memory only (the probe saves to
+         * probe-unused.gci), to try the Relic Stone. */
+        else if(sscanf(line,"shadow %lx %lx",&a,&b)==2&&a<6&&b){probe_route.shadow_slot=(unsigned)a;probe_route.shadow_id=(unsigned)b;}
         else if(sscanf(line,"%lx i%lx",&a,&b)==2&&probe_route.count<32){
             probe_route.floor[probe_route.count]=(uint32_t)a;probe_route.interact[probe_route.count]=1;
             probe_route.source[probe_route.count++]=(uint32_t)b;}
@@ -529,6 +604,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     C3NameEntry name_entry;int naming=0;
     C3ShopMenu shop_menu;C3ShopTable shop_table={0};C3PdaAssets shop_assets={0};
     uint8_t *shop_pda=NULL,*shop_pack=NULL;size_t shop_pack_size=0;int shopping=0;
+    RelivePick relive_pick={0};
     C3IngameMenu *ingame=calloc(1,sizeof *ingame);
     C3PdaPreview *pda_preview=NULL;
     float pda_seconds=0;
@@ -736,6 +812,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     c3_field_story_enable_shop(&story,1);
     c3_field_story_set_item_service(&story,receive_item,state);
     c3_field_story_set_party_service(&story,restore_party,state);
+    purify_trace=trace;c3_field_story_set_purify_service(&story,purify_party,state);
     c3_field_story_set_audio_service(&story,story_audio,NULL);
     if(!c3_field_story_prepare(&story,story_error))goto story_failed;
     view=c3_field_story_view(&story);
@@ -995,6 +1072,26 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
             if(shop_event==C3_SHOP_EVENT_CLOSE){
                 free(shop_pda);free(shop_pack);shop_pda=shop_pack=NULL;shopping=0;
                 if(!c3_field_story_shop_done(&story,story_error))goto story_failed;
+            }
+            input.pressed=0;input.touch_pressed=false;
+        }
+        /* Native C2's party choice at the Relic Stone. It owns all input. */
+        if(view->relive_pick&&!relive_pick.open&&page==PAUSE_CLOSED){
+            relive_pick_open(&relive_pick,state);dirty=1;
+            if(trace){fprintf(trace,"relive_pick_open party=%u cursor=%u pickable=%u\n",relive_pick.count,relive_pick.cursor,
+                              relive_pick.count?relive_pick.pickable[relive_pick.cursor]:0u);fflush(trace);}
+        }
+        if(relive_pick.open){
+            uint32_t pressed=input.pressed;
+#ifdef C3_ROUNDTRIP_PROBE
+            pressed=relive_pick.count&&relive_pick.pickable[relive_pick.cursor]?C3_PAD_A:C3_PAD_B;
+#endif
+            int chosen=relive_pick_update(&relive_pick,pressed);
+            if(pressed)dirty=1;
+            if(chosen!=-2){
+                relive_pick.open=0;
+                if(trace){fprintf(trace,"relive_pick slot=%d\n",chosen);fflush(trace);}
+                if(!c3_field_story_relive_pick(&story,chosen,story_error))goto story_failed;
             }
             input.pressed=0;input.touch_pressed=false;
         }
@@ -1350,6 +1447,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
             C3BottomUi *bottom=c3_bottom_screen_begin();
             if(naming)c3_name_entry_draw(&name_entry,bottom,"PARTNER'S NAME");
             else if(shopping)c3_shop_menu_draw(&shop_menu,state,bottom,profile->label);
+            else if(relive_pick.open)relive_pick_draw(&relive_pick,bottom);
             else if(page==PAUSE_MAIN&&ingame->active)c3_ingame_draw_to(ingame,state,bottom);
             else if(page==PAUSE_CLOSED&&(phase==FIELD_CONTROL||phase==FIELD_FADE_IN)&&!view->dialogue&&!view->blocked[0]&&
                     hub_menu_ready(ingame,state)>=0){
@@ -1560,6 +1658,17 @@ int c3_field_scene_roundtrip_probe(C3GameState *state,FILE *trace,char *error,si
                 if(e.floor==s.floor){start=s.floor;break;}
                 if(e.floor==s.previous_floor)start=s.previous_floor;} }
     if(trace){fprintf(trace,"roundtrip_start floor=%03lx\n",(unsigned long)start);fflush(trace);}
+    if(probe_route.shadow_id){
+        uint8_t r[C3_GB_POKEMON_SIZE];unsigned slot=probe_route.shadow_slot,id=probe_route.shadow_id;
+        if(c3_game_state_pokemon(state,slot,r)&&(r[0]|r[1])){
+            /* Shadow data ID, heart gauge 0, 20000 stored experience, 30
+             * stored friendship; the purify flag cleared. */
+            r[0xd8]=(uint8_t)(id>>8);r[0xd9]=(uint8_t)id;memset(r+0xdc,0,4);
+            r[0xe0]=0;r[0xe1]=0;r[0xe2]=0x4e;r[0xe3]=0x20;r[0xe4]=0;r[0xe5]=30;
+            int ok=c3_game_state_set_pokemon(state,slot,r)&&c3_game_state_set_flag(state,c3_relive_purify_flag((uint16_t)id),0);
+            if(trace){fprintf(trace,"roundtrip_shadow slot=%u id=%u level=%u ok=%d\n",slot,id,(unsigned)r[0x60],ok);fflush(trace);}
+        }
+    }
     if(!c3_game_state_set_floor(state,start,C3_FLOOR_WORLD_MAP_ID,(uint8_t)probe_route.start_spawn)){snprintf(error,capacity,"floor rejected");return -1;}
     for(unsigned i=0;i<AREAS;++i){
         C3GameSummary summary;uint32_t floor=c3_game_state_summary(state,&summary)?summary.floor:0;

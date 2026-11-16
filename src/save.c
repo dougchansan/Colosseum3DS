@@ -49,7 +49,7 @@ const char *c3_save_result_string(C3SaveResult result)
     case C3_SAVE_OK: return "Colosseum save format verified";
     case C3_SAVE_ARGUMENT: return "invalid save API argument";
     case C3_SAVE_SIZE: return "incorrect GameCube save file size";
-    case C3_SAVE_GCI_HEADER: return "GCI is not a GC6E/01 pokemon_colosseum file";
+    case C3_SAVE_GCI_HEADER: return "GCI is not a GC6E/GC6J/GC6P 01 pokemon_colosseum file";
     case C3_SAVE_SLOT_HEADER: return "invalid save slot flags or header checksum";
     case C3_SAVE_EMPTY: return "memory-card file contains no saved game";
     case C3_SAVE_INTEGRITY: return "no saved slot passes the game's SHA-1 check";
@@ -73,7 +73,10 @@ static C3SaveResult image_header(const uint8_t *image, size_t length,
     info->has_gci_header = length == C3_SAVE_GCI_SIZE;
     if (info->has_gci_header) {
         static const char filename[] = "pokemon_colosseum";
-        if (memcmp(image, "GC6E01", 6) != 0 ||
+        /* US (E), Japanese (J) and European (P) cards share the slot
+         * format, cipher and game body (docs/save-format.md). */
+        if (memcmp(image, "GC6", 3) != 0 || (image[3] != 'E' && image[3] != 'J' && image[3] != 'P') ||
+            memcmp(image + 4, "01", 2) != 0 ||
             memcmp(image + 8, filename, sizeof(filename)) != 0 ||
             image[0x38] != 0 || image[0x39] != C3_SAVE_RAW_SIZE / 0x2000u)
             return C3_SAVE_GCI_HEADER;

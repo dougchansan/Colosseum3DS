@@ -32,6 +32,7 @@ typedef struct C3GameSummary {
     uint8_t rumble_disabled;  /* Original no-vibration option: 0 on, 1 off. */
     uint8_t party_count;
     uint8_t used_backup;
+    uint8_t region, language; /* save body bytes 2-3: 1 Japan / 2 America / 3 Europe; 1 ja, 2 en, 3 de, 4 fr, 5 it, 6 es */
     C3GamePokemon party[C3_GAME_PARTY_COUNT];
 } C3GameSummary;
 
@@ -57,6 +58,11 @@ int c3_game_state_new(C3GameState *state, const char *name, uint32_t seed,
                       char error[C3_GAME_ERROR_SIZE]);
 
 int c3_game_state_summary(const C3GameState *state, C3GameSummary *summary);
+/* A save's big-endian UTF-16 text (names, nicknames) for the ASCII font:
+ * ASCII and fullwidth ASCII as is, accented Latin letters without accents,
+ * kana as upper-case romaji, anything else '?'. Stops at `units` or a 0;
+ * returns the length written to `out` (always terminated). */
+size_t c3_game_text_ascii(const uint8_t *text, unsigned units, char *out, size_t capacity);
 /* Reviewed native roster: ordinary Umbreon/Espeon use original growth bank 0.
  * Returns 0 for unsupported species/shadow records/levels, without guessing a
  * growth curve. At level 100 the valid range is zero (level cap). */

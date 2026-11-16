@@ -1,6 +1,7 @@
 #ifndef C3_FIELD_STORY_H
 #define C3_FIELD_STORY_H
 
+#include "colosseum3ds/relive.h"
 #include "colosseum3ds/area.h"
 #include "colosseum3ds/area_camera.h"
 #include "colosseum3ds/game_state.h"
@@ -26,6 +27,7 @@ typedef struct C3FieldStoryView {
     uint32_t name_entry; /* native 16 mode + 1 while the scene must collect a name */
     uint32_t shop;       /* native 19 shop number + 1 while the scene shows the shop */
     uint32_t unported_menu; /* last native whose menu step is not ported (took the decline branch) */
+    int relive_pick;        /* native C2 waits for a party choice (c3_field_story_relive_pick) */
     float fade, camera_seconds;
     C3TitleCamera camera;
 } C3FieldStoryView;
@@ -66,6 +68,22 @@ void c3_field_story_set_item_service(C3FieldStory *story,C3FieldStoryReceive rec
 /* Full party restore (script native D8 mode 0, pokemonAllKaihuku). Returns
  * the number of members restored or a negative value. Unbound, D8 fails. */
 typedef int (*C3FieldStoryRestore)(void *context);
+/* Purification at the Relic Stone (native C2, preReliveSetParameter ->
+ * preReliveMain; colosseum3ds/relive.h). The scene purifies party `slot`
+ * (forced: the heart gauge is opened first, preReliveMain's mode 1) with
+ * c3_relive_purify and writes the Pokemon's nickname and first move's name
+ * for the messages. Returns 1 when purified, 0 when the slot holds no
+ * Shadow Pokemon, negative on failure. Unbound, purification fails. */
+typedef struct C3FieldStoryPurified {
+    C3ReliveResult result;
+    char nickname[24], move_name[24];
+} C3FieldStoryPurified;
+typedef int (*C3FieldStoryPurify)(void *context, unsigned slot, int forced, C3FieldStoryPurified *out);
+void c3_field_story_set_purify_service(C3FieldStory *story, C3FieldStoryPurify purify, void *context);
+/* menuPokemonOpen(7) in preReliveMain: while view.relive_pick is set the
+ * scene lets the player choose a party member whose Shadow heart is open
+ * (c3_relive_pickable) and reports its slot, or -1 to cancel. */
+int c3_field_story_relive_pick(C3FieldStory *story, int slot, char *error);
 void c3_field_story_set_party_service(C3FieldStory *story,C3FieldStoryRestore restore,void *context);
 /* Music (GSsnd wrappers). Natives 68/69 call fn_80165A20/fn_801659FC with
  * (sound, fade, volume), loading the 0x406/0x407 song slots; 6A is

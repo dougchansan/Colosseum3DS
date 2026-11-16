@@ -13,7 +13,8 @@
 #define MAX_WAYPOINTS 64u /* Phenac actor 24 allocates 36 points (bank 013E0E00 fn 34). */
 
 typedef enum { W_NONE, W_SECONDS, W_TASK, W_MOTION, W_MOVE, W_CAMERA,
-               W_CAMERA_MOVE, W_FADE, W_MESSAGE, W_CHOICE, W_TV, W_BATTLE, W_NAME, W_ITEM, W_DOOR, W_SHOP, W_DIALOG } Wait;
+               W_CAMERA_MOVE, W_FADE, W_MESSAGE, W_CHOICE, W_TV, W_BATTLE, W_NAME, W_ITEM, W_DOOR, W_SHOP, W_DIALOG,
+               W_RELIVE } Wait;
 typedef struct {
     uint16_t key, child;
     C3StoryCall call;
@@ -25,6 +26,7 @@ typedef struct {
     /* Native menu programs (etctool.c 54-57): their state machine runs in
      * this task; each message or yes/no choice resumes the program. */
     uint32_t program; int prog_state, prog_yes, prog_no, prog_asking;
+    uint32_t relive_mode, relive_slot; /* native C2's arguments and the picked slot */
 } RunTask;
 typedef struct Person {
     C3StoryActor public;
@@ -80,6 +82,8 @@ typedef struct {
     C3FieldStoryAudio audio;void *audio_context;
     const C3AreaDoor *door_rows;C3StoryDoor doors[C3_AREA_MAX_DOORS];uint32_t door_count;
     C3FieldStoryRestore restore;void *restore_context;
+    C3FieldStoryPurify purify;void *purify_context;
+    C3FieldStoryPurified purified; /* the last purification, for its messages */
     uint32_t message_values[256]; /* msgctrlSetValue: one word per control byte */
     char item_name[64],number_text[16];const char *message_speaker;
     Person partner_actor; /* (0,101); invisible until native 23 */
@@ -124,7 +128,7 @@ static int validate_native(const Impl *s,const C3StoryCall *c,char *error)
         {0x5c,0,0},{0x5d,0,0},{0x5e,0,0},{0x5f,2,0},{0x64,2,0},{0x65,4,14},
         {0x67,0,0},{0x68,3,0},{0x69,3,0},{0x6a,2,0},{0x6d,2,0},{0x72,2,0},{0x76,2,0},
         {0x7d,3,0},{0x7f,3,7},{0x88,0,0},{0x8a,4,0},{0x8c,5,30},{0x98,3,0},{0xd9,1,0},{0xe0,2,0},{0xc3,0,0},
-        {0x99,1,0},{0x9d,1,1},{0xb3,2,1},{0xb6,1,0},{0xd1,5,0},{0xd3,0,0},{0xe4,0,0},
+        {0xc2,2,0},{0x99,1,0},{0x9d,1,1},{0xb3,2,1},{0xb6,1,0},{0xd1,5,0},{0xd3,0,0},{0xe4,0,0},
         /* Phenac City exterior bank 013E0E00 (native table lbl_802E1CF0). */
         {0x02,1,0},{0x16,2,0},{0x23,1,0},{0x31,0,0},{0x66,1,0},{0x7e,2,0},
         {0x82,3,0},{0x83,3,0},{0x89,3,0},{0xa1,3,0},{0xa4,6,0x3c},{0xa5,5,0x10},
@@ -133,7 +137,7 @@ static int validate_native(const Impl *s,const C3StoryCall *c,char *error)
         {0x97,3,0},{0xaa,7,0x3c},{0xab,1,0},{0xad,1,0},{0xe1,0,0},
         {0xa2,0,0},{0xac,3,0},{0xcb,3,0},{0xd4,0,0},{0x61,5,0},{0xe2,0,0},{0x90,2,0},{0x7b,0,0},{0xc5,4,0},
         {0xe7,3,0},{0x22,5,0},
-        {0x78,1,0},{0x7c,0,0},{0xf2,0,0},{0xa8,2,0},{0xd6,2,0},{0x53,3,0},{0x9b,3,0},{0xc7,5,0},
+        {0x78,1,0},{0x7c,0,0},{0xf1,0,0},{0xf2,0,0},{0xa8,2,0},{0xd6,2,0},{0x53,3,0},{0x9b,3,0},{0xc7,5,0},
         {0xc4,0,0},{0xdc,0,0},{0xc8,2,0},{0x80,3,0},{0xbd,0,0},{0x9e,1,0},{0x54,0,0},{0x55,0,0},{0x56,0,0},{0x57,0,0},
         {0x86,0,0},{0xbc,1,0},{0xca,0,0},{0xeb,0,0},{0x85,1,0}
     };
@@ -260,6 +264,10 @@ static const char *message_source(void *context,uint8_t control)
     case 0x2c:return s->partner_name;
     case 0x59:return s->message_speaker?s->message_speaker:"";
     case 0x2d:return s->item_name[0]?s->item_name:NULL;
+    /* msgctrl 32 / 39: the purified Pokemon's nickname and a move name
+     * (reliveCeremonyAll's msgctrlSetValue(0x32 / 0x39)). */
+    case 0x32:return s->purified.nickname;
+    case 0x39:return s->purified.move_name;
     case 0x2f:snprintf(s->number_text,sizeof s->number_text,"%lu",(unsigned long)s->message_values[0x2f]);return s->number_text;
     /* msgctrl 4B: the number msgctrlSetValue(0x4B) stored (_msgctrlMakeDigit). */
     case 0x4b:snprintf(s->number_text,sizeof s->number_text,"%lu",(unsigned long)s->message_values[0x4b]);return s->number_text;
@@ -671,6 +679,9 @@ static int run_native(Impl *s,RunTask *t,char *error)
     /* scriptGetDarkPokemonNum / scriptGetDarkPointZeroPokemonNum: party
      * Shadow Pokemon (darkpokemonDataId at 0xD8 with dp >= 0), and those
      * whose heart gauge (dp at 0xDC) is empty. */
+    /* preReliveDisplayHokoraParticle: the shrine's glow while a party
+     * Shadow Pokemon's heart is open (a particle thread). Not drawn. */
+    case 0xf1:log_line(s,"story_shrine_particle drawn=0");value=0;break;
     case 0x7c:case 0xf2:{C3GameSummary party;uint8_t record[0x138];
         if(!c3_game_state_summary(s->game,&party))return fail(error,"Native %02lx needs the party",(unsigned long)c->native);
         value=0;
@@ -727,6 +738,12 @@ static int run_native(Impl *s,RunTask *t,char *error)
         log_line(s,"story_save_menu status=unported_not_saved");value=0;break;
     case 0x54:case 0x55:case 0x56:case 0x57:
         t->program=c->native;t->prog_state=0;t->prog_asking=0;
+        return program_step(s,t,0,error);
+    /* preReliveSetParameter(mode, index): modes 0 and 1 run preReliveMain
+     * (the Relic Stone's purification), as a program of this task. */
+    case 0xc2:
+        if(a[0]!=0&&a[0]!=1){value=0;break;}
+        t->program=0xc2;t->prog_state=0;t->prog_asking=0;t->relive_mode=a[0];t->relive_slot=a[1];t->stage=0;
         return program_step(s,t,0,error);
     /* floorSetFadeScript: the scripts run around the next floor fade. */
     case 0x90:s->fade_begin=a[0];s->fade_poll=a[1];
@@ -1121,6 +1138,45 @@ static int program_step(Impl *s,RunTask *t,uint32_t answer,char *error)
             case 4:return say(s,t,0x5574,END,error);
             default:break;
             }break;}
+        case 0xc2:{ /* preReliveMain + reliveMain + reliveCeremonyAll */
+            C3ReliveResult *r=&s->purified.result;
+            switch(st){
+            case 0:{C3ReliveCounts counts;
+                if(!c3_relive_counts(s->game,&counts))return fail(error,"Purification needs the party");
+                int action=c3_relive_action((int)t->relive_mode,&counts);
+                log_line(s,"story_relive mode=%lu action=%d remaining=%u ready=%u item=%d",(unsigned long)t->relive_mode,
+                         action,counts.remaining,counts.ready,counts.has_item);
+                if(action==C3_RELIVE_PICK){t->prog_state=1;continue;}
+                if(action==C3_RELIVE_PURIFY){t->prog_state=4;continue;}
+                t->prog_state=END;continue;}
+            case 1:return say(s,t,0x3b0f,2,error);
+            case 2: /* winMsgCloseField, then menuPokemonOpen(7) in the scene */
+                close_message(s);s->view.relive_pick=1;t->prog_state=3;t->wait=W_RELIVE;return 1;
+            case 3:
+                s->view.relive_pick=0;
+                if(answer>=6){log_line(s,"story_relive pick=cancel");t->prog_state=END;continue;}
+                t->relive_slot=answer;t->relive_mode=0;t->prog_state=4;continue;
+            case 4:{ /* reliveMain on floor 0x385: the ceremony, then the purification */
+                if(!s->purify)return fail(error,"Native C2 needs the purification service");
+                memset(&s->purified,0,sizeof s->purified);
+                int done=s->purify(s->purify_context,t->relive_slot,t->relive_mode==1,&s->purified);
+                log_line(s,"story_relive slot=%lu forced=%lu purified=%d species=%u shadow=%u pool_exp=%lu levels=%u learned=%u skipped=%u"
+                         " ceremony_scene=unported",(unsigned long)t->relive_slot,(unsigned long)t->relive_mode,done,r->species,r->shadow_id,
+                         (unsigned long)r->pool_exp,r->exp.level_count,r->exp.learned_count,r->exp.skipped_count);
+                if(done<0)return fail(error,"Purification of party slot %lu failed",(unsigned long)t->relive_slot);
+                t->stage=0;t->prog_state=done?5:END;continue;}
+            case 5:
+                if(!r->move0){t->prog_state=6;continue;}
+                return say(s,t,0x3b10,6,error);
+            case 6:s->message_values[0x2f]=r->pool_exp;return say(s,t,0x3b0b,7,error);
+            case 7: /* each level reached: 44CE with the level in 2F */
+                if(t->stage>=r->exp.level_count){t->prog_state=8;continue;}
+                s->message_values[0x2f]=r->exp.levels[t->stage++];return say(s,t,0x44ce,7,error);
+            case 8:return say(s,t,0x3b0c,9,error);
+            case 9:return ask(s,t,0x3b0d,10,END,error);
+            case 10:unported_menu(s,t,"nickname_entry");t->prog_state=END;continue;
+            default:break;
+            }break;}
         default:break;
         }
         return fail(error,"Menu program %02lx reached unported state %d",(unsigned long)t->program,st);
@@ -1190,7 +1246,7 @@ static int wait_task(Impl *s,RunTask *t,float seconds,uint16_t *pressed,char *er
         {uint32_t answer=(uint32_t)s->view.choice_no;
          log_line(s,"story_choice answer=%lu",(unsigned long)answer);
          close_message(s);return resume(s,t,answer,error);}
-    case W_BATTLE:case W_NAME:case W_SHOP:return 1;
+    case W_BATTLE:case W_NAME:case W_SHOP:case W_RELIVE:return 1;
     case W_DOOR:
         if(t->stage<s->door_count&&s->doors[t->stage].playing)return 1;
         if(s->event_depth)--s->event_depth;
@@ -1223,7 +1279,7 @@ void c3_field_story_close(C3FieldStory *story)
 void c3_field_story_describe_waits(const C3FieldStory *story,char *out,size_t capacity)
 {
     static const char *const names[]={"none","seconds","task","motion","move","camera","camera_move",
-        "fade","message","choice","tv","battle","name","item","door","shop","dialog"};
+        "fade","message","choice","tv","battle","name","item","door","shop","dialog","relive"};
     const Impl *s=story?story->impl:NULL;size_t used=0;
     if(!out||!capacity)return;
     out[0]=0;if(!s)return;
@@ -1315,6 +1371,20 @@ int c3_field_story_shop_done(C3FieldStory *story,char *error)
 void c3_field_story_set_audio_service(C3FieldStory *story,C3FieldStoryAudio audio,void *context)
 {
     Impl *s=story?story->impl:NULL;if(s){s->audio=audio;s->audio_context=context;}
+}
+void c3_field_story_set_purify_service(C3FieldStory *story,C3FieldStoryPurify purify,void *context)
+{
+    Impl *s=story?story->impl:NULL;if(s){s->purify=purify;s->purify_context=context;}
+}
+int c3_field_story_relive_pick(C3FieldStory *story,int slot,char *error)
+{
+    Impl *s=story?story->impl:NULL;
+    if(!s)return fail(error,"No field story");
+    for(unsigned i=0;i<C3_STORY_TASKS;++i){RunTask *t=s->tasks+i;
+        if(!t->key||t->wait!=W_RELIVE)continue;
+        return resume(s,t,slot<0||slot>5?UINT32_MAX:(uint32_t)slot,error);
+    }
+    return fail(error,"No purification is waiting for a party choice");
 }
 void c3_field_story_set_item_service(C3FieldStory *story,C3FieldStoryReceive receive,void *context)
 {

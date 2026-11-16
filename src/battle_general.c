@@ -756,3 +756,50 @@ int c3_general_battle_writeback(const C3GeneralBattle *b,const C3BattlePack *p,
     }
     *rw=out;return 1;
 }
+
+/* _expRecover (pokemon_relive.c): pay `add` experience into one party
+ * record a level at a time. Each level reached sets the experience to that
+ * level's threshold, recomputes the stats (the writeback's stat rule and HP
+ * carry) and tries the species' level-up moves for the new level
+ * (pokemonGetOboeWazaDataId): a move the Pokemon lacks goes into a free slot
+ * with its full PP; with four moves known the original asks which to forget
+ * (evolutionWazaLearn), which is not ported, so the move is reported as
+ * skipped. The remainder that does not reach a level is added and the
+ * stored-up experience (status 0xC6, +0xE0) is cleared; at level 100 the
+ * loop stops and leaves it, as the original does. */
+int c3_battle_pack_recover_exp(const C3BattlePack *p,uint8_t r[C3_GB_POKEMON_SIZE],uint32_t add,C3ExpRecovery *out)
+{
+    C3ExpRecovery o;memset(&o,0,sizeof o);
+    if(!p||!r||!out)return 0;
+    uint16_t species=be16(r);const uint8_t *s=species_row(p,species);
+    if(!s)return 0;
+    unsigned group=s[0];uint32_t rest=add;
+    for(;;){
+        if(!rest){put32(r+0xe0,0);break;}
+        unsigned level=r[0x60];
+        if(level>=100)break;
+        uint32_t exp=be32(r+0x5c),next=exp_for(p,group,level+1);
+        exp+=rest;
+        if(exp<next){put32(r+0x5c,exp);rest=0;continue;}
+        rest=exp-next;put32(r+0x5c,next);o.level_up=1;
+        ++level;
+        unsigned nature=be32(r+4)%25u,old_max=be16(r+0x8c);
+        for(unsigned j=0;j<6;++j)
+            put16(r+0x8c+2*j,(unsigned)compute_stat(j,be16(s+0x84+2*j),be16(r+0xa4+2*j)&31u,be16(r+0x98+2*j),level,nature));
+        unsigned new_max=be16(r+0x8c),hp=be16(r+0x8a);
+        if(hp)hp+=new_max>old_max?new_max-old_max:0;
+        put16(r+0x8a,hp>new_max?new_max:hp);
+        r[0x60]=(uint8_t)level;
+        if(o.level_count<C3_EXP_RECOVERY_MAX)o.levels[o.level_count++]=(uint8_t)level;
+        for(unsigned j=0;j<20;++j){const uint8_t *l=s+0xba+4*j;uint16_t id=be16(l+2);
+            if(l[0]!=level||!id||id>=p->moves)continue;
+            int known=0,slot=-1;
+            for(unsigned k=0;k<4;++k){uint16_t have=be16(r+0x78+4*k);known|=have==id;if(!have&&slot<0)slot=(int)k;}
+            if(known)continue;
+            if(slot<0){if(o.skipped_count<C3_EXP_RECOVERY_MAX)o.skipped[o.skipped_count++]=id;continue;}
+            put16(r+0x78+4*slot,id);r[0x7a+4*slot]=(uint8_t)move_pp(p,id,0);r[0x7b+4*slot]=0;
+            if(o.learned_count<C3_EXP_RECOVERY_MAX){o.learned[o.learned_count]=id;o.learned_level[o.learned_count++]=(uint8_t)level;}
+        }
+    }
+    *out=o;return 1;
+}
