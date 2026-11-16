@@ -62,7 +62,11 @@ ten sprites and the font are byte-identical between the two versions.
 The font comes from DOL address `0x8027A500`, registered by `main.c` through
 `GSmsgFontOpen`. `gs_msg.c` establishes its bank layout, variable advance,
 vertical bearing and linear I4 coverage. Preparation preserves the bearing and
-averages 2×2 coverage for the smaller display. Printable ASCII is supported;
+averages 2×2 coverage for the smaller display. Version 3 packs append the
+font's 315 non-ASCII glyphs (accented letters, gender signs, arrows, kana,
+full-width forms) as a code-sorted table; the text box decodes UTF-8 and the
+message decoder's colour markup ([systems-lane.md](systems-lane.md)).
+Printable ASCII is supported in every version;
 the source bank lacks curly braces, which display as question marks. Existing
 message packs retain their reviewed ASCII conversion. GS formats `0x90` and
 `0x45` map to RGB5A3/RGBA8 through `gs_texture.c`; preparation untwiddles the

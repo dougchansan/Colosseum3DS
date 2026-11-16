@@ -13,6 +13,13 @@ the party. Authoritative combat/result/writeback remains open.
 
 ## Newly verified prerequisites
 
+- Systems lane ([systems-lane.md](systems-lane.md)): every original message
+  control is interpreted (a sweep of all 41,533 messages finds no unknown
+  control), the original font's non-ASCII glyphs are drawn, native 16 runs the
+  original name-entry flow, Rui follows Wes as person (0,101), the PC box
+  (native 62, floor 0x391) deposits and withdraws, and jingles wait for their
+  rendered length. Bag, P*DA/mail, evolution and memo floors remain open.
+
 - `battle_rules.c` executes pinned source result-combination and 16-slot AI
   maximum/tie-selection logic. Its focused suite covers 1,005,945 checks.
 - An existing Dolphin interpreter sidecar executed 482 original-DOL fixtures:
