@@ -8,9 +8,11 @@
 #include <string.h>
 
 /* Private Under integration audit. Original packs and saves are required.
- * Each arrival, door, touch and talk runs from a fresh imported checkpoint.
- * No save is written. Hero placement, automatic dialogue/default choices,
- * item/party service fixtures and synthetic battle wins are reported shortcuts.
+ * Each arrival, door, touch and talk starts from a fresh imported checkpoint;
+ * explicitly logged earlier subway trainers may run before the target talk.
+ * No save is written. Inventory/party services are production implementations.
+ * Hero placement, automatic dialogue/default choices and synthetic battle wins
+ * are reported shortcuts.
  * This proves script execution at checkpoints, not continuous story completion.
  * usage: test_under_story <newgame dir> <boot dir> <save.gci> [report] [trace] [--walkable]
  */
