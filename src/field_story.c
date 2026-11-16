@@ -752,7 +752,9 @@ static int run_native(Impl *s,RunTask *t,char *error)
     case 0x5d:value=s->area->group;break;
     case 0x5e:value=s->previous_floor;break;
     case 0x5f:case 0x7d:
-        if(s->floor_supported?!s->floor_supported(a[0]):(a[0]!=1&&a[0]!=2)){snprintf(s->view.blocked,sizeof s->view.blocked,"Area %lu is not prepared in this build.",(unsigned long)a[0]);t->wait=W_BATTLE;return 1;}
+        if(s->floor_supported?!s->floor_supported(a[0]):(a[0]!=1&&a[0]!=2)){snprintf(s->view.blocked,sizeof s->view.blocked,"Area %lu is not prepared in this build. Press A to stay here.",(unsigned long)a[0]);
+            log_line(s,"story_floor_unprepared from=%lu to=%lu spawn=%lu",(unsigned long)s->area->floor,(unsigned long)a[0],(unsigned long)a[1]);
+            t->wait=W_BATTLE;return 1;}
         s->pending_floor=a[0];s->pending_spawn=a[1];break;
     case 0x64:
         p=person(s,s->area->group,a[0]);if(p){p->want_visible=!!a[1];p->public.visible=a[1]&&p->public.model;
@@ -1452,6 +1454,31 @@ int c3_field_story_battle_result(C3FieldStory *story,uint32_t result,char *error
         return resume(s,t,result,error);
     }
     return fail(error,"No original battle request is waiting for a result");
+}
+/* A floor link (native 5F/7D) to a floor this build cannot load waits with
+ * view.blocked set. Refusing it resumes the script as if the link had been
+ * registered and stays on this floor: the common door script (05960004 is
+ * native 7D, then return) ends and the hero gets control back. */
+int c3_field_story_floor_refused(const C3FieldStory *story,uint32_t *floor)
+{
+    const Impl *s=story?story->impl:NULL;
+    if(!s)return 0;
+    for(unsigned i=0;i<C3_STORY_TASKS;++i){const RunTask *t=s->tasks+i;
+        if(t->key&&t->wait==W_BATTLE&&(t->call.native==0x5f||t->call.native==0x7d)){if(floor)*floor=t->call.args[0];return 1;}
+    }
+    return 0;
+}
+int c3_field_story_stay_on_floor(C3FieldStory *story,char *error)
+{
+    Impl *s=story?story->impl:NULL;
+    if(!s)return fail(error,"Invalid field story");
+    for(unsigned i=0;i<C3_STORY_TASKS;++i){RunTask *t=s->tasks+i;
+        if(!t->key||t->wait!=W_BATTLE||(t->call.native!=0x5f&&t->call.native!=0x7d))continue;
+        s->view.blocked[0]=0;
+        log_line(s,"story_floor_refused from=%lu to=%lu stayed=1",(unsigned long)s->area->floor,(unsigned long)t->call.args[0]);
+        return resume(s,t,0,error);
+    }
+    return fail(error,"No floor link is waiting");
 }
 /* A lost battle whose encounter has the zenmetu flag: fn_8020DAD0 halves the
  * money, restores the party and sends the hero to the temporary whiteout

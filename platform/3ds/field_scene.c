@@ -547,7 +547,7 @@ static int field_renderer_init(C3Title *storage,const C3Title *const *models,uin
  * front of it, facing it, and interacts (open dialogue is answered with A).
  * Other floors leave for the world map as before. */
 static struct { uint32_t start, start_spawn, floor[32], source[32]; uint8_t interact[32]; unsigned count, next; int loaded;
-                uint32_t film_floor, film_frames; unsigned shadow_slot, shadow_id; } probe_route;
+                uint32_t film_floor, film_frames; unsigned shadow_slot, shadow_id; int stayed; } probe_route;
 static void probe_route_load(void)
 {
     if(probe_route.loaded)return;
@@ -824,7 +824,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         c3_debug_overlay_input(&input);
 #ifdef C3_ROUNDTRIP_PROBE
         /* Probe: answer open dialogue with A, one press a second. */
-        if(view&&(view->dialogue||view->choice)&&frames%60u==0u)input.pressed|=C3_PAD_A;
+        if(view&&(view->dialogue||view->choice||(view->blocked[0]&&!view->battle_id))&&frames%60u==0u)input.pressed|=C3_PAD_A;
 #endif
         if(!npc.attached&&!npc_stream_attach(&npc,0,storage,models,actor_models,model_paths,&story,count,skin_actors,
                                              tv_index,view?view->tv_enabled:1,frames,trace,error,capacity)){result=-1;break;}
@@ -1169,6 +1169,15 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         if(phase==FIELD_CONTROL){
             if(page==PAUSE_CLOSED){
                 if(view->blocked[0]&&(input.pressed&(C3_PAD_START|C3_PAD_X))){result=0;break;}
+                /* A doorway into a floor whose packs are not on the SD card:
+                 * A stays on this floor and play continues. */
+                if(view->blocked[0]&&!view->battle_id&&(input.pressed&C3_PAD_A)&&c3_field_story_floor_refused(&story,NULL)){
+                    if(!c3_field_story_stay_on_floor(&story,story_error))goto story_failed;
+#ifdef C3_ROUNDTRIP_PROBE
+                    probe_route.stayed=1;
+#endif
+                    dirty=1;continue;
+                }
                 if(view->blocked[0]&&view->battle_id&&view->battle_id!=10&&(input.pressed&C3_PAD_A)){
                     /* A story battle always runs on the
                      * general battle engine. Only an encounter the engine
@@ -1543,6 +1552,8 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                 }
             }
             /* A fired door that never links: give up after 20 s. */
+            /* A refused doorway kept the hero here: go on with the route. */
+            if(door_fired&&probe_route.stayed){probe_route.stayed=0;door_fired=0;next_step=frames+90u;}
             if(door_fired&&frames>=1290u){snprintf(error,capacity,"probe door did not link");result=-1;break;}
         }
 #endif
