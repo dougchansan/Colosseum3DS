@@ -243,6 +243,13 @@ static void synthetic_regressions(void)
     memset(code,0,sizeof code);args[0]=29;args[1]=3;args[2]=3;native(code+2,0xb5,3,args,1);
     args[0]=3;args[1]=0;native(code+2,0x64,2,args,1);synthetic_load(s,&game,file,code,0,0x1000002,0);
     CHECK(!c3_field_story_actor(&s->story,3)->visible);close_scene(s);
+    /* heroMoveInitEvent/TermEvent do not nest: 20, 20, 21 gives control back
+     * (Pyrite cave: Miror B.'s event returns without 21, main then wraps the
+     * next event in 20/21). */
+    memset(code,0,sizeof code);native(code+3,0x20,0,NULL,1);native(code+3,0x20,0,NULL,1);native(code+3,0x21,0,NULL,1);native(code+3,0x1f,0,NULL,1);
+    synthetic_load(s,&game,file,code,0,0,0x1000003);CHECK(c3_field_story_enter(&s->story,error));
+    for(unsigned i=0;i<20&&!c3_field_story_view(&s->story)->control;++i)CHECK(c3_field_story_tick(&s->story,.1f,0,error));
+    CHECK(c3_field_story_view(&s->story)->control);close_scene(s);
     /* Menu callbacks queue work without running it inside the paused menu. */
     memset(code,0,sizeof code);native(code+3,0x1f,0,NULL,1);args[0]=3;args[1]=0;native(code+5,0x64,2,args,1);
     synthetic_load(s,&game,file,code,0,0,0x1000003);CHECK(c3_field_story_enter(&s->story,error));

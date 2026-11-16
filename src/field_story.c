@@ -62,6 +62,7 @@ typedef struct {
     uint16_t setup_key, talk_key, event_key, post_key, main_key, exit_fade_key;
     int setup_stage, preparing, entered, hero_ready, event_depth, departure_started;
     int event_depth_base; /* event_depth when the current talk/event script started */
+    int hero_event; /* heroMoveInitEvent (native 20) until heroMoveTermEvent (21) */
     int camera_mode, camera_playing;
     float fade_elapsed, fade_duration, fade_from, fade_to, camera_rate;
     float camera_from[3],camera_to[3],camera_direction[3],camera_move_time,camera_move_duration;
@@ -460,8 +461,12 @@ static int run_native(Impl *s,RunTask *t,char *error)
         if(s->fade_elapsed<s->fade_duration){if(a[0]){t->wait=W_FADE;return 1;}value=1;}break;
     case 0x1e: break; /* Hero initialization alone does not execute movement. */
     case 0x1f: s->hero_ready=1;t->wait=W_SECONDS;t->remaining=1.0f/60.0f;return 1;
-    case 0x20: ++s->event_depth;s->hero_ready=0;break;
-    case 0x21: if(s->event_depth)--s->event_depth;break;
+    /* heroMoveInitEvent/heroMoveTermEvent (hero_move.c) set and clear the
+     * party's event people flags; they do not nest. Pyrite cave function 21
+     * (Miror B.) starts an event, battles and returns without 21, then main
+     * wraps function 11 in 20/21: retail gives control back after that 21. */
+    case 0x20: s->hero_event=1;s->hero_ready=0;break;
+    case 0x21: s->hero_event=0;break;
     case 0x24:
         if(a[0]!=0&&a[0]!=3&&a[0]!=4)return fail(error,"Camera mode %lu is not prepared",(unsigned long)a[0]);
         value=(uint32_t)s->camera_mode;s->camera_mode=(int)a[0];
@@ -1360,7 +1365,7 @@ void c3_field_story_describe_waits(const C3FieldStory *story,char *out,size_t ca
     const Impl *s=story?story->impl:NULL;size_t used=0;
     if(!out||!capacity)return;
     out[0]=0;if(!s)return;
-    {int n=snprintf(out,capacity,"depth=%d ready=%d event=%u/%d talk=%u ",s->event_depth,s->hero_ready,
+    {int n=snprintf(out,capacity,"depth=%d ready=%d event=%u/%d talk=%u ",s->event_depth+s->hero_event,s->hero_ready,
         (unsigned)s->event_key,s->event_key?c3_story_active(&((Impl*)s)->vm,s->event_key):0,(unsigned)s->talk_key);
      if(n>0)used=(size_t)n<capacity?(size_t)n:capacity-1;}
     for(unsigned i=0;i<C3_STORY_TASKS&&used+1<capacity;++i){
@@ -1803,10 +1808,12 @@ int c3_field_story_tick(C3FieldStory *story,float seconds,uint16_t pressed,char 
          * an event branch may return early (Phenac fn 27 when flag 9a2 is
          * set). The hero move lock belongs to the event, so it ends with it. */
         if(!s->event_key&&s->event_depth>s->event_depth_base)s->event_depth=s->event_depth_base;
+        if(!s->event_key)s->hero_event=0;
     }
     if(s->event_key&&!c3_story_active(&s->vm,s->event_key)){
         s->event_key=0;
         if(!s->talk_key&&s->event_depth>s->event_depth_base)s->event_depth=s->event_depth_base;
+        if(!s->talk_key)s->hero_event=0;
     }
     if(s->pending_floor&&!s->departure_started){
         /* The original scene runs its post callback on departure. Suspend
@@ -1822,7 +1829,7 @@ int c3_field_story_tick(C3FieldStory *story,float seconds,uint16_t pressed,char 
         log_line(s,"story_floor_link from=%lu to=%lu spawn=%lu post_complete=1",(unsigned long)s->area->floor,
                  (unsigned long)s->view.next_floor,(unsigned long)s->view.next_spawn);
     }
-    s->view.control=s->entered&&s->hero_ready&&!s->event_depth&&!s->talk_key&&!s->event_key&&
+    s->view.control=s->entered&&s->hero_ready&&!s->event_depth&&!s->hero_event&&!s->talk_key&&!s->event_key&&
         !s->view.dialogue&&!s->pending_floor&&!s->view.blocked[0];
     return 1;
 }
