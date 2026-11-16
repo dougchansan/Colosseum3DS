@@ -565,11 +565,12 @@ static int field_renderer_init(C3Title *storage,const C3Title *const *models,uin
  * front of it, facing it, and interacts (open dialogue is answered with A).
  * Other floors leave for the world map as before. */
 static struct { uint32_t start, start_spawn, floor[32], source[32]; uint8_t interact[32]; unsigned count, next; int loaded;
-                uint32_t film_floor, film_frames; unsigned shadow_slot, shadow_id; } probe_route;
+                uint32_t film_floor, film_frames; unsigned shadow_slot, shadow_id;
+                uint32_t flag_id[16], flag_value[16]; unsigned flags; int partner; } probe_route;
 static void probe_route_load(void)
 {
     if(probe_route.loaded)return;
-    probe_route.loaded=1;
+    probe_route.loaded=1;probe_route.partner=-1;
     FILE *f=fopen("sdmc:/3ds/Colosseum3DS/probe-route.txt","r");char line[64];
     if(!f)return;
     while(fgets(line,sizeof line,f)){
@@ -584,6 +585,12 @@ static void probe_route_load(void)
         /* "shadow <slot> <id>": the probe makes that party member a Shadow
          * Pokemon whose heart is open, in memory only (the probe saves to
          * probe-unused.gci), to try the Relic Stone. */
+        /* "flag <id> <value>" and "partner <0|1>": story state the probe
+         * writes before the first floor (in memory only), to replay an
+         * event a save has already passed. */
+        else if(sscanf(line,"flag %lx %lx",&a,&b)==2&&probe_route.flags<16){
+            probe_route.flag_id[probe_route.flags]=(uint32_t)a;probe_route.flag_value[probe_route.flags++]=(uint32_t)b;}
+        else if(sscanf(line,"partner %lx",&a)==1)probe_route.partner=a!=0;
         else if(sscanf(line,"shadow %lx %lx",&a,&b)==2&&a<6&&b){probe_route.shadow_slot=(unsigned)a;probe_route.shadow_id=(unsigned)b;}
         /* "<floor> p<person>": stand in front of that person (area index),
          * facing it, and talk (interact value 2). */
@@ -624,7 +631,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     float elapsed=0,phase_seconds=0,arrival_seconds=0;
     uint64_t previous=0,next_console=0,next_trace=0,skin_actors=0;
     C3UiPager ui_pager={0};
-    C3NameEntry name_entry;int naming=0;
+    C3NameEntry name_entry;C3NameEntryText name_text;C3Story name_messages={0};int naming=0;
     C3ShopMenu shop_menu;C3ShopTable shop_table={0};C3PdaAssets shop_assets={0};
     uint8_t *shop_pda=NULL,*shop_pack=NULL;size_t shop_pack_size=0;int shopping=0;
     RelivePick relive_pick={0};
@@ -1055,21 +1062,29 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
             campaign_line("floor=%03lx name_entry default=RUI",(unsigned long)map.floor);
         }
 #endif
-        if(view->name_entry&&!naming&&page==PAUSE_CLOSED&&c3_game_state_summary(state,&summary)){
-            /* An unnamed partner holds the original placeholder (message
-             * 0xFA2, "N/A"; docs/game-state.md): start empty, with no
-             * fallback, rather than offering the placeholder as her name. */
-            c3_name_entry_init(&name_entry,strcmp(summary.partner,"N/A")?summary.partner:NULL);naming=1;dirty=1;
-            if(trace){fprintf(trace,"name_entry_open mode=%lu\n",(unsigned long)(view->name_entry-1u));fflush(trace);}
+        if(view->name_entry&&!naming&&page==PAUSE_CLOSED){
+            /* The original name entry (floor 0x390): its texts, presets and
+             * key pages come from name_entry_menu's message group. */
+            unsigned mode=view->name_entry-1u;size_t bytes=0;uint8_t *group=read_boot_file(BOOT_ROOT "name_entry.c3m",&bytes);
+            c3_story_free(&name_messages);
+            int ready=group&&c3_story_add_messages(&name_messages,group,bytes,story_error)&&
+                      c3_name_entry_text_load(&name_text,&name_messages,mode);
+            free(group);
+            if(!ready){snprintf(story_error,sizeof story_error,"The name entry needs boot/name_entry.c3m (tools/prepare_menu_messages.py)");goto story_failed;}
+            c3_name_entry_init(&name_entry,&name_text,&name_messages);naming=1;dirty=1;
+            if(trace){fprintf(trace,"name_entry_open mode=%u presets=%u max=%u\n",mode,name_text.preset_count,name_text.max_length);fflush(trace);}
         }
         if(naming){
-            C3NameEvent typed=c3_name_entry_update(&name_entry,input.pressed,input.touch_held,input.touch_pressed,
-                                                   input.touch_released,input.touch_x,input.touch_y);
+#ifdef C3_ROUNDTRIP_PROBE
+            /* Probe: take the first preset (A on the list, A on "yes"). */
+            if(frames%30u==0u)input.pressed|=C3_PAD_A;
+#endif
+            C3NameEvent typed=c3_name_entry_update(&name_entry,input.pressed,input.touch_pressed,input.touch_x,input.touch_y);
             if(typed!=C3_NAME_NONE)dirty=1;
             if(typed==C3_NAME_DONE){
-                if(!c3_field_story_name_result(&story,name_entry.text,story_error))goto story_failed;
-                if(trace){fprintf(trace,"name_entry_done length=%u\n",name_entry.length);fflush(trace);}
-                naming=0;
+                if(!c3_field_story_name_result(&story,name_entry.result,story_error))goto story_failed;
+                if(trace){fprintf(trace,"name_entry_done name=%s length=%u\n",name_entry.result,name_entry.length);fflush(trace);}
+                naming=0;c3_story_free(&name_messages);
             }
             input.pressed=0;input.touch_pressed=false;
         }
@@ -1469,7 +1484,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         if(!c3_game_state_summary(state,&summary)){snprintf(error,capacity,"Game state became unavailable.");result=-1;break;}
         if(dirty||input.pressed||now>=next_console){
             C3BottomUi *bottom=c3_bottom_screen_begin();
-            if(naming)c3_name_entry_draw(&name_entry,bottom,"PARTNER'S NAME");
+            if(naming)c3_name_entry_draw(&name_entry,bottom);
             else if(shopping)c3_shop_menu_draw(&shop_menu,state,bottom,profile->label);
             else if(relive_pick.open)relive_pick_draw(&relive_pick,bottom);
             else if(page==PAUSE_MAIN&&ingame->active)c3_ingame_draw_to(ingame,state,bottom);
@@ -1521,19 +1536,21 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                 uint32_t source=probe_route.source[probe_route.next++];const C3FieldTriangle *hit=NULL;
                 if(!talk)for(uint32_t i=0;i<area.interaction_count&&!hit;++i)if(area.interactions[i].source_id==source)hit=area.interactions+i;
                 if(talk&&source<area.actor_count){
-                    /* In front of the person (its facing), 0.9 units away. */
+                    /* One unit from the person on walkable ground, +z first
+                     * (as tests/test_phenac_story.c stands at the sack),
+                     * facing it. */
                     C3StoryActor *actor=c3_field_story_actor(&story,area.actors[source].index);
                     const float *at=actor?actor->pose.position:area.actors[source].position;
-                    float yaw=actor?actor->pose.yaw:area.actors[source].yaw,ground;
+                    float ground;
                     for(int turn=0;turn<4;++turn){
-                        float a=yaw+(float)turn*1.5707963f,spot[3]={at[0]+sinf(a)*0.9f,at[1],at[2]+cosf(a)*0.9f};
+                        float a=(float)turn*1.5707963f,spot[3]={at[0]+sinf(a),at[1],at[2]+cosf(a)};
                         if(!c3_field_ground(&map,spot,&ground))continue;
                         player.position[0]=spot[0];player.position[1]=ground;player.position[2]=spot[2];
                         memcpy(player.proposed,player.position,sizeof player.position);
                         player.yaw=atan2f(at[0]-spot[0],at[2]-spot[2]);break;
                     }
-                    if(trace){fprintf(trace,"probe_talk floor=%03lx person=%lu index=%lu\n",(unsigned long)map.floor,
-                                      (unsigned long)source,(unsigned long)area.actors[source].index);fflush(trace);}
+                    if(trace){fprintf(trace,"probe_talk floor=%03lx person=%lu visible=%d index=%lu\n",(unsigned long)map.floor,
+                                      (unsigned long)source,actor?actor->visible:-1,(unsigned long)area.actors[source].index);fflush(trace);}
                 }
                 if(hit){
                     float c[3]={0},n[2]={hit->normal[0],hit->normal[2]},len;
@@ -1639,6 +1656,7 @@ story_failed:
     campaign_line("floor=%03lx script_error=\"%s\" action=restart",(unsigned long)map.floor,story_error);
 #endif
 done:
+    c3_story_free(&name_messages);
     /* Every slot, room and people: streamed people attach mid-scene without
      * moving `opened`, and calloc'd slots that never loaded close as no-ops.
      * Closing only `opened` leaked every person pack on each area exit. */
@@ -1727,6 +1745,11 @@ int c3_field_scene_roundtrip_probe(C3GameState *state,FILE *trace,char *error,si
             if(trace){fprintf(trace,"roundtrip_shadow slot=%u id=%u level=%u ok=%d\n",slot,id,(unsigned)r[0x60],ok);fflush(trace);}
         }
     }
+    for(unsigned i=0;i<probe_route.flags;++i){
+        int ok=c3_game_state_set_flag(state,probe_route.flag_id[i],probe_route.flag_value[i]);
+        if(trace){fprintf(trace,"roundtrip_flag id=%03lx value=%lu ok=%d\n",(unsigned long)probe_route.flag_id[i],(unsigned long)probe_route.flag_value[i],ok);fflush(trace);}
+    }
+    if(probe_route.partner>=0)c3_game_state_set_partner(state,probe_route.partner);
     if(!c3_game_state_set_floor(state,start,C3_FLOOR_WORLD_MAP_ID,(uint8_t)probe_route.start_spawn)){snprintf(error,capacity,"floor rejected");return -1;}
     for(unsigned i=0;i<AREAS;++i){
         C3GameSummary summary;uint32_t floor=c3_game_state_summary(state,&summary)?summary.floor:0;
