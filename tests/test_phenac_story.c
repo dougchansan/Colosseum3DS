@@ -45,6 +45,17 @@ static int receive(void *context,uint32_t item,uint32_t count,char *name,size_t 
 {
     (void)context;++gifts;gift_item=item;gift_count=count;snprintf(name,capacity,"TEST ITEM");return 0;
 }
+/* A stand-in for the music player: a jingle "plays" for its rendered
+ * length (0x3C9 3.3 s, 0x3CA 2.1 s, prepare_music.py) counted in ticks. */
+static uint32_t jingle_sound;static unsigned jingle_ticks,jingles_started;
+static int audio(void *context,unsigned op,uint32_t a,uint32_t b,uint32_t c)
+{
+    (void)context;(void)b;(void)c;
+    if(op==C3_STORY_AUDIO_JINGLE){jingle_sound=a;jingle_ticks=a==0x3c9?198u:a==0x3ca?126u:0u;++jingles_started;return jingle_ticks>0;}
+    if(op==C3_STORY_AUDIO_STATUS){if(a!=jingle_sound||!jingle_ticks)return 0;--jingle_ticks;return 2;}
+    if(op==C3_STORY_AUDIO_JINGLE_END){jingle_sound=0;jingle_ticks=0;return 1;}
+    return 1;
+}
 static void tick(Scene *s,unsigned frame)
 {
     const C3FieldStoryView *v=c3_field_story_view(&s->story);
@@ -163,6 +174,7 @@ int main(int argc,char **argv)
     c3_field_story_set_floor_support(&s->story,reachable);
     c3_field_story_enable_name_entry(&s->story,1);
     c3_field_story_set_item_service(&s->story,receive,NULL);
+    c3_field_story_set_audio_service(&s->story,audio,NULL);
     CHECK(c3_field_story_prepare(&s->story,error));
     unsigned frame;
     for(frame=0;frame<3600&&!c3_field_story_view(&s->story)->prepared;++frame)
@@ -221,6 +233,8 @@ int main(int argc,char **argv)
     CHECK(logged("story_partner present=1")&&logged("story_name_entry mode=1 index=0 status=waiting_scene"));
     for(frame=0;frame<6000&&!c3_field_story_view(&s->story)->control;++frame)tick(s,frame);
     CHECK(c3_field_story_view(&s->story)->control&&flag(&game,0xacf)==1&&flag(&game,0x3e4)==1);
+    /* The partner jingle (native 82, 0x3C9) held the event for its 3.3 s. */
+    CHECK(jingles_started>=1&&logged("story_jingle sound=3c9 status=playing")&&logged("story_jingle sound=3c9 status=ended seconds=3.3"));
     fprintf(trace,"phenac_partner_event_complete partner=1 flags03E5_0ACF=1 control=1\n");
     /* Rui follows Wes (hero_move.c follower): her pack is attached as person
      * (0,101); when Wes walks away she closes to her spacing (1.2 units =

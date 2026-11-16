@@ -14,7 +14,7 @@
 #define MAX_WAYPOINTS 64u /* Phenac actor 24 allocates 36 points (bank 013E0E00 fn 34). */
 
 typedef enum { W_NONE, W_SECONDS, W_TASK, W_MOTION, W_MOVE, W_CAMERA,
-               W_CAMERA_MOVE, W_FADE, W_MESSAGE, W_CHOICE, W_TV, W_BATTLE, W_NAME, W_ITEM, W_DOOR, W_SHOP, W_MENU_FLOOR, W_DIALOG,
+               W_CAMERA_MOVE, W_FADE, W_MESSAGE, W_CHOICE, W_TV, W_BATTLE, W_NAME, W_ITEM, W_DOOR, W_SHOP, W_MENU_FLOOR, W_JINGLE, W_DIALOG,
                W_RELIVE } Wait;
 typedef struct {
     uint16_t key, child;
@@ -28,6 +28,7 @@ typedef struct {
      * this task; each message or yes/no choice resumes the program. */
     uint32_t program; int prog_state, prog_yes, prog_no, prog_asking;
     uint32_t relive_mode, relive_slot; /* native C2's arguments and the picked slot */
+    uint32_t jingle; float jingle_seconds; /* W_JINGLE / the item jingle of W_ITEM */
 } RunTask;
 typedef struct Person {
     C3StoryActor public;
@@ -114,6 +115,25 @@ static void log_line(Impl *s,const char *format,...)
     va_list ap;va_start(ap,format);vfprintf(s->trace,format,ap);va_end(ap);fputc('\n',s->trace);fflush(s->trace);
 }
 static float as_float(uint32_t x){float f;memcpy(&f,&x,4);return f;}
+/* A jingle (fn_80165668) and the wait for its end (fn_801666BC != 2).
+ * Bounded at ten seconds; the music resumes when it ends. */
+static int start_jingle(Impl *s,RunTask *t,uint32_t sound,uint32_t fade,uint32_t volume)
+{
+    if(!s->audio||s->audio(s->audio_context,C3_STORY_AUDIO_JINGLE,sound,fade,volume)<=0)return 0;
+    t->jingle=sound;t->jingle_seconds=0;t->wait=W_JINGLE;
+    log_line(s,"story_jingle sound=%03lx status=playing",(unsigned long)sound);
+    return 1;
+}
+static int jingle_playing(Impl *s,RunTask *t,float seconds)
+{
+    t->jingle_seconds+=seconds;
+    /* The stream starts on the worker thread: give it a moment to report. */
+    int playing=s->audio(s->audio_context,C3_STORY_AUDIO_STATUS,t->jingle,0,0)==2;
+    if((playing||t->jingle_seconds<0.25f)&&t->jingle_seconds<10.0f)return 1;
+    s->audio(s->audio_context,C3_STORY_AUDIO_JINGLE_END,t->jingle,0,0);
+    log_line(s,"story_jingle sound=%03lx status=ended seconds=%.2f",(unsigned long)t->jingle,(double)t->jingle_seconds);
+    t->jingle=0;return 0;
+}
 static float angle_delta(float x){return remainderf(x,2*PI);}
 /* The pinned native table describes words, not C pointers. Validate the
  * complete call before changing any scene state; absent arguments must not
@@ -974,8 +994,12 @@ static int run_native(Impl *s,RunTask *t,char *error)
          * jingle 0x3CA plays to its end first (a fixed wait here), then the
          * bag receives the item and the result message is shown. */
         if(!s->receive)return fail(error,"Native 77 needs the item service, which this scene did not bind");
-        note_presentation(s,c->native,"item_jingle_backend_pending_wait_1s");
-        t->wait=W_ITEM;t->remaining=1.0f;return 1;
+        /* floorEventGetTresure plays jingle 0x3CA (fn_80165668(0x3CA,0,0xFF))
+         * and waits for it; W_ITEM then waits for the window. */
+        if(s->audio&&s->audio(s->audio_context,C3_STORY_AUDIO_JINGLE,0x3ca,0,0xff)>0){
+            t->jingle=0x3ca;t->jingle_seconds=0;t->wait=W_ITEM;t->remaining=0;return 1;}
+        note_presentation(s,c->native,"item_jingle_stream_missing_wait_1s");
+        t->jingle=0;t->wait=W_ITEM;t->remaining=1.0f;return 1;
     case 0x84:
         /* msgctrlSetValue(variable,value). */
         if(a[0]>255)return fail(error,"Message variable %lu is out of range",(unsigned long)a[0]);
@@ -1024,10 +1048,12 @@ static int run_native(Impl *s,RunTask *t,char *error)
         note_presentation(s,c->native,"head_tracking_unrendered");
         value=a[1]<=1&&(a[0]==0||(a[0]==1&&s->partner_actor.public.visible));break;
     case 0x82:
-        /* fn_80165668 pauses the BGM, plays a jingle and blocks until it ends.
-         * The length lives in the sound data; without the audio backend the
-         * script waits a fixed substitute time. */
-        note_presentation(s,c->native,"jingle_backend_pending_wait_2s");
+        /* fn_80165668 pauses the BGM, plays a jingle and blocks until it ends:
+         * the wait follows the rendered song (0x3C9/0x3CA are one-shot
+         * songs of the music pack). Without the stream the script waits a
+         * fixed substitute time, recorded. */
+        if(start_jingle(s,t,a[0],a[1],a[2]))return 1;
+        note_presentation(s,c->native,"jingle_stream_missing_wait_2s");
         t->wait=W_SECONDS;t->remaining=2.0f;return 1;
     case 0x83:
         /* fn_80181EB0: "!" emote attached to the person's head part. */
@@ -1268,6 +1294,9 @@ static int wait_task(Impl *s,RunTask *t,float seconds,uint16_t *pressed,char *er
     case W_SECONDS:
         t->remaining-=seconds;if(t->remaining>0)return 1;
         return resume(s,t,0,error);
+    case W_JINGLE:
+        if(jingle_playing(s,t,seconds))return 1;
+        return resume(s,t,0,error);
     case W_TASK:
         if(t->child_finished)return resume(s,t,t->value,error);
         if(c3_story_active(&s->vm,t->child))return 1;
@@ -1330,6 +1359,7 @@ static int wait_task(Impl *s,RunTask *t,float seconds,uint16_t *pressed,char *er
     case W_ITEM:{
         /* Wait for the shared window before adding the item, so a retry
          * never adds it twice. */
+        if(t->jingle&&jingle_playing(s,t,seconds))return 1;
         if(s->dialog_owner&&s->dialog_owner!=t->key)return 1;
         t->remaining-=seconds;if(t->remaining>0)return 1;
         uint32_t item=t->call.args[0];int32_t count=(int32_t)t->call.args[1];

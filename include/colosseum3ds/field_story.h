@@ -98,7 +98,11 @@ void c3_field_story_set_party_service(C3FieldStory *story,C3FieldStoryRestore re
  * (sound, fade, volume), loading the 0x406/0x407 song slots; 6A is
  * soundStop(sound, fade); 6D is fn_80165718(volume, fade), the music master
  * volume. Unbound, these natives only log, as before. */
-enum { C3_STORY_AUDIO_PLAY_406=1, C3_STORY_AUDIO_PLAY_407, C3_STORY_AUDIO_STOP, C3_STORY_AUDIO_MASTER };
+/* JINGLE (fn_80165668(sound, fade, volume)) pauses the music and plays a
+ * one-shot song, returning 1 when it started; STATUS is fn_801666BC (2
+ * while the sound plays); JINGLE_END resumes the music. */
+enum { C3_STORY_AUDIO_PLAY_406=1, C3_STORY_AUDIO_PLAY_407, C3_STORY_AUDIO_STOP, C3_STORY_AUDIO_MASTER,
+       C3_STORY_AUDIO_JINGLE, C3_STORY_AUDIO_STATUS, C3_STORY_AUDIO_JINGLE_END };
 typedef int (*C3FieldStoryAudio)(void *context,unsigned op,uint32_t a,uint32_t b,uint32_t c);
 void c3_field_story_set_audio_service(C3FieldStory *story,C3FieldStoryAudio audio,void *context);
 /* Doors of this floor for script native 60 (floorEventCtrlDoor). rows and
