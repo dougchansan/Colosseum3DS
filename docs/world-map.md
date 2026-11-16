@@ -261,7 +261,10 @@ story packs; their people's names are in the common names group.
 Doors: the round-trip probe takes an optional route
 (`sdmc:/3ds/Colosseum3DS/probe-route.txt`: `start <floor>`, then
 `<floor> <door source>` lines) and fires each door's original transition
-script. On Azahar it walked exterior -> 1F (entrance 1) -> 2F (0) -> 3F (0)
+script. `start <floor> <entrance>` picks the first floor's entrance (Agate
+Village 0x24: 1 Relic Cave, 5 Pokemon Center door), and `frames <floor>
+<count>` saves that many consecutive top-screen frames there
+(`probe/film_<floor>_<n>.bmp`) for animation comparisons. On Azahar it walked exterior -> 1F (entrance 1) -> 2F (0) -> 3F (0)
 -> 2F (4) -> 1F (2) -> exterior (1) -> world map, each door's script choosing
 the floor and entrance, with no entrance fallbacks or script errors.
 `used_bytes` rose once from 2.02 to 2.12 MB on the first 1F visit and then
