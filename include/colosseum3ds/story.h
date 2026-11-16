@@ -84,6 +84,9 @@ int c3_story_message_with(const C3Story *story, uint32_t id,
  * c3_story_text_plain() strips them in place and returns the new length. */
 #define C3_STORY_CONTROLS 0x5Fu
 #define C3_STORY_TEXT_MARKUP 1u
+/* Keep every GSchar as UTF-8 (no ASCII forms for typographic punctuation
+ * or the full-width space): key tables and names. */
+#define C3_STORY_TEXT_RAW 2u
 typedef struct C3StoryValue { const char *text; uint32_t message; } C3StoryValue;
 typedef int (*C3StoryValueSource)(void *context, uint8_t control, C3StoryValue *value);
 int c3_story_render(const C3Story *story, uint32_t id, C3StoryValueSource source,

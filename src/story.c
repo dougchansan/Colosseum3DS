@@ -572,15 +572,23 @@ static int glyph_text(Render *r,uint16_t glyph,int ruby)
      * punctuation the field font lacks gets its ASCII form. Every other
      * character (POKeMON's e-acute, the gender signs, kana) is UTF-8 and
      * drawn with the original font's glyph (bottom_ui pack version 3). */
+    else if(r->flags&C3_STORY_TEXT_RAW){
+        if(glyph<32)return fail(r->error,"Unexpected text control glyph");
+        goto encode;
+    }
     else if(glyph==0x3000)text=" ";
     else if(glyph==0x2026)text="...";
     else if(glyph==0x2018||glyph==0x2019)text="'";
     else if(glyph==0x201c||glyph==0x201d)text="\"";
     else if(glyph==0x2013||glyph==0x2014)text="-";
     else if(glyph<0x80){if(glyph<32)return fail(r->error,"Unexpected text control glyph");encoded[0]=(char)glyph;}
-    else if(glyph<0x800){encoded[0]=(char)(0xc0|(glyph>>6));encoded[1]=(char)(0x80|(glyph&63));}
-    else if(glyph<0xd800||glyph>0xdfff){encoded[0]=(char)(0xe0|(glyph>>12));encoded[1]=(char)(0x80|((glyph>>6)&63));encoded[2]=(char)(0x80|(glyph&63));}
-    else return fail(r->error,"Unsupported surrogate GSchar");
+    else{
+encode:
+        if(glyph<0x80)encoded[0]=(char)glyph;
+        else if(glyph<0x800){encoded[0]=(char)(0xc0|(glyph>>6));encoded[1]=(char)(0x80|(glyph&63));}
+        else if(glyph<0xd800||glyph>0xdfff){encoded[0]=(char)(0xe0|(glyph>>12));encoded[1]=(char)(0x80|((glyph>>6)&63));encoded[2]=(char)(0x80|(glyph&63));}
+        else return fail(r->error,"Unsupported surrogate GSchar");
+    }
     return put(r,text);
 }
 /* Returns 1 at the terminator, 2 at control 02 (KeyEnd stops the printer:
