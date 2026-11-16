@@ -33,6 +33,15 @@ build/test_movie: tests/test_movie.c src/movie.c include/colosseum3ds/movie.h | 
 build/test_title: tests/test_title.c src/title.c include/colosseum3ds/title.h | build
 	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_title.c src/title.c $(LDFLAGS) -lm -o $@
 
+build/test_title_characters: tests/test_title_characters.c src/title_characters.c include/colosseum3ds/title_characters.h | build
+	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_title_characters.c src/title_characters.c $(LDFLAGS) -lm -o $@
+
+all: build/test_title_characters
+test: title-characters-check
+.PHONY: title-characters-check
+title-characters-check: build/test_title_characters
+	./build/test_title_characters
+
 build/test_field: tests/test_field.c src/field.c include/colosseum3ds/field.h include/colosseum3ds/title.h | build
 	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_field.c src/field.c $(LDFLAGS) -lm -o $@
 
