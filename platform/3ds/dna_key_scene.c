@@ -32,8 +32,14 @@ int c3_dna_key_scene_run(const uint16_t expected[3],FILE *trace,char *error,size
         if(phase==0&&time>=(tracks[0].frame_count-1)/tracks[0].fps){phase=1;time=0;}
         if(phase==1){
             if(wait_sound&&!c3_sfx_status(wait_sound)){c3_dna_key_sound_done(&state);if(trace){fprintf(trace,"dna_sound_done sound=%03lx count=%u reset=%u\n",(unsigned long)wait_sound,state.count,state.reset_pending);fflush(trace);}wait_sound=0;}
-            if(!wait_sound&&state.result!=-1){phase=2;time=0;c3_sfx_play(0x28,127);}
-            else if(!wait_sound&&cursor_wait<=0){
+            int can_close=1;
+#ifdef C3_DNA_KEY_PROBE
+            /* Keep only the probe's completed grid visible until the GPU
+             * capture settles, before starting the authored exit camera. */
+            if(state.result==0&&probe_capture<2)can_close=0;
+#endif
+            if(!wait_sound&&state.result!=-1&&can_close){phase=2;time=0;c3_sfx_play(0x28,127);}
+            else if(!wait_sound&&state.result==-1&&cursor_wait<=0){
                 uint16_t keys=0;if(input.pressed&C3_PAD_UP)keys|=1;if(input.pressed&C3_PAD_DOWN)keys|=2;if(input.pressed&C3_PAD_LEFT)keys|=4;if(input.pressed&C3_PAD_RIGHT)keys|=8;if(input.pressed&C3_PAD_A)keys|=0x10;
                 uint16_t buttons=(input.pressed&C3_PAD_B)?0x20:0;
 #ifdef C3_DNA_KEY_PROBE
