@@ -11,6 +11,7 @@
 #define PAD_A 0x0100u
 #define PAD_B 0x0200u
 #define PAD_DIRECTIONS 0x000fu
+#define DYNAMIC_MARKER 0x43334459u /* C3DY: private prepared model reservation. */
 #define MAX_WAYPOINTS 64u /* Phenac actor 24 allocates 36 points (bank 013E0E00 fn 34). */
 
 typedef enum { W_NONE, W_SECONDS, W_TASK, W_MOTION, W_MOVE, W_CAMERA,
@@ -38,11 +39,13 @@ typedef struct Person {
     int moving, turning, talking, looking, talk_lock;
     /* Streamed models (field_scene loads people after the room): what the
      * scripts asked for while the model was absent, applied on attach. */
+    int dynamic_active;
     int want_visible, pending_motion;uint32_t pending_clip,pending_frame,pending_loop;
     float waypoints[MAX_WAYPOINTS][3];
     uint32_t waypoint_capacity, waypoint_count, waypoint_cursor;
     int waypoint_active, waypoint_loop;
     struct Person *parent;
+    uint32_t parent_bone_plus_one;int parent_root;
     float local_position[3],local_rotation[3],world_rotation[3],world_scale[3];
 } Person;
 typedef struct {
@@ -73,6 +76,7 @@ typedef struct {
     float return_time,return_duration;
     Person *camera_person;
     int target_moving,camera_returning;
+    uint8_t dynamic_serial;
     uint32_t sound_id, previous_floor, pending_floor, pending_spawn, arrival_spawn;
     uint32_t fight_result; /* fn_801EF634: last original fight result ID */
     uint32_t whiteout_floor,whiteout_previous,whiteout_spawn;int whiteout_valid;
@@ -142,7 +146,7 @@ static float angle_delta(float x){return remainderf(x,2*PI);}
 static int validate_native(const Impl *s,const C3StoryCall *c,char *error)
 {
     static const struct {uint8_t id,argc,floats;} signature[]={
-        {0x03,6,0},{0x04,1,0},{0x06,1,0},{0x07,3,0},{0x08,1,0},{0x0b,0,0},
+        {0x00,0,0},{0x03,6,0},{0x04,1,0},{0x06,1,0},{0x07,3,0},{0x08,1,0},{0x0b,0,0},
         {0x1c,2,2},{0x1d,1,0},{0x1e,0,0},{0x1f,0,0},{0x20,0,0},{0x21,0,0},
         {0x24,1,0},{0x25,2,0},{0x26,3,7},{0x27,3,7},{0x28,3,7},{0x29,3,7},
         {0x2a,4,0},{0x2b,0,0},{0x2c,0,0},{0x2d,0,0},{0x2e,1,0},{0x30,4,8},
@@ -152,13 +156,14 @@ static int validate_native(const Impl *s,const C3StoryCall *c,char *error)
         {0x46,5,0},{0x47,2,0},{0x48,3,0},{0x49,5,28},{0x4a,3,0},
         {0x19,1,0},{0x4c,2,0},{0x4d,2,0},{0x4e,1,0},{0x4f,1,0},{0x50,2,0},{0x51,1,0},{0x52,1,0},
         {0x5c,0,0},{0x5d,0,0},{0x5e,0,0},{0x5f,2,0},{0x64,2,0},{0x65,4,14},
+        {0x70,1,0},{0x71,1,0},{0xdd,3,0},{0xa6,3,0},
         {0x67,0,0},{0x68,3,0},{0x69,3,0},{0x6a,2,0},{0x6d,2,0},{0x72,2,0},{0x76,2,0},
         {0x7d,3,0},{0x7f,3,7},{0x88,0,0},{0x8a,4,0},{0x8c,5,30},{0x98,3,0},{0xd9,1,0},{0xe0,2,0},{0xc3,0,0},
         {0xc2,2,0},{0x99,1,0},{0x9d,1,1},{0xb3,2,1},{0xb6,1,0},{0xd1,5,0},{0xd3,0,0},{0xe4,0,0},
         /* Phenac City exterior bank 013E0E00 (native table lbl_802E1CF0). */
         {0x02,1,0},{0x16,2,0},{0x23,1,0},{0x31,0,0},{0x66,1,0},{0x7e,2,0},
         {0x82,3,0},{0x83,3,0},{0x89,3,0},{0xa1,3,0},{0xa4,6,0x3c},{0xa5,5,0x10},
-        {0x77,2,0},{0x84,2,0},{0x60,3,0},{0x73,4,0},{0x75,2,0},{0x8d,5,0x1e},{0x9a,5,0},{0xa0,1,0},{0xb5,4,0},{0xa9,2,0},{0xb1,6,0x10},{0xb4,0,0},{0xd8,1,0},{0xda,1,0},{0xe8,2,0},
+        {0x77,2,0},{0x84,2,0},{0x60,3,0},{0x73,4,0},{0x74,1,0},{0x75,2,0},{0x8d,5,0x1e},{0x9a,5,0},{0xa0,1,0},{0xb5,4,0},{0xa9,2,0},{0xb1,6,0x10},{0xb4,0,0},{0xd8,1,0},{0xda,1,0},{0xe8,2,0},
         /* Whole-game survey (tests/test_world_story.c), table lbl_802E1CF0. */
         {0x97,3,0},{0xaa,7,0x3c},{0xab,1,0},{0xad,1,0},{0xe1,0,0},
         {0xa2,0,0},{0xac,3,0},{0xcb,3,0},{0xd4,0,0},{0x61,5,0},{0xe2,0,0},{0x90,2,0},{0x7b,0,0},{0xc5,4,0},
@@ -179,6 +184,9 @@ static int validate_native(const Impl *s,const C3StoryCall *c,char *error)
         if((c->native==0x4c||c->native==0x4d)&&c->argc<2)return 1;
         /* Some banks call 32 with (group,index) only: visible reads zero. */
         if(c->native==0x32&&c->argc==2)return 1;
+        /* Realgam bar function 7 omits the loop word of 33. The original
+         * dispatcher leaves that trailing register zero (nonlooping). */
+        if(c->native==0x33&&c->argc==4)return 1;
         /* Floor 022 starts a battle with the encounter alone (98 with one
          * word); the zero-filled register image gives the other two zero. */
         if(c->native==0x98&&c->argc>=1)return 1;
@@ -227,7 +235,8 @@ static Person *person(Impl *s,uint32_t group,uint32_t id)
     if(!group&&id==101)return s->partner_actor.public.model?&s->partner_actor:NULL;
     /* people.c peopleFindSelf: an exact group match first, then the index
      * in any group. Floor actors are the only other people here. */
-    for(uint32_t i=0;i<s->area->actor_count;++i)if(s->actors[i].public.index==id)return s->actors+i;
+    for(uint32_t i=0;i<s->area->actor_count;++i)if(s->actors[i].public.index==id&&
+        (s->actors[i].source->aux3!=DYNAMIC_MARKER||s->actors[i].dynamic_active))return s->actors+i;
     return NULL;
 }
 static void partner_place_behind(Impl *s);
@@ -454,6 +463,9 @@ static int run_native(Impl *s,RunTask *t,char *error)
             t->key,(unsigned long)c->script_id,(unsigned long)c->pc,(unsigned long)c->native,(unsigned long)c->argc,
             (unsigned long)a[0],(unsigned long)a[1],(unsigned long)a[2],(unsigned long)a[3],(unsigned long)a[4],(unsigned long)a[5]);
     switch(c->native){
+    case 0x00:
+        /* lbl_802E1CF0[0] is NULL: fn_800F10E8 unwinds with result 0. */
+        break;
     case 0x03:
         if(!start(s,a[0],a+2,4,&t->child,error))return 0;
         value=t->child;break;
@@ -619,7 +631,8 @@ static int run_native(Impl *s,RunTask *t,char *error)
         }
         /* GSmodelAttachToGSpart(type7,updateOnce0,reset1). The reviewed
          * vehicle has an identity source root and one sampled part node. */
-        p->parent=parent;p->moving=p->turning=p->waypoint_active=0;
+        p->parent=parent;p->parent_bone_plus_one=parent->source->part1_bone_plus_one;p->parent_root=0;
+        p->moving=p->turning=p->waypoint_active=0;
         memset(p->local_position,0,sizeof p->local_position);memset(p->local_rotation,0,sizeof p->local_rotation);
         value=1;break;
     }
@@ -961,6 +974,47 @@ static int run_native(Impl *s,RunTask *t,char *error)
         break;
     case 0x8a:case 0x99:
         note_presentation(s,c->native,"field_audio_backend_pending");break;
+    case 0x70:{
+        /* fn_801CBA0C: peopleOpen of an original model, with signed-byte
+         * serial ORed into the original transient person namespace. Packs
+         * are reserved and streamed by the scene, never fabricated here. */
+        uint32_t id=(uint32_t)(int32_t)(int8_t)s->dynamic_serial++|0x7ffe0000u;p=NULL;
+        for(uint32_t i=0;i<s->area->actor_count;++i){Person *candidate=s->actors+i;
+            if(candidate->source->aux3==DYNAMIC_MARKER&&!candidate->dynamic_active&&candidate->source->resource==a[0]){p=candidate;break;}}
+        if(!p||!p->public.model)return fail(error,"Dynamic original model %08lx is not prepared",(unsigned long)a[0]);
+        if(person(s,s->area->group,id))break; /* Source duplicate open returns zero. */
+        p->dynamic_active=1;p->public.index=id;p->want_visible=1;p->public.visible=1;
+        p->public.clip=0;p->public.loop=1;p->public.playing=1;p->public.pose.animation_seconds=0;
+        memcpy(p->public.pose.position,p->source->position,sizeof p->source->position);p->public.pose.yaw=p->source->yaw;
+        value=id;log_line(s,"story_dynamic_open resource=%08lx id=%08lx",(unsigned long)a[0],(unsigned long)id);
+        }break;
+    case 0xa6:{
+        /* fn_801CB61C -> fn_801845E4: source child resource follows the
+         * original animated carrier's root part0, retained as C3DY aux2. */
+        p=person(s,s->area->group,a[0]);Person *parent=person(s,s->area->group,a[1]);
+        if(!p||!parent)break;
+        if(a[2]||!parent->source||parent->source->aux3!=DYNAMIC_MARKER||
+           !parent->source->aux2||!parent->public.model||parent->parent||p==parent||
+           parent->source->aux2>parent->public.model->bone_count)
+            return fail(error,"Original root attachment is not prepared");
+        p->parent=parent;p->parent_bone_plus_one=parent->source->aux2;p->parent_root=1;
+        p->moving=p->turning=p->waypoint_active=0;
+        memset(p->local_position,0,sizeof p->local_position);memset(p->local_rotation,0,sizeof p->local_rotation);
+        value=1;break;
+    }
+    case 0x71:
+        /* fn_801CB9D8 closes a transient person and releases its slot. The
+         * prepared GPU pack stays resident for a later original allocation. */
+        p=person(s,s->area->group,a[0]);
+        if(p&&p->source&&p->source->aux3==DYNAMIC_MARKER){
+            p->dynamic_active=0;p->want_visible=0;p->public.visible=0;p->public.playing=0;
+            p->moving=p->turning=p->waypoint_active=0;p->parent=NULL;
+            log_line(s,"story_dynamic_close id=%08lx",(unsigned long)a[0]);}
+        break;
+    case 0xdd:
+        /* fn_801CB530 binds the source particle bank to a model. Generic
+         * HSD particles have no renderer; preserve this visible limitation. */
+        note_presentation(s,c->native,"particle_bank_attachment_unrendered");break;
     case 0x72:
         /* fn_801CB954: a resource that is a floor person changes that
          * person's visibility (as native 32); otherwise the map model's.
@@ -1014,6 +1068,13 @@ static int run_native(Impl *s,RunTask *t,char *error)
         if(p){if(!set_motion(s,p,a[shift+1],a[shift+2],a[shift+3],error))return 0;}
         else if(c->native==0x73)note_presentation(s,c->native,"map_object_animation_unrendered");
         }break;
+    case 0x74:
+        /* fn_801CB7C4: stop a person's resource animation, else the raw
+         * floor model. Map-object clocks are not bound to this adapter yet. */
+        p=person(s,s->area->group,a[0]);
+        if(p){p->public.playing=0;p->pending_motion=0;}
+        else note_presentation(s,c->native,"map_object_animation_stop_unrendered");
+        break;
     case 0x75:
         /* scriptWaitSyncMotion(resource,wait): a person waits like native 35;
          * a model resource that is not a person reports finished. */
@@ -1552,10 +1613,10 @@ int c3_field_story_bind_doors(C3FieldStory *story,const C3AreaDoor *rows,uint32_
         if(rows[i].open_flag&&!flag(s,rows[i].open_flag,&open,error))return 0;
         if(rows[i].collision_id>=0)c3_field_set_object_enabled(s->map,(uint32_t)rows[i].collision_id,!open);
         if(!door->model)continue;
-        if(door->model->fps<=0||rows[i].open_anim<0||(uint32_t)rows[i].open_anim>=door->model->clip_count)
+        if(door->model->fps<=0||(rows[i].open_anim>=0&&(uint32_t)rows[i].open_anim>=door->model->clip_count))
             return fail(error,"Door %lu model lacks its open animation",(unsigned long)rows[i].index);
-        door->clip=(uint32_t)rows[i].open_anim;
-        door->seconds=open?(float)(door->model->clips[door->clip].frame_count-1u)/door->model->fps:0;
+        door->clip=rows[i].open_anim>=0?(uint32_t)rows[i].open_anim:0;
+        door->seconds=open&&rows[i].open_anim>=0?(float)(door->model->clips[door->clip].frame_count-1u)/door->model->fps:0;
     }
     return 1;
 }
@@ -1646,7 +1707,7 @@ int c3_field_story_load(C3FieldStory *story,const char *path,C3GameState *game,
         Person *p=s->actors+i;const C3AreaActor *a=area->actors+i;p->source=a;
         p->public.model=actor_models[i];p->public.index=a->index;
         memcpy(p->public.pose.position,a->position,sizeof a->position);p->public.pose.yaw=a->yaw;
-        p->want_visible=(a->flags>>31)&1;p->public.visible=p->want_visible;p->public.clip=a->motions[0];
+        p->want_visible=a->aux3==DYNAMIC_MARKER?0:(a->flags>>31)&1;p->public.visible=p->want_visible;p->public.clip=a->motions[0];
         p->public.flags=0x0cu|(a->talk_start==1?0x10u:a->talk_start==2?0x20u:0u)|(a->talk_end==1?0x40u:0u);
         p->public.loop=1;p->public.playing=1;p->speed=1;
         if(p->public.model&&p->public.clip>=p->public.model->clip_count){
@@ -1677,6 +1738,15 @@ int c3_field_story_enter(C3FieldStory *story,char *error)
             if(!start(s,p->source->move_script,args,4,&key,error))return 0;
         }
     }
+    /* movie.c fn_80035F64 installs this entry override after floorLink(2,1).
+     * The card checkpoint uses previous1, so a fresh Continue does not replay it. */
+    if(s->area->floor==2&&s->previous_floor==0x39f){
+        /* Staffroll finish fn_80035F34 leaves the screen black. */
+        s->view.fade=0;s->fade_from=s->fade_to=0;s->fade_elapsed=s->fade_duration=0;
+        uint16_t key;
+        if(!start(s,0x05960008u,NULL,0,&key,error))return 0;
+        log_line(s,"story_entry_fade script=05960008 previous=039f");
+    }
     return start_floor_script(s,s->area->main_script,&s->main_key,error);
 }
 const C3FieldStoryView *c3_field_story_view(const C3FieldStory *story)
@@ -1684,7 +1754,13 @@ const C3FieldStoryView *c3_field_story_view(const C3FieldStory *story)
 C3StoryActor *c3_field_story_person(C3FieldStory *story,uint32_t group,uint32_t index)
 {Impl *s=story?story->impl:NULL;Person *p=s?person(s,group,index):NULL;return p?&p->public:NULL;}
 C3StoryActor *c3_field_story_actor(C3FieldStory *story,uint32_t index)
-{Impl *s=story?story->impl:NULL;Person *p=s?person(s,s->area->group,index):NULL;return p?&p->public:NULL;}
+{Impl *s=story?story->impl:NULL;Person *p=s?person(s,s->area->group,index):NULL;
+ /* The renderer addresses streamed rows by prepared index, even after the
+  * original native assigns a transient person ID. Script lookup stays closed
+  * until allocation, while this scene-facing accessor retains the row. */
+ if(!p&&s)for(uint32_t i=0;i<s->area->actor_count;++i)
+     if(s->actors[i].source->aux3==DYNAMIC_MARKER&&s->actors[i].source->index==index){p=s->actors+i;break;}
+ return p?&p->public:NULL;}
 
 static float normalize_yaw(float yaw)
 {
@@ -2067,7 +2143,7 @@ static void rotation_matrix(const float euler[3],float r[9])
 static int attachment_pose(Impl *s,Person *p,char *error)
 {
     Person *parent=p->parent;if(!parent)return 1;
-    const float *m=parent->public.model->pose.matrices[parent->source->part1_bone_plus_one-1u];
+    const float *m=parent->public.model->pose.matrices[p->parent_bone_plus_one-1u];
     float scale[3],r[9],angles[3];
     for(unsigned col=0;col<3;++col){
         scale[col]=sqrtf(m[col]*m[col]+m[4+col]*m[4+col]+m[8+col]*m[8+col]);
@@ -2078,7 +2154,7 @@ static int attachment_pose(Impl *s,Person *p,char *error)
      * stay within +/-0.033rad. GSpartGetTransform SUMS ancestor Eulers;
      * decomposing a parent-yaw * joint matrix would give a different answer. */
     angles[0]=atan2f(r[7],r[8]);angles[1]=asinf(fmaxf(-1,fminf(1,-r[6])));angles[2]=atan2f(r[3],r[0]);
-    for(unsigned i=0;i<3;++i)if(!isfinite(angles[i])||fabsf(angles[i])>.25f)
+    for(unsigned i=0;i<3;++i)if(!isfinite(angles[i])||(!p->parent_root&&fabsf(angles[i])>.25f))
         return fail(error,"Original attachment part exceeds its reviewed Euler range");
     angles[1]+=parent->public.pose.yaw;rotation_matrix(angles,r);
     float sine=sinf(parent->public.pose.yaw),cosine=cosf(parent->public.pose.yaw);

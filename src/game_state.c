@@ -843,3 +843,31 @@ int c3_game_state_save(C3GameState *state, const char *path,
     if (error) error[0]=0;
     return 1;
 }
+
+/* The staffroll restores the backed-up body after each card transaction.
+ * Save an owned snapshot through the existing atomic writer so neither a
+ * failed attempt nor a successful write advances the live session's RNG or
+ * counters. Prepared tables are not needed by the save encoder. */
+int c3_game_state_save_snapshot(const C3GameState *state, const char *path,
+                                 char error[C3_GAME_ERROR_SIZE])
+{
+    const GameStateImpl *source=state?state->impl:NULL;
+    GameStateImpl *copy;
+    C3GameState snapshot={0};
+    int result;
+    if(!source||!path)return fail(error,"No game state is available to save");
+    copy=calloc(1,sizeof *copy);
+    if(!copy)return fail(error,"Save snapshot allocation failed");
+    copy->body=malloc(C3_SAVE_BODY_SIZE);
+    copy->card=malloc(source->card_length);
+    if(!copy->body||!copy->card){release(copy);return fail(error,"Save snapshot allocation failed");}
+    memcpy(copy->body,source->body,C3_SAVE_BODY_SIZE);
+    memcpy(copy->card,source->card,source->card_length);
+    copy->card_length=source->card_length;
+    copy->random=source->random;
+    copy->play_time=source->play_time;
+    snapshot.impl=copy;
+    result=c3_game_state_save(&snapshot,path,error);
+    c3_game_state_free(&snapshot);
+    return result;
+}

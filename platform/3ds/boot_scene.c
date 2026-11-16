@@ -2,6 +2,9 @@
 #include "link_play.h"
 #include "trace_writer.h"
 #include "field_scene.h"
+#include "ending_scene.h"
+#include "dna_key_scene.h"
+#include "realgam_stage_probe.h"
 #include "dev_floor_scene.h"
 #include "game_menu.h"
 #include "bottom_screen.h"
@@ -380,6 +383,80 @@ int c3_boot_scene_run(int core_status)
     FILE *trace = c3_trace_open("sdmc:/3ds/Colosseum3DS/boot-trace.log");
     if (trace) { fprintf(trace, "boot_build %s core=%d\n", C3_BUILD_ID, core_status); fflush(trace); }
     c3_n3ds_log_memory(trace, "boot_start");
+#ifdef C3_REALGAM_STAGE_PROBE
+    {
+        int stage_result=c3_realgam_stage_probe(trace,error,sizeof error);
+        if(trace){fprintf(trace,"realgam_stage_probe_exit result=%d error=%s\n",stage_result,error);fclose(trace);}
+        return stage_result?1:0;
+    }
+#endif
+#ifdef C3_DNA_KEY_PROBE
+    {
+        const uint16_t expected[3]={0x99,0x9c,0x9f};
+        int dna_result=c3_dna_key_scene_run(expected,trace,error,sizeof error);
+        if(trace){fprintf(trace,"dna_probe_exit result=%d expected=0099,009c,009f error=%s\n",dna_result,error);fclose(trace);}
+        return dna_result==0?0:1;
+    }
+#endif
+#ifdef C3_FINAL_EVENT_PROBE
+    /* Final-floor diagnostic, explicitly warped from an uncleared COPY.
+     * Never qualifies travel through the preceding chapters. */
+    {
+        int played=-1;uint32_t clear=1;
+        const char *copy="sdmc:/3ds/Colosseum3DS/final-probe/copy.gci";
+        c3_music_open("sdmc:/3ds/Colosseum3DS",error,sizeof error);
+        if(c3_game_state_load(&state,copy,GAME_DATA,error)&&
+           c3_game_state_get_flag(&state,0x476,&clear)&&!clear&&
+           c3_game_state_set_floor(&state,0x76,0x75,0)){
+            if(trace){fprintf(trace,"final_event_probe fixture=warped_uncleared_copy clear=0 battles=skip_as_win\n");fflush(trace);}
+            played=c3_field_scene_run(&state,0,copy,trace,error,sizeof error);
+        }
+        if(trace){fprintf(trace,"final_event_end result=%d error=%s\n",played,error);fclose(trace);}
+        c3_music_close();c3_game_state_free(&state);return played?1:0;
+    }
+#endif
+#if defined(C3_CLEAR_CONTINUE_PROBE) || defined(C3_RETURN_FADE_PROBE)
+    {
+        const char *copy="sdmc:/3ds/Colosseum3DS/ending-probe/copy.gci";
+        C3GameSummary checkpoint;uint32_t clear=0,saved_clear=0;int continued=-1;
+        if(c3_game_state_load(&state,copy,GAME_DATA,error)&&
+           c3_game_state_summary(&state,&checkpoint)&&
+           c3_game_state_get_flag(&state,0x476,&clear)&&
+           c3_game_state_get_flag(&state,0x478,&saved_clear)&&
+           checkpoint.floor==2&&checkpoint.previous_floor==1&&checkpoint.spawn==1&&clear==1&&saved_clear==1){
+            if(trace){fprintf(trace,"clear_continue_load fresh_process=1 floor=%03lx previous=%03lx spawn=%u clear=%lu saved_clear=%lu saved_count=%lu\n",(unsigned long)checkpoint.floor,(unsigned long)checkpoint.previous_floor,checkpoint.spawn,(unsigned long)clear,(unsigned long)saved_clear,(unsigned long)checkpoint.saved_count);fflush(trace);}
+#ifdef C3_RETURN_FADE_PROBE
+            /* Isolated return-override check, not a fresh Continue claim. */
+            if(!c3_game_state_set_floor(&state,2,0x39f,1)){c3_game_state_free(&state);return 1;}
+            if(trace){fprintf(trace,"return_fade_probe fixture=staffroll_destination_tuple save_writes=0\n");fflush(trace);}
+#endif
+            continued=c3_field_scene_run(&state,0,copy,trace,error,sizeof error);
+        }
+        if(trace){fprintf(trace,"clear_continue_end result=%d error=%s\n",continued,error);fclose(trace);}
+        c3_game_state_free(&state);return continued==0?0:1;
+    }
+#endif
+#ifdef C3_ENDING_PROBE
+    /* Explicit guard fixture: a COPY of post-game state, not proof of playing
+     * the final events. Never grants victory flags or touches imported saves. */
+    {
+        int probe_result=-1; uint32_t clear=0; C3GameSummary checkpoint;
+        const char *copy="sdmc:/3ds/Colosseum3DS/ending-probe/copy.gci";
+        c3_music_open("sdmc:/3ds/Colosseum3DS",error,sizeof error);
+        if(c3_game_state_load(&state,copy,GAME_DATA,error)&&
+           c3_game_state_get_flag(&state,0x476,&clear)&&clear==1&&
+           c3_game_state_set_floor(&state,0x39f,0x76,0))
+            probe_result=c3_ending_scene_run(&state,copy,trace,error,sizeof error);
+        if(trace){fprintf(trace,"ending_probe fixture=postgame_guard_only result=%d clear=%lu error=%s\n",probe_result,(unsigned long)clear,error);fflush(trace);}
+        c3_game_state_free(&state);
+        /* Read the written copy through the fresh Continue decoder. */
+        if(probe_result==2&&c3_game_state_load(&state,copy,GAME_DATA,error)&&c3_game_state_summary(&state,&checkpoint)&&trace){
+            fprintf(trace,"ending_probe_reload floor=%03lx previous=%03lx spawn=%u saved_count=%lu\n",(unsigned long)checkpoint.floor,(unsigned long)checkpoint.previous_floor,checkpoint.spawn,(unsigned long)checkpoint.saved_count);fflush(trace);
+        }
+        c3_music_close();c3_game_state_free(&state);if(trace)fclose(trace);
+        return probe_result==2?0:1;
+    }
+#endif
 #ifdef C3_CAMPAIGN
     /* Campaign build: play the story unattended from the campaign's own
      * save (resumed when present) or from a new game, never the player's

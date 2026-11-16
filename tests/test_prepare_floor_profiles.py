@@ -13,7 +13,7 @@ class FloorProfileTableTests(unittest.TestCase):
     def test_rows_match_the_original_lifecycle_identities(self):
         rows = profiles.FLOORS
         self.assertEqual([(name, row["floor"], row["lifecycle_row"], row["resource_group"], row["archive"])
-                          for name, row in rows.items()],
+                          for name, row in rows.items() if name not in profiles.REALGAM_FLOORS],
                          [("outskirt", 1, 0, 0x1D, "S1_out.fsys"), ("shop", 2, 1, 0x1E, "S1_shop_1F.fsys"),
                           ("phenac", 3, 2, 0x1F, "M1_out.fsys"),
                           ("phenac_mayor1f", 0x05, 63, 0x22, "M1_houseA_1F.fsys"),
@@ -95,9 +95,10 @@ class FloorProfileTableTests(unittest.TestCase):
         geometry = sorted(name for name in profiles.FLOORS if name.startswith("phenac"))
         self.assertEqual(len(geometry), 12)
         self.assertEqual(sorted(profiles.geometry_floors()), geometry)
-        self.assertEqual(sorted(floor.FLOORS), geometry)
+        self.assertEqual(sorted(name for name in floor.FLOORS if not profiles.FLOORS[name].get("auto")), geometry)
         self.assertIs(floor.FLOORS["phenac"], profiles.FLOORS["phenac"])
-        self.assertEqual(sorted(profiles.story_floors()), sorted(profiles.FLOORS))
+        self.assertEqual(set(profiles.story_floors()),
+                         {name for name, row in profiles.FLOORS.items() if "kind" not in row})
         self.assertEqual(profiles.by_floor(3)[0], "phenac")
         self.assertEqual(profiles.by_floor(0x77)[0], "phenac_pcb1")
         self.assertIsNone(profiles.by_floor(0x0E))

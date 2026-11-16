@@ -27,6 +27,7 @@
 #include "colosseum3ds/name_entry.h"
 #include "colosseum3ds/pc_menu.h"
 #include "world_map_scene.h"
+#include "ending_scene.h"
 #include "colosseum3ds/area_lights.h"
 #include "colosseum3ds/title.h"
 #include "colosseum3ds/shop.h"
@@ -54,6 +55,7 @@ static int exists(const char *path)
  * on the SD card. The world map is a separate menu-class scene. */
 int c3_field_scene_supports(uint32_t floor)
 {
+    if(floor==0x39f)return c3_ending_scene_available();
     const C3FloorProfile *profile=c3_floor_profile(floor);
     static const char *const core[]={"%s.c3f","%s.c3a","%s_wes.c3t","%s_map0.c3t"};
     char name[96],path[200];
@@ -894,7 +896,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     previous=c3_n3ds_active_time_us();result=1;
     while(c3_n3ds_poll(&input)){
         c3_debug_overlay_input(&input);
-#ifdef C3_ROUNDTRIP_PROBE
+#if defined(C3_ROUNDTRIP_PROBE) || defined(C3_FINAL_EVENT_PROBE)
         /* Probe: answer open dialogue with A, one press a second. */
         if(view&&(view->dialogue||view->choice)&&frames%60u==0u)input.pressed|=C3_PAD_A;
         probe_route_load();
@@ -921,6 +923,11 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         uint64_t now=c3_n3ds_active_time_us();float delta=(float)(now-previous)/1000000.0f;
         previous=now;elapsed+=delta;phase_seconds+=delta;
         c3_game_state_add_play_time(state,delta);
+#ifdef C3_FINAL_EVENT_PROBE
+        {
+            if(elapsed>1200){snprintf(error,capacity,"Final-event probe timed out");result=-1;break;}
+        }
+#endif
 #ifdef C3_WARP_TOUR
         if(page==PAUSE_CLOSED){
             if((view->dialogue||view->choice)&&frames%20==0)input.pressed|=C3_PAD_A;
@@ -1263,6 +1270,13 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
 
         if(page==PAUSE_CLOSED){
             if(!c3_field_story_tick(&story,delta,phase==FIELD_CONTROL?input.pressed:0,story_error))goto story_failed;
+#ifdef C3_FINAL_EVENT_PROBE
+            uint32_t encounter;
+            if(c3_field_story_battle_pending(&story,&encounter)){
+                if(trace){fprintf(trace,"final_event_battle encounter=%lu result=2 mode=skip_as_win party_writeback=0\n",(unsigned long)encounter);fflush(trace);}
+                if(!c3_field_story_battle_result(&story,2,story_error))goto story_failed;
+            }
+#endif
             if(view->next_floor){
 #ifdef C3_WARP_TOUR
                 /* The last drawn frame is still in the framebuffer. */
@@ -1573,7 +1587,11 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
             sampled&=c3_title_animate(storage+tv_index,0,elapsed);
             if(!pda_preview&&!c3_stage_renderer_set_tv(tv_index,1,1,view->tv_enabled,error,capacity)){result=-1;break;}
         }
-        if(lights_loaded)for(uint32_t i=0;i<count;++i)if(i!=tv_index)sampled&=c3_area_lights_apply(&lights,elapsed,storage+i);
+        /* The tail slots belong to the asynchronous people loader. Until
+         * attach completes they are zeroed or being written by that thread;
+         * sample only the same admitted models the renderer can draw. */
+        if(lights_loaded)for(uint32_t i=0;i<(npc.attached?count:npc.first);++i)if(i!=tv_index)
+            sampled&=c3_area_lights_apply(&lights,elapsed,storage+i);
         if(!sampled){snprintf(error,capacity,"An original area animation or light sample failed.");result=-1;break;}
         if(phase==FIELD_SETUP){fade=0;c3_field_camera(&map,&player,&camera);}
         else if(phase==FIELD_ARRIVAL||phase==FIELD_ARRIVAL_OUT){
@@ -1634,7 +1652,32 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
             continue;
         }
         if(draw_result){result=-1;break;}
+#ifdef C3_FINAL_EVENT_PROBE
+        /* Private review frames for every reached dialogue page. */
+        {
+            static uint32_t captured_message=UINT32_MAX;static size_t captured_offset=SIZE_MAX;
+            if(view->dialogue&&(view->message_id!=captured_message||ui_pager.offset!=captured_offset)){
+                char shot[160];
+                snprintf(shot,sizeof shot,"sdmc:/3ds/Colosseum3DS/final-probe/text_%03lx_%05lx_%lu.bmp",(unsigned long)map.floor,(unsigned long)view->message_id,(unsigned long)ui_pager.offset);
+                int captured=c3_n3ds_capture_bottom(shot)==0;
+                snprintf(shot,sizeof shot,"sdmc:/3ds/Colosseum3DS/final-probe/scene_%03lx_%05lx_%lu.bmp",(unsigned long)map.floor,(unsigned long)view->message_id,(unsigned long)ui_pager.offset);
+                captured&=c3_n3ds_capture_top(shot)==0;
+                if(trace){fprintf(trace,"final_event_dialogue message=%05lx page_offset=%lu captured=%d\n",(unsigned long)view->message_id,(unsigned long)ui_pager.offset,captured);fflush(trace);}
+                captured_message=view->message_id;captured_offset=ui_pager.offset;
+            }
+        }
+#endif
         ++frames;
+#if defined(C3_CLEAR_CONTINUE_PROBE) || defined(C3_FINAL_EVENT_PROBE) || defined(C3_RETURN_FADE_PROBE)
+        /* Observe the loaded Continue checkpoint; never warp or synthesize
+         * a story choice. Capture only once the native entry yields control. */
+        if(map.floor==2&&npc.attached&&view->control&&frames>=90u){
+            int captured=c3_n3ds_capture_top("sdmc:/3ds/Colosseum3DS/clear-continue.bmp")==0;
+            if(trace){fprintf(trace,"clear_continue_frame floor=%03lx previous=%03lx spawn=%u control=%d captured=%d frame=%u\n",(unsigned long)map.floor,(unsigned long)summary.previous_floor,summary.spawn,view->control,captured,frames);fflush(trace);}
+            result=captured?0:-1;break;
+        }
+        if(map.floor==2&&frames>1800u){snprintf(error,capacity,"Continue did not yield control");result=-1;break;}
+#endif
 #ifdef C3_ROUNDTRIP_PROBE
         /* Leave for the world map once the people have joined; keep the
          * last frame of each area for review (the capture lags one frame). */
@@ -1897,7 +1940,9 @@ int c3_field_scene_run(C3GameState *state,int new_game,const char *save_path,
     do{
         C3GameSummary summary;
         /* Floor 0x38E is the menu-class world map, not a walkable field. */
-        if(c3_game_state_summary(state,&summary)&&summary.floor==C3_FLOOR_WORLD_MAP_ID)
+        if(c3_game_state_summary(state,&summary)&&summary.floor==0x39f)
+            result=c3_ending_scene_run(state,save_path,trace,error,capacity);
+        else if(c3_game_state_summary(state,&summary)&&summary.floor==C3_FLOOR_WORLD_MAP_ID)
             result=c3_world_map_scene_run(state,trace,error,capacity);
         else result=run_area(state,new_game,save_path,trace,error,capacity);
         new_game=0;

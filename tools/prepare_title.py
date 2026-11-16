@@ -443,7 +443,7 @@ def encode_pack(bones, vertices, batches, textures, clips, lights, frames, fps=F
     if format_version not in (1,2,3,4):
         raise ValueError("Unsupported title pack version")
     counts = (bones,len(vertices),len(batches),len(textures),len(clips),sum(clip[1] for clip in clips),len(lights))
-    if any(not isinstance(n,int) or not 0 < n <= limit for n,limit in zip(counts,LIMITS)):
+    if any(not isinstance(n,int) or not (0 <= n <= limit if i in (1,2,3) and counts[1:4]==(0,0,0) else 0 < n <= limit) for i,(n,limit) in enumerate(zip(counts,LIMITS))):
         raise ValueError("Title exceeds section bounds: %r of %r" % (counts, LIMITS))
     if not math.isfinite(fps) or not 1 <= fps <= 120 or len(vertices) % 3:
         raise ValueError("Invalid title timing or triangle count")

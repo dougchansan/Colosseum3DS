@@ -89,6 +89,19 @@ int main(void)
     FILE *trailing = fopen(path, "ab");
     assert(trailing && fputc(0, trailing) == 0 && fclose(trailing) == 0);
     assert(c3_movie_open(&movie, path, error, sizeof(error)) != 0);
+    /* A sparse authentic-sized staffroll verifies streaming admission above
+     * the former 512 MiB ceiling without allocating its 806 MB payload. */
+    const uint32_t credits_bytes=64u+5250u*C3_MOVIE_FRAME_BYTES;
+    put32(header+8,credits_bytes);put32(header+20,5250);
+    put32(header+40,credits_bytes);put32(header+44,0);
+    put32(header+48,0);put32(header+52,0);
+    FILE *credits=fopen(path,"wb");
+    assert(credits&&fwrite(header,1,sizeof header,credits)==sizeof header);
+    assert(fseek(credits,(long)credits_bytes-1,SEEK_SET)==0&&fputc(0,credits)==0&&fclose(credits)==0);
+    assert(c3_movie_open(&movie,path,error,sizeof error)==0);
+    assert(movie.frame_count==5250&&!movie.audio_file);
+    assert(c3_movie_read_frame(&movie,5249,pixels,C3_MOVIE_FRAME_BYTES,error,sizeof error)==0);
+    c3_movie_close(&movie);
     unlink(path);
     free(pixels);
     puts("movie: frame timing, independent streams, PCM endian/mono, bounds and truncation passed");

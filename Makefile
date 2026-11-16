@@ -544,3 +544,25 @@ test: battle-runtime-trainer-check
 
 include tests/battle-general.mk
 include tests/link.mk
+
+# Source-guarded staffroll and clear-save transaction (synthetic save).
+build/test_ending: tests/test_ending.c tests/test_game_state.c src/ending.c src/game_state.c src/save.c src/decomp_pokemon.c build/save_codec.c $(HEADERS)
+	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_ending.c src/ending.c src/game_state.c src/save.c src/decomp_pokemon.c build/save_codec.c $(LDFLAGS) -lm -o $@
+
+.PHONY: ending-check
+ending-check: build/test_ending
+	./build/test_ending
+test: ending-check
+
+# Optional Realgam own-bank decoder coverage against private story packs.
+build/test_realgam_messages: tests/test_realgam_messages.c src/story.c include/colosseum3ds/story.h | build
+	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_realgam_messages.c src/story.c $(LDFLAGS) -lm -o $@
+
+# Original DNA-key selector rules (no disc bytes or scene renderer needed).
+build/test_dna_key: tests/test_dna_key.c src/dna_key.c include/colosseum3ds/dna_key.h | build
+	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_dna_key.c src/dna_key.c $(LDFLAGS) -o $@
+.PHONY: dna-key-check
+all: build/test_dna_key
+test: dna-key-check
+dna-key-check: build/test_dna_key
+	./build/test_dna_key
