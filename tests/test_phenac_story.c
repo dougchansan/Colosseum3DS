@@ -38,11 +38,23 @@ static int logged(const char *text)
     while(fgets(line,sizeof line,trace))if(strstr(line,text)){found=1;break;}
     CHECK(!ferror(trace)&&fsetpos(trace,&position)==0);return found;
 }
+static C3Title partner; /* closed after the story that borrows it */
 static int reachable(uint32_t floor){return floor>=1&&floor<=3;}
 static unsigned gifts;static uint32_t gift_item,gift_count;
 static int receive(void *context,uint32_t item,uint32_t count,char *name,size_t capacity)
 {
     (void)context;++gifts;gift_item=item;gift_count=count;snprintf(name,capacity,"TEST ITEM");return 0;
+}
+/* A stand-in for the music player: a jingle "plays" for its rendered
+ * length (0x3C9 3.3 s, 0x3CA 2.1 s, prepare_music.py) counted in ticks. */
+static uint32_t jingle_sound;static unsigned jingle_ticks,jingles_started;
+static int audio(void *context,unsigned op,uint32_t a,uint32_t b,uint32_t c)
+{
+    (void)context;(void)b;(void)c;
+    if(op==C3_STORY_AUDIO_JINGLE){jingle_sound=a;jingle_ticks=a==0x3c9?198u:a==0x3ca?126u:0u;++jingles_started;return jingle_ticks>0;}
+    if(op==C3_STORY_AUDIO_STATUS){if(a!=jingle_sound||!jingle_ticks)return 0;--jingle_ticks;return 2;}
+    if(op==C3_STORY_AUDIO_JINGLE_END){jingle_sound=0;jingle_ticks=0;return 1;}
+    return 1;
 }
 static void tick(Scene *s,unsigned frame)
 {
@@ -162,6 +174,7 @@ int main(int argc,char **argv)
     c3_field_story_set_floor_support(&s->story,reachable);
     c3_field_story_enable_name_entry(&s->story,1);
     c3_field_story_set_item_service(&s->story,receive,NULL);
+    c3_field_story_set_audio_service(&s->story,audio,NULL);
     CHECK(c3_field_story_prepare(&s->story,error));
     unsigned frame;
     for(frame=0;frame<3600&&!c3_field_story_view(&s->story)->prepared;++frame)
@@ -195,6 +208,10 @@ int main(int argc,char **argv)
      CHECK(s->hero.position[0]>=-.8f&&s->hero.position[0]<=1.0f&&s->hero.position[2]>=31.4f&&s->hero.position[2]<=34.0f);
      s->hero.yaw=3.1415927f;
      CHECK(!c3_game_state_partner(&game)&&flag(&game,0x3e4)==0&&flag(&game,0x3e5)==0);
+     /* C3_PHENAC_PARTNER_SAVE=<path>: the state just before Rui's event
+      * as a save, for console and Azahar checks of the name entry. */
+     {const char *out=getenv("C3_PHENAC_PARTNER_SAVE");char save_error[C3_GAME_ERROR_SIZE];
+      if(out){CHECK(c3_game_state_save(&game,out,save_error));fprintf(trace,"phenac_partner_save path=%s\n",out);}}
      CHECK(c3_field_story_interact(&s->story,error));CHECK(logged("story_talk actor=0 script=01000021"));}
     /* The scene collects the partner's name when native 16 waits for it. */
     {int named=0,spoken=0;
@@ -216,7 +233,35 @@ int main(int argc,char **argv)
     CHECK(logged("story_partner present=1")&&logged("story_name_entry mode=1 index=0 status=waiting_scene"));
     for(frame=0;frame<6000&&!c3_field_story_view(&s->story)->control;++frame)tick(s,frame);
     CHECK(c3_field_story_view(&s->story)->control&&flag(&game,0xacf)==1&&flag(&game,0x3e4)==1);
+    /* The partner jingle (native 82, 0x3C9) held the event for its 3.3 s. */
+    CHECK(jingles_started>=1&&logged("story_jingle sound=3c9 status=playing")&&logged("story_jingle sound=3c9 status=ended seconds=3.3"));
     fprintf(trace,"phenac_partner_event_complete partner=1 flags03E5_0ACF=1 control=1\n");
+    /* Rui follows Wes (hero_move.c follower): her pack is attached as person
+     * (0,101); when Wes walks away she closes to her spacing (1.2 units =
+     * twelve source units) and faces him. */
+    {char file[1024];
+     if(present(argv[2],"phenac_partner.c3t")){
+         path(file,argv[2],"phenac_partner.c3t");
+         CHECK(c3_title_load(&partner,file,error,sizeof error));
+         CHECK(c3_field_story_attach_partner(&s->story,&partner,error)&&logged("story_partner_model visible=1"));
+         C3StoryActor *rui=c3_field_story_person(&s->story,0,101);CHECK(rui&&rui->visible&&rui->model==&partner);
+         float start[3]={rui->pose.position[0],rui->pose.position[1],rui->pose.position[2]};
+         float hero0[3]={s->hero.position[0],s->hero.position[1],s->hero.position[2]};
+         int walked=0;
+         for(frame=0;frame<240;++frame){
+             /* Wes walks straight ahead (his facing) for two seconds. */
+             if(frame<120){float d=0.04f,g,next[3]={s->hero.position[0]+sinf(s->hero.yaw)*d,s->hero.position[1],s->hero.position[2]+cosf(s->hero.yaw)*d};
+                 if(c3_field_ground(&s->map,next,&g)){s->hero.position[0]=next[0];s->hero.position[2]=next[2];s->hero.position[1]=g;}}
+             tick(s,frame);
+             if(rui->clip==1)walked=1;
+         }
+         float moved=hypotf(rui->pose.position[0]-start[0],rui->pose.position[2]-start[2]);
+         float gap=hypotf(rui->pose.position[0]-s->hero.position[0],rui->pose.position[2]-s->hero.position[2]);
+         float hero_moved=hypotf(s->hero.position[0]-hero0[0],s->hero.position[2]-hero0[2]);
+         fprintf(trace,"phenac_partner_follow hero_moved=%.3f rui_moved=%.3f gap=%.3f walked=%d clip=%lu\n",
+                 (double)hero_moved,(double)moved,(double)gap,walked,(unsigned long)rui->clip);
+         CHECK(hero_moved>1.0f&&moved>0.5f&&walked&&gap>0.85f&&gap<1.6f&&rui->clip==0);
+     }}
     /* The optional trainer, actor 15: main's function 40 tests native A9
      * (hero within 30 units and 15 degrees of the actor's facing), shows the
      * emote, walks the actor up with B1 and calls function 39: a YES/NO
@@ -244,7 +289,7 @@ int main(int argc,char **argv)
 
     c3_field_story_close(&s->story);c3_field_close(&s->map);c3_area_close(&s->area);
     c3_area_camera_close(&s->camera);
-    c3_title_close(&s->wes);for(unsigned i=0;i<C3_AREA_MAX_ACTORS;++i)c3_title_close(s->actors+i);
+    c3_title_close(&partner);c3_title_close(&s->wes);for(unsigned i=0;i<C3_AREA_MAX_ACTORS;++i)c3_title_close(s->actors+i);
     free(s);
     /* Report, floor by floor, how far each prepared interior gets from the
      * state reached above. Missing packs are skipped. */

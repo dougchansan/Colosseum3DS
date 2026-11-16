@@ -25,6 +25,12 @@
 #define POKEMON_SIZE 0x138u
 #define MEMO 0x82a8u
 #define SLOT_BASE 0x6000u
+/* PC boxes (savedataGetStatus(0,3), pcbox.c): three boxes of a 0x14-byte
+ * header (the name, nine GSchars) and thirty Pokemon records. */
+#define BOX_BASE 0xb88u
+#define BOX_SIZE 0x24a4u
+#define BOX_COUNT 3u
+#define BOX_SLOTS 30u
 
 typedef struct GameStateImpl {
     uint8_t *body, *card, *pack;
@@ -495,12 +501,24 @@ int c3_game_state_set_partner(C3GameState *state, int present)
  * GScharLenCpy(hero + 0xAC2, name, 0xB), eleven 16-bit units. */
 int c3_game_state_set_partner_name(C3GameState *state, const char *name)
 {
+    /* UTF-8 in: the name entry's keys include the gender signs and
+     * typographic punctuation of the original font. */
     GameStateImpl *s=state?state->impl:NULL;
-    size_t length=name?strlen(name):0, i;
-    if (!s || !length || length>10) return 0;
-    for (i=0; i<length; ++i) if ((unsigned char)name[i]<32 || (unsigned char)name[i]>126) return 0;
+    uint16_t units[10];size_t count=0;
+    const unsigned char *p=(const unsigned char *)name;
+    if (!s || !p || !*p) return 0;
+    while (*p) {
+        uint16_t c;
+        if (p[0]<0x80) { c=p[0]; p+=1; }
+        else if ((p[0]&0xe0)==0xc0 && (p[1]&0xc0)==0x80) { c=(uint16_t)((p[0]&0x1f)<<6|(p[1]&0x3f)); p+=2; }
+        else if ((p[0]&0xf0)==0xe0 && (p[1]&0xc0)==0x80 && (p[2]&0xc0)==0x80) {
+            c=(uint16_t)((p[0]&0x0f)<<12|(p[1]&0x3f)<<6|(p[2]&0x3f)); p+=3; }
+        else return 0;
+        if (c<32 || c==0x7f || c==0xffff || count==10) return 0;
+        units[count++]=c;
+    }
     memset(s->body+HERO+0xac2,0,22);
-    for (i=0; i<length; ++i) put16(s->body+HERO+0xac2+i*2,(uint8_t)name[i]);
+    for (size_t i=0; i<count; ++i) put16(s->body+HERO+0xac2+i*2,units[i]);
     return 1;
 }
 
@@ -639,6 +657,68 @@ int c3_game_state_set_pokemon(C3GameState *state,unsigned slot,const uint8_t rec
     if(!be16(p)||be16(record)!=be16(p)||!record[0x60]||record[0x60]>100||
        !be16(record+0x8c)||be16(record+0x8a)>be16(record+0x8c))return 0;
     memcpy(p,record,POKEMON_SIZE);return 1;
+}
+/* pokemonInit / PokemonBios: an empty record's only nonzero defaults. */
+static void empty_record(uint8_t *p)
+{
+    memset(p,0,POKEMON_SIZE);p[0x10]=2;p[0xd0]=0xff;put32(p+0xdc,(uint32_t)-100);
+}
+static uint8_t *box_record(GameStateImpl *s,unsigned box,unsigned slot)
+{
+    return box<BOX_COUNT&&slot<BOX_SLOTS?s->body+BOX_BASE+box*BOX_SIZE+0x14+slot*POKEMON_SIZE:NULL;
+}
+int c3_game_state_box_pokemon(const C3GameState *state,unsigned box,unsigned slot,uint8_t record[0x138])
+{
+    GameStateImpl *s=state?state->impl:NULL;const uint8_t *p;
+    if(!s||!(p=box_record(s,box,slot)))return 0;
+    if(record)memcpy(record,p,POKEMON_SIZE);
+    return be16(p)!=0;
+}
+int c3_game_state_box_name(const C3GameState *state,unsigned box,char *out,size_t capacity)
+{
+    GameStateImpl *s=state?state->impl:NULL;
+    if(!s||box>=BOX_COUNT||!out||!capacity)return 0;
+    c3_game_text_ascii(s->body+BOX_BASE+box*BOX_SIZE,9,out,capacity);return 1;
+}
+int c3_game_state_box_used(const C3GameState *state,unsigned box)
+{
+    GameStateImpl *s=state?state->impl:NULL;int used=0;
+    if(!s||box>=BOX_COUNT)return -1;
+    for(unsigned i=0;i<BOX_SLOTS;++i)used+=be16(box_record(s,box,i))!=0;
+    return used;
+}
+int c3_game_state_box_store(C3GameState *state,unsigned box,const uint8_t record[0x138])
+{
+    /* pcboxAddPokemon: the first empty slot of the box. */
+    GameStateImpl *s=state?state->impl:NULL;
+    if(!s||box>=BOX_COUNT||!record||!be16(record))return -1;
+    for(unsigned i=0;i<BOX_SLOTS;++i){uint8_t *p=box_record(s,box,i);
+        if(!be16(p)){memcpy(p,record,POKEMON_SIZE);return (int)i;}}
+    return -1;
+}
+int c3_game_state_box_deposit(C3GameState *state,unsigned party_slot,unsigned box)
+{
+    GameStateImpl *s=state?state->impl:NULL;uint8_t *party;unsigned count=0;
+    if(!s||party_slot>=6||box>=BOX_COUNT)return -1;
+    party=s->body+PARTY;
+    for(unsigned i=0;i<6;++i)count+=be16(party+i*POKEMON_SIZE)!=0;
+    /* "That's your last POKeMON!": the party keeps at least one. */
+    if(count<2||!be16(party+party_slot*POKEMON_SIZE))return -1;
+    int slot=c3_game_state_box_store(state,box,party+party_slot*POKEMON_SIZE);
+    if(slot<0)return -1;
+    /* The party closes the gap. */
+    memmove(party+party_slot*POKEMON_SIZE,party+(party_slot+1)*POKEMON_SIZE,(5-party_slot)*POKEMON_SIZE);
+    empty_record(party+5*POKEMON_SIZE);
+    return slot;
+}
+int c3_game_state_box_withdraw(C3GameState *state,unsigned box,unsigned slot)
+{
+    GameStateImpl *s=state?state->impl:NULL;uint8_t *p,*party;
+    if(!s||!(p=box_record(s,box,slot))||!be16(p))return -1;
+    party=s->body+PARTY;
+    for(unsigned i=0;i<6;++i)if(!be16(party+i*POKEMON_SIZE)){
+        memcpy(party+i*POKEMON_SIZE,p,POKEMON_SIZE);empty_record(p);return (int)i;}
+    return -1; /* "Your party's full." */
 }
 int c3_game_state_trade_pokemon(C3GameState *state,unsigned slot,const uint8_t record[0x138])
 {

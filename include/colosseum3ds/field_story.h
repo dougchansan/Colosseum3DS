@@ -26,6 +26,7 @@ typedef struct C3FieldStoryView {
     int camera_active;
     uint32_t name_entry; /* native 16 mode + 1 while the scene must collect a name */
     uint32_t shop;       /* native 19 shop number + 1 while the scene shows the shop */
+    uint32_t menu_floor; /* native 62 menu floor (0x391 PC box ...) while the scene shows it */
     uint32_t unported_menu; /* last native whose menu step is not ported (took the decline branch) */
     int relive_pick;        /* native C2 waits for a party choice (c3_field_story_relive_pick) */
     float fade, camera_seconds;
@@ -58,6 +59,14 @@ int c3_field_story_name_result(C3FieldStory *story,const char *name,char *error)
  * scene reports that the player left the shop; disabled, the shop closes at
  * once. The scene performs the purchases itself (colosseum3ds/shop.h). */
 void c3_field_story_enable_shop(C3FieldStory *story,int enabled);
+/* Native 62 (fn_800FF730) pushes a menu floor. Floors the scene enables
+ * wait with view.menu_floor set until menu_floor_done; others return at
+ * once (recorded as not ported). */
+void c3_field_story_enable_menu_floor(C3FieldStory *story,uint32_t floor,int enabled);
+int c3_field_story_menu_floor_done(C3FieldStory *story,char *error);
+/* An original message (field, common or names group) as plain text, for
+ * the scene's menus; name answers value controls 32/36. 0 when absent. */
+int c3_field_story_text(C3FieldStory *story,uint32_t id,const char *name,char *out,size_t capacity);
 int c3_field_story_shop_done(C3FieldStory *story,char *error);
 /* Item gifts (script native 77). receive adds `count` of `item` to the bag
  * as heroItemAddItemDataId does and writes the item's display name: 0 when
@@ -89,7 +98,11 @@ void c3_field_story_set_party_service(C3FieldStory *story,C3FieldStoryRestore re
  * (sound, fade, volume), loading the 0x406/0x407 song slots; 6A is
  * soundStop(sound, fade); 6D is fn_80165718(volume, fade), the music master
  * volume. Unbound, these natives only log, as before. */
-enum { C3_STORY_AUDIO_PLAY_406=1, C3_STORY_AUDIO_PLAY_407, C3_STORY_AUDIO_STOP, C3_STORY_AUDIO_MASTER };
+/* JINGLE (fn_80165668(sound, fade, volume)) pauses the music and plays a
+ * one-shot song, returning 1 when it started; STATUS is fn_801666BC (2
+ * while the sound plays); JINGLE_END resumes the music. */
+enum { C3_STORY_AUDIO_PLAY_406=1, C3_STORY_AUDIO_PLAY_407, C3_STORY_AUDIO_STOP, C3_STORY_AUDIO_MASTER,
+       C3_STORY_AUDIO_JINGLE, C3_STORY_AUDIO_STATUS, C3_STORY_AUDIO_JINGLE_END };
 typedef int (*C3FieldStoryAudio)(void *context,unsigned op,uint32_t a,uint32_t b,uint32_t c);
 void c3_field_story_set_audio_service(C3FieldStory *story,C3FieldStoryAudio audio,void *context);
 /* Doors of this floor for script native 60 (floorEventCtrlDoor). rows and
@@ -114,11 +127,28 @@ void c3_field_story_set_random(C3FieldStory *story,uint16_t (*next16)(void *cont
  * index into its original name (returns 0 when it cannot). */
 void c3_field_story_set_species_namer(C3FieldStory *story,
     int (*name)(void *context,unsigned species,char *out,size_t capacity),void *context);
+/* Names the message controls print from the game's data tables (item,
+ * move, species and trainer-class names): set value->message to the name's
+ * original message ID, or value->text. Return 0 when unknown. */
+enum { C3_STORY_NAME_ITEM = 1, C3_STORY_NAME_MOVE, C3_STORY_NAME_SPECIES, C3_STORY_NAME_TRAINER_KIND };
+typedef int (*C3StoryNamer)(void *context, unsigned kind, uint32_t id, C3StoryValue *value);
+void c3_field_story_set_namer(C3FieldStory *story, C3StoryNamer namer, void *context);
+/* A string variable (msgctrlSetValue with a GSchar pointer: 0D/0E/41
+ * EvStrBuf, 23 TrainerName,
+ * 33, 36 MenuPokemon, 37/51 MenuMsg, 4D/57 String) the next
+ * messages print. Returns 0 for a control that is not a value control. */
+int c3_field_story_set_message_string(C3FieldStory *story, uint8_t control, const char *text);
+/* 1 when the field message source answers this value control. */
+int c3_field_story_message_control(uint8_t control);
 /* A person's model that was loaded after the story (field_scene streams
  * people in after the room): binds it and applies the visibility and the
  * last motion the scripts asked for meanwhile. area_index is the person's
  * row in the area. */
 int c3_field_story_attach_actor(C3FieldStory *story,uint32_t area_index,C3Title *model,char *error);
+/* The partner's field model (<prefix>_partner.c3t; person 0,101). Shown when
+ * the save's partner byte is set (native 23 changes it); while the player
+ * has control she follows Wes as hero_move.c's follower does. */
+int c3_field_story_attach_partner(C3FieldStory *story, C3Title *model, char *error);
 /* Internal species index of a field Pokemon model resource, or 0. */
 unsigned c3_field_story_model_species(uint32_t resource);
 /* Diagnostics: one "task:wait:script@pc:native" entry per waiting script. */
@@ -131,6 +161,9 @@ int c3_field_story_tick(C3FieldStory *story, float seconds, uint16_t pressed,
                         char *error);
 const C3FieldStoryView *c3_field_story_view(const C3FieldStory *story);
 C3StoryActor *c3_field_story_actor(C3FieldStory *story, uint32_t source_index);
+/* A person by original (group, ID), as natives address them: (0,100) is
+ * Wes, (0,101) the partner once her model is attached. */
+C3StoryActor *c3_field_story_person(C3FieldStory *story, uint32_t group, uint32_t index);
 /* A-button searches original NPC radii/facing, then original CCD interaction
  * surfaces. Door contacts use the separately decoded original link table. */
 int c3_field_story_interact(C3FieldStory *story, char *error);

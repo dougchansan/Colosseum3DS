@@ -10,7 +10,7 @@ UPSTREAM = vendor/colosseum/src/hsd/random.c vendor/colosseum/src/game/GScolsys2
 
 .PHONY: all test clean 3ds verify-source
 all: build/test_bottom_ui build/test_bottom_ui_golden build/test_first_person build/test_skin_uniforms
-all: build/test_core build/test_data build/test_pokemon build/test_model build/test_movie build/test_save build/test_title build/test_field build/test_dev_floor build/test_world_map build/test_name_entry build/test_game_menu build/test_game_state build/test_render_recovery build/test_area build/test_area_camera build/test_area_lights build/test_story build/test_field_story build/test_phenac_story build/test_world_story build/test_relive build/test_battle build/test_battle_action build/test_battle_rng
+all: build/test_core build/test_data build/test_pokemon build/test_model build/test_movie build/test_save build/test_title build/test_field build/test_dev_floor build/test_world_map build/test_name_entry build/test_game_menu build/test_game_state build/test_render_recovery build/test_area build/test_area_camera build/test_area_lights build/test_story build/test_hero_follow build/test_message_sweep build/test_field_story build/test_phenac_story build/test_world_story build/test_relive build/test_battle build/test_battle_action build/test_battle_rng
 
 build:
 	mkdir -p $@
@@ -39,8 +39,8 @@ build/test_field: tests/test_field.c src/field.c include/colosseum3ds/field.h in
 build/test_world_map: tests/test_world_map.c src/world_map.c include/colosseum3ds/world_map.h vendor/colosseum/src/rel/worldmap_menu_rel/worldmap_menu_rel.c | build
 	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_world_map.c src/world_map.c $(LDFLAGS) -o $@
 
-build/test_name_entry: tests/test_name_entry.c src/name_entry.c src/bottom_ui.c include/colosseum3ds/name_entry.h include/colosseum3ds/bottom_ui.h | build
-	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_name_entry.c src/name_entry.c src/bottom_ui.c $(LDFLAGS) -lm -o $@
+build/test_name_entry: tests/test_name_entry.c src/name_entry.c src/story.c src/bottom_ui.c include/colosseum3ds/name_entry.h include/colosseum3ds/bottom_ui.h include/colosseum3ds/story.h | build
+	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_name_entry.c src/name_entry.c src/story.c src/bottom_ui.c $(LDFLAGS) -lm -o $@
 
 build/test_dev_floor: tests/test_dev_floor.c src/dev_floor.c src/field.c include/colosseum3ds/dev_floor.h include/colosseum3ds/field.h include/colosseum3ds/title.h | build
 	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_dev_floor.c src/dev_floor.c src/field.c $(LDFLAGS) -lm -o $@
@@ -63,10 +63,16 @@ build/test_area_camera: tests/test_area_camera.c src/area_camera.c include/colos
 build/test_area_lights: tests/test_area_lights.c src/area_lights.c include/colosseum3ds/area_lights.h | build
 	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_area_lights.c src/area_lights.c $(LDFLAGS) -lm -o $@
 
+build/test_hero_follow: tests/test_hero_follow.c src/hero_follow.c include/colosseum3ds/hero_follow.h | build
+	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_hero_follow.c src/hero_follow.c $(LDFLAGS) -lm -o $@
+
 build/test_story: tests/test_story.c src/story.c include/colosseum3ds/story.h | build
 	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_story.c src/story.c $(LDFLAGS) -lm -o $@
 
-FIELD_STORY_SOURCES = src/field_story.c src/story.c src/area.c src/area_camera.c src/field.c src/title.c src/game_state.c src/save.c src/decomp_pokemon.c src/battle.c src/relive.c build/save_codec.c
+FIELD_STORY_SOURCES = src/field_story.c src/hero_follow.c src/story.c src/area.c src/area_camera.c src/field.c src/title.c src/game_state.c src/save.c src/decomp_pokemon.c src/battle.c src/relive.c build/save_codec.c
+build/test_message_sweep: tests/test_message_sweep.c $(FIELD_STORY_SOURCES) $(HEADERS)
+	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_message_sweep.c $(FIELD_STORY_SOURCES) $(LDFLAGS) -lm -o $@
+
 build/test_field_story: tests/test_field_story.c $(FIELD_STORY_SOURCES) $(HEADERS)
 	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_field_story.c $(FIELD_STORY_SOURCES) $(LDFLAGS) -lm -o $@
 
@@ -112,8 +118,8 @@ build/pda_fixture.c3pd: tests/pda_fixture.py tools/prepare_pda.py | build
 	python3 tests/pda_fixture.py $@
 
 PDA_SOURCES = src/inventory.c platform/3ds/ingame_menu.c src/pda.c src/bottom_ui.c src/game_state.c src/save.c src/decomp_pokemon.c build/save_codec.c
-build/test_pda: tests/test_pda.c tests/test_game_state.c $(PDA_SOURCES) src/story.c $(HEADERS) $(UI_VIEW_HEADERS) build/pda_fixture.c3pd
-	$(CC) $(CPPFLAGS) -Iplatform/3ds -Isrc $(CFLAGS) tests/test_pda.c $(PDA_SOURCES) src/story.c $(LDFLAGS) -lm -o $@
+build/test_pda: tests/test_pda.c tests/test_game_state.c $(PDA_SOURCES) src/pc_menu.c src/story.c $(HEADERS) $(UI_VIEW_HEADERS) build/pda_fixture.c3pd
+	$(CC) $(CPPFLAGS) -Iplatform/3ds -Isrc $(CFLAGS) tests/test_pda.c $(PDA_SOURCES) src/pc_menu.c src/story.c $(LDFLAGS) -lm -o $@
 
 build/render_ingame_menu_preview: tools/render_ingame_menu_preview.c $(PDA_SOURCES) $(HEADERS) $(UI_VIEW_HEADERS)
 	$(CC) $(CPPFLAGS) -Iplatform/3ds -Isrc $(CFLAGS) tools/render_ingame_menu_preview.c $(PDA_SOURCES) $(LDFLAGS) -lm -o $@
@@ -124,8 +130,8 @@ pda-check: build/test_pda
 	./build/test_pda
 test: pda-check
 
-build/test_game_state: tests/test_game_state.c src/game_state.c src/save.c src/decomp_pokemon.c build/save_codec.c $(HEADERS)
-	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_game_state.c src/game_state.c src/save.c src/decomp_pokemon.c build/save_codec.c $(LDFLAGS) -lm -o $@
+build/test_game_state: tests/test_game_state.c src/game_state.c src/pc_menu.c src/bottom_ui.c src/save.c src/decomp_pokemon.c build/save_codec.c $(HEADERS)
+	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_game_state.c src/game_state.c src/pc_menu.c src/bottom_ui.c src/save.c src/decomp_pokemon.c build/save_codec.c $(LDFLAGS) -lm -o $@
 
 build/save_codec.c: tools/prepare_save_codec.py vendor/colosseum/src/game/memcard.c | build
 	python3 tools/prepare_save_codec.py
@@ -159,6 +165,8 @@ test: all
 	./build/test_skin_uniforms
 	./build/test_area_lights
 	./build/test_story
+	./build/test_hero_follow
+	./build/test_message_sweep $(C3_MESSAGE_SWEEP)
 	./build/test_field_story
 	./build/test_phenac_story
 	./build/test_world_story
@@ -327,16 +335,16 @@ particle-tackle-check: build/test_particle_tackle
 	./build/test_particle_tackle
 test: particle-tackle-check
 
-build/test_inventory: tests/test_inventory.c tests/test_game_state.c src/inventory.c src/pda.c src/game_state.c src/save.c src/decomp_pokemon.c build/save_codec.c $(HEADERS)
-	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_inventory.c src/inventory.c src/pda.c src/game_state.c src/save.c src/decomp_pokemon.c build/save_codec.c $(LDFLAGS) -lm -o $@
+build/test_inventory: tests/test_inventory.c tests/test_game_state.c src/inventory.c src/pda.c src/game_state.c src/save.c src/decomp_pokemon.c build/save_codec.c src/pc_menu.c src/bottom_ui.c $(HEADERS)
+	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_inventory.c src/inventory.c src/pda.c src/game_state.c src/save.c src/decomp_pokemon.c build/save_codec.c src/pc_menu.c src/bottom_ui.c $(LDFLAGS) -lm -o $@
 all: build/test_inventory
 .PHONY: inventory-check
 inventory-check: build/test_inventory
 	./build/test_inventory
 test: inventory-check
 
-build/test_shop: tests/test_shop.c tests/test_game_state.c src/shop.c src/inventory.c src/pda.c src/bottom_ui.c src/game_state.c src/save.c src/decomp_pokemon.c build/save_codec.c include/colosseum3ds/shop.h $(HEADERS)
-	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_shop.c src/shop.c src/inventory.c src/pda.c src/bottom_ui.c src/game_state.c src/save.c src/decomp_pokemon.c build/save_codec.c $(LDFLAGS) -lm -o $@
+build/test_shop: tests/test_shop.c tests/test_game_state.c src/shop.c src/inventory.c src/pda.c src/bottom_ui.c src/game_state.c src/save.c src/decomp_pokemon.c build/save_codec.c include/colosseum3ds/shop.h src/pc_menu.c $(HEADERS)
+	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_shop.c src/shop.c src/inventory.c src/pda.c src/bottom_ui.c src/game_state.c src/save.c src/decomp_pokemon.c build/save_codec.c src/pc_menu.c $(LDFLAGS) -lm -o $@
 all: build/test_shop
 .PHONY: shop-check
 shop-check: build/test_shop
@@ -352,8 +360,8 @@ pda-audio-check: build/test_pda_audio
 	./build/test_pda_audio
 test: pda-audio-check
 
-build/test_inventory_ui: tests/test_inventory_ui.c tests/test_game_state.c $(PDA_SOURCES) $(HEADERS) $(UI_VIEW_HEADERS) build/pda_fixture.c3pd
-	$(CC) $(CPPFLAGS) -Iplatform/3ds -Isrc $(CFLAGS) tests/test_inventory_ui.c $(PDA_SOURCES) $(LDFLAGS) -lm -o $@
+build/test_inventory_ui: tests/test_inventory_ui.c tests/test_game_state.c $(PDA_SOURCES) src/pc_menu.c $(HEADERS) $(UI_VIEW_HEADERS) build/pda_fixture.c3pd
+	$(CC) $(CPPFLAGS) -Iplatform/3ds -Isrc $(CFLAGS) tests/test_inventory_ui.c $(PDA_SOURCES) src/pc_menu.c $(LDFLAGS) -lm -o $@
 all: build/test_inventory_ui
 .PHONY: inventory-ui-check
 inventory-ui-check: build/test_inventory_ui
@@ -361,8 +369,8 @@ inventory-ui-check: build/test_inventory_ui
 test: inventory-ui-check
 
 # Opt-in private input: ./build/test_inventory_real INPUT.gci GAME.c3g PDA.c3pd
-build/test_inventory_real: tests/test_inventory_real.c tests/test_game_state.c src/inventory.c src/pda.c src/game_state.c src/save.c src/decomp_pokemon.c build/save_codec.c $(HEADERS)
-	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_inventory_real.c src/inventory.c src/pda.c src/game_state.c src/save.c src/decomp_pokemon.c build/save_codec.c $(LDFLAGS) -lm -o $@
+build/test_inventory_real: tests/test_inventory_real.c tests/test_game_state.c src/inventory.c src/pda.c src/game_state.c src/save.c src/decomp_pokemon.c build/save_codec.c src/pc_menu.c src/bottom_ui.c $(HEADERS)
+	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_inventory_real.c src/inventory.c src/pda.c src/game_state.c src/save.c src/decomp_pokemon.c build/save_codec.c src/pc_menu.c src/bottom_ui.c $(LDFLAGS) -lm -o $@
 
 # Opt-in original model audit: pass model root followed by additional species IDs.
 build/pda_valid_batch.inc: platform/3ds/title_renderer.c | build

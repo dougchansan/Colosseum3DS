@@ -121,8 +121,20 @@ int c3_game_state_set_floor(C3GameState *state, uint32_t floor,
 int c3_game_state_set_partner(C3GameState *state, int present);
 int c3_game_state_partner(const C3GameState *state);
 /* The partner's name (hero +0xAC2, ten characters and a terminator).
- * Accepts 1..10 printable ASCII characters. */
+ * Accepts 1..10 UTF-8 characters (GSchars, no controls). */
 int c3_game_state_set_partner_name(C3GameState *state, const char *name);
+/* PC boxes (pcbox.c; three boxes of thirty). box_pokemon copies a slot's
+ * record (record may be NULL) and returns 1 when it holds a Pokemon.
+ * box_store puts a record in the box's first empty slot (pcboxAddPokemon).
+ * deposit moves a party member into a box (the party keeps at least one
+ * and closes the gap); withdraw moves a box Pokemon into the first empty
+ * party slot. Each returns the slot it filled, or -1 when it cannot. */
+int c3_game_state_box_pokemon(const C3GameState *state, unsigned box, unsigned slot, uint8_t record[0x138]);
+int c3_game_state_box_name(const C3GameState *state, unsigned box, char *out, size_t capacity);
+int c3_game_state_box_used(const C3GameState *state, unsigned box);
+int c3_game_state_box_store(C3GameState *state, unsigned box, const uint8_t record[0x138]);
+int c3_game_state_box_deposit(C3GameState *state, unsigned party_slot, unsigned box);
+int c3_game_state_box_withdraw(C3GameState *state, unsigned box, unsigned slot);
 int c3_game_state_set_options(C3GameState *state, uint8_t sound_mono,
                               uint8_t rumble_disabled);
 int c3_game_state_add_play_time(C3GameState *state, double seconds);

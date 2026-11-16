@@ -25,6 +25,7 @@
 #include "colosseum3ds/floor_profile.h"
 #include "colosseum3ds/inventory.h"
 #include "colosseum3ds/name_entry.h"
+#include "colosseum3ds/pc_menu.h"
 #include "world_map_scene.h"
 #include "colosseum3ds/area_lights.h"
 #include "colosseum3ds/title.h"
@@ -97,13 +98,47 @@ static int receive_item(void *context,uint32_t item,uint32_t count,char *name,si
     }
     free(data);return result;
 }
+/* Names the message controls print (msgctrlItem/Item2, msgctrlPokemonID)
+ * from the PDA pack's item and species tables. Moves and trainer classes
+ * are not in that pack yet; such a message fails with the control named. */
+static int story_namer(void *context,unsigned kind,uint32_t id,C3StoryValue *value)
+{
+    static char text[64];
+    C3GameState *state=context;C3GameSummary summary;C3PdaAssets assets={0};C3InventoryItem item;C3PdaSpecies species;
+    uint8_t *data=open_pda(&assets);int ok=0;
+    if(data&&c3_game_state_summary(state,&summary)){
+        if(kind==C3_STORY_NAME_ITEM&&c3_inventory_item(&assets,id,&item))
+            ok=c3_pda_text(&assets,item.name,summary.name,summary.partner,text,sizeof text);
+        else if(kind==C3_STORY_NAME_SPECIES&&c3_pda_species(&assets,id,&species))
+            ok=c3_pda_text(&assets,species.name,"","",text,sizeof text);
+    }
+    free(data);
+    if(ok)value->text=text;
+    return ok;
+}
+/* The PC menu's texts: original messages through the field story. */
+static int pc_text(void *context,uint32_t id,const char *name,char *out,size_t capacity)
+{return c3_field_story_text(context,id,name,out,capacity);}
 /* Script music natives 68/69/6A/6D -> the streamed MusyX player. */
 static int story_audio(void *context,unsigned op,uint32_t a,uint32_t b,uint32_t c)
 {
+    /* The last sound native 69 put in slot 0x407, put back after a jingle. */
+    static uint32_t slot407_sound,slot407_volume;
     (void)context;
     switch(op){
     case C3_STORY_AUDIO_PLAY_406:return c3_music_play(C3_MUSIC_SLOT_406,a,c,b);
-    case C3_STORY_AUDIO_PLAY_407:return c3_music_play(C3_MUSIC_SLOT_407,a,c,b);
+    case C3_STORY_AUDIO_PLAY_407:slot407_sound=a;slot407_volume=c;return c3_music_play(C3_MUSIC_SLOT_407,a,c,b);
+    /* fn_80165668: the area music pauses while the one-shot jingle plays
+     * (the player has two song slots; the jingle borrows 0x407). */
+    case C3_STORY_AUDIO_JINGLE:
+        c3_music_pause_slot(C3_MUSIC_SLOT_406,1);
+        if(c3_music_play(C3_MUSIC_SLOT_407,a,c,b))return 1;
+        c3_music_pause_slot(C3_MUSIC_SLOT_406,0);return 0;
+    case C3_STORY_AUDIO_STATUS:return c3_music_status(a);
+    case C3_STORY_AUDIO_JINGLE_END:
+        c3_music_stop_slot(C3_MUSIC_SLOT_407,0);
+        if(slot407_sound)c3_music_play(C3_MUSIC_SLOT_407,slot407_sound,slot407_volume,0);
+        c3_music_pause_slot(C3_MUSIC_SLOT_406,0);return 1;
     case C3_STORY_AUDIO_STOP:c3_music_stop(a,b);return 1;
     case C3_STORY_AUDIO_MASTER:c3_music_master(a,b);return 1;
     }
@@ -547,15 +582,17 @@ static int field_renderer_init(C3Title *storage,const C3Title *const *models,uin
  * front of it, facing it, and interacts (open dialogue is answered with A).
  * Other floors leave for the world map as before. */
 static struct { uint32_t start, start_spawn, floor[32], source[32]; uint8_t interact[32]; unsigned count, next; int loaded;
-                uint32_t film_floor, film_frames; unsigned shadow_slot, shadow_id; } probe_route;
+                uint32_t film_floor, film_frames; unsigned shadow_slot, shadow_id;
+                uint32_t flag_id[16], flag_value[16]; unsigned flags, name_mode; int partner;
+                uint32_t walk_floor, walk_frames, walked; int walk_x, walk_y; } probe_route;
 static void probe_route_load(void)
 {
     if(probe_route.loaded)return;
-    probe_route.loaded=1;
+    probe_route.loaded=1;probe_route.partner=-1;
     FILE *f=fopen("sdmc:/3ds/Colosseum3DS/probe-route.txt","r");char line[64];
     if(!f)return;
     while(fgets(line,sizeof line,f)){
-        unsigned long a,b;
+        unsigned long a,b;long x,y;
         /* "start <floor> [spawn]": the first floor and its entrance;
          * "frames <floor> <count>": in that floor, before leaving, save
          * <count> consecutive top-screen frames (probe/film_<floor>_<n>.bmp)
@@ -566,7 +603,27 @@ static void probe_route_load(void)
         /* "shadow <slot> <id>": the probe makes that party member a Shadow
          * Pokemon whose heart is open, in memory only (the probe saves to
          * probe-unused.gci), to try the Relic Stone. */
+        /* "flag <id> <value>" and "partner <0|1>": story state the probe
+         * writes before the first floor (in memory only), to replay an
+         * event a save has already passed. */
+        else if(sscanf(line,"flag %lx %lx",&a,&b)==2&&probe_route.flags<16){
+            probe_route.flag_id[probe_route.flags]=(uint32_t)a;probe_route.flag_value[probe_route.flags++]=(uint32_t)b;}
+        else if(sscanf(line,"partner %lx",&a)==1)probe_route.partner=a!=0;
+        /* "name <mode>": once the hero has control, open the name entry for
+         * that mode as native 16 would, play a fixed input sequence (NEW NAME,
+         * a key, R, a key, START) and save each step's bottom screen. */
+        else if(sscanf(line,"name %lx",&a)==1&&a<4)probe_route.name_mode=(unsigned)a+1u;
+        /* "walk <floor> <frames> <x> <y>": hold the Circle Pad (decimal
+         * -127..127) for that many frames once the hero has control there,
+         * e.g. to film the partner following. */
+        else if(sscanf(line,"walk %lx %lu %ld %ld",&a,&b,&x,&y)==4&&b<=1200&&x>=-127&&x<=127&&y>=-127&&y<=127){
+            probe_route.walk_floor=(uint32_t)a;probe_route.walk_frames=(uint32_t)b;probe_route.walk_x=(int)x;probe_route.walk_y=(int)y;}
         else if(sscanf(line,"shadow %lx %lx",&a,&b)==2&&a<6&&b){probe_route.shadow_slot=(unsigned)a;probe_route.shadow_id=(unsigned)b;}
+        /* "<floor> p<person>": stand in front of that person (area index),
+         * facing it, and talk (interact value 2). */
+        else if(sscanf(line,"%lx p%lx",&a,&b)==2&&probe_route.count<32){
+            probe_route.floor[probe_route.count]=(uint32_t)a;probe_route.interact[probe_route.count]=2;
+            probe_route.source[probe_route.count++]=(uint32_t)b;}
         else if(sscanf(line,"%lx i%lx",&a,&b)==2&&probe_route.count<32){
             probe_route.floor[probe_route.count]=(uint32_t)a;probe_route.interact[probe_route.count]=1;
             probe_route.source[probe_route.count++]=(uint32_t)b;}
@@ -589,7 +646,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     char model_paths[C3_STAGE_MAX_MODELS][160]={{0}};
     C3TitleCamera camera;C3TitleRenderStats stats={0};C3N3dsInput input={0};
     uint32_t opened=0,count=0,arrival_done=0,opening_done=0,arrival_count=0;
-    unsigned wes_index=0,arrival_index=0,tv_index=UINT32_MAX,selection=0,frames=0;
+    unsigned wes_index=0,arrival_index=0,tv_index=UINT32_MAX,partner_index=UINT32_MAX,selection=0,frames=0;
     /* Load timing for the trace: area start, each pack, first control. */
     uint64_t load_start_us=c3_n3ds_time_us(),pack_us=0;int load_reported=0;
     /* People stream in after the room: their packs load on the second core
@@ -601,10 +658,12 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     float elapsed=0,phase_seconds=0,arrival_seconds=0;
     uint64_t previous=0,next_console=0,next_trace=0,skin_actors=0;
     C3UiPager ui_pager={0};
-    C3NameEntry name_entry;int naming=0;
+    C3NameEntry name_entry;C3NameEntryText name_text;C3Story name_messages={0};int naming=0,naming_probe=0;unsigned naming_step=0;
+    (void)naming_step;
     C3ShopMenu shop_menu;C3ShopTable shop_table={0};C3PdaAssets shop_assets={0};
     uint8_t *shop_pda=NULL,*shop_pack=NULL;size_t shop_pack_size=0;int shopping=0;
     RelivePick relive_pick={0};
+    C3PcMenu pc_menu;int pc_open=0;unsigned pc_step=0;(void)pc_step;
     C3IngameMenu *ingame=calloc(1,sizeof *ingame);
     C3PdaPreview *pda_preview=NULL;
     float pda_seconds=0;
@@ -652,6 +711,9 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     if(exists(path)&&!c3_area_doors_load(&doors,path,error,capacity))goto done;
     for(uint32_t i=0;i<doors.count;++i)if(doors.rows[i].file[0])++count;
     if(profile->features&C3_FLOOR_TV)tv_index=count++;
+    /* The partner's pack (person 0,101), loaded with the room. */
+    snprintf(path,sizeof path,BOOT_ROOT "%s_partner.c3t",prefix);
+    if(exists(path))partner_index=count++;
     npc.first=count;
     for(uint32_t i=0;i<area.actor_count;++i)if(area.actors[i].file[0]){++count;++npc.count;}
     if(count>C3_STAGE_MAX_MODELS){snprintf(error,capacity,"The area exceeds the model bound.");goto done;}
@@ -755,6 +817,13 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         models[opened++]=storage+tv_index;
         if(!c3_title_animate(storage+tv_index,0,0))goto done;
     }
+    if(partner_index!=UINT32_MAX){
+        snprintf(path,sizeof path,BOOT_ROOT "%s_partner.c3t",prefix);
+        if(!c3_title_load(storage+partner_index,path,error,capacity))goto done;
+        snprintf(model_paths[partner_index],sizeof model_paths[partner_index],"%s",path);
+        models[opened++]=storage+partner_index;
+        if(!c3_title_animate(storage+partner_index,0,0))goto done;
+    }
     /* Reviewed floors name their event camera; a surveyed floor loads one
      * when tools/prepare_tour.py prepared it. */
     if(trace){fprintf(trace,"field_load_stage name=%s us=%llu\n","packs",(unsigned long long)(c3_n3ds_time_us()-load_start_us));}
@@ -795,6 +864,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     snprintf(path,sizeof path,BOOT_ROOT "%s",profile->story);
     if(!c3_field_story_load(&story,path,state,&map,&area,&player,wes,actor_models,&room_camera,trace,story_error)||
        !c3_field_story_bind_battle(&story,BOOT_ROOT "willie.c3b",story_error))goto story_failed;
+    if(partner_index!=UINT32_MAX&&!c3_field_story_attach_partner(&story,storage+partner_index,story_error))goto story_failed;
     if(trace){fprintf(trace,"field_load_stage name=%s us=%llu\n","story",(unsigned long long)(c3_n3ds_time_us()-load_start_us));}
     if(npc.count){npc.stream=c3_pack_stream_start(npc.jobs,npc.count);npc.start_us=c3_n3ds_time_us();
         if(!npc.stream){snprintf(error,capacity,"The people loader could not start.");goto done;}}
@@ -810,7 +880,9 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     c3_field_story_set_random(&story,c3_game_state_random16,state);
     c3_field_story_set_species_namer(&story,field_species_name,ingame);
     c3_field_story_enable_shop(&story,1);
+    c3_field_story_enable_menu_floor(&story,0x391,1); /* the PC (pc_menu.h) */
     c3_field_story_set_item_service(&story,receive_item,state);
+    c3_field_story_set_namer(&story,story_namer,state);
     c3_field_story_set_party_service(&story,restore_party,state);
     purify_trace=trace;c3_field_story_set_purify_service(&story,purify_party,state);
     c3_field_story_set_audio_service(&story,story_audio,NULL);
@@ -825,6 +897,17 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
 #ifdef C3_ROUNDTRIP_PROBE
         /* Probe: answer open dialogue with A, one press a second. */
         if(view&&(view->dialogue||view->choice)&&frames%60u==0u)input.pressed|=C3_PAD_A;
+        probe_route_load();
+        if(view&&view->control&&npc.attached&&probe_route.walk_frames&&probe_route.walk_floor==map.floor&&
+           probe_route.walked<probe_route.walk_frames){
+            input.stick_x=(int8_t)probe_route.walk_x;input.stick_y=(int8_t)probe_route.walk_y;
+            if(++probe_route.walked==probe_route.walk_frames&&trace){
+                C3StoryActor *rui=c3_field_story_person(&story,0,101);
+                fprintf(trace,"probe_walk_end frames=%lu hero=%.3f,%.3f partner=%d,%.3f,%.3f clip=%lu\n",(unsigned long)probe_route.walked,
+                        (double)player.position[0],(double)player.position[2],rui?rui->visible:-1,
+                        rui?(double)rui->pose.position[0]:0.0,rui?(double)rui->pose.position[2]:0.0,rui?(unsigned long)rui->clip:0ul);
+                fflush(trace);}
+        }
 #endif
         if(!npc.attached&&!npc_stream_attach(&npc,0,storage,models,actor_models,model_paths,&story,count,skin_actors,
                                              tv_index,view?view->tv_enabled:1,frames,trace,error,capacity)){result=-1;break;}
@@ -1031,21 +1114,51 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
             campaign_line("floor=%03lx name_entry default=RUI",(unsigned long)map.floor);
         }
 #endif
-        if(view->name_entry&&!naming&&page==PAUSE_CLOSED&&c3_game_state_summary(state,&summary)){
-            /* An unnamed partner holds the original placeholder (message
-             * 0xFA2, "N/A"; docs/game-state.md): start empty, with no
-             * fallback, rather than offering the placeholder as her name. */
-            c3_name_entry_init(&name_entry,strcmp(summary.partner,"N/A")?summary.partner:NULL);naming=1;dirty=1;
-            if(trace){fprintf(trace,"name_entry_open mode=%lu\n",(unsigned long)(view->name_entry-1u));fflush(trace);}
+        unsigned name_request=view->name_entry;
+#ifdef C3_ROUNDTRIP_PROBE
+        probe_route_load();
+        if(!name_request&&probe_route.name_mode&&view->control&&npc.attached&&frames>60u){
+            name_request=probe_route.name_mode;probe_route.name_mode=0;naming_probe=1;}
+#endif
+        if(name_request&&!naming&&page==PAUSE_CLOSED){
+            /* The original name entry (floor 0x390): its texts, presets and
+             * key pages come from name_entry_menu's message group. */
+            unsigned mode=name_request-1u;size_t bytes=0;uint8_t *group=read_boot_file(BOOT_ROOT "name_entry.c3m",&bytes);
+            c3_story_free(&name_messages);
+            int ready=group&&c3_story_add_messages(&name_messages,group,bytes,story_error)&&
+                      c3_name_entry_text_load(&name_text,&name_messages,mode);
+            free(group);
+            if(!ready){snprintf(story_error,sizeof story_error,"The name entry needs boot/name_entry.c3m (tools/prepare_menu_messages.py)");goto story_failed;}
+            c3_name_entry_init(&name_entry,&name_text,&name_messages);naming=1;dirty=1;
+            if(trace){fprintf(trace,"name_entry_open mode=%u presets=%u max=%u\n",mode,name_text.preset_count,name_text.max_length);fflush(trace);}
         }
         if(naming){
-            C3NameEvent typed=c3_name_entry_update(&name_entry,input.pressed,input.touch_held,input.touch_pressed,
-                                                   input.touch_released,input.touch_x,input.touch_y);
+#ifdef C3_ROUNDTRIP_PROBE
+            /* Probe: for a story request take the first preset (A, A); for a
+             * "name" route line play NEW NAME, A, R, A, START with a bottom
+             * screen before each step. */
+            if(frames%30u==0u){
+                static const uint16_t steps[]={C3_PAD_DOWN,C3_PAD_DOWN,C3_PAD_DOWN,C3_PAD_A,C3_PAD_A,C3_PAD_R,C3_PAD_A,C3_PAD_START};
+                if(!naming_probe)input.pressed|=C3_PAD_A;
+                else{
+                    char shot[96];mkdir("sdmc:/3ds/Colosseum3DS/probe",0777);
+                    snprintf(shot,sizeof shot,"sdmc:/3ds/Colosseum3DS/probe/name_%02u.bmp",naming_step);
+                    int ok=c3_n3ds_capture_bottom(shot)==0;
+                    if(trace){fprintf(trace,"probe_name step=%u phase=%d length=%u shot=%d\n",naming_step,(int)name_entry.phase,name_entry.length,ok);fflush(trace);}
+                    if(naming_step<sizeof steps/sizeof steps[0])input.pressed|=steps[naming_step];
+                    ++naming_step;
+                }
+            }
+#endif
+            C3NameEvent typed=c3_name_entry_update(&name_entry,input.pressed,input.touch_pressed,input.touch_x,input.touch_y);
             if(typed!=C3_NAME_NONE)dirty=1;
             if(typed==C3_NAME_DONE){
-                if(!c3_field_story_name_result(&story,name_entry.text,story_error))goto story_failed;
-                if(trace){fprintf(trace,"name_entry_done length=%u\n",name_entry.length);fflush(trace);}
-                naming=0;
+                if(naming_probe){
+                    int ok=c3_game_state_set_partner_name(state,name_entry.result);naming_probe=0;
+                    if(trace){fprintf(trace,"probe_name_done name=%s stored=%d\n",name_entry.result,ok);fflush(trace);}
+                }else if(!c3_field_story_name_result(&story,name_entry.result,story_error))goto story_failed;
+                if(trace){fprintf(trace,"name_entry_done name=%s length=%u\n",name_entry.result,name_entry.length);fflush(trace);}
+                naming=0;c3_story_free(&name_messages);
             }
             input.pressed=0;input.touch_pressed=false;
         }
@@ -1072,6 +1185,42 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
             if(shop_event==C3_SHOP_EVENT_CLOSE){
                 free(shop_pda);free(shop_pack);shop_pda=shop_pack=NULL;shopping=0;
                 if(!c3_field_story_shop_done(&story,story_error))goto story_failed;
+            }
+            input.pressed=0;input.touch_pressed=false;
+        }
+        /* Native 62 pushing the PC box floor 0x391: the PC menu with the
+         * original texts. It owns all input; Save uses the scene's save. */
+        if(view->menu_floor==0x391&&!pc_open&&page==PAUSE_CLOSED){
+            c3_pc_menu_open(&pc_menu,state,pc_text,&story);pc_open=1;dirty=1;pc_step=0;
+            if(trace){fprintf(trace,"pc_open floor=391\n");fflush(trace);}
+        }
+        if(pc_open){
+            uint16_t pc_pressed=input.pressed;
+#ifdef C3_ROUNDTRIP_PROBE
+            /* Probe: Storage, deposit the first party member in BOX2,
+             * withdraw it, back, Exit; the bottom screen before each step. */
+            pc_pressed=0;
+            if(frames%30u==0u){
+                static const uint16_t steps[]={C3_PAD_A,C3_PAD_A,C3_PAD_A,C3_PAD_DOWN,C3_PAD_A,C3_PAD_RIGHT,C3_PAD_A,C3_PAD_A,
+                                               C3_PAD_B,C3_PAD_DOWN,C3_PAD_DOWN,C3_PAD_A};
+                char shot[96];mkdir("sdmc:/3ds/Colosseum3DS/probe",0777);
+                snprintf(shot,sizeof shot,"sdmc:/3ds/Colosseum3DS/probe/pc_%02u.bmp",pc_step);
+                int ok=c3_n3ds_capture_bottom(shot)==0;
+                if(trace){fprintf(trace,"probe_pc step=%u phase=%d box=%u used=%d,%d,%d deposits=%u withdrawals=%u shot=%d\n",pc_step,
+                    (int)pc_menu.phase,pc_menu.box,c3_game_state_box_used(state,0),c3_game_state_box_used(state,1),
+                    c3_game_state_box_used(state,2),pc_menu.deposits,pc_menu.withdrawals,ok);fflush(trace);}
+                if(pc_step<sizeof steps/sizeof steps[0])pc_pressed=steps[pc_step];
+                ++pc_step;
+            }
+#endif
+            C3PcEvent pc_event=c3_pc_menu_update(&pc_menu,pc_pressed);
+            if(pc_event!=C3_PC_NONE)dirty=1;
+            if(pc_event==C3_PC_SAVE){int saved=save_game(state,save_path,trace,message,sizeof message);
+                if(trace){fprintf(trace,"pc_save saved=%d\n",saved);fflush(trace);}}
+            if(pc_event==C3_PC_EXIT){
+                pc_open=0;
+                if(trace){fprintf(trace,"pc_close deposits=%u withdrawals=%u\n",pc_menu.deposits,pc_menu.withdrawals);fflush(trace);}
+                if(!c3_field_story_menu_floor_done(&story,story_error))goto story_failed;
             }
             input.pressed=0;input.touch_pressed=false;
         }
@@ -1445,8 +1594,9 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         if(!c3_game_state_summary(state,&summary)){snprintf(error,capacity,"Game state became unavailable.");result=-1;break;}
         if(dirty||input.pressed||now>=next_console){
             C3BottomUi *bottom=c3_bottom_screen_begin();
-            if(naming)c3_name_entry_draw(&name_entry,bottom,"PARTNER'S NAME");
+            if(naming)c3_name_entry_draw(&name_entry,bottom);
             else if(shopping)c3_shop_menu_draw(&shop_menu,state,bottom,profile->label);
+            else if(pc_open)c3_pc_menu_draw(&pc_menu,bottom);
             else if(relive_pick.open)relive_pick_draw(&relive_pick,bottom);
             else if(page==PAUSE_MAIN&&ingame->active)c3_ingame_draw_to(ingame,state,bottom);
             else if(page==PAUSE_CLOSED&&(phase==FIELD_CONTROL||phase==FIELD_FADE_IN)&&!view->dialogue&&!view->blocked[0]&&
@@ -1491,10 +1641,28 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         {   static int door_fired;static unsigned next_step;
             if(frames<=1u){door_fired=0;next_step=90u;}
             probe_route_load();
-            if(npc.attached&&frames>=next_step&&view->control&&!door_fired&&probe_route.next<probe_route.count&&
+            if(npc.attached&&frames>=next_step&&view->control&&!door_fired&&!naming&&!probe_route.name_mode&&probe_route.next<probe_route.count&&
                probe_route.floor[probe_route.next]==map.floor&&probe_route.interact[probe_route.next]){
+                int talk=probe_route.interact[probe_route.next]==2;
                 uint32_t source=probe_route.source[probe_route.next++];const C3FieldTriangle *hit=NULL;
-                for(uint32_t i=0;i<area.interaction_count&&!hit;++i)if(area.interactions[i].source_id==source)hit=area.interactions+i;
+                if(!talk)for(uint32_t i=0;i<area.interaction_count&&!hit;++i)if(area.interactions[i].source_id==source)hit=area.interactions+i;
+                if(talk&&source<area.actor_count){
+                    /* One unit from the person on walkable ground, +z first
+                     * (as tests/test_phenac_story.c stands at the sack),
+                     * facing it. */
+                    C3StoryActor *actor=c3_field_story_actor(&story,area.actors[source].index);
+                    const float *at=actor?actor->pose.position:area.actors[source].position;
+                    float ground;
+                    for(int turn=0;turn<4;++turn){
+                        float a=(float)turn*1.5707963f,spot[3]={at[0]+sinf(a),at[1],at[2]+cosf(a)};
+                        if(!c3_field_ground(&map,spot,&ground))continue;
+                        player.position[0]=spot[0];player.position[1]=ground;player.position[2]=spot[2];
+                        memcpy(player.proposed,player.position,sizeof player.position);
+                        player.yaw=atan2f(at[0]-spot[0],at[2]-spot[2]);break;
+                    }
+                    if(trace){fprintf(trace,"probe_talk floor=%03lx person=%lu visible=%d index=%lu\n",(unsigned long)map.floor,
+                                      (unsigned long)source,actor?actor->visible:-1,(unsigned long)area.actors[source].index);fflush(trace);}
+                }
                 if(hit){
                     float c[3]={0},n[2]={hit->normal[0],hit->normal[2]},len;
                     for(int v=0;v<3;++v)for(int k=0;k<3;++k)c[k]+=hit->vertices[v*3+k]/3.0f;
@@ -1514,6 +1682,24 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                 if(!c3_field_story_interact(&story,story_error))goto story_failed;
                 next_step=frames+120u;
             }
+            /* Dialogue: each new page's bottom screen and its text (markup
+             * removed), 20 frames after it opened, at most 64 per run. */
+            {static uint32_t page_id,page_hash,page_frame,page_shots;
+             uint32_t hash=2166136261u;
+             if(view->dialogue){for(const char *c=view->message;*c;++c)hash=(hash^(unsigned char)*c)*16777619u;}
+             if(!view->dialogue){page_id=0;page_hash=0;page_frame=0;}
+             else if(view->message_id!=page_id||hash!=page_hash){page_id=view->message_id;page_hash=hash;page_frame=frames+20u;}
+             if(page_frame&&frames>=page_frame&&page_shots<64u){
+                 char shot[96],text[C3_STORY_MESSAGE];mkdir("sdmc:/3ds/Colosseum3DS/probe",0777);
+                 snprintf(shot,sizeof shot,"sdmc:/3ds/Colosseum3DS/probe/msg_%03lx_%05lx_%02lu.bmp",(unsigned long)map.floor,
+                          (unsigned long)page_id,(unsigned long)page_shots);
+                 int shot_ok=c3_n3ds_capture_bottom(shot)==0;
+                 snprintf(text,sizeof text,"%s",view->message);c3_story_text_plain(text);
+                 for(char *c=text;*c;++c)if(*c=='\n')*c='|';
+                 if(trace){fprintf(trace,"probe_message floor=%03lx id=%05lx shot=%d text=\"%s\"\n",(unsigned long)map.floor,
+                                   (unsigned long)page_id,shot_ok,text);fflush(trace);}
+                 page_frame=0;++page_shots;
+             }}
             /* Film: consecutive top frames once the hero has control. */
             {static uint32_t filmed;
              if(probe_route.film_frames&&probe_route.film_floor==map.floor&&npc.attached&&view->control&&filmed<probe_route.film_frames){
@@ -1524,7 +1710,8 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                  if(++filmed==probe_route.film_frames&&trace){fprintf(trace,"probe_film_end frame=%u elapsed=%.3f\n",frames,(double)elapsed);fflush(trace);}
                  next_step=frames+30u;
              }}
-            if(npc.attached&&frames>=next_step&&view->control&&!door_fired){
+            if(npc.attached&&frames>=next_step&&view->control&&!door_fired&&!naming&&!pc_open&&!probe_route.name_mode&&
+               (probe_route.walk_floor!=map.floor||probe_route.walked>=probe_route.walk_frames)){
                 char shot[80];
                 mkdir("sdmc:/3ds/Colosseum3DS/probe",0777);
                 snprintf(shot,sizeof shot,"sdmc:/3ds/Colosseum3DS/probe/area_%03lx_top.bmp",(unsigned long)map.floor);
@@ -1581,6 +1768,7 @@ story_failed:
     campaign_line("floor=%03lx script_error=\"%s\" action=restart",(unsigned long)map.floor,story_error);
 #endif
 done:
+    c3_story_free(&name_messages);
     /* Every slot, room and people: streamed people attach mid-scene without
      * moving `opened`, and calloc'd slots that never loaded close as no-ops.
      * Closing only `opened` leaked every person pack on each area exit. */
@@ -1669,6 +1857,11 @@ int c3_field_scene_roundtrip_probe(C3GameState *state,FILE *trace,char *error,si
             if(trace){fprintf(trace,"roundtrip_shadow slot=%u id=%u level=%u ok=%d\n",slot,id,(unsigned)r[0x60],ok);fflush(trace);}
         }
     }
+    for(unsigned i=0;i<probe_route.flags;++i){
+        int ok=c3_game_state_set_flag(state,probe_route.flag_id[i],probe_route.flag_value[i]);
+        if(trace){fprintf(trace,"roundtrip_flag id=%03lx value=%lu ok=%d\n",(unsigned long)probe_route.flag_id[i],(unsigned long)probe_route.flag_value[i],ok);fflush(trace);}
+    }
+    if(probe_route.partner>=0)c3_game_state_set_partner(state,probe_route.partner);
     if(!c3_game_state_set_floor(state,start,C3_FLOOR_WORLD_MAP_ID,(uint8_t)probe_route.start_spawn)){snprintf(error,capacity,"floor rejected");return -1;}
     for(unsigned i=0;i<AREAS;++i){
         C3GameSummary summary;uint32_t floor=c3_game_state_summary(state,&summary)?summary.floor:0;
