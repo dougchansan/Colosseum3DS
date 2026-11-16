@@ -492,6 +492,17 @@ int c3_world_map_scene_run(C3GameState *state, FILE *trace, char *error, size_t 
               if (shown >= 150 && map.visible_count && choice < 0 && !(input.pressed & C3_PAD_B)) {
                 shown = 0; choice = (int)(rotation++ % map.visible_count); } }
 #endif
+#ifdef C3_ROUNDTRIP_PROBE
+            /* Probe: once the preview is up, go to the other destination. */
+            { static unsigned waited; ++waited;
+              if (waited >= 120 && preview && preview->ready) {
+                  waited = 0;
+                  for (uint32_t i = 0; i < map.visible_count; ++i) {
+                      C3WorldMapEntry e; int idx = c3_world_map_visible(&map, i);
+                      if (idx >= 0 && c3_world_map_entry((uint32_t)idx, &e) && e.floor != summary.previous_floor &&
+                          c3_field_scene_supports(e.floor)) { map.cursor = i; choice = (int)i; break; }
+                  } } }
+#endif
             if (input.pressed & C3_PAD_B) choice = -1;
             /* A tap selects a row; lifting the stylus on the same row goes. */
             if (native && input.touch_pressed) {

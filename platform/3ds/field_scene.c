@@ -1306,6 +1306,13 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         }
         if(draw_result){result=-1;break;}
         ++frames;
+#ifdef C3_ROUNDTRIP_PROBE
+        /* Leave for the world map once the people have joined. */
+        if(npc.attached&&frames>=90u){
+            if(!c3_game_state_set_floor(state,C3_FLOOR_WORLD_MAP_ID,map.floor,0)){result=-1;break;}
+            result=2;break;
+        }
+#endif
 #ifdef C3_WARP_TOUR
         if(tour.captured==-1&&frames>2){
             snprintf(tour.shot,sizeof tour.shot,"sdmc:/3ds/Colosseum3DS/tour/%s.bmp",prefix);
@@ -1341,7 +1348,11 @@ story_failed:
     campaign_line("floor=%03lx script_error=\"%s\" action=restart",(unsigned long)map.floor,story_error);
 #endif
 done:
-    if(npc.stream){c3_pack_stream_finish(npc.stream);npc.stream=NULL;opened=count;}
+    /* Every slot, room and people: streamed people attach mid-scene without
+     * moving `opened`, and calloc'd slots that never loaded close as no-ops.
+     * Closing only `opened` leaked every person pack on each area exit. */
+    if(npc.stream){c3_pack_stream_finish(npc.stream);npc.stream=NULL;}
+    if(storage)opened=count;
     free(npc.jobs);npc.jobs=NULL;
     c3_pda_audio_close();
     c3_ingame_close(ingame);
@@ -1391,6 +1402,31 @@ int c3_field_scene_tour(C3GameState *state,FILE *trace,char *error,size_t capaci
     fprintf(log,"tour_end visited=%u captured=%u\n",visited,ok);
     fclose(log);fclose(list);
     return 0;
+}
+#endif
+
+#ifdef C3_ROUNDTRIP_PROBE
+int c3_field_scene_roundtrip_probe(C3GameState *state,FILE *trace,char *error,size_t capacity)
+{
+    enum{AREAS=7};
+    char stage[64];int result=0;
+    c3_n3ds_log_memory(trace,"roundtrip_baseline");
+    /* Start in Phenac; the world map then alternates between the two
+     * destinations the save has unlocked. */
+    if(!c3_game_state_set_floor(state,3,C3_FLOOR_WORLD_MAP_ID,0)){snprintf(error,capacity,"floor rejected");return -1;}
+    for(unsigned i=0;i<AREAS;++i){
+        C3GameSummary summary;uint32_t floor=c3_game_state_summary(state,&summary)?summary.floor:0;
+        result=run_area(state,0,"sdmc:/3ds/Colosseum3DS/probe-unused.gci",trace,error,capacity);
+        snprintf(stage,sizeof stage,"roundtrip_%u_field_%03lx_end",i,(unsigned long)floor);
+        c3_n3ds_log_memory(trace,stage);
+        if(result!=2||i+1==AREAS)break;
+        result=c3_world_map_scene_run(state,trace,error,capacity);
+        snprintf(stage,sizeof stage,"roundtrip_%u_worldmap_end",i);
+        c3_n3ds_log_memory(trace,stage);
+        if(result!=2)break;
+    }
+    if(trace){fprintf(trace,"roundtrip_end result=%d error=%s\n",result,result<0?error:"");fflush(trace);}
+    return result<0?-1:0;
 }
 #endif
 

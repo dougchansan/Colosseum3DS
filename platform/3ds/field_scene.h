@@ -13,6 +13,11 @@ int c3_field_scene_available(void);
 /* Tour build: visit each floor in boot/tour.txt from the loaded save. */
 int c3_field_scene_tour(C3GameState *state, FILE *trace, char *error, size_t capacity);
 #endif
+#ifdef C3_ROUNDTRIP_PROBE
+/* Memory probe build: Phenac -> world map -> Outskirt -> world map ...
+ * with no input, logging the allocator around every visit. */
+int c3_field_scene_roundtrip_probe(C3GameState *state, FILE *trace, char *error, size_t capacity);
+#endif
 int c3_field_scene_run(C3GameState *state, int new_game, const char *save_path,
                        FILE *trace, char *error, size_t capacity);
 
