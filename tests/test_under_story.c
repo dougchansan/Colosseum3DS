@@ -183,25 +183,56 @@ static void event_attempt(const char *prefix, uint32_t floor, int kind, uint32_t
                 snprintf(error, sizeof error, "actor is not eligible for manual talk in this checkpoint");
                 goto done;
             }
-            /* Stand just in front of the NPC and face it. */
-            float yaw = actor->pose.yaw + placement * .785398163f, reach = 0.6f;
-            s->hero = actor->pose;
-            s->hero.position[0] += sinf(yaw) * reach; s->hero.position[2] += cosf(yaw) * reach;
-            s->hero.yaw = atan2f(actor->pose.position[0] - s->hero.position[0],
-                                   actor->pose.position[2] - s->hero.position[2]);
-            memcpy(s->hero.proposed, s->hero.position, sizeof s->hero.position);
-            long start = ftell(trace);
-            if (!c3_field_story_interact(&s->story, error)) goto done;
-            CHECK(fflush(trace) == 0);
-            long end = ftell(trace);
-            char expected[96], line[1024]; int matched = 0;
-            snprintf(expected, sizeof expected, "story_talk actor=%lu script=%08lx",
-                     (unsigned long)id, (unsigned long)script);
-            CHECK(start >= 0 && end >= start && fseek(trace, start, SEEK_SET) == 0);
-            while (ftell(trace) < end && fgets(line, sizeof line, trace))
-                if (strstr(line, expected)) matched = 1;
-            CHECK(fseek(trace, end, SEEK_SET) == 0);
-            if (!matched) { status = placement < 7 ? "retry" : "failed"; snprintf(error, sizeof error, "intended talk script was not started with placement %u", placement); goto done; }
+            /* The subway's original approach script can select an earlier
+             * trainer first. Finish that actual conversation before retrying
+             * this actor in the same scene/game; never grant its completion
+             * flag or discard it by reimporting the checkpoint. */
+            for (unsigned prerequisites = 0; ; ++prerequisites) {
+                actor = c3_field_story_actor(&s->story, id);
+                if (!actor || !actor->visible) {
+                    snprintf(error, sizeof error, "intended actor vanished after prerequisite talk");
+                    goto done;
+                }
+                float yaw = actor->pose.yaw + placement * .785398163f, reach = 0.6f;
+                s->hero = actor->pose;
+                s->hero.position[0] += sinf(yaw) * reach;
+                s->hero.position[2] += cosf(yaw) * reach;
+                s->hero.yaw = atan2f(actor->pose.position[0] - s->hero.position[0],
+                                    actor->pose.position[2] - s->hero.position[2]);
+                memcpy(s->hero.proposed, s->hero.position, sizeof s->hero.position);
+                CHECK(fflush(trace) == 0);
+                long start = ftell(trace);
+                if (!c3_field_story_interact(&s->story, error)) goto done;
+                CHECK(fflush(trace) == 0);
+                long end = ftell(trace);
+                char expected[96], line[1024]; int matched = 0, selected = 0;
+                unsigned long actual_actor = 0, actual_script = 0;
+                snprintf(expected, sizeof expected, "story_talk actor=%lu script=%08lx",
+                         (unsigned long)id, (unsigned long)script);
+                CHECK(start >= 0 && end >= start && fseek(trace, start, SEEK_SET) == 0);
+                while (ftell(trace) < end && fgets(line, sizeof line, trace)) {
+                    if (strstr(line, expected)) matched = 1;
+                    if (sscanf(line, "story_talk actor=%lu script=%lx", &actual_actor, &actual_script) == 2)
+                        selected = 1;
+                }
+                CHECK(fseek(trace, end, SEEK_SET) == 0);
+                if (matched) break;
+                /* Only the reviewed ordered subway trainers qualify as real
+                 * prerequisites. An unrelated nearby talk remains a failure. */
+                if (floor != 0x3a || id < 2 || id > 4 || !selected ||
+                    actual_actor < 1 || actual_actor >= id || prerequisites >= 4) {
+                    status = placement < 7 ? "retry" : "failed";
+                    snprintf(error, sizeof error, "intended talk script was not started with placement %u", placement);
+                    goto done;
+                }
+                fprintf(report, "under_prerequisite floor=%03lx intended_actor=%lu actual_actor=%lu script=%08lx attempt=%u original_flags=1 synthetic_battle_if_requested=1\n",
+                        (unsigned long)floor, (unsigned long)id, actual_actor, actual_script, prerequisites + 1);
+                if (!run(s, 3600, &frames, &next)) goto done;
+                if (next || !c3_field_story_view(&s->story)->control) {
+                    snprintf(error, sizeof error, "prerequisite talk did not return control on the intended floor");
+                    goto done;
+                }
+            }
         }
         if (!run(s, 3600, &frames, &next)) goto done;
     }
