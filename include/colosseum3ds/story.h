@@ -39,6 +39,10 @@ int c3_story_decode(C3Story *story, const void *data, size_t size,
                     char *error);
 int c3_story_add_bank(C3Story *story, const void *data, size_t size,
                       char *error);
+/* An original message group (big-endian GSmsg table) on its own, for menus
+ * and host checks; groups are searched in the order they were added. */
+int c3_story_add_messages(C3Story *story, const void *data, size_t size,
+                          char *error);
 void c3_story_free(C3Story *story);
 
 int c3_story_start(C3Story *story, uint32_t script_id, const uint32_t *args,
@@ -68,6 +72,33 @@ typedef const char *(*C3StoryTextSource)(void *context, uint8_t control);
 int c3_story_message_with(const C3Story *story, uint32_t id,
                           C3StoryTextSource source, void *context,
                           char *output, size_t capacity, char *error);
+/* The general renderer. A value control (one whose original callback
+ * returns a string or a message ID, msgctrlcode modes 1/2) asks the source,
+ * which sets value->text to print, or value->message to print that original
+ * message in place (it may hold controls itself). A source returning 0
+ * rejects the message with the control named. Control 02 ends the message.
+ * With C3_STORY_TEXT_MARKUP the output also carries the presentation
+ * controls as ESC sequences the text box applies: ESC 'C' RRGGBBAA (colour),
+ * ESC 'P' NN (palette colour), ESC 'W' NN (wait frames), ESC 'F' NN (font),
+ * ESC 'A' NN (alignment), ESC 'S' 0|1 (play / wait for the message sound).
+ * c3_story_text_plain() strips them in place and returns the new length. */
+#define C3_STORY_CONTROLS 0x5Fu
+#define C3_STORY_TEXT_MARKUP 1u
+typedef struct C3StoryValue { const char *text; uint32_t message; } C3StoryValue;
+typedef int (*C3StoryValueSource)(void *context, uint8_t control, C3StoryValue *value);
+int c3_story_render(const C3Story *story, uint32_t id, C3StoryValueSource source,
+                    void *context, unsigned flags, char *output, size_t capacity,
+                    char *error);
+int c3_story_has_message(const C3Story *story, uint32_t id);
+size_t c3_story_text_plain(char *text);
+/* Controls of the original table: known (interpretable) and value controls. */
+int c3_story_control_known(uint8_t control);
+int c3_story_control_is_value(uint8_t control);
+/* The number controls (Digit, MenuDigit, U/Z/Hex digits, Money, Time,
+ * MenuMoney, MenuFullDigit) formatted as _msgctrlMakeDigit does, from the
+ * msgctrlSetValue variables (one word per control byte, 256 entries).
+ * Returns 0 for any other control. */
+int c3_story_format_number(uint8_t control, const uint32_t *values, char *out, size_t capacity);
 uint32_t c3_story_floor(const C3Story *story);
 
 #endif
