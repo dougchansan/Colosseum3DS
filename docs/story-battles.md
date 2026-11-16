@@ -127,6 +127,33 @@ the stadium) are played whatever ID the script passes.
   and 84 of the 110 Shadow encounters snagged.
 - `build/test_field_story`: whiteout refusal without the flag table and the
   save point.
+- `build/test_world_story <newgame dir> <world packs> <save> <report>
+  battles.c3x`: every prepared floor's original scripts with real battles.
+  From the early save 35188: 73 battles (21 won, 52 lost); every lost wipeout
+  battle restored the party and left for floor 0x004, the Pokemon Center
+  the save was made in. From the Under save 3641: 67 battles (49 won, 18
+  lost). The only failed events are the existing unported natives (74, DB)
+  and one native-33 argument count.
+
+## Azahar runs from chapter saves (2026-11-16)
+
+Probe build (`C3_EXTRA_CFLAGS=-DC3_ROUNDTRIP_PROBE`): the field accepts a
+waiting story battle and the battle plays unattended, the hero throwing its
+best ball at a Shadow Pokemon it may snag. `probe-route.txt` gives the
+start floor and the story point (`flag`, `ball` lines change only the
+probe's in-memory save). Traces and frames stay private
+(`private/evidence/<run>/`).
+
+| Save (copy) | Route | Battles | Result |
+| --- | --- | --- | --- |
+| 35188 (early Phenac, Lv25-27) | `start 3`, flag 0x3E6, 5 Poke Balls | 26 (Team Snagem Wakin, battle floor 7) | 3D, won in 4 turns, 1,252 EXP and a level, prize 135; the script then sets 0x3E7 |
+| 35188 | `start 5`, flags 0x3E6-0x3E9, 5 Poke Balls | 15 (Folly), 17 (Trudly, battle floor 8) | 3D, both won; Makuhita (Shadow ID 1) snagged with a Poke Ball into party slot 2 |
+
+The first mayor's-house run fell back to the bottom-screen scene: four
+battle Pokemon packs (pkx308, 332, 370, 390) used raw HSD map modes the title
+loader refused. `src/title.c` now loads REPLACE (5) as mode 0, which draws
+it, and ALPHA_MASK (1) as MODULATE (an approximation); all 710 battle3d
+models load.
 
 ## Remaining gaps
 

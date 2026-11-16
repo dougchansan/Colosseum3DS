@@ -1482,6 +1482,10 @@ int c3_field_story_battle_whiteout(C3FieldStory *story,char *error)
         return c3_field_story_battle_result(story,3,error);
     }
     s->fight_result=3;s->view.blocked[0]=0;s->view.battle_id=0;
+    /* The waiting request ends here: the floor is left, not resumed. */
+    for(unsigned i=0;i<C3_STORY_TASKS;++i){RunTask *t=s->tasks+i;
+        if(!t->key||t->wait!=W_BATTLE||(t->call.native!=0x98&&t->call.native!=0x66))continue;
+        c3_story_stop(&s->vm,t->key);t->key=0;t->wait=W_NONE;}
     s->pending_floor=floor;s->pending_spawn=spawn;
     log_line(s,"story_battle_whiteout floor=%lu previous=%lu spawn=%lu source=%s flag=0e05 fade_script=05960008",
              (unsigned long)floor,(unsigned long)previous,(unsigned long)spawn,source);

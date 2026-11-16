@@ -56,7 +56,20 @@ static void path(char out[1024], const char *dir, const char *name)
 static int any_floor(uint32_t floor) { return floor >= 1 && floor <= 0xffff; }
 static int receive(void *c, uint32_t item, uint32_t count, char *name, size_t capacity)
 { (void)c; (void)item; (void)count; snprintf(name, capacity, "ITEM"); return 0; }
-static int restore(void *c) { (void)c; return 6; }
+/* The party service (native D8, whiteout): HP to maximum and the
+ * persistent condition cleared, as pokemonAllKaihuku does (PP is left). */
+static int restore(void *c)
+{
+    C3GameState *g = c; int n = 0;
+    for (unsigned i = 0; i < 6; ++i) {
+        uint8_t r[0x138];
+        if (!c3_game_state_pokemon(g, i, r) || !(r[0] | r[1])) continue;
+        r[0x8a] = r[0x8c]; r[0x8b] = r[0x8d]; memset(r + 0x64, 0, 7); memset(r + 0x6c, 0, 6);
+        if (!c3_game_state_set_pokemon(g, i, r)) return -1;
+        ++n;
+    }
+    return n;
+}
 
 static void le32(uint8_t *p, uint32_t v) { p[0]=(uint8_t)v; p[1]=(uint8_t)(v>>8); p[2]=(uint8_t)(v>>16); p[3]=(uint8_t)(v>>24); }
 static uint32_t bits(float f) { uint32_t v; memcpy(&v, &f, 4); return v; }
@@ -145,7 +158,7 @@ static void event(const char *prefix, uint32_t floor, int kind, uint32_t id, uin
     c3_field_story_set_floor_support(&s->story, any_floor);
     c3_field_story_enable_name_entry(&s->story, 1);
     c3_field_story_set_item_service(&s->story, receive, NULL);
-    c3_field_story_set_party_service(&s->story, restore, NULL);
+    c3_field_story_set_party_service(&s->story, restore, s->game);
     if (!c3_field_story_prepare(&s->story, error)) goto done;
     for (frames = 0; frames < 3600 && !c3_field_story_view(&s->story)->prepared; ++frames)
         if (!c3_field_story_tick(&s->story, 1.0f/60.0f, 0, error)) goto done;
