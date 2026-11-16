@@ -5,6 +5,7 @@
 #include "stage_renderer.h"
 #include "n3ds_platform.h"
 #include "sfx_player.h"
+#include "render_recovery.h"
 #include <3ds.h>
 #include <string.h>
 #include <stdlib.h>
@@ -18,7 +19,7 @@ int c3_dna_key_scene_run(const uint16_t expected[3],FILE *trace,char *error,size
     if(!c3_area_camera_load(tracks,ROOT "f387_107c1800.c3c",error,capacity)||!c3_area_camera_load(tracks+1,ROOT "f387_107d1800.c3c",error,capacity))goto done;
     if(c3_stage_renderer_init(models,12,error,capacity))goto done;
     initialized=1;
-    unsigned phase=0;float time=0;uint64_t previous=c3_n3ds_active_time_us();uint32_t wait_sound=0;float cursor_wait=0;
+    unsigned phase=0,frames=0;float time=0;uint64_t previous=c3_n3ds_active_time_us();uint32_t wait_sound=0;float cursor_wait=0;
     c3_sfx_play(0x27,127);
 #ifdef C3_DNA_KEY_PROBE
     unsigned probe_step=0,probe_capture=0;float probe_next=.15f;
@@ -50,7 +51,7 @@ int c3_dna_key_scene_run(const uint16_t expected[3],FILE *trace,char *error,size
         C3TitleCamera camera;unsigned track=phase==2?1:0;float ct=phase==1?(tracks[0].frame_count-1)/tracks[0].fps:time;
         if(!c3_area_camera_sample(tracks+track,ct,&camera)){snprintf(error,capacity,"DNA source camera failed");goto done;}
         for(unsigned i=0;i<12;i++)if(!c3_title_animate(storage+i,state.clips[i],1.f/60)){snprintf(error,capacity,"DNA source model clip failed");goto done;}
-        C3TitleRenderStats stats={0};int draw=c3_stage_renderer_draw(models,12,&camera,0,&stats,error,capacity);if(draw==C3_RENDER_BUSY){gspWaitForVBlank();continue;}if(draw)goto done;
+        C3TitleRenderStats stats={0};int draw=c3_stage_renderer_draw(models,12,&camera,1,&stats,error,capacity);if(draw==C3_RENDER_BUSY){gspWaitForVBlank();continue;}if(draw)goto done;++frames;
 #ifdef C3_DNA_KEY_PROBE
         if(phase==1&&time>.1f&&!probe_capture){c3_n3ds_capture_top("sdmc:/3ds/Colosseum3DS/dna-key.bmp");probe_capture=1;}
         if(phase==1&&state.count==3&&state.result==0&&probe_capture==1){c3_n3ds_capture_top("sdmc:/3ds/Colosseum3DS/dna-key-selected.bmp");probe_capture=2;}
@@ -58,7 +59,7 @@ int c3_dna_key_scene_run(const uint16_t expected[3],FILE *trace,char *error,size
         if(phase==2&&time>=(tracks[1].frame_count-1)/tracks[1].fps){result=state.result;break;}
     }
  done:
-    if(initialized)c3_stage_renderer_shutdown();
+    if(initialized){c3_render_recover(trace,"dna_key",frames,C3_RECOVER_DRAIN);c3_stage_renderer_shutdown();}
     for(unsigned i=0;i<12;i++)c3_title_close(storage+i);
     for(unsigned i=0;i<2;i++)c3_area_camera_close(tracks+i);
     free(storage);
