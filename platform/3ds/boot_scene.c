@@ -4,6 +4,7 @@
 #include "field_scene.h"
 #include "ending_scene.h"
 #include "dna_key_scene.h"
+#include "realgam_stage_probe.h"
 #include "dev_floor_scene.h"
 #include "game_menu.h"
 #include "bottom_screen.h"
@@ -333,6 +334,13 @@ int c3_boot_scene_run(int core_status)
     FILE *trace = c3_trace_open("sdmc:/3ds/Colosseum3DS/boot-trace.log");
     if (trace) { fprintf(trace, "boot_build %s core=%d\n", C3_BUILD_ID, core_status); fflush(trace); }
     c3_n3ds_log_memory(trace, "boot_start");
+#ifdef C3_REALGAM_STAGE_PROBE
+    {
+        int stage_result=c3_realgam_stage_probe(trace,error,sizeof error);
+        if(trace){fprintf(trace,"realgam_stage_probe_exit result=%d error=%s\n",stage_result,error);fclose(trace);}
+        return stage_result?1:0;
+    }
+#endif
 #ifdef C3_DNA_KEY_PROBE
     {
         const uint16_t expected[3]={0x99,0x9c,0x9f};
