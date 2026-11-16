@@ -33,6 +33,7 @@ void c3_bottom_screen_close(void)
 }
 
 int c3_bottom_screen_has_original_assets(void){return pack!=NULL;}
+const C3UiAssets *c3_bottom_screen_assets(void){return pack?&assets:NULL;}
 
 C3BottomUi *c3_bottom_screen_begin(void)
 {

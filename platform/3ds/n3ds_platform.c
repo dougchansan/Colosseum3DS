@@ -7,6 +7,7 @@
 #include <malloc.h>
 #include <string.h>
 #include <math.h>
+#include <sys/stat.h>
 
 static bool graphics_started;
 static bool console_is_new;
@@ -266,23 +267,46 @@ void c3_n3ds_top_loading(float fraction)
     if (!(fraction >= 0.0f)) fraction = 0.0f;
     if (fraction > 1.0f) fraction = 1.0f;
     memset(fb, 0, 400u * 240u * 3u);
-    /* Ring of eight dots; the bright one advances with time. */
-    unsigned lead = (unsigned)(svcGetSystemTick() / (SYSCLOCK_ARM11 / 10u)) % 8u;
-    for (unsigned i = 0; i < 8; ++i) {
-        float angle = (float)i * 0.785398163f;
-        int x = 200 + (int)lroundf(sinf(angle) * 26.0f), y = 104 - (int)lroundf(cosf(angle) * 26.0f);
-        unsigned age = (lead + 8u - i) % 8u;
-        top_dot(fb, x, y, 6, (u8)(age == 0 ? 255 : age < 3 ? 160 - 40 * age : 50));
+    const uint8_t *ball = NULL;
+    unsigned ball_w = 0, ball_h = 0;
+    if (c3_ui_sprite_pixels(c3_bottom_screen_assets(), C3_UI_BALL, &ball, &ball_w, &ball_h)) {
+        /* The original 16x16 UI Poke Ball at 3x, one clockwise turn per
+         * 1.2 s, bilinear so the rotation stays smooth. */
+        unsigned period = (unsigned)(SYSCLOCK_ARM11 * 6u / 5u);
+        float turn = (float)(svcGetSystemTick() % period) / (float)period * 6.28318531f;
+        c3_ui_spin_rgba(fb, 400, 240, ball, ball_w, ball_h, 200, 108, 48, cosf(turn), sinf(turn));
+    } else {
+        /* No sprite (older or missing ui.c3ui): ring of eight dots; the
+         * bright one advances with time. */
+        unsigned lead = (unsigned)(svcGetSystemTick() / (SYSCLOCK_ARM11 / 10u)) % 8u;
+        for (unsigned i = 0; i < 8; ++i) {
+            float angle = (float)i * 0.785398163f;
+            int x = 200 + (int)lroundf(sinf(angle) * 26.0f), y = 104 - (int)lroundf(cosf(angle) * 26.0f);
+            unsigned age = (lead + 8u - i) % 8u;
+            top_dot(fb, x, y, 6, (u8)(age == 0 ? 255 : age < 3 ? 160 - 40 * age : 50));
+        }
     }
-    /* Progress bar. */
+    /* Progress bar in the bottom UI's palette: muted frame, white fill. */
     for (int x = 100; x < 300; ++x)
         for (int y = 164; y < 172; ++y) {
             int edge = y == 164 || y == 171 || x == 100 || x == 299;
             int filled = x - 101 < (int)(fraction * 198.0f);
             u8 *p = fb + ((size_t)x * 240u + (239u - (unsigned)y)) * 3u;
-            u8 level = edge ? 110 : filled ? 230 : 0;
-            p[0] = level; p[1] = level; p[2] = level;
+            uint32_t colour = edge ? C3_UI_MUTED : filled ? C3_UI_WHITE : 0u;
+            p[0] = (u8)colour; p[1] = (u8)(colour >> 8); p[2] = (u8)(colour >> 16);
         }
+#ifdef C3_ROUNDTRIP_PROBE
+    /* Review aid: keep a few loading frames (2nd, 12th, 22nd call). */
+    {
+        static unsigned calls, kept;
+        if (++calls % 10u == 2u && kept < 3u) {
+            char shot[64];
+            mkdir("sdmc:/3ds/Colosseum3DS/probe", 0777);
+            snprintf(shot, sizeof shot, "sdmc:/3ds/Colosseum3DS/probe/loading_%u_top.bmp", kept++);
+            (void)c3_n3ds_capture_top(shot);
+        }
+    }
+#endif
     gfxFlushBuffers();
     gfxScreenSwapBuffers(GFX_TOP, false);
 }

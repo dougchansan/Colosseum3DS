@@ -111,7 +111,11 @@ static int run_title(FILE *trace, C3GameState *state,
 {
     C3Title *title = calloc(1, sizeof(*title));
     C3GameMenu menu = {0};
-    if(trace)fprintf(trace,"bottom_ui original_assets=%d format=C3UI fallback=libctru\n",c3_bottom_screen_has_original_assets());
+    if(trace){
+        const C3UiAssets *ui=c3_bottom_screen_assets();const uint8_t *ball;unsigned bw,bh;
+        fprintf(trace,"bottom_ui original_assets=%d format=C3UI fallback=libctru sprites=%u loading_ball=%d\n",
+                c3_bottom_screen_has_original_assets(),ui?ui->sprites:0u,c3_ui_sprite_pixels(ui,C3_UI_BALL,&ball,&bw,&bh));
+    }
     C3GameMenuOptions options = *session_options;
     C3N3dsInput input = {0};
     C3TitleRenderStats stats = {0};

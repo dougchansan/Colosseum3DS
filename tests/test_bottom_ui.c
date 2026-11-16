@@ -8,23 +8,23 @@
 #include <string.h>
 
 #define BYTES (320u*240u*3u)
-#define TABLE (32u+C3_UI_SPRITES*16u+95u*8u)
-#define PACK (TABLE+C3_UI_SPRITES*8u*8u*4u+95u*256u)
+#define TABLE (32u+C3_UI_SPRITES_V1*16u+95u*8u)
+#define PACK (TABLE+C3_UI_SPRITES_V1*8u*8u*4u+95u*256u)
 static void put32(unsigned char *p,uint32_t n)
 {for(unsigned i=0;i<4;++i)p[i]=(unsigned char)(n>>(8*i));}
 
 static unsigned char *fixture(void)
 {
     unsigned char *d=calloc(1,PACK);assert(d);
-    memcpy(d,"C3UI",4);put32(d+4,1);put32(d+8,PACK);put32(d+12,C3_UI_SPRITES);put32(d+16,95);
+    memcpy(d,"C3UI",4);put32(d+4,1);put32(d+8,PACK);put32(d+12,C3_UI_SPRITES_V1);put32(d+16,95);
     unsigned next=TABLE;
-    for(unsigned i=0;i<C3_UI_SPRITES;++i){
+    for(unsigned i=0;i<C3_UI_SPRITES_V1;++i){
         unsigned char *e=d+32+i*16;put32(e,8);put32(e+4,8);put32(e+8,next);put32(e+12,256);
         for(unsigned k=0;k<64;++k){d[next+k*4]=50;d[next+k*4+1]=100;d[next+k*4+2]=150;d[next+k*4+3]=255;}
         next+=256;
     }
     for(unsigned i=0;i<95;++i){
-        unsigned char *e=d+32+C3_UI_SPRITES*16+i*8;put32(e,8);put32(e+4,next);
+        unsigned char *e=d+32+C3_UI_SPRITES_V1*16+i*8;put32(e,8);put32(e+4,next);
         for(unsigned k=0;k<8;++k)d[next+k*16+k]=255;
         next+=256;
     }
@@ -48,16 +48,83 @@ static void rgb565_screen(const C3UiAssets *assets)
     free(guard);
 }
 
+/* Version 2 packs append C3_UI_BALL; version 1 packs stay valid without it. */
+static void ball_sprite(const C3UiAssets *v1)
+{
+    const unsigned count=C3_UI_SPRITES,table=32u+count*16u+95u*8u,size=table+count*256u+95u*256u;
+    unsigned char *d=calloc(1,size);assert(d);
+    memcpy(d,"C3UI",4);put32(d+4,2);put32(d+8,size);put32(d+12,count);put32(d+16,95);
+    unsigned next=table;
+    for(unsigned i=0;i<count;++i){
+        unsigned char *e=d+32+i*16;put32(e,8);put32(e+4,8);put32(e+8,next);put32(e+12,256);
+        for(unsigned k=0;k<64;++k){d[next+k*4]=(unsigned char)(10*i);d[next+k*4+3]=255;}
+        next+=256;
+    }
+    for(unsigned i=0;i<95;++i){unsigned char *e=d+32+count*16+i*8;put32(e,8);put32(e+4,next);next+=256;}
+    assert(next==size);
+    C3UiAssets a={0};assert(c3_ui_assets_open(&a,d,size)&&a.sprites==C3_UI_SPRITES);
+    const uint8_t *rgba=NULL;unsigned w=0,h=0;
+    assert(c3_ui_sprite_pixels(&a,C3_UI_BALL,&rgba,&w,&h)&&w==8&&h==8&&rgba[0]==10*C3_UI_BALL);
+    assert(c3_ui_sprite_pixels(&a,C3_UI_STORY,&rgba,&w,&h)&&rgba[0]==0);
+    assert(!c3_ui_sprite_pixels(&a,C3_UI_SPRITES,&rgba,&w,&h));
+    assert(v1->sprites==C3_UI_SPRITES_V1&&!c3_ui_sprite_pixels(v1,C3_UI_BALL,&rgba,&w,&h));
+    assert(!c3_ui_sprite_pixels(NULL,0,&rgba,&w,&h));
+    /* Text still reads the glyph table after the eleventh sprite entry. */
+    unsigned char *pixels=calloc(1,BYTES);assert(pixels);C3BottomUi ui;
+    c3_ui_begin(&ui,pixels,0,&a,NULL);c3_ui_text(&ui,10,10,200,1,"Ball",0xffffff);
+    c3_ui_sprite(&ui,C3_UI_BALL,0,0,8,8);assert(pixels[0]==10*C3_UI_BALL);
+    free(pixels);
+    put32(d+4,1);assert(!c3_ui_assets_open(&a,d,size)); /* v1 must list ten */
+    put32(d+4,3);assert(!c3_ui_assets_open(&a,d,size));
+    put32(d+4,2);put32(d+12,C3_UI_SPRITES_V1);assert(!c3_ui_assets_open(&a,d,size));
+    free(d);
+}
+
+/* Rotated, bilinear blend into the top screen's rotated BGR8 layout. */
+static unsigned char *top_px(unsigned char *fb,int x,int y){return fb+((size_t)x*240u+(size_t)(239-y))*3u;}
+static void spin_sprite(void)
+{
+    const size_t bytes=400u*240u*3u;unsigned char *guard=malloc(bytes+32);assert(guard);
+    memset(guard,0xa5,16);memset(guard+16,0,bytes);memset(guard+16+bytes,0xa5,16);
+    unsigned char *fb=guard+16;
+    const uint8_t two[]={255,0,0,255, 0,0,255,255}; /* left red, right blue */
+    c3_ui_spin_rgba(fb,400,240,two,2,1,200,120,20,1.0f,0.0f);
+    /* Bilinear: texel centres mix a little of their neighbour. */
+    assert(top_px(fb,195,120)[2]>230&&top_px(fb,195,120)[0]<25);
+    assert(top_px(fb,205,120)[0]>230&&top_px(fb,205,120)[2]<25);
+    assert(top_px(fb,200,95)[0]==0&&top_px(fb,200,95)[2]==0); /* 1 px tall source: ~20 px band */
+    memset(fb,0,bytes);
+    c3_ui_spin_rgba(fb,400,240,two,2,1,200,120,20,0.0f,1.0f); /* quarter turn clockwise */
+    assert(top_px(fb,200,115)[2]>230&&top_px(fb,200,115)[0]<25);
+    assert(top_px(fb,200,125)[0]>230&&top_px(fb,200,125)[2]<25);
+    assert(top_px(fb,175,120)[0]==0&&top_px(fb,175,120)[2]==0); /* band now vertical */
+    /* Half transparent texels blend with what is already there. */
+    memset(fb,0,bytes);
+    uint8_t half[4*4*4];for(unsigned k=0;k<16;++k){half[k*4]=half[k*4+1]=half[k*4+2]=255;half[k*4+3]=128;}
+    c3_ui_spin_rgba(fb,400,240,half,4,4,50,50,8,1.0f,0.0f);
+    assert(top_px(fb,50,50)[1]>=126&&top_px(fb,50,50)[1]<=130);
+    /* Corners clip; nothing escapes the framebuffer. */
+    c3_ui_spin_rgba(fb,400,240,two,2,1,0,0,64,0.7071f,0.7071f);
+    c3_ui_spin_rgba(fb,400,240,two,2,1,399,239,64,-0.7071f,0.7071f);
+    c3_ui_spin_rgba(fb,400,240,two,2,1,-1000,5000,64,1.0f,0.0f);
+    c3_ui_spin_rgba(fb,400,240,two,2,1,10,10,64,2.0f,0.0f); /* rejected */
+    c3_ui_spin_rgba(NULL,400,240,two,2,1,10,10,64,1.0f,0.0f);
+    for(unsigned k=0;k<16;++k)assert(guard[k]==0xa5&&guard[bytes+16+k]==0xa5);
+    free(guard);
+}
+
 int main(void)
 {
+    spin_sprite();
     unsigned char *data=fixture();C3UiAssets a={0};assert(c3_ui_assets_open(&a,data,PACK));
     rgb565_screen(&a);
+    ball_sprite(&a);
     C3UiAssets previous=a;
     assert(!c3_ui_assets_open(&a,data,PACK-1));assert(a.data==previous.data&&a.size==previous.size);
     put32(data+32+8,0);assert(!c3_ui_assets_open(&a,data,PACK));put32(data+32+8,TABLE);
     put32(data+32,7);assert(!c3_ui_assets_open(&a,data,PACK));put32(data+32,8);
     put32(data+20,1);assert(!c3_ui_assets_open(&a,data,PACK));put32(data+20,0);
-    put32(data+32+C3_UI_SPRITES*16,17);assert(!c3_ui_assets_open(&a,data,PACK));put32(data+32+C3_UI_SPRITES*16,8);
+    put32(data+32+C3_UI_SPRITES_V1*16,17);assert(!c3_ui_assets_open(&a,data,PACK));put32(data+32+C3_UI_SPRITES_V1*16,8);
     for(size_t i=0;i<TABLE;i+=17)assert(!c3_ui_assets_open(&a,data,i));
     unsigned char *guard=malloc(BYTES+32),*rotated=malloc(BYTES);assert(guard&&rotated);
     memset(guard,0xa5,BYTES+32);C3BottomUi ui,r;

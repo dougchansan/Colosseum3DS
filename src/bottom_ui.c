@@ -6,8 +6,9 @@
 #define HEADER 32u
 #define SPRITE_BYTES 16u
 #define GLYPHS 95u
-#define GLYPH_TABLE (HEADER + C3_UI_SPRITES * SPRITE_BYTES)
-#define PAYLOAD (GLYPH_TABLE + GLYPHS * 8u)
+#define GLYPH_TABLE_AT(count) (HEADER + (count) * SPRITE_BYTES)
+#define GLYPH_TABLE GLYPH_TABLE_AT(ui->assets->sprites)
+#define PAYLOAD_MIN (GLYPH_TABLE_AT(C3_UI_SPRITES_V1) + GLYPHS * 8u)
 #define PACK_MAX (1024u * 1024u)
 
 static uint32_t u32(const unsigned char *p)
@@ -24,11 +25,15 @@ int c3_ui_assets_open(C3UiAssets *a,const void *memory,size_t size)
 {
     const unsigned char *d=memory;
     C3UiAssets checked={0};
-    if(!a||!d||size<PAYLOAD||size>PACK_MAX||memcmp(d,"C3UI",4)||u32(d+4)!=1||
-       u32(d+8)!=size||u32(d+12)!=C3_UI_SPRITES||u32(d+16)!=GLYPHS||
+    if(!a||!d||size<PAYLOAD_MIN||size>PACK_MAX||memcmp(d,"C3UI",4))return 0;
+    /* Version 1: the ten original sprites. Version 2 appends C3_UI_BALL. */
+    uint32_t version=u32(d+4),count=version==1u?C3_UI_SPRITES_V1:version==2u?C3_UI_SPRITES:0u;
+    if(!count||u32(d+8)!=size||u32(d+12)!=count||u32(d+16)!=GLYPHS||
        u32(d+20)||u32(d+24)||u32(d+28))return 0;
-    size_t next=PAYLOAD;
-    for(unsigned i=0;i<C3_UI_SPRITES;++i){
+    size_t payload=GLYPH_TABLE_AT(count)+GLYPHS*8u;
+    if(size<payload)return 0;
+    size_t next=payload;
+    for(unsigned i=0;i<count;++i){
         const unsigned char *e=d+HEADER+i*SPRITE_BYTES;
         uint32_t w=u32(e),h=u32(e+4),offset=u32(e+8),bytes=u32(e+12);
         if(w<8||w>512||h<8||h>512||bytes!=w*h*4u||offset!=next||
@@ -36,13 +41,65 @@ int c3_ui_assets_open(C3UiAssets *a,const void *memory,size_t size)
         next+=bytes;
     }
     for(unsigned i=0;i<GLYPHS;++i){
-        const unsigned char *e=d+GLYPH_TABLE+i*8u;
+        const unsigned char *e=d+GLYPH_TABLE_AT(count)+i*8u;
         uint32_t advance=u32(e),offset=u32(e+4);
         if(!advance||advance>16||offset!=next||offset>size||256u>size-offset)return 0;
         next+=256u;
     }
     if(next!=size)return 0;
-    checked.data=d;checked.size=size;*a=checked;return 1;
+    checked.data=d;checked.size=size;checked.sprites=count;*a=checked;return 1;
+}
+
+int c3_ui_sprite_pixels(const C3UiAssets *a,unsigned sprite,
+                        const uint8_t **rgba,unsigned *width,unsigned *height)
+{
+    if(!a||!a->data||sprite>=a->sprites||sprite>=C3_UI_SPRITES||!rgba||!width||!height)return 0;
+    const unsigned char *e=a->data+HEADER+sprite*SPRITE_BYTES;
+    *width=u32(e);*height=u32(e+4);*rgba=a->data+u32(e+8);
+    return 1;
+}
+
+void c3_ui_spin_rgba(unsigned char *fb,int screen_w,int screen_h,
+                     const uint8_t *src,unsigned sw,unsigned sh,
+                     int cx,int cy,int size,float c,float s)
+{
+    if(!fb||!src||screen_w<=0||screen_h<=0||screen_w>1024||screen_h>1024||
+       !sw||!sh||sw>1024||sh>1024||size<=0||size>512||!(c==c)||!(s==s)||
+       c>1.0f||c<-1.0f||s>1.0f||s<-1.0f)return;
+    /* Inverse mapping: each destination pixel centre rotates back into the
+     * source. Coverage is the bilinear alpha; colour is alpha weighted so
+     * transparent texels never bleed their RGB into the edge. */
+    float scale_x=(float)sw/(float)size,scale_y=(float)sh/(float)size;
+    float half=(float)size*0.5f;
+    int reach=(int)(half*1.4142136f)+2;
+    for(int y=cy-reach;y<=cy+reach;++y){
+        if(y<0||y>=screen_h)continue;
+        for(int x=cx-reach;x<=cx+reach;++x){
+            if(x<0||x>=screen_w)continue;
+            float dx=(float)x+0.5f-(float)cx,dy=(float)y+0.5f-(float)cy;
+            float u=(c*dx+s*dy+half)*scale_x-0.5f,v=(-s*dx+c*dy+half)*scale_y-0.5f;
+            if(u<=-1.0f||v<=-1.0f||u>=(float)sw||v>=(float)sh)continue;
+            int u0=(int)(u+1.0f)-1,v0=(int)(v+1.0f)-1; /* floor: u,v > -1 */
+            float fu=u-(float)u0,fv=v-(float)v0,acc[4]={0,0,0,0};
+            for(int k=0;k<4;++k){
+                int tu=u0+(k&1),tv=v0+(k>>1);
+                if(tu<0||tv<0||tu>=(int)sw||tv>=(int)sh)continue;
+                float w=((k&1)?fu:1.0f-fu)*((k>>1)?fv:1.0f-fv);
+                const uint8_t *p=src+((size_t)tv*sw+(size_t)tu)*4u;
+                float a=w*(float)p[3];
+                acc[0]+=a*(float)p[0];acc[1]+=a*(float)p[1];acc[2]+=a*(float)p[2];acc[3]+=a;
+            }
+            if(acc[3]<0.5f)continue;
+            float alpha=acc[3]/255.0f;
+            unsigned char *d=fb+((size_t)x*(size_t)screen_h+(size_t)(screen_h-1-y))*3u;
+            for(int ch=0;ch<3;++ch){
+                float colour=acc[ch]/acc[3];
+                unsigned char *out=d+(2-ch); /* BGR byte order */
+                float mixed=colour*alpha+(float)*out*(1.0f-alpha);
+                *out=(unsigned char)(mixed<0.0f?0.0f:mixed>255.0f?255.0f:mixed+0.5f);
+            }
+        }
+    }
 }
 
 /* The 3DS ARM11 has no divide instruction: every '/' below used to be a
@@ -196,7 +253,7 @@ void c3_ui_begin(C3BottomUi *ui,unsigned char *pixels,int rotated,
 
 void c3_ui_sprite(C3BottomUi *ui,unsigned id,int x,int y,int w,int h)
 {
-    if(!ui||!ui->assets||!ui->assets->data||id>=C3_UI_SPRITES||w<=0||h<=0||w>640||h>480||
+    if(!ui||!ui->assets||!ui->assets->data||id>=ui->assets->sprites||id>=C3_UI_SPRITES||w<=0||h<=0||w>640||h>480||
        x>=320||y>=240||x < -w||y < -h)return;
     const unsigned char *d=ui->assets->data,*e=d+HEADER+id*SPRITE_BYTES;
     unsigned sw=u32(e),sh=u32(e+4);const unsigned char *src=d+u32(e+8);
@@ -242,7 +299,7 @@ static unsigned panel_clock;
 
 static void panel_cached(C3BottomUi *ui,unsigned sprite,int x,int y,int w,int h)
 {
-    if(!ui||!ui->pixels||!ui->assets||!ui->assets->data||sprite>=C3_UI_SPRITES||
+    if(!ui||!ui->pixels||!ui->assets||!ui->assets->data||sprite>=ui->assets->sprites||sprite>=C3_UI_SPRITES||
        w<12||h<12||w>320||h>240||x>=320||y>=240||x < -w||y < -h){panel_draw(ui,sprite,x,y,w,h);return;}
     int l=x<0?0:x,t=y<0?0:y,r=x+w>320?320:x+w,b=y+h>240?240:y+h;
     if(!untouched(ui,l,t,r,b)){panel_draw(ui,sprite,x,y,w,h);return;}

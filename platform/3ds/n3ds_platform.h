@@ -45,8 +45,10 @@ void c3_n3ds_log_memory(FILE *trace, const char *stage);
  * call. Returns 0 on success. */
 int c3_n3ds_capture_top(const char *path);
 int c3_n3ds_capture_bottom(const char *path);
-/* Top-screen loading indicator: a spinning ring of dots and a progress bar
- * (fraction 0..1), drawn straight into the top framebuffer and presented. */
+/* Top-screen loading indicator: the original UI Poke Ball (ui.c3ui sprite
+ * C3_UI_BALL) spinning above a progress bar (fraction 0..1), drawn by the
+ * CPU straight into the top framebuffer and presented; no GPU state. Falls
+ * back to a ring of dots when the pack lacks the sprite. */
 void c3_n3ds_top_loading(float fraction);
 
 #ifdef C3_CAMPAIGN

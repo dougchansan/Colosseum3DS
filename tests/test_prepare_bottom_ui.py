@@ -47,14 +47,18 @@ class BottomUiPreparationTests(unittest.TestCase):
                 ui.crop(image, rect)
 
     def test_pack_counts_dimensions_and_glyph_bounds(self):
-        sprites = [(8, 8, bytes(256))] * 10
+        sprites = [(8, 8, bytes(256))] * 11
         glyphs = [(8, bytes(256))] * 95
         data = ui.encode_pack(sprites, glyphs)
         self.assertEqual(data[:4], b"C3UI")
-        self.assertEqual(struct.unpack_from("<I", data, 8)[0], len(data))
+        self.assertEqual(struct.unpack_from("<III", data, 4), (2, len(data), 11))
         for bad_sprites, bad_glyphs in ((sprites[:-1], glyphs), (sprites, glyphs[:-1]), (sprites, [(17, bytes(256))] * 95)):
             with self.assertRaises(ValueError):
                 ui.encode_pack(bad_sprites, bad_glyphs)
+
+    def test_ball_sprite_follows_the_original_ten(self):
+        self.assertEqual(len(ui.SPRITES), 11)
+        self.assertEqual(ui.SPRITES[10], ("common.fsys", 0x00EE1200, (198, 4, 16, 16)))
 
     def test_dol_section_mapping_rejects_outside_and_truncated(self):
         dol = bytearray(512)

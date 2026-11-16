@@ -6,6 +6,8 @@
 void c3_bottom_screen_init(void);
 void c3_bottom_screen_close(void);
 int c3_bottom_screen_has_original_assets(void);
+/* The loaded original pack (borrowed until close), or NULL. */
+const C3UiAssets *c3_bottom_screen_assets(void);
 /* Begin draws into an ordinary CPU buffer. Present publishes one complete
  * image in the current console format without swapping graphics buffers. */
 C3BottomUi *c3_bottom_screen_begin(void);
