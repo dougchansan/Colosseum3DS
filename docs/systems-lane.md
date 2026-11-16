@@ -138,7 +138,7 @@ These menu floors still return at once:
 
 **Jingles.** Native 82 (`fn_80165668`) and item gifts (native 77, jingle 0x3CA) play the jingle through the audio service and wait until `fn_801666BC` stops reporting it, bounded at ten seconds. The music then resumes.
 
-- The jingles 0x3C9 (3.3 s) and 0x3CA (2.1 s) are one-shot songs. `prepare_music.py --sounds 0x3C9,0x3CA` renders them, and `tools/merge_music_index.py` adds them to an installed pack.
+- The jingles 0x3C9 (3.3 s) and 0x3CA (2.1 s) are one-shot songs. The installed music pack already holds them (`w36_s34.c3m`, `w37_s35.c3m`). `tools/merge_music_index.py` can add other `prepare_music.py --sounds` output to a pack.
 - On the host, Rui's partner jingle held her event 3.32 s and the trainer's gift jingle 2.12 s.
 - Without the streams, the old fixed waits (2 s, 1 s) remain, recorded.
 
@@ -169,6 +169,5 @@ Each dialogue page is saved as `probe/msg_<floor>_<id>_<n>.bmp`, with `probe_mes
 | --- | --- |
 | `boot/ui.c3ui` | `prepare_bottom_ui.py` (version 3) |
 | `boot/name_entry.c3m` | `prepare_menu_messages.py` |
-| `music/index.bin`, `music/w36_s34.c3m`, `music/w37_s35.c3m` | `prepare_music.py --sounds 0x3C9,0x3CA`, then `merge_music_index.py --base <SD music>` |
 
-The partner packs (`*_partner.c3t`) are already on the SD.
+The partner packs (`*_partner.c3t`) and the jingle streams are already on the SD.
