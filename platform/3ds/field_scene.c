@@ -1122,6 +1122,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         else if(input.pressed&(C3_PAD_A|C3_PAD_B))ui_pager.offset=0;
 
         if(page==PAUSE_CLOSED){
+            c3_field_story_set_move_input(&story,input.held,input.stick_x,input.stick_y);
             if(!c3_field_story_tick(&story,delta,phase==FIELD_CONTROL?input.pressed:0,story_error))goto story_failed;
             if(view->next_floor){
 #ifdef C3_WARP_TOUR

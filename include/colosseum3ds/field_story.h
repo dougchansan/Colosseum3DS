@@ -131,6 +131,9 @@ void c3_field_story_describe_waits(const C3FieldStory *story,char *out,size_t ca
  * arrival movie is done, enter starts the original main/movement tasks. */
 int c3_field_story_prepare(C3FieldStory *story, char *error);
 int c3_field_story_enter(C3FieldStory *story, char *error);
+/* Native 6F reads held directions and signed controller axes (dead zone 2),
+ * independently of the edge presses consumed by dialogue/choice windows. */
+void c3_field_story_set_move_input(C3FieldStory *story,uint16_t held,int stick_x,int stick_y);
 int c3_field_story_tick(C3FieldStory *story, float seconds, uint16_t pressed,
                         char *error);
 const C3FieldStoryView *c3_field_story_view(const C3FieldStory *story);

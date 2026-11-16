@@ -97,6 +97,7 @@ typedef struct {
     struct { uint16_t species; uint32_t personality; } temochi[6]; /* lbl_804670B4 (E1/E2) */
     uint32_t fade_begin, fade_poll; /* floorSetFadeScript (native 90) */
     uint32_t auto_event[5];         /* heroMoveAddAutoEvent (native 22) */
+    int move_input;                /* scriptIsMoveButtonPush (native 6F) */
 } Impl;
 
 static int fail(char *error,const char *format,...)
@@ -127,7 +128,7 @@ static int validate_native(const Impl *s,const C3StoryCall *c,char *error)
         {0x46,5,0},{0x47,2,0},{0x48,3,0},{0x49,5,28},{0x4a,3,0},
         {0x19,1,0},{0x4c,2,0},{0x4d,2,0},{0x4e,1,0},{0x4f,1,0},{0x50,2,0},{0x51,1,0},{0x52,1,0},
         {0x5c,0,0},{0x5d,0,0},{0x5e,0,0},{0x5f,2,0},{0x64,2,0},{0x65,4,14},
-        {0x67,0,0},{0x68,3,0},{0x69,3,0},{0x6a,2,0},{0x6d,2,0},{0x72,2,0},{0x76,2,0},
+        {0x67,0,0},{0x68,3,0},{0x69,3,0},{0x6a,2,0},{0x6d,2,0},{0x6f,0,0},{0x72,2,0},{0x76,2,0},
         {0x7d,3,0},{0x7f,3,7},{0x88,0,0},{0x8a,4,0},{0x8c,5,30},{0x98,3,0},{0xd9,1,0},{0xe0,2,0},{0xc3,0,0},
         {0xc2,2,0},{0x99,1,0},{0x9d,1,1},{0xb3,2,1},{0xb6,1,0},{0xd1,5,0},{0xd3,0,0},{0xe4,0,0},
         /* Phenac City exterior bank 013E0E00 (native table lbl_802E1CF0). */
@@ -683,6 +684,8 @@ static int run_native(Impl *s,RunTask *t,char *error)
     /* preReliveDisplayHokoraParticle: the shrine's glow while a party
      * Shadow Pokemon's heart is open (a particle thread). Not drawn. */
     case 0xf1:log_line(s,"story_shrine_particle drawn=0");value=0;break;
+    /* field_range_801CB180.c: held D-pad or either axis outside [-2,2]. */
+    case 0x6f:value=(uint32_t)s->move_input;break;
     case 0x7c:case 0xf2:{C3GameSummary party;uint8_t record[0x138];
         if(!c3_game_state_summary(s->game,&party))return fail(error,"Native %02lx needs the party",(unsigned long)c->native);
         value=0;
@@ -1656,6 +1659,12 @@ static int advance_people(Impl *s,float elapsed,char *error)
     }
     return 1;
 }
+void c3_field_story_set_move_input(C3FieldStory *story,uint16_t held,int stick_x,int stick_y)
+{
+    Impl *s=story?story->impl:NULL;
+    if(s)s->move_input=(held&PAD_DIRECTIONS)||stick_x>2||stick_x< -2||stick_y>2||stick_y< -2;
+}
+
 int c3_field_story_tick(C3FieldStory *story,float seconds,uint16_t pressed,char *error)
 {
     Impl *s=story?story->impl:NULL;
