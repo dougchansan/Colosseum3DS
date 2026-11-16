@@ -51,7 +51,7 @@ class BottomUiPreparationTests(unittest.TestCase):
         glyphs = [(8, bytes(256))] * 95
         data = ui.encode_pack(sprites, glyphs)
         self.assertEqual(data[:4], b"C3UI")
-        self.assertEqual(struct.unpack_from("<III", data, 4), (2, len(data), 11))
+        self.assertEqual(struct.unpack_from("<III", data, 4), (3, len(data), 11))
         for bad_sprites, bad_glyphs in ((sprites[:-1], glyphs), (sprites, glyphs[:-1]), (sprites, [(17, bytes(256))] * 95)):
             with self.assertRaises(ValueError):
                 ui.encode_pack(bad_sprites, bad_glyphs)
