@@ -56,7 +56,8 @@ class UnderAuditTests(unittest.TestCase):
     def test_source_dispatch_is_observation(self):
         natives, controls = audit.source_support()
         self.assertIn(7, natives)
-        self.assertNotIn(0xbe, natives)
+        # Cipher now dispatches BE while explicitly reporting unrendered light animation.
+        self.assertIn(0xbe, natives)
         self.assertIn(0x2b, controls)
         self.assertNotIn(0xff, controls)
 

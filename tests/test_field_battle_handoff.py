@@ -14,9 +14,11 @@ SOURCE = ROOT / 'platform/3ds/field_scene.c'
 class FieldBattleHandoffTests(unittest.TestCase):
     def test_handoff_drains_before_release_and_restores_without_story_entry(self):
         source = SOURCE.read_text()
-        handoff = source[source.index('c3_n3ds_log_memory(trace,"field_battle_before_drain")'):
+        handoff_start = source.index('if(view->blocked[0]&&view->battle_id==10&&(input.pressed&C3_PAD_A))')
+        handoff = source[handoff_start:
                          source.index('/* Modal preview time')]
-        ordered = ['C3_RECOVER_DRAIN', 'release_field_models(storage,count)',
+        ordered = ['C3_RECOVER_DRAIN', 'npc_stream_attach(&npc,1,',
+                   'release_field_models(storage,count)',
                    'c3_battle_preview_from_game_state', '"battle-to-field"',
                    'restore_field_models(', 'field_renderer_init(',
                    'c3_stage_renderer_set_tv(']
@@ -33,7 +35,9 @@ class FieldBattleHandoffTests(unittest.TestCase):
         if not shutil.which(compiler[0]):
             self.skipTest('A host C compiler is required')
         source = SOURCE.read_text()
-        helpers = source[source.index('static void release_field_models('):
+        # Start at the implementation, not the forward declaration used by
+        # FieldBattleHost (which also precedes unrelated renderer dependencies).
+        helpers = source[source.index('static void release_field_models(C3Title *storage,uint32_t count)\n{'):
                          source.index('static int save_game')]
         harness = r'''
 #include <assert.h>

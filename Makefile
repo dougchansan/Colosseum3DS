@@ -556,8 +556,8 @@ include tests/battle-general.mk
 include tests/link.mk
 
 # Source-guarded staffroll and clear-save transaction (synthetic save).
-build/test_ending: tests/test_ending.c tests/test_game_state.c src/ending.c src/game_state.c src/save.c src/decomp_pokemon.c build/save_codec.c $(HEADERS)
-	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_ending.c src/ending.c src/game_state.c src/save.c src/decomp_pokemon.c build/save_codec.c $(LDFLAGS) -lm -o $@
+build/test_ending: tests/test_ending.c tests/test_game_state.c src/pc_menu.c src/bottom_ui.c src/ending.c src/game_state.c src/save.c src/decomp_pokemon.c build/save_codec.c $(HEADERS)
+	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_ending.c src/pc_menu.c src/bottom_ui.c src/ending.c src/game_state.c src/save.c src/decomp_pokemon.c build/save_codec.c $(LDFLAGS) -lm -o $@
 
 .PHONY: ending-check
 ending-check: build/test_ending

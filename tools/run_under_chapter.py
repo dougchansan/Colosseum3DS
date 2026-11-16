@@ -15,7 +15,7 @@ import sys
 
 REPO = Path(__file__).resolve().parents[1]
 SOURCES = [
-    "tests/test_under_chapter.c", "src/inventory.c", "src/pda.c", "src/field_story.c", "src/story.c", "src/area.c",
+    "tests/test_under_chapter.c", "src/inventory.c", "src/pda.c", "src/field_story.c", "src/hero_follow.c", "src/story.c", "src/area.c",
     "src/area_camera.c", "src/field.c", "src/title.c", "src/game_state.c",
     "src/save.c", "src/decomp_pokemon.c", "src/battle.c", "src/relive.c",
     "build/save_codec.c",
