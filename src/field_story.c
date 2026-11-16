@@ -16,7 +16,7 @@
 
 typedef enum { W_NONE, W_SECONDS, W_TASK, W_MOTION, W_MOVE, W_CAMERA,
                W_CAMERA_MOVE, W_FADE, W_MESSAGE, W_CHOICE, W_TV, W_BATTLE, W_NAME, W_ITEM, W_DOOR, W_SHOP, W_MENU_FLOOR, W_JINGLE, W_DIALOG,
-               W_RELIVE } Wait;
+               W_RELIVE, W_FALL } Wait;
 typedef struct {
     uint16_t key, child;
     C3StoryCall call;
@@ -30,6 +30,7 @@ typedef struct {
     uint32_t program; int prog_state, prog_yes, prog_no, prog_asking;
     uint32_t relive_mode, relive_slot; /* native C2's arguments and the picked slot */
     uint32_t jingle; float jingle_seconds; /* W_JINGLE / the item jingle of W_ITEM */
+    float fall_ground; /* native B2: the person's ground height (W_FALL) */
 } RunTask;
 typedef struct Person {
     C3StoryActor public;
@@ -78,6 +79,7 @@ typedef struct {
     int target_moving,camera_returning;
     uint8_t dynamic_serial;
     uint32_t sound_id, previous_floor, pending_floor, pending_spawn, arrival_spawn;
+    uint16_t tick_pressed; /* this tick's newly pressed buttons (native 6F) */
     uint32_t fight_result; /* fn_801EF634: last original fight result ID */
     uint32_t whiteout_floor,whiteout_previous,whiteout_spawn;int whiteout_valid;
     int name_entry_enabled;
@@ -163,7 +165,7 @@ static int validate_native(const Impl *s,const C3StoryCall *c,char *error)
         /* Phenac City exterior bank 013E0E00 (native table lbl_802E1CF0). */
         {0x02,1,0},{0x16,2,0},{0x23,1,0},{0x31,0,0},{0x66,1,0},{0x7e,2,0},
         {0x82,3,0},{0x83,3,0},{0x89,3,0},{0xa1,3,0},{0xa4,6,0x3c},{0xa5,5,0x10},
-        {0x77,2,0},{0x84,2,0},{0x60,3,0},{0x73,4,0},{0x74,1,0},{0x75,2,0},{0x8d,5,0x1e},{0x9a,5,0},{0xa0,1,0},{0xb5,4,0},{0xa9,2,0},{0xb1,6,0x10},{0xb4,0,0},{0xd8,1,0},{0xda,1,0},{0xe8,2,0},
+        {0x77,2,0},{0x84,2,0},{0x60,3,0},{0x73,4,0},{0x74,1,0},{0x75,2,0},{0x8d,5,0x1e},{0x9a,5,0},{0xa0,1,0},{0xb5,4,0},{0xa9,2,0},{0xb1,6,0x10},{0x6f,0,0},{0xf6,3,0},{0xb2,3,4},{0xb4,0,0},{0xd8,1,0},{0xda,1,0},{0xe8,2,0},
         /* Whole-game survey (tests/test_world_story.c), table lbl_802E1CF0. */
         {0x97,3,0},{0xaa,7,0x3c},{0xab,1,0},{0xad,1,0},{0xe1,0,0},
         {0xa2,0,0},{0xac,3,0},{0xcb,3,0},{0xd4,0,0},{0x61,5,0},{0xe2,0,0},{0x90,2,0},{0x7b,0,0},{0xc5,4,0},
@@ -596,7 +598,11 @@ static int run_native(Impl *s,RunTask *t,char *error)
         p=person(s,a[0],a[1]);
         if(p){
             if(p->parent){for(unsigned i=0;i<3;++i)p->local_rotation[i]=as_float(a[i+2])*PI/180.0f;}
-            else {if(as_float(a[2])!=0||as_float(a[4])!=0)return fail(error,"Actor pitch/roll is not prepared");
+            else {
+                /* A field pose holds yaw only. Eagun's house (floor 02C)
+                 * tilts Wes by a few degrees of pitch and roll as he wakes
+                 * there; the tilt is recorded as unrendered. */
+                if(as_float(a[2])!=0||as_float(a[4])!=0)note_presentation(s,0x3c,"actor_pitch_roll_unrendered");
                 p->turn_target=pose(s,p)->yaw=as_float(a[3])*PI/180.0f;}
         }break;
     case 0x3d:
@@ -729,6 +735,22 @@ static int run_native(Impl *s,RunTask *t,char *error)
     case 0xa2:break;
     /* GbaMisc_HasActiveContextState: no Game Boy Advance is connected. */
     case 0xd4:value=0;break;
+    /* scriptIsMoveButtonPush: 1 while the D-pad (pad mask 0xF) is pushed
+     * or the control stick is deflected past 2. The scene turns the stick
+     * into hero motion, so a walking or running hero counts as the stick;
+     * the D-pad is this tick's pressed directions. Eagun's house (floor
+     * 02C) waits on it after his talk before telling Wes about the lab. */
+    /* fn_801140DC: write the save's resume floor, previous floor and spawn
+     * (game-data status 5, 7 and 8, which New Game sets to 2/1/1 and
+     * fn_80113FE8 reads on Continue). Mt. Battle's reception (floor 04B)
+     * points it back at itself when a challenge ends. */
+    case 0xf6:
+        if(!a[0]||a[0]>0xffffu||a[1]>0xffffu||a[2]>0xffu)return fail(error,"Native F6 resume point %lu/%lu/%lu is invalid",
+            (unsigned long)a[0],(unsigned long)a[1],(unsigned long)a[2]);
+        if(!c3_game_state_set_floor(s->game,a[0],a[1],(uint8_t)a[2]))return fail(error,"Native F6 could not write the resume point");
+        log_line(s,"story_resume_point floor=%03lx previous=%03lx spawn=%lu",(unsigned long)a[0],(unsigned long)a[1],(unsigned long)a[2]);
+        break;
+    case 0x6f:value=(s->tick_pressed&PAD_DIRECTIONS)||(s->view.control&&s->hero->motion!=0);break;
     case 0xc3:value=s->arrival_spawn;break; /* floorGetNextPosIndex: the entrance used */
     case 0xd9:
         /* fn_801CADA8(kind): the hero receives a gift Pokemon (1..6; 3 at
@@ -1155,6 +1177,20 @@ static int run_native(Impl *s,RunTask *t,char *error)
             }
         }
         }break;
+    case 0xb2:
+        /* fn_801821B8 (peopleFallAppear): the person is shown, flag 8 is
+         * cleared, sound 0x49E plays and it drops from 40 source units above
+         * its position, 1.3 units per 60 Hz frame (fn_800D3088), with motion
+         * 7; on the ground motion 8 plays to its end, then motion 1. The
+         * table row's third word is not read by the original. The sound is
+         * recorded as unrendered. */
+        p=person(s,a[0],a[1]);if(!p)break;
+        p->want_visible=1;p->public.visible=p->public.model!=NULL;p->public.flags&=~8u;
+        note_presentation(s,0xb2,"fall_sound_049e_unrendered");
+        t->fall_ground=pose(s,p)->position[1];t->remaining=40.0f;
+        pose(s,p)->position[1]=t->fall_ground+40.0f*s->map->scale;
+        if(!set_motion(s,p,7,0,1,error))return 0;
+        t->stage=0;t->wait=W_FALL;return 1;
     case 0xb1:{
         /* fn_8018A700: walk up to `distance` (tens of source units) from
          * another person, along the line between them; already inside that
@@ -1179,10 +1215,28 @@ static int run_native(Impl *s,RunTask *t,char *error)
     case 0xd8:{
         /* fn_801C852C: nothing unless flag value 08AE is zero. Mode 0 is
          * fn_801D0AFC(0): pokemonAllKaihuku on every valid party member.
-         * Mode 1 clears two per-member attributes that are not identified. */
+         * Mode 1 cures poison and bad poison (conditions 3 and 4). */
         uint32_t battle_mode=0;
         if(!flag(s,0x8ae,&battle_mode,error))return 0;
         if(battle_mode)break;
+        if(a[0]==1){
+            /* Mode 1: for each valid party member, fn_80121ADC/fn_80121B4C
+             * remove condition 3 (poison) and 4 (bad poison), the
+             * conditions pokemonGetJoutaiMsgId reads from the status entry
+             * at record +0xE8 (src/relive_purify.c clears 0x3E there the
+             * same way). */
+            C3GameSummary party;uint8_t record[0x138];unsigned cured=0;
+            if(!c3_game_state_summary(s->game,&party))return fail(error,"Native D8 needs the party");
+            for(unsigned i=0;i<party.party_count&&i<6;++i){
+                if(!c3_game_state_pokemon(s->game,i,record)||!(record[0]|record[1]))continue;
+                uint16_t id=(uint16_t)(record[0xe8]<<8|record[0xe9]);
+                if(id!=3&&id!=4)continue;
+                memset(record+0xe8,0,7);memset(record+0xf0,0,6);
+                if(!c3_game_state_set_pokemon(s->game,i,record))return fail(error,"Native D8 could not cure party slot %u",i);
+                ++cured;
+            }
+            log_line(s,"story_party_cure mode=1 conditions=3,4 cured=%u",cured);break;
+        }
         if(a[0]!=0)return fail(error,"Native D8 mode %lu is not ported",(unsigned long)a[0]);
         if(!s->restore)return fail(error,"Native D8 needs the party service, which this scene did not bind");
         int restored=s->restore(s->restore_context);
@@ -1364,6 +1418,19 @@ static int wait_task(Impl *s,RunTask *t,float seconds,uint16_t *pressed,char *er
         if(t->child_finished)return resume(s,t,t->value,error);
         if(c3_story_active(&s->vm,t->child))return 1;
         return resume(s,t,c3_story_result(&s->vm,t->child),error);
+    case W_FALL:
+        p=person(s,t->call.args[0],t->call.args[1]);
+        if(!p)return resume(s,t,0,error);
+        if(!t->stage){
+            t->remaining-=1.3f*60.0f*seconds;if(t->remaining<0)t->remaining=0;
+            pose(s,p)->position[1]=t->fall_ground+t->remaining*s->map->scale;
+            if(t->remaining>0)return 1;
+            if(!set_motion(s,p,8,0,0,error))return 0;
+            t->stage=1;return 1;
+        }
+        if(p->public.playing&&!p->public.loop&&pose(s,p)->animation_seconds<clip_seconds(&p->public))return 1;
+        if(!set_motion(s,p,1,0,1,error))return 0;
+        return resume(s,t,0,error);
     case W_MOTION:
         p=person(s,t->call.args[0],t->call.args[1]);
         if(p&&p->public.playing&&!p->public.loop&&pose(s,p)->animation_seconds<clip_seconds(&p->public))return 1;
@@ -1969,6 +2036,7 @@ int c3_field_story_tick(C3FieldStory *story,float seconds,uint16_t pressed,char 
 {
     Impl *s=story?story->impl:NULL;
     if(!s||!isfinite(seconds)||seconds<0)return fail(error,"Invalid field story tick");
+    s->tick_pressed=pressed;
     /* Animation, camera, waits and fades share active elapsed time. Only
      * collision-sensitive translation retains a bounded movement step. */
     if(!advance_people(s,seconds,error))return 0;
