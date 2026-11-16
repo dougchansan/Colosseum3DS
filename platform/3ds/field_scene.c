@@ -122,10 +122,23 @@ static int pc_text(void *context,uint32_t id,const char *name,char *out,size_t c
 /* Script music natives 68/69/6A/6D -> the streamed MusyX player. */
 static int story_audio(void *context,unsigned op,uint32_t a,uint32_t b,uint32_t c)
 {
+    /* The last sound native 69 put in slot 0x407, put back after a jingle. */
+    static uint32_t slot407_sound,slot407_volume;
     (void)context;
     switch(op){
     case C3_STORY_AUDIO_PLAY_406:return c3_music_play(C3_MUSIC_SLOT_406,a,c,b);
-    case C3_STORY_AUDIO_PLAY_407:return c3_music_play(C3_MUSIC_SLOT_407,a,c,b);
+    case C3_STORY_AUDIO_PLAY_407:slot407_sound=a;slot407_volume=c;return c3_music_play(C3_MUSIC_SLOT_407,a,c,b);
+    /* fn_80165668: the area music pauses while the one-shot jingle plays
+     * (the player has two song slots; the jingle borrows 0x407). */
+    case C3_STORY_AUDIO_JINGLE:
+        c3_music_pause_slot(C3_MUSIC_SLOT_406,1);
+        if(c3_music_play(C3_MUSIC_SLOT_407,a,c,b))return 1;
+        c3_music_pause_slot(C3_MUSIC_SLOT_406,0);return 0;
+    case C3_STORY_AUDIO_STATUS:return c3_music_status(a);
+    case C3_STORY_AUDIO_JINGLE_END:
+        c3_music_stop_slot(C3_MUSIC_SLOT_407,0);
+        if(slot407_sound)c3_music_play(C3_MUSIC_SLOT_407,slot407_sound,slot407_volume,0);
+        c3_music_pause_slot(C3_MUSIC_SLOT_406,0);return 1;
     case C3_STORY_AUDIO_STOP:c3_music_stop(a,b);return 1;
     case C3_STORY_AUDIO_MASTER:c3_music_master(a,b);return 1;
     }
