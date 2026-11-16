@@ -14,7 +14,7 @@
 #define MAX_WAYPOINTS 64u /* Phenac actor 24 allocates 36 points (bank 013E0E00 fn 34). */
 
 typedef enum { W_NONE, W_SECONDS, W_TASK, W_MOTION, W_MOVE, W_CAMERA,
-               W_CAMERA_MOVE, W_FADE, W_MESSAGE, W_CHOICE, W_TV, W_BATTLE, W_NAME, W_ITEM, W_DOOR, W_SHOP, W_DIALOG,
+               W_CAMERA_MOVE, W_FADE, W_MESSAGE, W_CHOICE, W_TV, W_BATTLE, W_NAME, W_ITEM, W_DOOR, W_SHOP, W_MENU_FLOOR, W_DIALOG,
                W_RELIVE } Wait;
 typedef struct {
     uint16_t key, child;
@@ -77,6 +77,7 @@ typedef struct {
     uint32_t whiteout_floor,whiteout_previous,whiteout_spawn;int whiteout_valid;
     int name_entry_enabled;
     int shop_enabled;
+    uint32_t menu_floors[8]; unsigned menu_floor_count; /* c3_field_story_enable_menu_floor */
     uint16_t (*random16)(void *context);void *random_context;
     int (*species_name)(void *context,unsigned species,char *out,size_t capacity);void *species_context;
     C3FieldStoryReceive receive;void *receive_context;
@@ -142,6 +143,7 @@ static int validate_native(const Impl *s,const C3StoryCall *c,char *error)
         {0x97,3,0},{0xaa,7,0x3c},{0xab,1,0},{0xad,1,0},{0xe1,0,0},
         {0xa2,0,0},{0xac,3,0},{0xcb,3,0},{0xd4,0,0},{0x61,5,0},{0xe2,0,0},{0x90,2,0},{0x7b,0,0},{0xc5,4,0},
         {0xe7,3,0},{0x22,5,0},
+        {0x62,1,0}, /* fn_800FF730 menu floor (systems lane) */
         {0x78,1,0},{0x7c,0,0},{0xf1,0,0},{0xf2,0,0},{0xa8,2,0},{0xd6,2,0},{0x53,3,0},{0x9b,3,0},{0xc7,5,0},
         {0xc4,0,0},{0xdc,0,0},{0xc8,2,0},{0x80,3,0},{0xbd,0,0},{0x9e,1,0},{0x54,0,0},{0x55,0,0},{0x56,0,0},{0x57,0,0},
         {0x86,0,0},{0xbc,1,0},{0xca,0,0},{0xeb,0,0},{0x85,1,0}
@@ -839,6 +841,21 @@ static int run_native(Impl *s,RunTask *t,char *error)
         log_line(s,"story_name_entry mode=%lu index=%lu status=default_name_kept menu_ported=0",
                  (unsigned long)a[0],(unsigned long)a[1]);
         value=1;break;
+    case 0x62:{
+        /* fn_800FF730(floor): push a menu floor (0x391 PC box, 0x38F bag,
+         * 0x392 P*DA, 0x386 evolution ...) and yield until it returns. A
+         * floor the scene shows waits with view.menu_floor set; any other
+         * is not ported and returns at once, recorded. */
+        unsigned i;
+        for(i=0;i<s->menu_floor_count&&s->menu_floors[i]!=a[0];++i){}
+        if(i<s->menu_floor_count){
+            s->view.menu_floor=a[0];
+            log_line(s,"story_menu_floor floor=%03lx status=waiting_scene",(unsigned long)a[0]);
+            t->wait=W_MENU_FLOOR;return 1;
+        }
+        s->view.unported_menu=0x62;
+        log_line(s,"story_menu_floor floor=%03lx status=unported_returned",(unsigned long)a[0]);
+        break;}
     case 0x19:
         /* menuShopOpen (native table entry 0x19) stores the shop number and
          * links to menu floor 0x38F, which runs the shop and returns. That
@@ -1305,7 +1322,7 @@ static int wait_task(Impl *s,RunTask *t,float seconds,uint16_t *pressed,char *er
         {uint32_t answer=(uint32_t)s->view.choice_no;
          log_line(s,"story_choice answer=%lu",(unsigned long)answer);
          close_message(s);return resume(s,t,answer,error);}
-    case W_BATTLE:case W_NAME:case W_SHOP:case W_RELIVE:return 1;
+    case W_BATTLE:case W_NAME:case W_SHOP:case W_MENU_FLOOR:case W_RELIVE:return 1;
     case W_DOOR:
         if(t->stage<s->door_count&&s->doors[t->stage].playing)return 1;
         if(s->event_depth)--s->event_depth;
@@ -1414,6 +1431,44 @@ int c3_field_story_name_result(C3FieldStory *story,const char *name,char *error)
 void c3_field_story_enable_shop(C3FieldStory *story,int enabled)
 {
     Impl *s=story?story->impl:NULL;if(s)s->shop_enabled=enabled!=0;
+}
+void c3_field_story_enable_menu_floor(C3FieldStory *story,uint32_t floor,int enabled)
+{
+    Impl *s=story?story->impl:NULL;unsigned i;if(!s)return;
+    for(i=0;i<s->menu_floor_count&&s->menu_floors[i]!=floor;++i){}
+    if(enabled&&i==s->menu_floor_count&&i<8)s->menu_floors[s->menu_floor_count++]=floor;
+    if(!enabled&&i<s->menu_floor_count)s->menu_floors[i]=s->menu_floors[--s->menu_floor_count];
+}
+int c3_field_story_menu_floor_done(C3FieldStory *story,char *error)
+{
+    Impl *s=story?story->impl:NULL;
+    if(!s)return fail(error,"Invalid menu floor result");
+    for(unsigned i=0;i<C3_STORY_TASKS;++i){RunTask *t=s->tasks+i;
+        if(!t->key||t->wait!=W_MENU_FLOOR)continue;
+        log_line(s,"story_menu_floor floor=%03lx status=returned",(unsigned long)s->view.menu_floor);
+        s->view.menu_floor=0;
+        return resume(s,t,0,error);
+    }
+    return fail(error,"No menu floor is waiting");
+}
+/* A common/floor message as plain text, with value control 32/36 (the
+ * Pokemon a menu names) given and the rest from the field source. */
+typedef struct { Impl *s; const char *name; } MenuText;
+static int menu_text_source(void *context,uint8_t control,C3StoryValue *v)
+{
+    MenuText *m=context;
+    if((control==0x32||control==0x36)&&m->name){v->text=m->name;return 1;}
+    return message_source(m->s,control,v);
+}
+int c3_field_story_text(C3FieldStory *story,uint32_t id,const char *name,char *out,size_t capacity)
+{
+    Impl *s=story?story->impl:NULL;char error[C3_STORY_ERROR];MenuText m={s,name};
+    if(!s||!out||!capacity)return 0;
+    C3GameSummary names;
+    if(c3_game_state_summary(s->game,&names))snprintf(s->partner_name,sizeof s->partner_name,"%s",names.partner);
+    if(!c3_story_render(&s->vm,id,menu_text_source,&m,0,out,capacity,error))return 0;
+    for(char *c=out;*c;++c)if(*c=='\n'||*c=='\f')*c=' ';
+    return 1;
 }
 int c3_field_story_shop_done(C3FieldStory *story,char *error)
 {

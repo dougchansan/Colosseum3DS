@@ -26,6 +26,7 @@ typedef struct C3FieldStoryView {
     int camera_active;
     uint32_t name_entry; /* native 16 mode + 1 while the scene must collect a name */
     uint32_t shop;       /* native 19 shop number + 1 while the scene shows the shop */
+    uint32_t menu_floor; /* native 62 menu floor (0x391 PC box ...) while the scene shows it */
     uint32_t unported_menu; /* last native whose menu step is not ported (took the decline branch) */
     int relive_pick;        /* native C2 waits for a party choice (c3_field_story_relive_pick) */
     float fade, camera_seconds;
@@ -58,6 +59,14 @@ int c3_field_story_name_result(C3FieldStory *story,const char *name,char *error)
  * scene reports that the player left the shop; disabled, the shop closes at
  * once. The scene performs the purchases itself (colosseum3ds/shop.h). */
 void c3_field_story_enable_shop(C3FieldStory *story,int enabled);
+/* Native 62 (fn_800FF730) pushes a menu floor. Floors the scene enables
+ * wait with view.menu_floor set until menu_floor_done; others return at
+ * once (recorded as not ported). */
+void c3_field_story_enable_menu_floor(C3FieldStory *story,uint32_t floor,int enabled);
+int c3_field_story_menu_floor_done(C3FieldStory *story,char *error);
+/* An original message (field, common or names group) as plain text, for
+ * the scene's menus; name answers value controls 32/36. 0 when absent. */
+int c3_field_story_text(C3FieldStory *story,uint32_t id,const char *name,char *out,size_t capacity);
 int c3_field_story_shop_done(C3FieldStory *story,char *error);
 /* Item gifts (script native 77). receive adds `count` of `item` to the bag
  * as heroItemAddItemDataId does and writes the item's display name: 0 when
