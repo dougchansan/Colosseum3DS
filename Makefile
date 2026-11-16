@@ -10,7 +10,7 @@ UPSTREAM = vendor/colosseum/src/hsd/random.c vendor/colosseum/src/game/GScolsys2
 
 .PHONY: all test clean 3ds verify-source
 all: build/test_bottom_ui build/test_bottom_ui_golden build/test_first_person build/test_skin_uniforms
-all: build/test_core build/test_data build/test_pokemon build/test_model build/test_movie build/test_save build/test_title build/test_field build/test_dev_floor build/test_world_map build/test_name_entry build/test_game_menu build/test_game_state build/test_render_recovery build/test_area build/test_area_camera build/test_area_lights build/test_story build/test_field_story build/test_phenac_story build/test_world_story build/test_relive build/test_battle build/test_battle_action build/test_battle_rng
+all: build/test_core build/test_data build/test_pokemon build/test_model build/test_movie build/test_save build/test_title build/test_field build/test_dev_floor build/test_world_map build/test_name_entry build/test_game_menu build/test_game_state build/test_render_recovery build/test_area build/test_area_camera build/test_area_lights build/test_story build/test_field_story build/test_phenac_story build/test_phenac_events build/test_world_story build/test_relive build/test_battle build/test_battle_action build/test_battle_rng
 
 build:
 	mkdir -p $@
@@ -72,6 +72,8 @@ build/test_field_story: tests/test_field_story.c $(FIELD_STORY_SOURCES) $(HEADER
 
 build/test_phenac_story: tests/test_phenac_story.c src/floor_profile.c $(FIELD_STORY_SOURCES) $(HEADERS)
 	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_phenac_story.c src/floor_profile.c $(FIELD_STORY_SOURCES) $(LDFLAGS) -lm -o $@
+build/test_phenac_events: tests/test_phenac_events.c src/floor_profile.c $(FIELD_STORY_SOURCES) $(HEADERS)
+	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_phenac_events.c src/floor_profile.c $(FIELD_STORY_SOURCES) $(LDFLAGS) -lm -o $@
 
 WORLD_BATTLE_SOURCES = src/battle_general.c src/battle_story.c src/battle_rng.c src/decomp_rng.c
 build/test_world_story: tests/test_world_story.c $(FIELD_STORY_SOURCES) $(WORLD_BATTLE_SOURCES) build/battle_rng_source.h $(HEADERS) $(UPSTREAM)
@@ -161,6 +163,7 @@ test: all
 	./build/test_story
 	./build/test_field_story
 	./build/test_phenac_story
+	./build/test_phenac_events
 	./build/test_world_story
 	./build/test_relive
 	./build/test_battle
