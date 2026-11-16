@@ -10,7 +10,8 @@ Without --floor this prepares Outskirt Stand's two floors exactly as before.
 --floor NAME (repeatable) prepares the named floor_profiles.py rows instead.
 --doors-only writes just area-doors.json: the common door/elevator records of
 the named floors (floor_event.c FloorDoorEntry), plus one C3D1 door pack
-(<floor prefix>.c3d) per floor that has door rows, for native 60.
+(<floor prefix>.c3d) per floor that has door rows, for native 60, and one
+C3R1 treasure pack (<floor prefix>.c3r) per floor that has treasure rows.
 """
 import argparse
 import hashlib
@@ -380,6 +381,46 @@ def encode_door_pack(floor, rows, files=None):
     return header + bytes(body)
 
 
+def extract_treasure(rel, floors):
+    """Original treasure rows (28 bytes) of the given floor numbers.
+
+    common_rel._prolog publishes lbl_80478EBC = data+0x11BFAC with its count
+    at data+0x14A6D0 (floor_event.c FloorTreasureEntry, floor.c
+    _floorInitTresure): flags (bits 2-4 the gift type of floorEventGetTresure,
+    bits 5-7 the kind: 1 chest, 2 and 3 items), count, rotation in degrees,
+    floor, the flag that records it taken, the flag that must be set for it
+    to show (high half of +8), the item (money for type 2) and x, y, z. The
+    table index is the one native CB (floorEventChangeTresure) receives.
+    """
+    common = rel_data(rel, 125)
+    count = u32(common, 0x14A6D0)
+    if not 1 <= count <= 512:
+        raise ValueError("Unexpected original treasure table count")
+    rows = extent(common, 0x11BFAC, count * 28)
+    out = []
+    for index in range(count):
+        flags, number, rotation, floor, taken, hide, low, item, x, y, z = struct.unpack_from(">BBhHHHHIfff", rows, index * 28)
+        if floor in floors:
+            out.append({"index": index, "floor": floor, "flags": flags, "count": number, "rotation": rotation,
+                        "taken_flag": taken, "hide_flag": hide, "word8_low": low, "item": item,
+                        "position": [x, y, z]})
+    return out
+
+
+def encode_treasure_pack(floor, rows):
+    """C3R1, read by c3_field_story_load_treasure (src/field_story.c): a
+    16-byte header and one 32-byte little-endian row per treasure of the
+    floor, in table order (the order floor.c numbers its 0x7FFF people)."""
+    rows = sorted(rows, key=lambda row: row["index"])
+    if not rows or len(rows) > 32 or any(row["floor"] != floor for row in rows):
+        raise ValueError("Treasure pack rows must belong to one floor and fit its bound")
+    body = bytearray()
+    for row in rows:
+        body += struct.pack("<HBBHhHHI3fI", row["index"], row["flags"], row["count"], row["floor"], row["rotation"],
+                            row["taken_flag"], row["hide_flag"], row["item"], *row["position"], 0)
+    return struct.pack("<4s3I", b"C3R1", 1, floor, len(rows)) + bytes(body)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--disc", type=Path, required=True)
@@ -395,7 +436,9 @@ def main():
         extra_messages = extra_message_table(names)
         disc, output = verify_disc(args.disc), check_output(args.output)
         if args.doors_only:
-            doors = extract_doors(admit_common_rel(disc / "files"), set(areas))
+            common_rel = admit_common_rel(disc / "files")
+            doors = extract_doors(common_rel, set(areas))
+            treasure = extract_treasure(common_rel, set(areas))
             encoded = (json.dumps(doors, indent=2)+"\n").encode("utf-8")
             output.mkdir(parents=True, exist_ok=True)
             (output / "area-doors.json").write_bytes(encoded)
@@ -411,6 +454,12 @@ def main():
                                                          for row, model in objects.items()})
                     (output / name).write_bytes(pack)
                     packs[name] = {"rows": len(own), "sha256": hashlib.sha256(pack).hexdigest()}
+                found = [row for row in treasure if row["floor"] == floor]
+                if found:
+                    name = story_pack[:-len(".c3s")] + ".c3r"
+                    pack = encode_treasure_pack(floor, found)
+                    (output / name).write_bytes(pack)
+                    packs[name] = {"rows": len(found), "sha256": hashlib.sha256(pack).hexdigest()}
             print(json.dumps({"output": str(output), "file": "area-doors.json", "records": len(doors),
                               "bytes": len(encoded), "sha256": hashlib.sha256(encoded).hexdigest(),
                               "door_packs": packs}, indent=2))
