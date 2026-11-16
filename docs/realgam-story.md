@@ -282,3 +282,5 @@ Total stored pack files: **810,571,068 bytes** across54 files (includes replaced
 - `5db932d Capture the completed DNA selection after its GPU frame settles`
 
 Normal ARM build: `5db932d4b3ca`, `private/arm-release.log`; isolated SD executable `RealgamStory.3dsx` (1264828 bytes). Save immutability attestation: `private/immutable-save-attest.json` (15/15 source copies identical).
+
+Probe-only capture refinement: `15c2952` holds the solved DNA grid until the settled screenshot is taken. The rerun uses the original intro/grid/exit and returns0; normal field gameplay is unchanged.
