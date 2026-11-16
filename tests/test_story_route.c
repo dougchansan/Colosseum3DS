@@ -32,6 +32,8 @@
  *   result <id>               result ID reported for the next battles (default 2, win)
  *   expect <flag> <value>     fail unless the flag holds the value
  *   expect_floor <floor>      fail unless the scene is on that floor
+ *   save <path>               write the game state as a card file (a chapter-point
+ *                             save for emulator checks; keep it private)
  *   talkall                   talk to every present person with a talk script, one
  *                             "route_talk" line each; a failed or floor-changing
  *                             conversation reloads this floor and the sweep goes on
@@ -227,6 +229,14 @@ static int step(char *line)
     if (!strcmp(word, "expect_floor")) {
         CHECK(sscanf(line, "%li", (long *)&a) == 1);
         if (!scene->loaded || scene->floor != a) { snprintf(error, sizeof error, "on floor %03lx", (unsigned long)scene->floor); return 0; }
+        return 1;
+    }
+    if (!strcmp(word, "save")) {
+        char out[1024], gerror[C3_GAME_ERROR_SIZE] = {0};
+        CHECK(sscanf(line, " %1023s", out) == 1);
+        if (scene->loaded) CHECK(c3_game_state_set_floor(&game, scene->floor, scene->previous, (uint8_t)scene->entrance));
+        if (!c3_game_state_save(&game, out, gerror)) { snprintf(error, sizeof error, "save: %.150s", gerror); return 0; }
+        fprintf(report, "route_save path=%s floor=%03lx entrance=%lu\n", out, (unsigned long)scene->floor, (unsigned long)scene->entrance);
         return 1;
     }
     if (!strcmp(word, "mail")) {
