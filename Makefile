@@ -10,7 +10,7 @@ UPSTREAM = vendor/colosseum/src/hsd/random.c vendor/colosseum/src/game/GScolsys2
 
 .PHONY: all test clean 3ds verify-source
 all: build/test_bottom_ui build/test_bottom_ui_golden build/test_first_person build/test_skin_uniforms
-all: build/test_core build/test_data build/test_pokemon build/test_model build/test_movie build/test_save build/test_title build/test_field build/test_dev_floor build/test_world_map build/test_name_entry build/test_game_menu build/test_game_state build/test_render_recovery build/test_area build/test_area_camera build/test_area_lights build/test_story build/test_field_story build/test_phenac_story build/test_world_story build/test_relive build/test_battle build/test_battle_action build/test_battle_rng
+all: build/test_core build/test_data build/test_pokemon build/test_model build/test_movie build/test_save build/test_title build/test_field build/test_dev_floor build/test_world_map build/test_name_entry build/test_game_menu build/test_game_state build/test_render_recovery build/test_area build/test_area_camera build/test_area_lights build/test_story build/test_message_sweep build/test_field_story build/test_phenac_story build/test_world_story build/test_relive build/test_battle build/test_battle_action build/test_battle_rng
 
 build:
 	mkdir -p $@
@@ -67,6 +67,9 @@ build/test_story: tests/test_story.c src/story.c include/colosseum3ds/story.h | 
 	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_story.c src/story.c $(LDFLAGS) -lm -o $@
 
 FIELD_STORY_SOURCES = src/field_story.c src/story.c src/area.c src/area_camera.c src/field.c src/title.c src/game_state.c src/save.c src/decomp_pokemon.c src/battle.c src/relive.c build/save_codec.c
+build/test_message_sweep: tests/test_message_sweep.c $(FIELD_STORY_SOURCES) $(HEADERS)
+	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_message_sweep.c $(FIELD_STORY_SOURCES) $(LDFLAGS) -lm -o $@
+
 build/test_field_story: tests/test_field_story.c $(FIELD_STORY_SOURCES) $(HEADERS)
 	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_field_story.c $(FIELD_STORY_SOURCES) $(LDFLAGS) -lm -o $@
 
@@ -159,6 +162,7 @@ test: all
 	./build/test_skin_uniforms
 	./build/test_area_lights
 	./build/test_story
+	./build/test_message_sweep $(C3_MESSAGE_SWEEP)
 	./build/test_field_story
 	./build/test_phenac_story
 	./build/test_world_story
