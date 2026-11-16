@@ -25,6 +25,7 @@
 #include "colosseum3ds/floor_profile.h"
 #include "colosseum3ds/inventory.h"
 #include "colosseum3ds/name_entry.h"
+#include "colosseum3ds/pc_menu.h"
 #include "world_map_scene.h"
 #include "colosseum3ds/area_lights.h"
 #include "colosseum3ds/title.h"
@@ -115,6 +116,9 @@ static int story_namer(void *context,unsigned kind,uint32_t id,C3StoryValue *val
     if(ok)value->text=text;
     return ok;
 }
+/* The PC menu's texts: original messages through the field story. */
+static int pc_text(void *context,uint32_t id,const char *name,char *out,size_t capacity)
+{return c3_field_story_text(context,id,name,out,capacity);}
 /* Script music natives 68/69/6A/6D -> the streamed MusyX player. */
 static int story_audio(void *context,unsigned op,uint32_t a,uint32_t b,uint32_t c)
 {
@@ -646,6 +650,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     C3ShopMenu shop_menu;C3ShopTable shop_table={0};C3PdaAssets shop_assets={0};
     uint8_t *shop_pda=NULL,*shop_pack=NULL;size_t shop_pack_size=0;int shopping=0;
     RelivePick relive_pick={0};
+    C3PcMenu pc_menu;int pc_open=0;unsigned pc_step=0;(void)pc_step;
     C3IngameMenu *ingame=calloc(1,sizeof *ingame);
     C3PdaPreview *pda_preview=NULL;
     float pda_seconds=0;
@@ -862,6 +867,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     c3_field_story_set_random(&story,c3_game_state_random16,state);
     c3_field_story_set_species_namer(&story,field_species_name,ingame);
     c3_field_story_enable_shop(&story,1);
+    c3_field_story_enable_menu_floor(&story,0x391,1); /* the PC (pc_menu.h) */
     c3_field_story_set_item_service(&story,receive_item,state);
     c3_field_story_set_namer(&story,story_namer,state);
     c3_field_story_set_party_service(&story,restore_party,state);
@@ -1166,6 +1172,42 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
             if(shop_event==C3_SHOP_EVENT_CLOSE){
                 free(shop_pda);free(shop_pack);shop_pda=shop_pack=NULL;shopping=0;
                 if(!c3_field_story_shop_done(&story,story_error))goto story_failed;
+            }
+            input.pressed=0;input.touch_pressed=false;
+        }
+        /* Native 62 pushing the PC box floor 0x391: the PC menu with the
+         * original texts. It owns all input; Save uses the scene's save. */
+        if(view->menu_floor==0x391&&!pc_open&&page==PAUSE_CLOSED){
+            c3_pc_menu_open(&pc_menu,state,pc_text,&story);pc_open=1;dirty=1;pc_step=0;
+            if(trace){fprintf(trace,"pc_open floor=391\n");fflush(trace);}
+        }
+        if(pc_open){
+            uint16_t pc_pressed=input.pressed;
+#ifdef C3_ROUNDTRIP_PROBE
+            /* Probe: Storage, deposit the first party member in BOX2,
+             * withdraw it, back, Exit; the bottom screen before each step. */
+            pc_pressed=0;
+            if(frames%30u==0u){
+                static const uint16_t steps[]={C3_PAD_A,C3_PAD_A,C3_PAD_A,C3_PAD_DOWN,C3_PAD_A,C3_PAD_RIGHT,C3_PAD_A,C3_PAD_A,
+                                               C3_PAD_B,C3_PAD_DOWN,C3_PAD_DOWN,C3_PAD_A};
+                char shot[96];mkdir("sdmc:/3ds/Colosseum3DS/probe",0777);
+                snprintf(shot,sizeof shot,"sdmc:/3ds/Colosseum3DS/probe/pc_%02u.bmp",pc_step);
+                int ok=c3_n3ds_capture_bottom(shot)==0;
+                if(trace){fprintf(trace,"probe_pc step=%u phase=%d box=%u used=%d,%d,%d deposits=%u withdrawals=%u shot=%d\n",pc_step,
+                    (int)pc_menu.phase,pc_menu.box,c3_game_state_box_used(state,0),c3_game_state_box_used(state,1),
+                    c3_game_state_box_used(state,2),pc_menu.deposits,pc_menu.withdrawals,ok);fflush(trace);}
+                if(pc_step<sizeof steps/sizeof steps[0])pc_pressed=steps[pc_step];
+                ++pc_step;
+            }
+#endif
+            C3PcEvent pc_event=c3_pc_menu_update(&pc_menu,pc_pressed);
+            if(pc_event!=C3_PC_NONE)dirty=1;
+            if(pc_event==C3_PC_SAVE){int saved=save_game(state,save_path,trace,message,sizeof message);
+                if(trace){fprintf(trace,"pc_save saved=%d\n",saved);fflush(trace);}}
+            if(pc_event==C3_PC_EXIT){
+                pc_open=0;
+                if(trace){fprintf(trace,"pc_close deposits=%u withdrawals=%u\n",pc_menu.deposits,pc_menu.withdrawals);fflush(trace);}
+                if(!c3_field_story_menu_floor_done(&story,story_error))goto story_failed;
             }
             input.pressed=0;input.touch_pressed=false;
         }
@@ -1541,6 +1583,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
             C3BottomUi *bottom=c3_bottom_screen_begin();
             if(naming)c3_name_entry_draw(&name_entry,bottom);
             else if(shopping)c3_shop_menu_draw(&shop_menu,state,bottom,profile->label);
+            else if(pc_open)c3_pc_menu_draw(&pc_menu,bottom);
             else if(relive_pick.open)relive_pick_draw(&relive_pick,bottom);
             else if(page==PAUSE_MAIN&&ingame->active)c3_ingame_draw_to(ingame,state,bottom);
             else if(page==PAUSE_CLOSED&&(phase==FIELD_CONTROL||phase==FIELD_FADE_IN)&&!view->dialogue&&!view->blocked[0]&&
@@ -1654,7 +1697,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                  if(++filmed==probe_route.film_frames&&trace){fprintf(trace,"probe_film_end frame=%u elapsed=%.3f\n",frames,(double)elapsed);fflush(trace);}
                  next_step=frames+30u;
              }}
-            if(npc.attached&&frames>=next_step&&view->control&&!door_fired&&!naming&&!probe_route.name_mode&&
+            if(npc.attached&&frames>=next_step&&view->control&&!door_fired&&!naming&&!pc_open&&!probe_route.name_mode&&
                (probe_route.walk_floor!=map.floor||probe_route.walked>=probe_route.walk_frames)){
                 char shot[80];
                 mkdir("sdmc:/3ds/Colosseum3DS/probe",0777);
