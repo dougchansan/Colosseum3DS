@@ -7,9 +7,12 @@ Outskirt Stand exterior/shop, the first battle's result and the
 [world-map destination choice](world-map.md). GSVM native 98 now resumes from
 the outcome the battle scene reports (a hero win is the original result ID 2),
 so the original Outskirt script sets its own flags, including Phenac's unlock
-`0x3DF`. This is a deliberate shortcut: the result still comes from the
-nonpersistent preview engine, and no HP, PP, EXP or money is copied back to
-the party. Authoritative combat/result/writeback remains open.
+`0x3DF`. Encounter 10 still uses the preview engine. Every other story
+battle plays on the general engine in 3D and writes its result back: HP, PP,
+condition, experience, levels and level-up moves, effort, prize money,
+snagged Shadow Pokemon, thrown balls, and the original whiteout on a lost
+wipeout battle ([story-battles.md](story-battles.md)). The turn rules are
+still the general engine's approximation, not the original battle scripts.
 
 ## Newly verified prerequisites
 
@@ -69,8 +72,8 @@ not yet established. These observations never authorize granting those flags.
 | --- | --- |
 | Original shared RNG and full trainer/Pokemon/FightPokemon entry | Bounded parent, Pokemon, sorting and runtime constructors match original calls; live stream bootstrap, actual sequences, active fighters and complete entry remain required |
 | Source-legal commands, AI scoring, ordering, effects, statuses, items and full-party replacements | Selected preview behavior only; authoritative complete turns still required |
-| Terminal results, EXP/EV/rewards/capture/evolution and source party copyback | Isolated result rules qualified; complete result transaction and original witnesses still required |
-| Exactly-once native 98 continuation and authentic story flags | Native 98 resumes once from the reported outcome (preview engine win only); the flags are written by the original script. Loss handling (whiteout script `05960008`, money halving) and party writeback are missing |
+| Terminal results, EXP/EV/rewards/capture/evolution and source party copyback | Fight kind rules, EXP, effort, levels and moves, condition, prize, snag (original catch routine) and party/PC copyback run for every admitted encounter ([story-battles.md](story-battles.md)); forget-move prompt, post-battle evolution and original witnesses still required |
+| Exactly-once native 98 continuation and authentic story flags | Native 98 resumes once with the general engine's result (2 or 3); a lost wipeout battle runs `fn_8020DAD0`'s whiteout (money halved, flag 0E05, party restored, A1 point or last save). Encounter 525 (CPU vs CPU) is still reported as a win |
 | All mandatory floors, actors, collision, natives, dialogue, media and interactions | Floors 1/2 are playable. Phenac City's exterior (floor 3) runs its original arrival, first battle request and partner event on the host with prepared packs ([phenac-story.md](phenac-story.md)); it is not drawn on the console yet and its interiors, doors and later events are missing. The full source index lists the remaining floors |
 | Source-legal party/action/capture/Shadow/storage/purification/loss branches | Some menu/stat/save foundations; original-compatible main-story behavior remains incomplete |
 | Ending, full credits, clear-save and fresh-process Continue | Source guards identified; native sequence and full chronological acceptance missing |

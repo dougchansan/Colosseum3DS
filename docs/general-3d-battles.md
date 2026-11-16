@@ -74,6 +74,12 @@ Converters need the HSD parser as an LF export of the pinned commit
   not reproduced.
 - Sounds are mono, panned by the owner's place in the view (no reverb).
 
+## Results
+
+The field writes each finished battle back to the save as
+[story-battles.md](story-battles.md) describes (fight kind rules, party,
+money, snags, whiteout).
+
 ## Checks
 
 - Host: `make -f tests/battle-general.mk battle-general-check` (view vs the
