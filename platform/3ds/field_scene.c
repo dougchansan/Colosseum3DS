@@ -26,6 +26,7 @@
 #include "colosseum3ds/inventory.h"
 #include "colosseum3ds/name_entry.h"
 #include "world_map_scene.h"
+#include "ending_scene.h"
 #include "colosseum3ds/area_lights.h"
 #include "colosseum3ds/title.h"
 #include "colosseum3ds/shop.h"
@@ -53,6 +54,7 @@ static int exists(const char *path)
  * on the SD card. The world map is a separate menu-class scene. */
 int c3_field_scene_supports(uint32_t floor)
 {
+    if(floor==0x39f)return c3_ending_scene_available();
     const C3FloorProfile *profile=c3_floor_profile(floor);
     static const char *const core[]={"%s.c3f","%s.c3a","%s_wes.c3t","%s_map0.c3t"};
     char name[96],path[200];
@@ -1485,6 +1487,16 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         }
         if(draw_result){result=-1;break;}
         ++frames;
+#ifdef C3_CLEAR_CONTINUE_PROBE
+        /* Observe the loaded Continue checkpoint; never warp or synthesize
+         * a story choice. Capture only once the native entry yields control. */
+        if(npc.attached&&view->control&&frames>=90u){
+            int captured=c3_n3ds_capture_top("sdmc:/3ds/Colosseum3DS/clear-continue.bmp")==0;
+            if(trace){fprintf(trace,"clear_continue_frame floor=%03lx previous=%03lx spawn=%u control=%d captured=%d frame=%u\n",(unsigned long)map.floor,(unsigned long)summary.previous_floor,summary.spawn,view->control,captured,frames);fflush(trace);}
+            result=captured?0:-1;break;
+        }
+        if(frames>1800u){snprintf(error,capacity,"Continue did not yield control");result=-1;break;}
+#endif
 #ifdef C3_ROUNDTRIP_PROBE
         /* Leave for the world map once the people have joined; keep the
          * last frame of each area for review (the capture lags one frame). */
@@ -1704,7 +1716,9 @@ int c3_field_scene_run(C3GameState *state,int new_game,const char *save_path,
     do{
         C3GameSummary summary;
         /* Floor 0x38E is the menu-class world map, not a walkable field. */
-        if(c3_game_state_summary(state,&summary)&&summary.floor==C3_FLOOR_WORLD_MAP_ID)
+        if(c3_game_state_summary(state,&summary)&&summary.floor==0x39f)
+            result=c3_ending_scene_run(state,save_path,trace,error,capacity);
+        else if(c3_game_state_summary(state,&summary)&&summary.floor==C3_FLOOR_WORLD_MAP_ID)
             result=c3_world_map_scene_run(state,trace,error,capacity);
         else result=run_area(state,new_game,save_path,trace,error,capacity);
         new_game=0;
