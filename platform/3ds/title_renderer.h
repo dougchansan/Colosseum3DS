@@ -3,6 +3,7 @@
 
 #include "colosseum3ds/title.h"
 #include <stdbool.h>
+#include "colosseum3ds/title_characters.h"
 
 /* Shared driver allocation, separate from scene-owned vertex/texture bytes. */
 #define C3_RENDER_COMMAND_BUFFER_BYTES (1024u * 1024u)
@@ -90,5 +91,8 @@ int c3_title_renderer_init(const C3Title *title, char *error, size_t capacity);
 int c3_title_renderer_draw(const C3Title *title, float fade,
                           C3TitleRenderStats *stats, char *error, size_t capacity);
 void c3_title_renderer_shutdown(void);
+/* Optional pack must outlive the renderer; upload only to an idle title scene. */
+int c3_title_renderer_set_characters(const C3TitleCharacters *pack);
+void c3_title_renderer_characters(const C3TitleCharacterState *state, bool visible);
 
 #endif

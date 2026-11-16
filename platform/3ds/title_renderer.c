@@ -1071,6 +1071,8 @@ static void draw_battle_hud(C3TitleRenderStats *stats)
     }
 }
 
+#include "title_characters_renderer.inc"
+
 #include "particle_renderer.inc"
 #include "particle_line_renderer.inc"
 #include "confusion_renderer.inc"
@@ -1355,6 +1357,7 @@ int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
     if(!draw_particles(camera,&mvp,stats,error,capacity)){
         stage_frame_abort();return C3_RENDER_ERROR;
     }
+    draw_title_characters(stats);
     draw_overlay(stats);
     draw_battle_hud(stats);
     fade = clamp01(fade);
@@ -1438,6 +1441,8 @@ void c3_title_renderer_shutdown(void)
     if (vertices) { linearFree(vertices); vertices = NULL; }
     if (hud_vertices) { linearFree(hud_vertices); hud_vertices = NULL; }
     if (overlay_vertices) { linearFree(overlay_vertices); overlay_vertices = NULL; }
+    if (character_vertices) { linearFree(character_vertices); character_vertices = NULL; }
+    character_pack = NULL; characters_visible = false;
     if (particle_vertices) { linearFree(particle_vertices); particle_vertices=NULL; }
     particle_pack=NULL;particle_system=NULL;particle_srt_system=NULL;particle_order_system=NULL;particle_render_frame=0;
     memset(particle_bindings,0,sizeof particle_bindings);
