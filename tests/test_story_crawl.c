@@ -237,11 +237,11 @@ static int load(Scene *s, uint32_t floor, uint32_t spawn, uint32_t *next, uint32
     return run(s, 3600, next, next_spawn);
 }
 
-enum { TALK, TOUCH, SEARCH, TREASURE, REGION, DOOR };
+enum { TALK, TOUCH, SEARCH, TREASURE, REGION, GAZE, DOOR };
 /* Common scripts that change floor: 05960004 (door crossing), 05960006
  * (elevator touch). These are the crawl's exploration choices. */
 static int moves(const C3AreaLink *l) { return l->script == 0x05960004u || l->script == 0x05960006u; }
-static const char *const KIND[] = {"talk", "touch", "search", "treasure", "region", "door"};
+static const char *const KIND[] = {"talk", "touch", "search", "treasure", "region", "gaze", "door"};
 
 /* One event on the loaded floor. Returns -1 failure, 0 not started, 1 run. */
 static int event(Scene *s, int kind, uint32_t index, uint32_t *next, uint32_t *spawn)
@@ -279,6 +279,18 @@ static int event(Scene *s, int kind, uint32_t index, uint32_t *next, uint32_t *s
         s->hero.yaw = atan2f(r->position[0] - s->hero.position[0], r->position[2] - s->hero.position[2]);
         memcpy(s->hero.proposed, s->hero.position, sizeof s->hero.position);
         if (!c3_field_story_interact(&s->story, error)) return -1;
+    } else if (kind == GAZE) {
+        /* Stand in a person's line of sight (native A9, peopleGazeHeroCheck:
+         * within 30 units and 15 degrees of its facing), a trainer's spot. */
+        C3StoryActor *a = c3_field_story_actor(&s->story, s->area.actors[index].index);
+        if (!a || !a->visible) return 0;
+        float yaw = a->pose.yaw, reach = 2.0f;
+        s->hero = a->pose;
+        s->hero.position[0] += sinf(yaw) * reach; s->hero.position[2] += cosf(yaw) * reach;
+        s->hero.yaw = yaw + 3.14159265f;
+        memcpy(s->hero.proposed, s->hero.position, sizeof s->hero.position);
+        for (unsigned f = 0; f < 20 && c3_field_story_view(&s->story)->control; ++f)
+            if (!c3_field_story_tick(&s->story, 1.0f/60.0f, 0, error) || !c3_field_story_sample(&s->story, error)) return -1;
     } else if (kind == REGION) {
         /* Step into a box the floor's main loop tests the hero against
          * (native 3A) and give the polling scripts a moment. */
@@ -309,6 +321,16 @@ int main(int argc, char **argv)
     path(file, newgame, "newgame.c3g");
     CHECK(c3_game_state_load(&game, argv[3], file, gerror));
     trace = fopen(getenv("C3_CRAWL_TRACE") ? getenv("C3_CRAWL_TRACE") : "/dev/null", "w"); CHECK(trace);
+    /* C3_CRAWL_FLAGS="884=1,885=1": flags another engine part writes (for
+     * example the battle engine's Shadow Pokemon rows) preset, and recorded. */
+    for (const char *p = getenv("C3_CRAWL_FLAGS"); p && *p;) {
+        char *end; unsigned long id = strtoul(p, &end, 16), value = 1;
+        if (*end == '=') value = strtoul(end + 1, &end, 0);
+        CHECK(c3_game_state_set_flag(&game, (uint32_t)id, (uint32_t)value));
+        fprintf(report, "crawl_preset flag=%03lx value=%lu\n", id, value);
+        p = *end == ',' ? end + 1 : end;
+        if (*p && *p != ',' && !(*p >= '0' && *p <= '9') && !(*p >= 'a' && *p <= 'f')) break;
+    }
     snapshot();
     Scene *s = calloc(1, sizeof *s); CHECK(s);
     uint32_t back_floor = 0, back_spawn = 0;
@@ -322,11 +344,11 @@ int main(int argc, char **argv)
         int moved = 0;
         while (!next && !moved && steps_left) {
             unsigned changed = 0;
-            for (int kind = TALK; kind <= REGION && !next; ++kind) {
+            for (int kind = TALK; kind <= GAZE && !next; ++kind) {
                 float boxes[32][4];
                 uint32_t count = kind == TALK ? s->area.actor_count : kind == TOUCH ? s->area.link_count :
                                  kind == SEARCH ? s->area.interaction_count : kind == TREASURE ? c3_field_story_treasure_count(&s->story) :
-                                 c3_field_story_hero_regions(&s->story, boxes, 32);
+                                 kind == REGION ? c3_field_story_hero_regions(&s->story, boxes, 32) : s->area.actor_count;
                 for (uint32_t i = 0; i < count && !next && steps_left; ++i) {
                     uint32_t id = i;
                     if (kind == TALK && !s->area.actors[i].talk_script) continue;
@@ -358,6 +380,9 @@ int main(int argc, char **argv)
             for (uint32_t i = 0; i < s->area.link_count && !next; ++i) {
                 const C3AreaLink *l = s->area.links + (best + i) % s->area.link_count;
                 if (l->kind != 1 && !moves(l)) continue;
+                /* A door whose destination (the common door script's first
+                 * argument) has no packs would only come straight back. */
+                if (moves(l) && l->args[0] && l->args[0] != 0x38e && !prepared(l->args[0])) continue;
                 ++tried;
                 int r = event(s, l->kind == 1 ? DOOR : TOUCH, l->source_id, &next, &next_spawn);
                 if (r < 0) { fprintf(report, "crawl_fail floor=%03lx step=door id=%lu reason=%s\n", (unsigned long)floor, (unsigned long)l->source_id, error); stop = 1; break; }
