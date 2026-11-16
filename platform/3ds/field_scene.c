@@ -3,6 +3,7 @@
 #include "game_ui_views.h"
 #include "ingame_menu.h"
 #include "pack_cache.h"
+#include "area_prefetch.h"
 #include "pack_loader.h"
 #include "battle_general_scene.h"
 #include "battle_general_3d.h"
@@ -544,10 +545,14 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     if(count>C3_STAGE_MAX_MODELS){snprintf(error,capacity,"The area exceeds the model bound.");goto done;}
     storage=calloc(count,sizeof(*storage));
     if(!storage){snprintf(error,capacity,"Field model allocation failed.");goto done;}
-    c3_bottom_screen_notice(profile->label,"Loading the area...","Please wait...");
+    /* From the world map the journey already covered the load and faded
+     * out: the bottom screen keeps the map and the top stays black. */
+    int from_world_map=summary.previous_floor==C3_FLOOR_WORLD_MAP_ID;
+    if(!from_world_map)c3_bottom_screen_notice(profile->label,"Loading the area...","Please wait...");
     unsigned load_total=map.map_pack_count+1u+arrival_count;
     for(uint32_t i=0;i<doors.count;++i)load_total+=doors.rows[i].file[0]!=0;
-    c3_n3ds_top_loading(0.0f);
+    int after_journey=from_world_map&&c3_world_map_scene_take_journey_shown();
+    if(!after_journey)c3_n3ds_top_loading(0.0f);
     /* Every pack is a job with a fixed slot (the same order as before):
      * the main core and the New 3DS's second core load them in parallel,
      * then the slots are bound and posed in order on this thread. */
@@ -573,7 +578,24 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
             npc.jobs[job].title=storage+slot;npc.area_index[job]=i;++job;++slot;}
     }
     pack_us=c3_n3ds_time_us();
-    size_t failed=c3_pack_load_all(jobs,load_total,load_progress);
+    /* Map packs the world map prefetched (while the journey played) move in
+     * as they are; only the rest is read now. */
+    size_t failed=0;unsigned prefetched=0;
+    for(unsigned j=0;j<load_total;++j)
+        if(c3_area_prefetch_take(jobs[j].path,jobs[j].title)){jobs[j].ok=1;jobs[j].error[0]=0;jobs[j].microseconds=0;++prefetched;}
+    c3_area_prefetch_release();
+    {
+        C3PackJob *pending=calloc(load_total?load_total:1u,sizeof *pending);
+        unsigned *slot=calloc(load_total?load_total:1u,sizeof *slot),n=0;
+        if(!pending||!slot){free(pending);free(slot);snprintf(error,capacity,"Not enough memory for the load list.");free(jobs);goto done;}
+        for(unsigned j=0;j<load_total;++j)if(!jobs[j].ok){pending[n]=jobs[j];slot[n++]=j;}
+        size_t bad=n?c3_pack_load_all(pending,n,after_journey?NULL:load_progress):0;
+        for(unsigned k=0;k<n;++k){C3PackJob *job=jobs+slot[k];job->ok=pending[k].ok;job->microseconds=pending[k].microseconds;
+            snprintf(job->error,sizeof job->error,"%s",pending[k].error);}
+        if(bad)failed=slot[bad-1]+1u;
+        free(pending);free(slot);
+    }
+    if(trace){fprintf(trace,"field_prefetch taken=%u of=%u\n",prefetched,load_total);}
     if(trace){fprintf(trace,"field_pack_jobs count=%u us=%llu\n",load_total,(unsigned long long)(c3_n3ds_time_us()-pack_us));}
     for(unsigned j=0;j<load_total;++j){
         if(trace)fprintf(trace,"field_pack_load file=%s bytes=%lu us=%llu ok=%d\n",jobs[j].path,
@@ -1353,6 +1375,7 @@ done:
      * Closing only `opened` leaked every person pack on each area exit. */
     if(npc.stream){c3_pack_stream_finish(npc.stream);npc.stream=NULL;}
     if(storage)opened=count;
+    c3_area_prefetch_release(); /* anything a failed load did not take */
     free(npc.jobs);npc.jobs=NULL;
     c3_pda_audio_close();
     c3_ingame_close(ingame);

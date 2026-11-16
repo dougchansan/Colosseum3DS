@@ -7,11 +7,14 @@
 #include "colosseum3ds/title.h"
 #include "colosseum3ds/field.h"
 #include "pack_loader.h"
+#include "pack_cache.h"
+#include "area_prefetch.h"
 #include "render_recovery.h"
 #include "stage_renderer.h"
 #include <math.h>
 
 #include <3ds.h>
+#include <sys/stat.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -113,31 +116,29 @@ static int pack_hit(const MapPack *pack, const C3WorldMap *map, int x, int y)
 }
 
 /* Top screen: the highlighted destination's exterior map packs (already on
- * the SD card for the field), loaded on the second core and orbited by a
- * slow camera. A port presentation; the original shows a still snapshot. */
-#define PREVIEW_PACKS 12u
+ * the SD card for the field), streamed on the second core by the area
+ * prefetch and orbited by a slow camera. A port presentation; the original
+ * shows a still snapshot. The prefetch keeps the packs: when the player
+ * travels to this destination, the field load takes them. */
 #define PREVIEW_REST 0.35f   /* seconds the cursor rests before loading */
 #define PREVIEW_SPEED 0.30f  /* orbit, radians per second */
 typedef struct {
     uint32_t floor, wanted;
-    C3Title titles[PREVIEW_PACKS];
-    const C3Title *models[PREVIEW_PACKS];
-    C3PackJob jobs[PREVIEW_PACKS];
+    const C3Title *models[C3_AREA_PREFETCH_MAX];
     unsigned count;
-    C3PackStream *stream;
-    int ready;
+    int streaming, ready;
     float center[3], radius, angle, clock, rest;
     int walk_bounds; float walk_lo[3], walk_hi[3]; /* the area's walkable ground */
 } Preview;
 static Preview *preview;
 
+/* Stop drawing the preview (the renderer is drained); the packs stay with
+ * the prefetch. */
 static void preview_release(FILE *trace)
 {
     if (!preview) return;
-    if (preview->stream) { c3_pack_stream_finish(preview->stream); preview->stream = NULL; }
     if (preview->ready) { (void)c3_render_recover(trace, "world-map-preview", 0, C3_RECOVER_DRAIN); preview->ready = 0; }
-    for (unsigned i = 0; i < PREVIEW_PACKS; ++i) c3_title_close(preview->titles + i);
-    preview->count = 0; preview->floor = 0;
+    preview->count = 0; preview->floor = 0; preview->streaming = 0;
 }
 
 static void preview_start(uint32_t floor, FILE *trace)
@@ -145,7 +146,7 @@ static void preview_start(uint32_t floor, FILE *trace)
     const C3FloorProfile *profile = c3_floor_profile(floor);
     preview_release(trace);
     preview->floor = floor;
-    if (!profile) return;
+    if (!profile) { c3_area_prefetch_release(); return; }
     {   /* Frame the orbit on the walkable ground (the collision file), not
          * on the sky dome and far terrain that the map packs also hold. */
         char path[160], error[128]; C3FieldMap field; memset(&field, 0, sizeof field);
@@ -164,30 +165,20 @@ static void preview_start(uint32_t floor, FILE *trace)
         }
         c3_field_close(&field);
     }
-    for (unsigned i = 0; i < PREVIEW_PACKS; ++i) {
-        char path[160]; FILE *f;
-        snprintf(path, sizeof path, "sdmc:/3ds/Colosseum3DS/boot/%s_map%u.c3t", profile->prefix, i);
-        if (!(f = fopen(path, "rb"))) break;
-        fclose(f);
-        memset(preview->jobs + preview->count, 0, sizeof preview->jobs[0]);
-        snprintf(preview->jobs[preview->count].path, sizeof preview->jobs[0].path, "%s", path);
-        preview->jobs[preview->count].title = preview->titles + preview->count;
-        ++preview->count;
-    }
-    if (preview->count) preview->stream = c3_pack_stream_start(preview->jobs, preview->count);
-    if (trace) { fprintf(trace, "world_map_preview floor=%03lx packs=%u\n", (unsigned long)floor, preview->count); fflush(trace); }
+    preview->streaming = c3_area_prefetch_start(floor, trace) > 0;
+    if (trace) { fprintf(trace, "world_map_preview floor=%03lx packs=%u\n", (unsigned long)floor, c3_area_prefetch_count()); fflush(trace); }
 }
 
 /* Once every pack arrived: bounds, first pose, renderer. */
 static void preview_poll(FILE *trace)
 {
-    if (!preview->stream || c3_pack_stream_done(preview->stream) < preview->count) return;
-    c3_pack_stream_finish(preview->stream); preview->stream = NULL;
+    if (!preview->streaming || c3_area_prefetch_done() < c3_area_prefetch_count()) return;
+    c3_area_prefetch_finish(); preview->streaming = 0;
     float lo[3] = {1e30f, 1e30f, 1e30f}, hi[3] = {-1e30f, -1e30f, -1e30f};
     unsigned loaded = 0;
-    for (unsigned i = 0; i < preview->count; ++i) {
-        C3Title *title = preview->titles + i;
-        if (!preview->jobs[i].ok || !c3_title_animate(title, 0, 0)) continue;
+    for (unsigned i = 0; i < c3_area_prefetch_count(); ++i) {
+        C3Title *title = c3_area_prefetch_title(i);
+        if (!c3_area_prefetch_ok(i) || !c3_title_animate(title, 0, 0)) continue;
         for (uint32_t v = 0; v < title->vertex_count; ++v)
             for (int k = 0; k < 3; ++k) {
                 float x = title->vertices[v].pos[k];
@@ -216,12 +207,12 @@ static void preview_frame(float seconds, FILE *trace)
 {
     if (!preview) return;
     preview->rest += seconds;
-    if (preview->wanted && preview->wanted != preview->floor && !preview->stream && preview->rest >= PREVIEW_REST)
+    if (preview->wanted && preview->wanted != preview->floor && !preview->streaming && preview->rest >= PREVIEW_REST)
         preview_start(preview->wanted, trace);
     preview_poll(trace);
     if (!preview->ready) {
-        size_t done = preview->stream ? c3_pack_stream_done(preview->stream) : 0;
-        c3_n3ds_top_loading(preview->count ? (float)done / (float)preview->count : 0.0f);
+        unsigned total = c3_area_prefetch_count();
+        c3_n3ds_top_loading(total ? (float)c3_area_prefetch_done() / (float)total : 0.0f);
         return;
     }
     preview->angle += PREVIEW_SPEED * seconds;
@@ -282,160 +273,207 @@ static void draw(const C3WorldMap *map, const char *note)
     c3_bottom_screen_present();
 }
 
-/* The journey before the floor link (the original's menu 0xC3: Wes and Rui
- * ride the bike across a 3D Orre). A port presentation on the top screen:
- * the menu's own map image, a curved route from the floor the player left
- * to the chosen one, a small bike riding it and a progress bar. Drawn by the
- * CPU straight into the top framebuffer (as c3_n3ds_top_loading), so it
- * needs no GPU state. A or B skips. */
-#define JOURNEY_SECONDS 3.2f
-#define JOURNEY_MAP_X 40 /* the 320x240 map, centred on the 400x240 screen */
+/* The journey before the floor link: gs_title.c fn_80025730 opens menu 0xC3
+ * and fn_80025F84 plays move_demo (tools/prepare_world_journey.py). The
+ * scenery and ground (journey_map%u.c3t) stream in when the map opens, as
+ * the original registers 0xC6A1000-1002 in fn_800259B0; the bike rides
+ * route animation frame_a of the path joint 0xC6A1000 under camera frame_b,
+ * one row of lbl_3_data_270 picked by direction and a session-long index.
+ * The bike is bike_hizuki (Wes with Rui) once flag 0x3E5 is set, else
+ * bike_pokemon. 0xAE frames after the camera starts, the world map's exit
+ * (fn_800255A4) fades for one second. The port holds the fade until the
+ * destination's map packs (the area prefetch) have arrived, so the ride
+ * covers the load; the last route frame holds if the load is longer. */
+#define JOURNEY_PARTS 4u
+#define JOURNEY_FADE 1.0f
+#define JOURNEY_MAX_WAIT 12.0f /* seconds; the prefetch cannot outlast it in practice */
+typedef struct {
+    C3Title maps[JOURNEY_PARTS]; C3PackJob map_jobs[JOURNEY_PARTS]; unsigned map_count;
+    C3PackStream *map_stream;
+    C3Title bike[JOURNEY_PARTS]; C3PackJob bike_jobs[JOURNEY_PARTS]; unsigned bike_count;
+} Journey;
+static Journey *journey;
+static C3WorldMapJourney journey_rows; /* lbl_8047A394/398: kept for the session */
+static int journey_shown;
+int c3_world_map_scene_take_journey_shown(void) { int shown = journey_shown; journey_shown = 0; return shown; }
 
-static void jput(uint8_t *fb, int x, int y, uint8_t r, uint8_t g, uint8_t b)
+static void journey_open(FILE *trace)
 {
-    if (x < 0 || x >= 400 || y < 0 || y >= 240) return;
-    uint8_t *p = fb + ((size_t)x * 240u + (239u - (unsigned)y)) * 3u;
-    p[0] = b; p[1] = g; p[2] = r;
+    journey = calloc(1, sizeof *journey);
+    if (!journey) return;
+    for (unsigned i = 0; i < JOURNEY_PARTS; ++i) {
+        C3PackJob *job = journey->map_jobs + journey->map_count;
+        FILE *f;
+        snprintf(job->path, sizeof job->path, "sdmc:/3ds/Colosseum3DS/boot/journey_map%u.c3t", i);
+        if (!(f = fopen(job->path, "rb"))) { job->path[0] = 0; break; }
+        fclose(f);
+        job->title = journey->maps + journey->map_count++;
+    }
+    if (journey->map_count) journey->map_stream = c3_pack_stream_start(journey->map_jobs, journey->map_count);
+    if (trace) { fprintf(trace, "world_map_journey_packs maps=%u\n", journey->map_count); fflush(trace); }
 }
 
-static void jdisc(uint8_t *fb, int cx, int cy, int radius, uint8_t r, uint8_t g, uint8_t b)
+static void journey_close(void)
 {
-    for (int y = -radius; y <= radius; ++y)
-        for (int x = -radius; x <= radius; ++x)
-            if (x * x + y * y <= radius * radius + radius / 2) jput(fb, cx + x, cy + y, r, g, b);
+    if (!journey) return;
+    if (journey->map_stream) c3_pack_stream_finish(journey->map_stream);
+    for (unsigned i = 0; i < JOURNEY_PARTS; ++i) { c3_title_close(journey->maps + i); c3_title_close(journey->bike + i); }
+    free(journey); journey = NULL;
 }
 
-/* Darken a pixel (the bike's shadow). */
-static void jshade(uint8_t *fb, int x, int y)
+/* Map-pack centre of a floor's menu item (bottom-screen x); 0 if none. */
+static int item_x(const MapPack *pack, uint32_t floor, int *x)
 {
-    if (x < 0 || x >= 400 || y < 0 || y >= 240) return;
-    uint8_t *p = fb + ((size_t)x * 240u + (239u - (unsigned)y)) * 3u;
-    p[0] = (uint8_t)(p[0] / 2); p[1] = (uint8_t)(p[1] / 2); p[2] = (uint8_t)(p[2] / 2);
-}
-
-/* The map image as a ready top framebuffer (BGR8, column-major). */
-static uint8_t *journey_background(const MapImage *board)
-{
-    uint8_t *bg = malloc(400u * 240u * 3u);
-    if (!bg) return NULL;
-    for (int y = 0; y < 240; ++y)
-        for (int x = 0; x < 400; ++x) {
-            int mx = x - JOURNEY_MAP_X;
-            uint8_t r = 18, g = 12, b = 8; /* dusk bars either side */
-            if (mx >= 0 && mx < 320) {
-                const uint8_t *s = board->rgba + ((size_t)(y * (int)board->h / 240) * board->w +
-                                                  (size_t)(mx * (int)board->w / 320)) * 4u;
-                r = (uint8_t)(s[0] * s[3] / 255); g = (uint8_t)(s[1] * s[3] / 255); b = (uint8_t)(s[2] * s[3] / 255);
-            }
-            uint8_t *p = bg + ((size_t)x * 240u + (239u - (unsigned)y)) * 3u;
-            p[0] = b; p[1] = g; p[2] = r;
-        }
-    return bg;
-}
-
-/* Centre of a floor's marker in top-screen pixels; 0 if the floor has none. */
-static int journey_place(const MapPack *pack, uint32_t floor, float *x, float *y)
-{
-    for (uint32_t i = 0; i < c3_world_map_entry_count(); ++i) {
+    for (uint32_t i = 0; pack->data && i < c3_world_map_entry_count(); ++i) {
         C3WorldMapEntry entry; const MapItem *m;
         if (!c3_world_map_entry(i, &entry) || entry.floor != floor || !(m = pack_item(pack, entry.item))) continue;
-        *x = (float)(JOURNEY_MAP_X + m->x + m->w / 2); *y = (float)(m->y + m->h / 2);
+        *x = m->x + m->w / 2;
         return 1;
     }
     return 0;
 }
 
-/* The bike: two wheels, a red frame, Wes up front and Rui behind. */
-static void journey_bike(uint8_t *fb, int x, int y, int face, int bob)
+/* Returns 1 when the journey was shown, 0 when its packs are missing (the
+ * link goes straight on), -1 on an application exit. */
+static int journey_play(const MapPack *pack, const C3WorldMap *map, uint32_t floor, int rui, FILE *trace)
 {
-    for (int i = -7; i <= 7; ++i) for (int j = -2; j <= 2; ++j)
-        if (i * i * 4 + j * j * 49 <= 196) jshade(fb, x + i, y + 4 + j);
-    y -= bob;
-    jdisc(fb, x - 5 * face, y, 3, 30, 30, 34);
-    jdisc(fb, x + 5 * face, y, 3, 30, 30, 34);
-    jput(fb, x - 5 * face, y, 170, 170, 170);
-    jput(fb, x + 5 * face, y, 170, 170, 170);
-    for (int i = -5; i <= 6; ++i) { jput(fb, x + i * face, y - 3, 200, 40, 32); jput(fb, x + i * face, y - 2, 150, 28, 24); }
-    jput(fb, x + 7 * face, y - 4, 240, 230, 160); /* headlamp */
-    jdisc(fb, x + 1 * face, y - 6, 2, 40, 48, 70);  /* Wes */
-    jput(fb, x + 1 * face, y - 9, 230, 230, 235);
-    jdisc(fb, x - 3 * face, y - 6, 2, 200, 120, 60); /* Rui */
-    jput(fb, x - 3 * face, y - 9, 220, 70, 60);
-}
-
-/* Returns 1 if frames were shown, 0 if the scene could not be drawn, -1 on
- * an exit request. */
-static int journey_run(const MapPack *pack, uint32_t from, uint32_t to, FILE *trace)
-{
-    float x0, y0, x2, y2;
-    if (!pack->data || gfxGetScreenFormat(GFX_TOP) != GSP_BGR8_OES || !journey_place(pack, to, &x2, &y2)) return 0;
-    if (!journey_place(pack, from, &x0, &y0)) { x0 = 200.0f; y0 = 120.0f; }
-    uint8_t *bg = journey_background(pack->image);
-    if (!bg) return 0;
-    /* Bow the route to one side, a quarter of its length. */
-    float dx = x2 - x0, dy = y2 - y0, len = sqrtf(dx * dx + dy * dy);
-    float x1 = (x0 + x2) * 0.5f, y1 = (y0 + y2) * 0.5f;
-    if (len > 1.0f) { x1 += -dy / len * len * 0.25f; y1 += dx / len * len * 0.25f; }
-    if (y1 < 10.0f) y1 = 10.0f;
-    c3_bottom_screen_notice(label(to), "Travelling...", "A / B: skip");
+    int ox, dx, west = 0; /* fn_800259B0 resets lbl_8047A380 when the map opens */
+    if (item_x(pack, map->origin_floor, &ox) && item_x(pack, floor, &dx)) west = c3_world_map_journey_west(0, ox, dx);
+    uint32_t anim = 0, camera_id = 0;
+    uint32_t row = c3_world_map_journey_pick(&journey_rows, west, &anim, &camera_id);
+    const char *bike = rui ? "hizuki" : "pokemon";
+    if (!journey || !journey->map_count) return 0;
+    for (unsigned i = 0; i < JOURNEY_PARTS; ++i) {
+        C3PackJob *job = journey->bike_jobs + journey->bike_count;
+        FILE *f;
+        snprintf(job->path, sizeof job->path, "sdmc:/3ds/Colosseum3DS/boot/journey_%s_a%02lu_%u.c3t", bike,
+                 (unsigned long)anim, i);
+        if (!(f = fopen(job->path, "rb"))) { job->path[0] = 0; break; }
+        fclose(f);
+        job->title = journey->bike + journey->bike_count++;
+    }
     if (trace) {
-        fprintf(trace, "world_map_journey from=%03lx to=%03lx start=%d,%d end=%d,%d\n", (unsigned long)from,
-                (unsigned long)to, (int)x0, (int)y0, (int)x2, (int)y2);
+        fprintf(trace, "world_map_journey row=%lu route=%lu camera=%08lx bike=%s west=%d packs=%u+%u\n",
+                (unsigned long)row, (unsigned long)anim, (unsigned long)camera_id, bike, west,
+                journey->map_count, journey->bike_count);
         fflush(trace);
     }
+    if (!journey->bike_count) return 0;
+    uint64_t load_start = c3_n3ds_time_us();
+    size_t failed = c3_pack_load_all(journey->bike_jobs, journey->bike_count, NULL);
+    if (journey->map_stream) { c3_pack_stream_finish(journey->map_stream); journey->map_stream = NULL; }
+    const C3Title *models[2 * JOURNEY_PARTS];
+    unsigned count = 0, first_bike;
+    uint64_t skin = 0;
+    for (unsigned i = 0; i < journey->map_count; ++i) {
+        if (!journey->map_jobs[i].ok) failed = failed ? failed : 100 + i;
+        journey->maps[i].retained = 1;
+        models[count++] = journey->maps + i;
+    }
+    first_bike = count;
+    for (unsigned i = 0; i < journey->bike_count; ++i) { skin |= UINT64_C(1) << count; models[count++] = journey->bike + i; }
+    for (unsigned i = 0; !failed && i < count; ++i) if (!c3_title_animate((C3Title *)models[i], 0, 0)) failed = 200 + i;
+    if (failed) {
+        if (trace) { fprintf(trace, "world_map_journey ready=0 failed=%lu\n", (unsigned long)failed); fflush(trace); }
+        return 0;
+    }
+    /* The orbit preview's packs stay with the prefetch; the GPU lets go. */
+    preview_release(trace);
+    char error[192] = "";
+#ifndef C3_NO_GPU_SKIN
+    c3_stage_renderer_request_gpu_skin(skin);
+#endif
+    if (c3_stage_renderer_init(models, count, error, sizeof error)) {
+        c3_pack_cache_clear();
+        if (c3_stage_renderer_init(models, count, error, sizeof error)) {
+            if (trace) { fprintf(trace, "world_map_journey ready=0 error=%s\n", error); fflush(trace); }
+            return 0;
+        }
+    }
+#ifndef C3_NO_GPU_SKIN
+    for (unsigned i = first_bike; i < count; ++i) {
+        C3Title *part = journey->bike + (i - first_bike);
+        part->gpu_batches = c3_stage_renderer_gpu_skin_mask(i);
+        part->retained = part->gpu_batches != 0;
+    }
+#else
+    (void)skin;
+#endif
+    const C3Title *rider = journey->bike;
+    float route_end = rider->clip_count && rider->clips[0].frame_count > 1u
+        ? (float)(rider->clips[0].frame_count - 1u) / rider->fps : 0.0f;
+    float ride = (float)C3_WORLD_MAP_JOURNEY_FRAMES / 60.0f, fade_start = -1.0f, t = 0.0f;
+    uint64_t previous = c3_n3ds_active_time_us();
+    unsigned frames = 0, prefetched = 0;
+    int result = 1;
     C3N3dsInput input = {0};
-    uint64_t start = c3_n3ds_time_us();
-    int released = 0, frames = 0, skipped = 0, result = 1;
+    if (trace) {
+        fprintf(trace, "world_map_journey ready=1 load_us=%llu route_seconds=%.3f prefetch=%u/%u\n",
+                (unsigned long long)(c3_n3ds_time_us() - load_start), (double)route_end,
+                c3_area_prefetch_done(), c3_area_prefetch_count());
+        fflush(trace);
+    }
     for (;;) {
         if (!c3_n3ds_poll(&input)) { result = -1; break; }
-        if (!input.held && !input.touch_held) released = 1;
-        if (released && (input.pressed & (C3_PAD_A | C3_PAD_B))) { skipped = 1; break; }
-        float s = (float)(c3_n3ds_time_us() - start) / 1e6f, t = s / JOURNEY_SECONDS;
-        if (t > 1.0f) t = 1.0f;
-        float e = t * t * (3.0f - 2.0f * t); /* ease in and out */
-        u16 width = 0, height = 0;
-        uint8_t *fb = gfxGetFramebuffer(GFX_TOP, GFX_LEFT, &width, &height);
-        if (!fb || width != 240 || height < 400) break;
-        memcpy(fb, bg, 400u * 240u * 3u);
-        /* Route: dotted, bright where the bike has been. */
-        for (int i = 0; i <= 64; ++i) {
-            float u = (float)i / 64.0f, a = (1 - u) * (1 - u), b = 2 * u * (1 - u), c = u * u;
-            int px = (int)lroundf(a * x0 + b * x1 + c * x2), py = (int)lroundf(a * y0 + b * y1 + c * y2);
-            if (u <= e) jdisc(fb, px, py, 1, 255, 236, 120);
-            else if (i % 2 == 0) jput(fb, px, py, 120, 90, 50);
+        uint64_t now = c3_n3ds_active_time_us();
+        float delta = (float)(now - previous) / 1e6f; previous = now;
+        if (delta > 0.1f) delta = 0.1f; /* a stall does not skip the ride */
+        t += delta;
+        prefetched = c3_area_prefetch_done();
+        if (fade_start < 0 && t >= ride && (prefetched >= c3_area_prefetch_count() || t >= JOURNEY_MAX_WAIT))
+            fade_start = t;
+        float fade = fade_start < 0 ? 1.0f : 1.0f - (t - fade_start) / JOURNEY_FADE;
+        if (fade <= 0.0f) break;
+        int sampled = 1;
+        for (unsigned i = 0; i < journey->map_count; ++i) sampled &= c3_title_animate(journey->maps + i, 0, t);
+        for (unsigned i = 0; i < journey->bike_count; ++i)
+            sampled &= c3_title_animate(journey->bike + i, 0, t < route_end ? t : route_end);
+        if (!sampled) { if (trace) { fprintf(trace, "world_map_journey sample_error=1\n"); fflush(trace); } break; }
+        C3TitleCamera camera = rider->pose.camera;
+        C3TitleRenderStats stats;
+        int drawn = c3_stage_renderer_draw(models, count, &camera, fade, &stats, error, sizeof error);
+        if (drawn == C3_RENDER_BUSY) {
+            C3RenderRecoveryResult recovery = c3_render_recover(trace, "world-map-journey", frames, C3_RECOVER_WAIT);
+            if (recovery == C3_RECOVERY_EXIT) { result = -1; break; }
+            if (recovery == C3_RECOVERY_RESUME_PAUSED) previous = c3_n3ds_active_time_us();
+            continue;
         }
-        jdisc(fb, (int)x0, (int)y0, 3, 80, 160, 255);
-        jdisc(fb, (int)x2, (int)y2, 3 + (int)(fmodf(s * 4.0f, 2.0f)), 255, 90, 60);
-        {   /* The bike on the curve, facing its direction of travel. */
-            float a = (1 - e) * (1 - e), b = 2 * e * (1 - e), c = e * e;
-            float bx = a * x0 + b * x1 + c * x2, by = a * y0 + b * y1 + c * y2;
-            float tx = 2 * (1 - e) * (x1 - x0) + 2 * e * (x2 - x1);
-            int face = tx < 0 ? -1 : 1;
-            for (int k = 1; k <= 3 && e < 1.0f; ++k) /* dust */
-                jdisc(fb, (int)bx - face * (8 + k * 4), (int)by + 2 - (k & 1), k == 1 ? 2 : 1, 210, 180, 130);
-            journey_bike(fb, (int)lroundf(bx), (int)lroundf(by), face, e < 1.0f && ((int)(s * 12.0f) & 1));
-        }
-        /* Progress bar. */
-        for (int x = 80; x < 320; ++x)
-            for (int y = 226; y < 233; ++y) {
-                int edge = y == 226 || y == 232 || x == 80 || x == 319;
-                int filled = x - 81 < (int)(e * 238.0f);
-                if (edge) jput(fb, x, y, 40, 28, 16);
-                else if (filled) jput(fb, x, y, 255, 200, 90);
-                else jput(fb, x, y, 90, 70, 50);
-            }
-        gfxFlushBuffers();
-        gfxScreenSwapBuffers(GFX_TOP, false);
+        if (drawn) { if (trace) { fprintf(trace, "world_map_journey draw_error=%s\n", error); fflush(trace); } break; }
         ++frames;
-        if (t >= 1.0f && s >= JOURNEY_SECONDS + 0.4f) break; /* a beat at the destination */
-        gspWaitForVBlank();
+#ifdef C3_ROUNDTRIP_PROBE
+        {   /* Review frames of each ride (the capture reads the previous frame). */
+            static unsigned ride; char shot[96];
+            if (frames == 1) { ++ride; mkdir("sdmc:/3ds/Colosseum3DS/probe", 0777); }
+            if (frames == 40 || frames == 100 || frames == 160) {
+                snprintf(shot, sizeof shot, "sdmc:/3ds/Colosseum3DS/probe/journey%u_%03u.bmp", ride, frames);
+                (void)c3_n3ds_capture_top(shot);
+            }
+            if (frames == 100) {
+                snprintf(shot, sizeof shot, "sdmc:/3ds/Colosseum3DS/probe/journey%u_bottom.bmp", ride);
+                (void)c3_n3ds_capture_bottom(shot);
+            }
+        }
+#endif
     }
-    free(bg);
+    if (c3_render_recover(trace, "world-map-journey", frames, result < 0 ? C3_RECOVER_EXIT : C3_RECOVER_DRAIN) ==
+        C3_RECOVERY_EXIT) result = -1;
     if (trace) {
-        fprintf(trace, "world_map_journey_end frames=%d skipped=%d\n", frames, skipped);
+        fprintf(trace, "world_map_journey_end frames=%u seconds=%.2f fade_start=%.2f prefetch=%u/%u\n", frames,
+                (double)t, (double)fade_start, prefetched, c3_area_prefetch_count());
         fflush(trace);
     }
     return result < 0 ? -1 : frames > 0;
+}
+
+/* Everything the scene owns; keep_prefetch leaves the destination's map
+ * packs for the next field load. */
+static void scene_close(MapPack *pack, FILE *trace, int keep_prefetch)
+{
+    preview_release(trace);
+    if (!keep_prefetch) c3_area_prefetch_release();
+    journey_close();
+    free(pack->data); pack->data = NULL;
+    free(preview); preview = NULL;
 }
 
 int c3_world_map_scene_run(C3GameState *state, FILE *trace, char *error, size_t capacity)
@@ -451,8 +489,10 @@ int c3_world_map_scene_run(C3GameState *state, FILE *trace, char *error, size_t 
     if (!state || !c3_game_state_summary(state, &summary) || summary.floor != C3_FLOOR_WORLD_MAP_ID ||
         !c3_world_map_open(&map, summary.previous_floor, read_flag, state)) {
         snprintf(error, capacity, "The world map could not be opened from this state.");
+        scene_close(&pack, trace, 0);
         return -1;
     }
+    journey_open(trace);
     if (trace) {
         fprintf(trace, "world_map_begin previous=%lu enabled=%03lx visible=%lu cursor=%lu save_writes=0\n",
                 (unsigned long)summary.previous_floor, (unsigned long)map.enabled,
@@ -529,7 +569,7 @@ int c3_world_map_scene_run(C3GameState *state, FILE *trace, char *error, size_t 
             int travel = 0;
             if (!c3_world_map_choose(&map, choice, read_flag, state, &floor, &travel)) {
                 snprintf(error, capacity, "The world-map destination is invalid.");
-                free(pack.data);preview_release(trace);free(preview);preview=NULL;
+                scene_close(&pack, trace, 0);
                 return -1;
             }
             if (!c3_field_scene_supports(floor)) {
@@ -539,23 +579,28 @@ int c3_world_map_scene_run(C3GameState *state, FILE *trace, char *error, size_t 
                 /* floorLink(floor, 0): entrance 0, arriving from floor 0x38E. */
                 if (!c3_game_state_set_floor(state, floor, C3_FLOOR_WORLD_MAP_ID, 0)) {
                     snprintf(error, capacity, "The world-map destination could not be recorded.");
-                    free(pack.data);preview_release(trace);free(preview);preview=NULL;
-                return -1;
+                    scene_close(&pack, trace, 0);
+                    return -1;
                 }
                 int presented = 0;
-                /* The orbit preview owns the GPU; drain it before the
-                 * journey draws into the framebuffer. */
-                preview_release(trace);
-                if (travel && native) presented = journey_run(&pack, map.origin_floor, floor, trace);
+                uint32_t rui = 0;
+                /* The destination's map packs load during the ride (or are
+                 * already here from the preview); the field takes them. */
+                if (c3_area_prefetch_floor() != floor) { preview_release(trace); (void)c3_area_prefetch_start(floor, trace); }
+                if (travel && !read_flag(state, C3_WORLD_MAP_JOURNEY_RUI_FLAG, &rui)) rui = 0;
+                /* The bottom screen keeps the world map, as in the original,
+                 * with the cursor on the chosen destination. */
+                if (choice >= 0) map.cursor = (uint32_t)choice;
+                if (native) draw_native(&pack, &map, NULL); else draw(&map, NULL);
+                if (travel) presented = journey_play(&pack, &map, floor, rui == 1, trace);
+                journey_shown = presented > 0;
                 if (trace) {
                     fprintf(trace, "world_map_link floor=%lu entrance=0 cancel=%d journey=%d journey_presented=%d save_writes=0\n",
                             (unsigned long)floor, choice < 0, travel, presented > 0);
                     fflush(trace);
                 }
-                free(pack.data);free(preview);preview=NULL;
-                if (presented < 0) return 1; /* exit requested during the ride */
-                c3_bottom_screen_notice(label(floor), "Travelling...", "Please wait...");
-                return 2;
+                scene_close(&pack, trace, presented >= 0);
+                return presented < 0 ? 1 : 2; /* 1: exit requested during the ride */
             }
         }
         if (dirty) {
@@ -572,6 +617,6 @@ int c3_world_map_scene_run(C3GameState *state, FILE *trace, char *error, size_t 
           preview_frame(seconds, trace); }
         gspWaitForVBlank();
     }
-    free(pack.data);preview_release(trace);free(preview);preview=NULL;
+    scene_close(&pack, trace, 0);
     return 1;
 }
