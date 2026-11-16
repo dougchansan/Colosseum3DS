@@ -47,6 +47,15 @@ typedef struct {
     uint8_t layout;
 } C3StageBattleHud;
 int c3_stage_renderer_set_battle_hud(const C3StageBattleHud *hud, char *error, size_t capacity);
+/* A full-screen image drawn over the scene (before the HUD), scaled about
+ * the screen centre and blended by alpha: e.g. a captured frame dissolving
+ * into the scene. Upload once after init while idle; rgba is top-down,
+ * width x height a power of two, the image in its top-left used area. Init
+ * and shutdown clear it. Returns 1, or 0 with error. */
+int c3_stage_renderer_set_overlay_image(const uint8_t *rgba, unsigned width, unsigned height,
+                                        unsigned used_width, unsigned used_height, char *error, size_t capacity);
+/* Per frame: alpha 0 hides it. */
+void c3_stage_renderer_set_overlay(float alpha, float scale);
 
 /* Implemented by the shared renderer in title_renderer.c. Packs retain their
  * independent animation clocks and bounded C3Title storage. All packs must
@@ -90,6 +99,9 @@ int c3_stage_renderer_confusion(const C3ConfusionType12 *);
  * skipped. Each returns 1, or 0 (previous state kept) for invalid input. */
 #define C3_STAGE_MAX_INSTANCES 72u
 #define C3_STAGE_MAX_EFFECT_VERTICES 6144u
+/* additive 3: projected shadow. rgba is the shadow colour (texture alpha
+ * still cuts it out); the draw writes depth and passes only nearer, so a
+ * flattened model's coplanar overlaps blend once. */
 typedef struct { uint32_t model; float matrix[12]; float rgba[4]; uint8_t additive; } C3StageInstance;
 typedef struct { float pos[3]; float rgba[4]; } C3StageEffectVertex;
 int c3_stage_renderer_set_model_matrix(size_t model, const float matrix[12]);

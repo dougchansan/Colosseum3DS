@@ -40,6 +40,7 @@ REL_SOURCE = title.ROOT / "vendor/colosseum/src/rel/worldmap_menu_rel/worldmap_m
 ROUTE_END = 149       # every move_demo route and camera animation
 BIKE_LOOP = 15        # bike animation 0 of both models
 SCENERY_SAMPLES = 600 # sparse samples of the scenery's slow 2999-frame loop
+SHADOW_LIGHT = (-1267.0223, 1867.7216, 1426.1390)
 
 
 def rel_rows():
@@ -93,6 +94,12 @@ def prepare(disc, output, parser, bikes=("hizuki", "pokemon"), anims=None):
     if len(path_model.model.bones) != 1 or path_model.ends != [ROUTE_END] * 15:
         raise ValueError("move_demo route animations changed")
     lights = geo.fixed_lights(raw, data)
+    # The shadow light 0xC6A1603 (world_map_scene.c JOURNEY_LIGHT_*): light
+    # set 3, directional (flags & 3 == 1), black.
+    shadow = raw.lights[3].light
+    position = tuple(shadow.position.position)
+    if (shadow.flags & 3) != 1 or any(abs(a - b) > 0.01 for a, b in zip(position, SHADOW_LIGHT)):
+        raise ValueError("move_demo shadow light 0xC6A1603 changed")
     cam = scene.cameras[0]
     fixed = (*cam.position, *cam.target_position, cam.roll, cam.field_of_view, cam.near, cam.far, cam.aspect, 0.)
     output.parent.mkdir(parents=True, exist_ok=True)

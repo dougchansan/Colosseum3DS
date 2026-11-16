@@ -89,12 +89,25 @@ destination name) through the journey and the following load; the old
 "Travelling..." notice is gone. After a journey the top screen stays black
 (faded out) until the field draws.
 
+### Shadow and opening dissolve
+
+- **Shadow.** `fn_80025F84` casts the bike's shadow from light `0xC6A1603`
+  onto the ground `0xC6A1002`. That light is directional and the ground and
+  every route lie at y = 0, so the port draws both bike parts flattened onto
+  y = 0 along the light (stage-renderer instance mode 3: stencilled so the
+  layers darken once, pulled 2% towards the camera along the view rays for
+  depth). Darkness 0.5, matched to the Dolphin reference.
+- **Dissolve.** `fn_80025A80` dissolves the captured world-map screen into
+  the ride. The port builds that screen from the map pack (map, markers,
+  cursor on the destination, 1.25x to fill the top screen) and draws it over
+  the ride with `c3_stage_renderer_set_overlay`: opacity falls linearly to
+  0 in 0.67 s while it zooms to 2x, as the reference shows.
+
 ### Not drawn (recorded in `journey-manifest.json`)
 
-- The bike's projected shadow on `0xC6A1002` (`GSmodelSetShadow*`).
 - `bike_effect_poke` (`0C831400`) dust particles; their callbacks are listed.
 - The engine sound `0x449` (no sound pack carries it yet).
-- The two menu-capture quads of `fn_80025A80` (the map zooming away).
+- The second, smaller capture quad of `fn_80025A80` (the menu at the cursor).
 - The scenery's 2999-frame loop is sampled sparsely (600 samples).
 - The fourth word of each `lbl_3_data_270` row (1.0 or 0.5) is not read by
   `fn_80025F84` and is not used.
@@ -148,6 +161,6 @@ frames), so the reference was aligned at 30 frames per second.
   same shots, same cuts, same framing.
 - The original fades out over about 1.9 s after the ride (`fadeSet(2.0f, 3)`);
   the port's fade was 1.0 s and is now 2.0 s.
-- Differences that remain: the original cross-fades from the world-map
-  capture for about the first second (`fn_80025A80`), and draws the bike's
-  projected shadow and the wheel dust; the port draws neither.
+- The shadow and the opening dissolve were then added and compared again
+  at the same times: shadow shape, direction and darkness and the map
+  dissolve match. The wheel dust is the remaining difference.

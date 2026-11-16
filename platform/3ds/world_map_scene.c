@@ -294,6 +294,40 @@ static void draw(const C3WorldMap *map, const char *note)
 #define JOURNEY_PARTS 4u
 #define JOURNEY_FADE 2.0f
 #define JOURNEY_MAX_WAIT 12.0f /* seconds; the prefetch cannot outlast it in practice */
+/* fn_80025F84 casts the bike's shadow (GSmodelSetShadowFlags 2) from light
+ * 0xC6A1603 onto the ground 0xC6A1002. That light is directional, towards
+ * (-1267.02, 1867.72, 1426.14) in move_demo (tools/prepare_world_journey.py
+ * checks it), and the ground and every route lie at y = 0, so the port
+ * flattens the bike onto y = 0 along it. The shadow's darkness is matched
+ * to the Dolphin reference. */
+#define JOURNEY_LIGHT_X (-1267.0223f)
+#define JOURNEY_LIGHT_Y 1867.7216f
+#define JOURNEY_LIGHT_Z 1426.1390f
+#define JOURNEY_SHADOW_ALPHA 0.5f
+#define JOURNEY_SHADOW_LIFT 0.01f /* above the ground, in pack units */
+/* fn_80025A80's dissolve: the Dolphin reference (30 rendered frames per
+ * second in the ride) shows the captured screen fading roughly linearly to
+ * nothing in about 20 frames while it zooms to about twice its size. */
+#define JOURNEY_DISSOLVE 0.67f
+
+/* The top framebuffer (BGR8, column-major) as a 512x256 top-down RGBA image
+ * with the 400x240 frame in its top-left corner; NULL when unavailable. */
+static uint8_t *journey_capture_top(void)
+{
+    u16 width = 0, height = 0;
+    if (gfxGetScreenFormat(GFX_TOP) != GSP_BGR8_OES) return NULL;
+    const uint8_t *fb = gfxGetFramebuffer(GFX_TOP, GFX_LEFT, &width, &height);
+    if (!fb || width != 240 || height < 400) return NULL;
+    uint8_t *rgba = calloc(512u * 256u, 4u);
+    if (!rgba) return NULL;
+    for (unsigned y = 0; y < 240; ++y)
+        for (unsigned x = 0; x < 400; ++x) {
+            const uint8_t *p = fb + ((size_t)x * 240u + (239u - y)) * 3u;
+            uint8_t *q = rgba + ((size_t)y * 512u + x) * 4u;
+            q[0] = p[2]; q[1] = p[1]; q[2] = p[0]; q[3] = 255;
+        }
+    return rgba;
+}
 typedef struct {
     C3Title maps[JOURNEY_PARTS]; C3PackJob map_jobs[JOURNEY_PARTS]; unsigned map_count;
     C3PackStream *map_stream;
@@ -338,6 +372,73 @@ static int item_x(const MapPack *pack, uint32_t floor, int *x)
         return 1;
     }
     return 0;
+}
+
+/* The bike's shadow instances for this frame: flattened onto the ground
+ * along the shadow light (x' = x - (Lx/Ly) y, y' = lift, z' = z - (Lz/Ly) y),
+ * then pulled towards the camera along each view ray by a fraction of its
+ * distance. The pull keeps every point's screen position and keeps the
+ * shadow in front of the ground despite the ride camera's 0.01..3277 depth
+ * range. */
+#define JOURNEY_SHADOW_PULL 0.02f
+static int journey_shadow(unsigned first, unsigned count, const C3TitleCamera *camera)
+{
+    C3StageInstance shadow[JOURNEY_PARTS];
+    const float sx = -JOURNEY_LIGHT_X / JOURNEY_LIGHT_Y, sz = -JOURNEY_LIGHT_Z / JOURNEY_LIGHT_Y;
+    const float k = JOURNEY_SHADOW_PULL, a = 1.0f - k;
+    const float m[12] = {a, a * sx, 0, k * camera->eye[0],
+                         0, 0, 0, a * JOURNEY_SHADOW_LIFT + k * camera->eye[1],
+                         0, a * sz, a, k * camera->eye[2]};
+    unsigned n = 0;
+    for (unsigned i = first; i < count && n < JOURNEY_PARTS; ++i, ++n) {
+        memset(shadow + n, 0, sizeof shadow[n]);
+        shadow[n].model = i; memcpy(shadow[n].matrix, m, sizeof m);
+        shadow[n].rgba[3] = JOURNEY_SHADOW_ALPHA; shadow[n].additive = 3;
+    }
+    return c3_stage_renderer_set_instances(shadow, n);
+}
+
+/* Alpha-blend a sprite, scaled by 1.25 about its centre at (cx, cy). */
+static void journey_blit(uint8_t *rgba, const MapImage *sprite, float cx, float cy)
+{
+    int w = (int)(sprite->w * 1.25f + 0.5f), h = (int)(sprite->h * 1.25f + 0.5f);
+    int x0 = (int)(cx - w * 0.5f), y0 = (int)(cy - h * 0.5f);
+    for (int y = 0; y < h; ++y)
+        for (int x = 0; x < w; ++x) {
+            int ox = x0 + x, oy = y0 + y;
+            if (ox < 0 || ox >= 400 || oy < 0 || oy >= 240) continue;
+            const uint8_t *s = sprite->rgba + ((size_t)(y * (int)sprite->h / h) * sprite->w + (size_t)(x * (int)sprite->w / w)) * 4u;
+            uint8_t *d = rgba + ((size_t)oy * 512u + (size_t)ox) * 4u;
+            for (int k = 0; k < 3; ++k) d[k] = (uint8_t)((s[k] * s[3] + d[k] * (255 - s[3])) / 255);
+        }
+}
+
+/* The screen the original dissolves (the world-map menu, captured by
+ * GSgfxBeginBackFBCapture): the map with its markers and the cursor on the
+ * chosen destination, scaled by 1.25 to fill the 400x240 top screen (the
+ * 4:3 map cropped at top and bottom). 512x256 RGBA, image top-left. */
+static uint8_t *journey_map_image(const MapPack *pack, const C3WorldMap *map, uint32_t floor)
+{
+    const MapImage *board = pack->image, *cursor = pack->image + 1, *marker = pack->image + 2;
+    uint8_t *rgba = calloc(512u * 256u, 4u);
+    if (!rgba) return NULL;
+    for (unsigned y = 0; y < 240; ++y)
+        for (unsigned x = 0; x < 400; ++x) {
+            unsigned bx = (unsigned)(x / 1.25f), by = (unsigned)((y + 30u) / 1.25f);
+            if (bx >= board->w) bx = board->w - 1;
+            if (by >= board->h) by = board->h - 1;
+            const uint8_t *s = board->rgba + ((size_t)by * board->w + bx) * 4u;
+            uint8_t *d = rgba + ((size_t)y * 512u + x) * 4u;
+            d[0] = s[0]; d[1] = s[1]; d[2] = s[2]; d[3] = 255;
+        }
+    for (uint32_t i = 0; i < map->visible_count; ++i) {
+        C3WorldMapEntry entry; int index = c3_world_map_visible(map, i); const MapItem *m;
+        if (index < 0 || !c3_world_map_entry((uint32_t)index, &entry) || !(m = pack_item(pack, entry.item))) continue;
+        float cx = (m->x + m->w / 2) * 1.25f, cy = (m->y + m->h / 2) * 1.25f - 30.0f;
+        journey_blit(rgba, marker, cx, cy);
+        if (entry.floor == floor) journey_blit(rgba, cursor, cx, cy);
+    }
+    return rgba;
 }
 
 /* Returns 1 when the journey was shown, 0 when its packs are missing (the
@@ -387,6 +488,10 @@ static int journey_play(const MapPack *pack, const C3WorldMap *map, uint32_t flo
     /* The orbit preview's packs stay with the prefetch; the GPU lets go. */
     preview_release(trace);
     char error[192] = "";
+    /* fn_80025F84 captures the screen (GSgfxBeginBackFBCapture) and
+     * fn_80025A80 dissolves it into the ride; keep the top screen's last
+     * frame for that. */
+    uint8_t *capture = pack->data ? journey_map_image(pack, map, floor) : journey_capture_top();
 #ifndef C3_NO_GPU_SKIN
     c3_stage_renderer_request_gpu_skin(skin);
 #endif
@@ -394,6 +499,7 @@ static int journey_play(const MapPack *pack, const C3WorldMap *map, uint32_t flo
         c3_pack_cache_clear();
         if (c3_stage_renderer_init(models, count, error, sizeof error)) {
             if (trace) { fprintf(trace, "world_map_journey ready=0 error=%s\n", error); fflush(trace); }
+            free(capture);
             return 0;
         }
     }
@@ -406,6 +512,12 @@ static int journey_play(const MapPack *pack, const C3WorldMap *map, uint32_t flo
 #else
     (void)skin;
 #endif
+    if (capture) {
+        if (!c3_stage_renderer_set_overlay_image(capture, 512, 256, 400, 240, error, sizeof error) && trace) {
+            fprintf(trace, "world_map_journey dissolve=0 error=%s\n", error); fflush(trace);
+        }
+        free(capture); capture = NULL;
+    }
     const C3Title *rider = journey->bike;
     float route_end = rider->clip_count && rider->clips[0].frame_count > 1u
         ? (float)(rider->clips[0].frame_count - 1u) / rider->fps : 0.0f;
@@ -433,6 +545,11 @@ static int journey_play(const MapPack *pack, const C3WorldMap *map, uint32_t flo
         if (fade_start < 0 && t >= ride && (prefetched >= c3_area_prefetch_count() || t >= JOURNEY_MAX_WAIT))
             fade_start = t;
         float fade = fade_start < 0 ? 1.0f : 1.0f - (t - fade_start) / JOURNEY_FADE;
+        {   /* The captured frame dissolves while it zooms to twice its size. */
+            float p = 1.0f - t / JOURNEY_DISSOLVE;
+            if (p < 0.0f) p = 0.0f;
+            c3_stage_renderer_set_overlay(p, 2.0f - p);
+        }
         if (fade <= 0.0f) break;
         int sampled = 1;
         for (unsigned i = 0; i < journey->map_count; ++i) sampled &= c3_title_animate(journey->maps + i, 0, t);
@@ -440,6 +557,9 @@ static int journey_play(const MapPack *pack, const C3WorldMap *map, uint32_t flo
             sampled &= c3_title_animate(journey->bike + i, 0, t < route_end ? t : route_end);
         if (!sampled) { if (trace) { fprintf(trace, "world_map_journey sample_error=1\n"); fflush(trace); } break; }
         C3TitleCamera camera = rider->pose.camera;
+        if (!journey_shadow(first_bike, count, &camera) && frames == 0 && trace) {
+            fprintf(trace, "world_map_journey shadow=0\n"); fflush(trace);
+        }
         if (c3_debug_overlay_enabled()) {
             char l1[64], l2[64];
             snprintf(l1, sizeof l1, "row %lu route %lu cam %08lx %s", (unsigned long)row, (unsigned long)anim,
@@ -463,6 +583,13 @@ static int journey_play(const MapPack *pack, const C3WorldMap *map, uint32_t flo
             if (frames == 1) { ++ride; mark = 1; mkdir("sdmc:/3ds/Colosseum3DS/probe", 0777); }
             /* One top capture per half second of ride time (named in ms),
              * to line up with an original-game reference at 60 Hz. */
+            static int early;
+            if (frames == 1) early = 0;
+            if (!early && t >= 0.2f) {
+                snprintf(shot, sizeof shot, "sdmc:/3ds/Colosseum3DS/probe/journey%u_t0200.bmp", ride);
+                (void)c3_n3ds_capture_top(shot);
+                early = 1;
+            }
             if (t >= 0.5f * (float)mark && mark <= 8) {
                 snprintf(shot, sizeof shot, "sdmc:/3ds/Colosseum3DS/probe/journey%u_t%04u.bmp", ride, mark * 500u);
                 (void)c3_n3ds_capture_top(shot);

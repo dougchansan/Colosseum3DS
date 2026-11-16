@@ -42,6 +42,10 @@ static C3StageBattleHud battle_hud;
 static uint32_t hud_texture = UINT32_MAX;
 #define C3_HUD_MAX_VERTICES ((9u + 8u * 48u) * 6u)
 static TitleGPUVertex *hud_vertices;
+/* Full-screen overlay image (c3_stage_renderer_set_overlay_image). */
+static uint32_t overlay_texture = UINT32_MAX;
+static TitleGPUVertex *overlay_vertices;
+static float overlay_alpha, overlay_scale = 1.0f, overlay_u = 1.0f, overlay_v = 1.0f;
 /* One original field-camera texture entry. Its model is a member of the
  * bounded scene arena, but is never submitted to the main room camera. */
 typedef struct { bool configured, enabled; size_t model, screen_model; uint32_t texture; } TVBinding;
@@ -283,6 +287,7 @@ int c3_stage_renderer_init(const C3Title *const *models, size_t count,
     memset(model_modulation, 0, sizeof model_modulation);
     effect_pass_reset();
     hud_texture = UINT32_MAX;
+    overlay_texture = UINT32_MAX; overlay_alpha = 0.0f; overlay_scale = 1.0f;
     scene_drawn=false;
     if (!models || !count || count > C3_STAGE_MAX_MODELS)
         return fail(error, capacity, "Invalid bounded stage model count.");
@@ -946,6 +951,68 @@ static void hud_quad(uint32_t *count,float x,float y,float w,float h,float u,flo
     }
 }
 
+int c3_stage_renderer_set_overlay_image(const uint8_t *rgba, unsigned width, unsigned height,
+                                        unsigned used_width, unsigned used_height, char *error, size_t capacity)
+{
+    if (!rgba || !scene_count || width < 8 || height < 8 || width > 1024 || height > 1024 ||
+        (width & (width - 1)) || (height & (height - 1)) || !used_width || !used_height ||
+        used_width > width || used_height > height)
+        return fail(error, capacity, "Invalid overlay image.");
+    if (overlay_texture != UINT32_MAX) return fail(error, capacity, "The overlay image is already set.");
+    if (texture_count >= C3_STAGE_MAX_TEXTURES || !c3_stage_renderer_is_idle())
+        return fail(error, capacity, "Overlay upload requires an idle texture slot.");
+    if (!overlay_vertices) {
+        overlay_vertices = linearAlloc(6 * sizeof *overlay_vertices);
+        if (!overlay_vertices) return fail(error, capacity, "Overlay vertex allocation failed.");
+    }
+    C3TitleTexture source = {.width = width, .height = height, .pixels = (uint8_t *)rgba, .size = width * height * 4u};
+    if (!upload_texture(&textures[texture_count], &source)) return fail(error, capacity, "Overlay upload failed.");
+    C3D_TexSetFilter(&textures[texture_count], GPU_LINEAR, GPU_LINEAR);
+    overlay_texture = texture_count++;
+    gpu_buffer_bytes += textures[overlay_texture].size;
+    overlay_u = (float)used_width / (float)width; overlay_v = (float)used_height / (float)height;
+    return 1;
+}
+
+void c3_stage_renderer_set_overlay(float alpha, float scale)
+{
+    overlay_alpha = alpha > 0.0f ? (alpha < 1.0f ? alpha : 1.0f) : 0.0f;
+    overlay_scale = scale > 0.01f && scale < 16.0f ? scale : 1.0f;
+}
+
+/* After the scene and its effects, before the HUD: the image scaled about
+ * the screen centre, blended by overlay_alpha. */
+static void draw_overlay(C3TitleRenderStats *stats)
+{
+    if (overlay_texture == UINT32_MAX || !overlay_vertices || overlay_alpha <= 0.0f) return;
+    static const unsigned corners[6][2] = {{0,0},{1,0},{0,1},{0,1},{1,0},{1,1}};
+    float w = 400.0f * overlay_scale, h = 240.0f * overlay_scale, x = 200.0f - w * 0.5f, y = 120.0f - h * 0.5f;
+    for (unsigned i = 0; i < 6; ++i) {
+        TitleGPUVertex *out = &overlay_vertices[i];
+        memset(out, 0, sizeof *out);
+        out->pos[0] = x + w * (float)corners[i][0]; out->pos[1] = y + h * (float)corners[i][1];
+        out->uv[0] = overlay_u * (float)corners[i][0]; out->uv[1] = overlay_v * (float)corners[i][1];
+        out->rgba[0] = out->rgba[1] = out->rgba[2] = 1.0f; out->rgba[3] = overlay_alpha;
+    }
+    C3D_Mtx ortho; Mtx_OrthoTilt(&ortho, 0, 400, 240, 0, -1, 1, false);
+    C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, mvp_location, &ortho);
+    C3D_FVUnifSet(GPU_VERTEX_SHADER, color_pass_location, 1, 0, 0, 0);
+    C3D_CullFace(GPU_CULL_NONE); C3D_DepthTest(false, GPU_ALWAYS, GPU_WRITE_COLOR);
+    C3D_AlphaTest(false, GPU_ALWAYS, 0);
+    C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_SRC_ALPHA, GPU_ONE_MINUS_SRC_ALPHA, GPU_ZERO, GPU_ONE);
+    for (int i = 0; i < 6; ++i) C3D_TexEnvInit(C3D_GetTexEnv(i));
+    C3D_TexEnv *env = C3D_GetTexEnv(0);
+    C3D_TexEnvSrc(env, C3D_Both, GPU_TEXTURE0, GPU_PRIMARY_COLOR, GPU_PRIMARY_COLOR);
+    C3D_TexEnvFunc(env, C3D_Both, GPU_MODULATE);
+    C3D_TexBind(0, &textures[overlay_texture]);
+    GSPGPU_FlushDataCache(overlay_vertices, 6 * sizeof *overlay_vertices);
+    C3D_BufInfo *buffers = C3D_GetBufInfo(); BufInfo_Init(buffers);
+    BufInfo_Add(buffers, overlay_vertices, sizeof *overlay_vertices, 5, 0x43210);
+    C3D_SetViewport(0, 0, 240, 400);
+    C3D_DrawArrays(GPU_TRIANGLES, 0, 6);
+    stats->draw_calls++; stats->vertices += 6;
+}
+
 static void draw_battle_hud(C3TitleRenderStats *stats)
 {
     if(!battle_hud.enabled || hud_texture==UINT32_MAX || !hud_vertices)return;
@@ -1288,6 +1355,7 @@ int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
     if(!draw_particles(camera,&mvp,stats,error,capacity)){
         stage_frame_abort();return C3_RENDER_ERROR;
     }
+    draw_overlay(stats);
     draw_battle_hud(stats);
     fade = clamp01(fade);
     if (fade < 1.0f) {
@@ -1369,6 +1437,7 @@ void c3_title_renderer_shutdown(void)
     vertex_count = 0;
     if (vertices) { linearFree(vertices); vertices = NULL; }
     if (hud_vertices) { linearFree(hud_vertices); hud_vertices = NULL; }
+    if (overlay_vertices) { linearFree(overlay_vertices); overlay_vertices = NULL; }
     if (particle_vertices) { linearFree(particle_vertices); particle_vertices=NULL; }
     particle_pack=NULL;particle_system=NULL;particle_srt_system=NULL;particle_order_system=NULL;particle_render_frame=0;
     memset(particle_bindings,0,sizeof particle_bindings);
