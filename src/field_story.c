@@ -575,10 +575,13 @@ static int run_native(Impl *s,RunTask *t,char *error)
      * flag's whole stored value. Phenac Stadium's receptionist (function 7)
      * reads flag 0x9A0 with it. */
     case 0x52:if(!flag(s,a[0],&value,error))return 0;break;
-    /* fn_8018CA20: show or hide one person. A person without a model
-     * (animId 0) stays hidden, as in retail. */
+    /* fn_8018CA20 (people.c peopleSetShadowVisible): show or hide the
+     * person's ground shadow only; the person itself keeps its visibility
+     * (native 32 does that). The port draws no person shadows, so the call
+     * is recorded as unrendered. Hiding the person here removed the Pyrite
+     * windmill keeper (floor 017 init hides his shadow while he waits). */
     case 0x97:
-        p=person(s,a[0],a[1]);if(p){p->want_visible=!!a[2];p->public.visible=a[2]&&p->public.model;}break;
+        p=person(s,a[0],a[1]);if(p)note_presentation(s,0x97,"person_shadow_unrendered");break;
     /* fn_80186620: does the person touch the vertical wall over segment
      * (x0,z0)-(x1,z1) within its PeopleInfo radius? The script passes
      * group, index, the segment, a float the original ignores and an

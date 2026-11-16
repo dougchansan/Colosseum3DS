@@ -224,6 +224,10 @@ static void synthetic_regressions(void)
     /* An absent init cannot suppress a present pre hook. */
     native(code+2,0x64,2,args,1);synthetic_load(s,&game,file,code,0,0x1000002,0);
     CHECK(!c3_field_story_actor(&s->story,3)->visible);close_scene(s);
+    /* Native 97 (peopleSetShadowVisible) hides the shadow, not the person. */
+    memset(code,0,sizeof code);args[0]=29;args[1]=3;args[2]=0;native(code+2,0x97,3,args,1);
+    synthetic_load(s,&game,file,code,0,0x1000002,0);
+    CHECK(c3_field_story_actor(&s->story,3)->visible);close_scene(s);
     /* Menu callbacks queue work without running it inside the paused menu. */
     memset(code,0,sizeof code);native(code+3,0x1f,0,NULL,1);args[0]=3;args[1]=0;native(code+5,0x64,2,args,1);
     synthetic_load(s,&game,file,code,0,0,0x1000003);CHECK(c3_field_story_enter(&s->story,error));
