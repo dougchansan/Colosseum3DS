@@ -155,10 +155,86 @@ original:
   (`x' = 400 - (640 - x) / 2`), scaling offsets by 0.5 as well. This is a layout
   choice, not original behavior.
 
-## Port decision
+## Native implementation
 
-The brief asked for 3D models, animations, cameras and lighting. The original
-has none of those for this element: it slides 17 pre-rendered 2D textures.
-Porting it faithfully means drawing those textures, which conflicts with the
-standing "no 2D stand-ins" rule only in wording; they are the original assets,
-not invented ones. That choice belongs to the user.
+The requested port uses the original flat artwork. `tools/prepare_title_characters.py`
+reads the 19 linked item records and their sprite references from the pinned
+revision 0 DOL, and decodes all 17 original RGB5A3 textures from the admitted
+`title.fsys`. Page/column cases are pinned to `fn_8001F304`, where they are
+instructions rather than a data table. Artwork remains private.
+
+Prepare the optional pack alongside `title.c3t` and `ui.c3ui`:
+
+```powershell
+python tools/prepare_title_characters.py --disc <GC6E01-directory> --output <private-SD>/3ds/Colosseum3DS/boot/title_characters.c3tc
+```
+
+The supplied `private/reference/orig/GC6E01` tree lacks `title.fsys`; verification
+used the existing `G:/gamecube-decomp/disc-extract-dump` tree instead. Both DOL
+and archive pass the same pinned source identity checks.
+
+| SD file under `3ds/Colosseum3DS/boot/` | Bytes | Purpose |
+| --- | ---: | --- |
+| `title_characters.c3tc` | 2,170,272 | Original RGBA8 images and linked item layout |
+| `title_characters.c3tc.json` | 6,720 | Private provenance manifest; not read at runtime |
+
+Neither existing title nor UI packs need regeneration. An absent or invalid
+character pack draws no extra sprites. GPU allocation failure also disables
+only this optional layer. Source textures are padded to power-of-two GPU
+allocations without resampling, and composited in original item order through
+the existing title shader/frame, before the scene fade. They remain hidden
+during the intro and the main menu. The page counter lives in process RAM,
+starts at 3 and advances/reset offsets on `run_title` entry and menu return.
+
+### C3TC version 1
+
+All integers are little-endian. The pack is bounded to 4 MiB, with canonical
+contiguous sections and no trailing bytes:
+
+| Section | Encoding |
+| --- | --- |
+| Header, 32 bytes | `C3TC`, u32 version=1, total bytes, textures=17, items=19, pages=4, two reserved zeros |
+| 17 texture descriptors | Four u32: width, height, absolute pixel offset, RGBA byte count |
+| 19 item records | Eight s32: texture index, page, column, x, y, width, height, reserved zero |
+| Pixels | Original-size, top-down, linear RGBA8, texture descriptor order |
+
+Native validation checks bounded dimensions, item/texture agreement, source
+screen bounds, page populations 4/6/5/4 and all reserved fields. No native
+struct casts or disc addresses are used by the runtime.
+
+### Verification, 2026-11-16
+
+The unattended `-DC3_TITLE_CHARACTERS_PROBE` build skips the two logo movies,
+lets the normal title intro finish, waits six seconds on PRESS START, injects
+START through the application input structure, then B through the real menu
+update. It repeats four times, captures slide/settled/menu frames, observes
+page order 0,1,2,3,0 and exits without saving. It sends no desktop keypresses.
+Diagnostic injection is absent from the normal build.
+
+Dedicated portable emulator: `G:/Colosseum3DS-emu/lane-title-side-characters`
+(including its own configured SD/NAND paths). Private evidence relative to this
+worktree:
+
+- `private/evidence/present/title-page-{0,1,2,3}-settled.bmp`: all four pages,
+  each 400x240 and 288,054 bytes; corresponding `-slide.bmp` and `-menu.bmp`
+  files demonstrate staggered entry and menu hiding.
+- `private/evidence/present/boot-trace.log`: pack loaded, 1,148 submissions,
+  four menu returns, page wrap, clean GPU drain and empty final error.
+- `private/evidence/absent/`: the same 12 captures and trace with the pack
+  removed; 1,149 submissions, normal cycle and no added sprites.
+- `.omx/state/title-side-characters/ralph-progress.json`: visual verdict
+  against independent source-art/layout composites on a neutral background.
+- `private/run/host-build.log`, `host-tests.log`, `c-tests-summary.log`,
+  `python-tests.log`, `title-characters-sanitizers.log`, `arm-release-build.log`.
+
+The strict host build succeeds. Of 72 C executables, 71 pass and the existing
+`test_bottom_ui` assertion remains. The Python suite runs 551 tests with the
+baseline four failures/two errors (90 optional skips); all six new exporter
+tests pass. Synthetic native tests also pass ASan/UBSan. The normal ARM build
+succeeds without source warnings; devkitARM's pre-existing `crtn.o` GNU-stack
+linker warning remains. No dependencies were added.
+
+This verifies native emulation and the researched layout/motion rule. It does
+not establish pixel-identical GX output or retail GameCube timing, and no
+physical console was contacted. Existing title/menu behavior outside this
+optional layer is retained.
