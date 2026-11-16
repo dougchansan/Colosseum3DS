@@ -73,15 +73,13 @@ static int present(const char *root,const char *name)
  * recorded with its reason (typically an unported native) and does not stop
  * the run; it shows what the floor still needs. Returns 1 when the floor
  * reached control or kept running without an error. */
-static int smoke(C3GameState *game,const char *root,uint32_t floor,uint32_t previous)
+/* Load a prepared floor's packs and story, run its load/init/pre scripts and
+ * enter it at entrance <spawn>. 0 with error set on failure. */
+static int open_floor(Scene *s,C3GameState *game,const char *root,uint32_t floor,uint32_t spawn)
 {
-    const C3FloorProfile *profile=c3_floor_profile(floor);Scene *s=calloc(1,sizeof *s);char file[1024],name[96];
-    int ok=0;unsigned frame=0;
-    CHECK(profile&&s);
+    const C3FloorProfile *profile=c3_floor_profile(floor);char file[1024],name[96];unsigned frame;
+    CHECK(profile);
     snprintf(name,sizeof name,"%s.c3f",profile->prefix);
-    if(!present(root,name)){free(s);return -1;}
-    error[0]=0;
-    CHECK(c3_game_state_set_floor(game,floor,previous,0));
     path(file,root,name);
     if(!c3_field_load(&s->map,file,error,sizeof error))goto done;
     snprintf(name,sizeof name,"%s.c3a",profile->prefix);path(file,root,name);
@@ -96,7 +94,7 @@ static int smoke(C3GameState *game,const char *root,uint32_t floor,uint32_t prev
     }
     snprintf(name,sizeof name,"%s_camera.c3c",profile->prefix);
     if(present(root,name)){path(file,root,name);if(!c3_area_camera_load(&s->camera,file,error,sizeof error))goto done;}
-    if(!c3_field_spawn(&s->map,0,&s->hero)){snprintf(error,sizeof error,"entrance 0 is unavailable");goto done;}
+    if(!c3_field_spawn(&s->map,spawn,&s->hero)){snprintf(error,sizeof error,"entrance %lu is unavailable",(unsigned long)spawn);goto done;}
     path(file,root,profile->story);
     if(!c3_field_story_load(&s->story,file,game,&s->map,&s->area,&s->hero,&s->wes,s->models,&s->camera,trace,error))goto done;
     c3_field_story_set_floor_support(&s->story,reachable);
@@ -107,6 +105,25 @@ static int smoke(C3GameState *game,const char *root,uint32_t floor,uint32_t prev
         if(!c3_field_story_tick(&s->story,1.0f/60.0f,0,error))goto done;
     if(!c3_field_story_view(&s->story)->prepared){snprintf(error,sizeof error,"preparation did not finish");goto done;}
     if(!c3_field_story_enter(&s->story,error))goto done;
+    return 1;
+done:
+    return 0;
+}
+static void close_floor(Scene *s)
+{
+    c3_field_story_close(&s->story);c3_field_close(&s->map);c3_area_close(&s->area);c3_area_camera_close(&s->camera);
+    c3_title_close(&s->wes);for(unsigned i=0;i<C3_AREA_MAX_ACTORS;++i)c3_title_close(s->actors+i);
+}
+static int smoke(C3GameState *game,const char *root,uint32_t floor,uint32_t previous)
+{
+    const C3FloorProfile *profile=c3_floor_profile(floor);Scene *s=calloc(1,sizeof *s);char name[96];
+    int ok=0;unsigned frame=0;
+    CHECK(profile&&s);
+    snprintf(name,sizeof name,"%s.c3f",profile->prefix);
+    if(!present(root,name)){free(s);return -1;}
+    error[0]=0;
+    CHECK(c3_game_state_set_floor(game,floor,previous,0));
+    if(!open_floor(s,game,root,floor,0))goto done;
     for(frame=0;frame<600;++frame){
         const C3FieldStoryView *v=c3_field_story_view(&s->story);
         uint16_t pressed=v->dialogue&&frame%15==0?0x100:0;
@@ -120,9 +137,47 @@ done:
             (unsigned long)s->area.transition_count,(unsigned long)s->area.interaction_count,
             ok?c3_field_story_view(&s->story)->control:0,frame,ok?"":error);
     printf("floor %02lx %-18s %s %s\n",(unsigned long)floor,profile->prefix,ok?"ok    ":"FAILED",ok?"":error);
-    c3_field_story_close(&s->story);c3_field_close(&s->map);c3_area_close(&s->area);c3_area_camera_close(&s->camera);
-    c3_title_close(&s->wes);for(unsigned i=0;i<C3_AREA_MAX_ACTORS;++i)c3_title_close(s->actors+i);
-    free(s);error[0]=0;return ok;
+    close_floor(s);free(s);error[0]=0;return ok;
+}
+/* A doorway into a floor this build cannot load: the mayor's stairs (floor 5
+ * source 4, common script 05960004 = native 7D(6,0,1)) with floor 6 reported
+ * unprepared. The link waits with a notice; staying resumes the door script,
+ * the hero gets control back on floor 5 and no floor link is made. With
+ * floor 6 available the same doorway links to it. */
+static int all_but_mayor2f(uint32_t floor){return floor>=1&&floor<0x380&&floor!=6;}
+static int with_mayor2f(uint32_t floor){return floor>=1&&floor<0x380;}
+static void unprepared_doorway(C3GameState *game,const char *root)
+{
+    Scene *s=calloc(1,sizeof *s);unsigned frame;uint32_t refused=0;CHECK(s);
+    if(!present(root,"phenac_mayor1f.c3f")){free(s);return;}
+    for(int pass=0;pass<2;++pass){
+        CHECK(c3_game_state_set_floor(game,5,3,0));
+        CHECK(open_floor(s,game,root,5,0));
+        c3_field_story_set_floor_support(&s->story,pass?with_mayor2f:all_but_mayor2f);
+        for(frame=0;frame<6000&&!c3_field_story_view(&s->story)->control;++frame)tick(s,frame);
+        CHECK(c3_field_story_view(&s->story)->control);
+        CHECK(c3_field_story_transition(&s->story,4,error));
+        for(frame=0;frame<6000&&!c3_field_story_floor_refused(&s->story,&refused)&&!c3_field_story_view(&s->story)->next_floor;++frame)
+            tick(s,frame);
+        if(!pass){
+            CHECK(refused==6&&c3_field_story_view(&s->story)->blocked[0]&&!c3_field_story_view(&s->story)->control);
+            CHECK(strstr(c3_field_story_view(&s->story)->blocked,"Area 6 ")&&logged("story_floor_unprepared from=5 to=6 spawn=0"));
+            CHECK(!c3_field_story_battle_pending(&s->story,NULL));
+            CHECK(c3_field_story_stay_on_floor(&s->story,error));
+            CHECK(!c3_field_story_floor_refused(&s->story,NULL)&&!c3_field_story_stay_on_floor(&s->story,error));
+            for(frame=0;frame<600&&!c3_field_story_view(&s->story)->control;++frame)tick(s,frame);
+            CHECK(c3_field_story_view(&s->story)->control&&!c3_field_story_view(&s->story)->blocked[0]);
+            for(frame=0;frame<300;++frame)tick(s,frame);
+            CHECK(!c3_field_story_view(&s->story)->next_floor&&logged("story_floor_refused from=5 to=6 stayed=1"));
+            fprintf(trace,"phenac_unprepared_doorway floor=5 source=4 to=6 stayed=1 control=1\n");
+        }else{
+            for(;frame<6000&&!c3_field_story_view(&s->story)->next_floor;++frame)tick(s,frame);
+            CHECK(c3_field_story_view(&s->story)->next_floor==6&&c3_field_story_view(&s->story)->next_spawn==0);
+            fprintf(trace,"phenac_mayor_stairs floor=5 source=4 to=6 spawn=0\n");
+        }
+        close_floor(s);memset(s,0,sizeof *s);
+    }
+    free(s);
 }
 
 int main(int argc,char **argv)
@@ -299,6 +354,7 @@ int main(int argc,char **argv)
          if(result>0)++passed;else if(result<0)++absent;else ++failed;
      }
      fprintf(trace,"floor_smoke_summary passed=%u failed=%u absent=%u\n",passed,failed,absent);
+     unprepared_doorway(&game,argv[2]);
      printf("interior floors: %u ok, %u failed, %u without packs\n",passed,failed,absent);}
     c3_game_state_free(&game);
     fprintf(trace,"phenac_complete checks=%u\n",checks);

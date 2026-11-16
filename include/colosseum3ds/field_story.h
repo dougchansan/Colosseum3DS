@@ -47,6 +47,11 @@ int c3_field_story_bind_battle(C3FieldStory *story,const char *path,char *error)
  * once and makes the same ID readable through native 67. */
 int c3_field_story_battle_pending(const C3FieldStory *story,uint32_t *encounter);
 int c3_field_story_battle_result(C3FieldStory *story,uint32_t result,char *error);
+/* A floor link to a floor the scene cannot load (see floor_supported)
+ * waits with view.blocked set. refused reports the requested floor;
+ * stay_on_floor resumes the script without linking, so play continues. */
+int c3_field_story_floor_refused(const C3FieldStory *story,uint32_t *floor);
+int c3_field_story_stay_on_floor(C3FieldStory *story,char *error);
 /* Hero lost an encounter with the wipeout (zenmetu) flag: set flag 0E05,
  * restore the party (party service), and leave for the whiteout point
  * recorded by native A1, else the last save point

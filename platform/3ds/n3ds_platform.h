@@ -40,6 +40,8 @@ uint64_t c3_n3ds_active_time_us(void);
 /* Actual process heap grants and current linear free space. Call after trace
  * creation and scene allocation; New 3DS detection does not imply a grant. */
 void c3_n3ds_log_memory(FILE *trace, const char *stage);
+/* Bytes the allocator has handed out (mallinfo uordblks). */
+size_t c3_n3ds_heap_used(void);
 /* Write the top screen (400x240) as a 24-bit BMP. The framebuffer read is the
  * one libctru hands out for drawing, so it holds a frame from just before the
  * call. Returns 0 on success. */
