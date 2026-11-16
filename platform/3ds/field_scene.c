@@ -1502,6 +1502,21 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
             continue;
         }
         if(draw_result){result=-1;break;}
+#ifdef C3_FINAL_EVENT_PROBE
+        /* Private review frames for every reached dialogue page. */
+        {
+            static uint32_t captured_message=UINT32_MAX;static size_t captured_offset=SIZE_MAX;
+            if(view->dialogue&&(view->message_id!=captured_message||ui_pager.offset!=captured_offset)){
+                char shot[160];
+                snprintf(shot,sizeof shot,"sdmc:/3ds/Colosseum3DS/final-probe/text_%03lx_%05lx_%lu.bmp",(unsigned long)map.floor,(unsigned long)view->message_id,(unsigned long)ui_pager.offset);
+                int captured=c3_n3ds_capture_bottom(shot)==0;
+                snprintf(shot,sizeof shot,"sdmc:/3ds/Colosseum3DS/final-probe/scene_%03lx_%05lx_%lu.bmp",(unsigned long)map.floor,(unsigned long)view->message_id,(unsigned long)ui_pager.offset);
+                captured&=c3_n3ds_capture_top(shot)==0;
+                if(trace){fprintf(trace,"final_event_dialogue message=%05lx page_offset=%lu captured=%d\n",(unsigned long)view->message_id,(unsigned long)ui_pager.offset,captured);fflush(trace);}
+                captured_message=view->message_id;captured_offset=ui_pager.offset;
+            }
+        }
+#endif
         ++frames;
 #if defined(C3_CLEAR_CONTINUE_PROBE) || defined(C3_FINAL_EVENT_PROBE)
         /* Observe the loaded Continue checkpoint; never warp or synthesize
