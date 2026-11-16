@@ -44,6 +44,8 @@
  *   inspect <surface>         press A at a surface (event kind 3): stand half a
  *                             unit in front of its first enabled triangle
  *   press <x> <z> <yaw>       press A from a source position facing yaw degrees
+ *   use <item>                when a script next opens the pause menu at Items
+ *                             (native D0), use this key item (0 closes the menu)
  *                             (talk scripts that check where the hero stands)
  * door and touch refuse a surface whose CCD objects are all disabled. Item
  * and species names in messages come from the C3_ROUTE_PDA pack; native DB
@@ -73,7 +75,7 @@ static const char *newgame, *root;
 static C3GameState game;
 static uint32_t shadow[FLAG_LAST];
 static uint8_t valid[FLAG_LAST];
-static uint32_t result_id = 2, last_message;
+static uint32_t result_id = 2, last_message, use_item;
 static Scene *scene;
 static C3PdaAssets pda;
 static uint8_t *pda_data;
@@ -171,6 +173,7 @@ static int load(uint32_t floor, uint32_t entrance, uint32_t previous)
     c3_field_story_set_party_service(&scene->story, restore, NULL);
     c3_field_story_set_item_change_service(&scene->story, item_change, NULL);
     c3_field_story_set_namer(&scene->story, namer, NULL);
+    c3_field_story_enable_item_menu(&scene->story, 1);
     if (!c3_field_story_prepare(&scene->story, error)) return 0;
     for (unsigned frame = 0; frame < 3600 && !c3_field_story_view(&scene->story)->prepared; ++frame)
         if (!c3_field_story_tick(&scene->story, 1.0f/60.0f, 0, error)) return 0;
@@ -227,6 +230,11 @@ static int run(unsigned frames, int until_control)
             if (!c3_field_story_battle_result(&scene->story, result_id, error)) return 0;
         }
         if (v->shop && !c3_field_story_shop_done(&scene->story, error)) return 0;
+        if (v->item_menu) {
+            fprintf(report, "route_item_menu floor=%03lx use=%lu\n", (unsigned long)scene->floor, (unsigned long)use_item);
+            uint32_t item = use_item; use_item = 0;
+            if (!c3_field_story_item_menu_result(&scene->story, item, error)) return 0;
+        }
         if (v->name_entry && !c3_field_story_name_result(&scene->story, "RUI", error)) return 0;
         if (v->relive_pick && !c3_field_story_relive_pick(&scene->story, -1, error)) return 0;
         if (!c3_field_story_tick(&scene->story, 1.0f/60.0f, pressed, error) || !c3_field_story_sample(&scene->story, error)) return 0;
@@ -370,6 +378,7 @@ static int step(char *line)
         if (!c3_field_story_interact(&scene->story, error)) return 0;
         return run(30000, 1);
     }
+    if (!strcmp(word, "use")) { CHECK(sscanf(line, "%li", (long *)&a) == 1); use_item = (uint32_t)a; return 1; }
     if (!strcmp(word, "press")) {
         float yaw;
         CHECK(sscanf(line, "%f %f %f", &x, &z, &yaw) == 3);
