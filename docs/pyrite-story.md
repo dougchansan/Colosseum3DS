@@ -70,6 +70,33 @@ this chapter. 82 steps run; the original scripts write 42 flags and show
 The route writes four checkpoint saves (private): arrival, after the
 Colosseum, after Silva, and after `0x9DF`.
 
+## Azahar (New 3DS profile, 2026-11-16)
+
+The warp-tour build (`-DC3_WARP_TOUR`, build `2eb5f4150c47-tour`) loaded
+every Pyrite floor from the chapter's own checkpoint saves, ran its scripts
+for 12 seconds and captured the top screen (private evidence:
+`private/pyrite/azahar/`, tour logs, boot traces and frames).
+
+| Run | Save | Floors | Result |
+| --- | --- | --- | --- |
+| 1 | arrival (`0x3F9`) | 0x0F-0x18 | all ten loaded, about 28 fps, control returned, frame captured |
+| 1 | arrival | 0x19 | the building's arrival event ran to battle 101; the battle engine took over and waited for input, so the tour stopped there (the arrival save is before the Colosseum, which the original requires first) |
+| 2 | after Silva (`0x411`) | 0x19-0x22, 0x78 | all eleven loaded, about 28 fps, frame captured |
+| 2 | after Silva | 0x8E | loaded; its arrival script links straight on to 0x78, as on the host |
+
+Every floor draws its original map, objects, people and Wes.
+
+### SD files
+
+332 packs, 80 MB after `compress_packs.py --codec zstd --max-texture 512`,
+all named `f00f*` .. `f022*`, `f078*`, `f08e*` in `boot/`: per floor the
+`.c3f`, `.c3a`, `.c3s`, map groups (`_group*`), objects (`_obj*`), `_wes`,
+`_partner` and `_npc*` packs, plus `.c3d` door tables for 0x0F, 0x10, 0x11,
+0x14, 0x19, 0x1A, 0x1B, 0x1E, 0x78 and 0x8E. They replace the older warp-tour
+packs of the same floors. Commands: `tools/prepare_story.py` (and
+`--doors-only`) then `tools/prepare_tour.py` with `C3_FLOOR_SURVEY` for
+`auto_00f` .. `auto_022`, `auto_078`, `auto_08e`.
+
 ## Engine fixes found here
 
 - Native 97 is `fn_8018CA20` (people.c `peopleSetShadowVisible`): it shows
