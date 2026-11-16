@@ -139,6 +139,8 @@ void c3_field_story_set_purify_service(C3FieldStory *story, C3FieldStoryPurify p
  * (c3_relive_pickable) and reports its slot, or -1 to cancel. */
 int c3_field_story_relive_pick(C3FieldStory *story, int slot, char *error);
 void c3_field_story_set_party_service(C3FieldStory *story,C3FieldStoryRestore restore,void *context);
+/* D8 mode1: clear poison/toxic only, returning cured members or -1. */
+void c3_field_story_set_poison_service(C3FieldStory *story,C3FieldStoryRestore clear,void *context);
 /* Music (GSsnd wrappers). Natives 68/69 call fn_80165A20/fn_801659FC with
  * (sound, fade, volume), loading the 0x406/0x407 song slots; 6A is
  * soundStop(sound, fade); 6D is fn_80165718(volume, fade), the music master
@@ -202,6 +204,9 @@ void c3_field_story_describe_waits(const C3FieldStory *story,char *out,size_t ca
  * arrival movie is done, enter starts the original main/movement tasks. */
 int c3_field_story_prepare(C3FieldStory *story, char *error);
 int c3_field_story_enter(C3FieldStory *story, char *error);
+/* Native 6F reads held directions and signed controller axes (dead zone 2),
+ * independently of the edge presses consumed by dialogue/choice windows. */
+void c3_field_story_set_move_input(C3FieldStory *story,uint16_t held,int stick_x,int stick_y);
 int c3_field_story_tick(C3FieldStory *story, float seconds, uint16_t pressed,
                         char *error);
 const C3FieldStoryView *c3_field_story_view(const C3FieldStory *story);

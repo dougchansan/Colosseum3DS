@@ -576,6 +576,20 @@ static void synthetic_regressions(void)
       CHECK(c3_field_story_bind_doors(&s->story,&closed_row,1,no_model,error));
       CHECK(c3_field_object_enabled(&s->map,1)&&c3_field_object_enabled(&s->map,0));
       close_scene(s);}
+     /* Subway03A elevator142 has travel clips0/1 but no open clip;
+      * row143 has no clips at all. Both bind at rest on clip0. */
+     {C3AreaDoor elevator[2]={
+        {.index=142,.resource=0x00d81002,.part_index=1,.open_anim=-1,.close_anim=-1,
+         .open_end_anim=-1,.close_end_anim=-1,.alternate_a=0,.alternate_b=1,.collision_id=-1},
+        {.index=143,.resource=0x00d81002,.open_anim=-1,.close_anim=-1,
+         .open_end_anim=-1,.close_end_anim=-1,.alternate_a=-1,.alternate_b=-1,.collision_id=-1}};
+      C3Title *elevator_models[2]={&door_model,&door_model};uint32_t clips=door_model.clip_count;door_model.clip_count=2;
+      memset(code,0,sizeof code);synthetic_load(s,&game,file,code,0,0,0x1000003);
+      CHECK(c3_field_story_bind_doors(&s->story,elevator,2,elevator_models,error));
+      for(unsigned i=0;i<2;++i){door=c3_field_story_door(&s->story,i);CHECK(door&&door->clip==0&&door->seconds==0&&!door->playing);}
+      elevator[0].alternate_b=2;CHECK(!c3_field_story_bind_doors(&s->story,elevator,2,elevator_models,error)&&strstr(error,"lacks animation 2"));
+      close_scene(s);door_model.clip_count=clips;
+     }
      CHECK(!c3_field_story_bind_doors(NULL,rows,2,door_models,error));
      free(door_model.file_data);free(door_model.vertices);free(door_model.draw_vertices);free(door_model.batches);}
     /* Native 23 writes the partner-present byte; 4C/4D without arguments,
@@ -588,6 +602,21 @@ static void synthetic_regressions(void)
     synthetic_load(s,&game,file,code,0,0,0x1000003);CHECK(!c3_game_state_partner(&game));CHECK(c3_field_story_enter(&s->story,error));
     CHECK(c3_field_story_tick(&s->story,0,0,error));CHECK(!c3_field_story_actor(&s->story,3)->visible&&c3_game_state_partner(&game));
     CHECK(c3_game_state_set_partner(&game,0)&&!c3_game_state_partner(&game));close_scene(s);
+    /* 6F uses held movement, with the original inclusive +/-2 dead zone.
+     * Dialogue button edges and non-directional held buttons do not count. */
+    {static const struct {uint16_t held;int x,y,want;} inputs[]={
+        {0,0,0,0},{0,2,-2,0},{0x100,0,0,0},{1,0,0,1},
+        {0,3,0,1},{0,-3,0,1},{0,0,3,1},{0,0,-3,1}};
+     for(unsigned i=0;i<sizeof inputs/sizeof inputs[0];++i){
+        memset(code,0,sizeof code);
+        push(code+3,0);push(code+3,0x64);push(code+3,3);
+        native(code+3,0x6f,0,NULL,0);call_end(code+3,2,1);
+        synthetic_load(s,&game,file,code,0,0,0x1000003);
+        c3_field_story_set_move_input(&s->story,inputs[i].held,inputs[i].x,inputs[i].y);
+        CHECK(c3_field_story_enter(&s->story,error));
+        CHECK(c3_field_story_tick(&s->story,0,0x100,error));
+        CHECK(c3_field_story_actor(&s->story,3)->visible==inputs[i].want);close_scene(s);
+     }}
     /* DB directly mutates the bag once, including ABI u16 narrowing;
      * unlike 77 it neither opens a message nor waits for a jingle. */
     memset(code,0,sizeof code);args[0]=0x10042;args[1]=0x10003;native(code+3,0xdb,2,args,1);

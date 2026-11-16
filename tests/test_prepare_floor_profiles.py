@@ -7,11 +7,12 @@ import unittest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 import floor_profiles as profiles
 import prepare_floor as floor
+from under_profiles import UNDER_FLOORS, UNDER_SCENE_SETS
 
 
 class FloorProfileTableTests(unittest.TestCase):
     def test_rows_match_the_original_lifecycle_identities(self):
-        rows = profiles.FLOORS
+        rows = {name: row for name, row in profiles.FLOORS.items() if name not in UNDER_FLOORS}
         self.assertEqual([(name, row["floor"], row["lifecycle_row"], row["resource_group"], row["archive"])
                           for name, row in rows.items() if name not in profiles.REALGAM_FLOORS],
                          [("outskirt", 1, 0, 0x1D, "S1_out.fsys"), ("shop", 2, 1, 0x1E, "S1_shop_1F.fsys"),
@@ -49,7 +50,7 @@ class FloorProfileTableTests(unittest.TestCase):
                           "shop": ("shop", "shop.c3a", "outskirt_shop.c3s"),
                           "phenac": ("phenac", "phenac.c3a", "phenac.c3s")})
         # Interior rows are keyed by their prefix and name every pack after it.
-        interiors = {name: row for name, row in profiles.FLOORS.items() if row.get("scene") == "interior"}
+        interiors = {name: row for name, row in profiles.FLOORS.items() if row.get("scene") == "interior" and name.startswith("phenac_")}
         self.assertEqual(len(interiors), 11)
         for name, row in interiors.items():
             self.assertEqual(packs[name], (name, name + ".c3a", name + ".c3s"))
@@ -60,7 +61,7 @@ class FloorProfileTableTests(unittest.TestCase):
             self.assertGreaterEqual(min(row["entrance_table"], row["people_table"]), 0x28)
 
     def test_interior_groups_objects_and_feature_keys(self):
-        rows = profiles.FLOORS
+        rows = {name: row for name, row in profiles.FLOORS.items() if name not in UNDER_FLOORS}
         self.assertEqual({name: row.get("objects", ()) for name, row in rows.items() if row.get("objects")},
                          {"phenac": (0, 1, 2, 3, 4, 5),
                           "phenac_mayor1f": (0,), "phenac_pc1f": (3,), "phenac_pregym1f": (0,),
@@ -94,14 +95,32 @@ class FloorProfileTableTests(unittest.TestCase):
         # The first area keeps its dedicated geometry converters.
         geometry = sorted(name for name in profiles.FLOORS if name.startswith("phenac"))
         self.assertEqual(len(geometry), 12)
-        self.assertEqual(sorted(profiles.geometry_floors()), geometry)
-        self.assertEqual(sorted(name for name in floor.FLOORS if not profiles.FLOORS[name].get("auto")), geometry)
+        self.assertEqual(sorted(profiles.geometry_floors()), sorted(geometry + list(UNDER_FLOORS)))
+        self.assertEqual(sorted(name for name in floor.FLOORS if not profiles.FLOORS[name].get("auto")), sorted(geometry + list(UNDER_FLOORS)))
         self.assertIs(floor.FLOORS["phenac"], profiles.FLOORS["phenac"])
         self.assertEqual(set(profiles.story_floors()),
                          {name for name, row in profiles.FLOORS.items() if "kind" not in row})
         self.assertEqual(profiles.by_floor(3)[0], "phenac")
         self.assertEqual(profiles.by_floor(0x77)[0], "phenac_pcb1")
         self.assertIsNone(profiles.by_floor(0x0E))
+
+    def test_under_profiles_cover_walkable_floors_and_original_door_models(self):
+        expected = set(range(0x2F, 0x38)) | set(range(0x39, 0x3F)) | {0x79, 0x7A, 0x7D, 0x7F}
+        self.assertEqual({row["floor"] for row in UNDER_FLOORS.values()}, expected)
+        self.assertEqual(set(UNDER_SCENE_SETS), {0x3F, 0x40, 0x8A, 0x8B, 0xD3, 0xD4, 0xD5})
+        runtime = (Path(__file__).resolve().parents[1] / "src/floor_profile.c").read_text()
+        for name, row in UNDER_FLOORS.items():
+            with self.subTest(floor=name):
+                self.assertIs(profiles.by_floor(row["floor"])[1], row)
+                self.assertFalse(row.get("auto"))
+                self.assertEqual(row["prefix"], "f%03x" % row["floor"])
+                self.assertIn('"%s", "%s"' % (row["prefix"], row["story_pack"]), runtime)
+                self.assertTrue(set(row.get("door_objects", {}).values()) <= set(row["objects"]))
+        self.assertEqual(sum(len(row.get("door_objects", {})) for row in UNDER_FLOORS.values()), 42)
+        # Original elevator rows share a model but choose distinct part indices.
+        self.assertEqual(UNDER_FLOORS["under_subway_b2_1"]["door_objects"],
+                         {65: 0, 66: 1, 142: 2, 143: 2})
+        self.assertEqual(UNDER_FLOORS["under_out"]["door_objects"][168], 11)
 
     def test_rows_hold_identities_not_original_bytes(self):
         def scalars(value):

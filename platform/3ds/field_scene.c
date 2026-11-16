@@ -156,6 +156,10 @@ static int story_audio(void *context,unsigned op,uint32_t a,uint32_t b,uint32_t 
 }
 
 /* Party service for script native D8. */
+static int clear_party_poison(void *context)
+{
+    return c3_inventory_clear_party_poison(context);
+}
 static int restore_party(void *context)
 {
     C3PdaAssets assets={0};uint8_t *data=open_pda(&assets);
@@ -967,6 +971,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     c3_field_story_set_namer(&story,story_namer,state);
     c3_field_story_enable_item_menu(&story,1);
     c3_field_story_set_party_service(&story,restore_party,state);
+    c3_field_story_set_poison_service(&story,clear_party_poison,state);
     purify_trace=trace;c3_field_story_set_purify_service(&story,purify_party,state);
     c3_field_story_set_audio_service(&story,story_audio,NULL);
     if(!c3_field_story_prepare(&story,story_error))goto story_failed;
@@ -1371,6 +1376,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         else if(input.pressed&(C3_PAD_A|C3_PAD_B))ui_pager.offset=0;
 
         if(page==PAUSE_CLOSED){
+            c3_field_story_set_move_input(&story,input.held,input.stick_x,input.stick_y);
             if(!c3_field_story_tick(&story,delta,phase==FIELD_CONTROL?input.pressed:0,story_error))goto story_failed;
 #ifdef C3_FINAL_EVENT_PROBE
             uint32_t encounter;
@@ -1869,6 +1875,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                (probe_route.walk_floor!=map.floor||probe_route.walked>=probe_route.walk_frames)){
                 char shot[80];
                 mkdir("sdmc:/3ds/Colosseum3DS/probe",0777);
+                if(trace){fprintf(trace,"probe_capture floor=%lu prepared=%d control=%d frame=%u\n",(unsigned long)map.floor,view->prepared,view->control,frames);fflush(trace);}
                 snprintf(shot,sizeof shot,"sdmc:/3ds/Colosseum3DS/probe/area_%03lx_top.bmp",(unsigned long)map.floor);
                 (void)c3_n3ds_capture_top(shot);
                 snprintf(shot,sizeof shot,"sdmc:/3ds/Colosseum3DS/probe/area_%03lx_bottom.bmp",(unsigned long)map.floor);

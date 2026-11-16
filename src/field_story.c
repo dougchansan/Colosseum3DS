@@ -94,6 +94,7 @@ typedef struct {
     C3FieldStoryAudio audio;void *audio_context;
     const C3AreaDoor *door_rows;C3StoryDoor doors[C3_AREA_MAX_DOORS];uint32_t door_count;
     C3FieldStoryRestore restore;void *restore_context;
+    C3FieldStoryRestore clear_poison;void *poison_context;
     C3FieldStoryPurify purify;void *purify_context;
     C3FieldStoryPurified purified; /* the last purification, for its messages */
     uint32_t message_values[256]; /* msgctrlSetValue: one word per control byte */
@@ -130,6 +131,7 @@ typedef struct {
     int treasure_active;
     unsigned treasure_row;
     int treasure_result;
+    int move_input;                /* scriptIsMoveButtonPush (native 6F) */
 } Impl;
 /* floorEventChangeTresure rewrites a row of the common treasure table, which
  * stays in memory for the whole session (common REL125 is never unloaded):
@@ -807,7 +809,6 @@ static int run_native(Impl *s,RunTask *t,char *error)
         if(!c3_game_state_set_floor(s->game,a[0],a[1],(uint8_t)a[2]))return fail(error,"Native F6 could not write the resume point");
         log_line(s,"story_resume_point floor=%03lx previous=%03lx spawn=%lu",(unsigned long)a[0],(unsigned long)a[1],(unsigned long)a[2]);
         break;
-    case 0x6f:value=(s->tick_pressed&PAD_DIRECTIONS)||(s->view.control&&s->hero->motion!=0);break;
     case 0xc3:value=s->arrival_spawn;break; /* floorGetNextPosIndex: the entrance used */
     case 0xd9:
         /* fn_801CADA8(kind): the hero receives a gift Pokemon (1..6; 3 at
@@ -857,6 +858,8 @@ static int run_native(Impl *s,RunTask *t,char *error)
     /* preReliveDisplayHokoraParticle: the shrine's glow while a party
      * Shadow Pokemon's heart is open (a particle thread). Not drawn. */
     case 0xf1:log_line(s,"story_shrine_particle drawn=0");value=0;break;
+    /* field_range_801CB180.c: held D-pad or either axis outside [-2,2]. */
+    case 0x6f:value=(uint32_t)s->move_input;break;
     case 0x7c:case 0xf2:{C3GameSummary party;uint8_t record[0x138];
         if(!c3_game_state_summary(s->game,&party))return fail(error,"Native %02lx needs the party",(unsigned long)c->native);
         value=0;
@@ -1349,35 +1352,18 @@ static int run_native(Impl *s,RunTask *t,char *error)
         }
         }break;
     case 0xd8:{
-        /* fn_801C852C: nothing unless flag value 08AE is zero. Mode 0 is
-         * fn_801D0AFC(0): pokemonAllKaihuku on every valid party member.
-         * Mode 1 cures poison and bad poison (conditions 3 and 4). */
+        /* fn_801C852C: guarded by 08AE. Mode0 heals fully; mode1
+         * clears only condition IDs 3 and4 (poison/toxic), without HP/PP. */
         uint32_t battle_mode=0;
         if(!flag(s,0x8ae,&battle_mode,error))return 0;
         if(battle_mode)break;
-        if(a[0]==1){
-            /* Mode 1: for each valid party member, fn_80121ADC/fn_80121B4C
-             * remove condition 3 (poison) and 4 (bad poison), the
-             * conditions pokemonGetJoutaiMsgId reads from the status entry
-             * at record +0xE8 (src/relive_purify.c clears 0x3E there the
-             * same way). */
-            C3GameSummary party;uint8_t record[0x138];unsigned cured=0;
-            if(!c3_game_state_summary(s->game,&party))return fail(error,"Native D8 needs the party");
-            for(unsigned i=0;i<party.party_count&&i<6;++i){
-                if(!c3_game_state_pokemon(s->game,i,record)||!(record[0]|record[1]))continue;
-                uint16_t id=(uint16_t)(record[0xe8]<<8|record[0xe9]);
-                if(id!=3&&id!=4)continue;
-                memset(record+0xe8,0,7);memset(record+0xf0,0,6);
-                if(!c3_game_state_set_pokemon(s->game,i,record))return fail(error,"Native D8 could not cure party slot %u",i);
-                ++cured;
-            }
-            log_line(s,"story_party_cure mode=1 conditions=3,4 cured=%u",cured);break;
-        }
-        if(a[0]!=0)return fail(error,"Native D8 mode %lu is not ported",(unsigned long)a[0]);
-        if(!s->restore)return fail(error,"Native D8 needs the party service, which this scene did not bind");
-        int restored=s->restore(s->restore_context);
-        if(restored<0)return fail(error,"The party could not be restored");
-        log_line(s,"story_party_restore mode=0 members=%d",restored);
+        if(a[0]>1)break; /* the original switch has no default action */
+        C3FieldStoryRestore service=a[0]?s->clear_poison:s->restore;
+        void *context=a[0]?s->poison_context:s->restore_context;
+        if(!service)return fail(error,"Native D8 mode %lu needs the %s service",(unsigned long)a[0],a[0]?"poison":"party");
+        int restored=service(context);
+        if(restored<0)return fail(error,"Native D8 mode %lu party service failed",(unsigned long)a[0]);
+        log_line(s,"story_party_restore mode=%lu members=%d",(unsigned long)a[0],restored);
         }break;
     case 0xe8:
         /* fn_801C7730 moves the follower out of the hero-to-NPC corridor
@@ -1963,6 +1949,10 @@ void c3_field_story_set_item_service(C3FieldStory *story,C3FieldStoryReceive rec
 {
     Impl *s=story?story->impl:NULL;if(s){s->receive=receive;s->receive_context=context;}
 }
+void c3_field_story_set_poison_service(C3FieldStory *story,C3FieldStoryRestore clear,void *context)
+{
+    Impl *s=story?story->impl:NULL;if(s){s->clear_poison=clear;s->poison_context=context;}
+}
 void c3_field_story_set_party_service(C3FieldStory *story,C3FieldStoryRestore restore,void *context)
 {
     Impl *s=story?story->impl:NULL;if(s){s->restore=restore;s->restore_context=context;}
@@ -1981,10 +1971,19 @@ int c3_field_story_bind_doors(C3FieldStory *story,const C3AreaDoor *rows,uint32_
         if(rows[i].open_flag&&!flag(s,rows[i].open_flag,&open,error))return 0;
         if(rows[i].collision_id>=0)c3_field_set_object_enabled(s->map,(uint32_t)rows[i].collision_id,!open);
         if(!door->model)continue;
-        if(door->model->fps<=0||(rows[i].open_anim>=0&&(uint32_t)rows[i].open_anim>=door->model->clip_count))
-            return fail(error,"Door %lu model lacks its open animation",(unsigned long)rows[i].index);
+        if(door->model->fps<=0||!door->model->clip_count)
+            return fail(error,"Door %lu model has no rest frame",(unsigned long)rows[i].index);
+        /* Elevator rows may have travel animations only, or no animations.
+         * floorEvent elevator control starts openAnim only when >=0. */
+        const int8_t animations[]={rows[i].open_anim,rows[i].close_anim,rows[i].open_end_anim,
+            rows[i].close_end_anim,rows[i].alternate_a,rows[i].alternate_b};
+        for(unsigned j=0;j<sizeof animations/sizeof animations[0];++j)
+            if(animations[j]>=0&&(uint32_t)animations[j]>=door->model->clip_count)
+                return fail(error,"Door %lu model lacks animation %d",(unsigned long)rows[i].index,animations[j]);
         door->clip=rows[i].open_anim>=0?(uint32_t)rows[i].open_anim:0;
-        door->seconds=open&&rows[i].open_anim>=0?(float)(door->model->clips[door->clip].frame_count-1u)/door->model->fps:0;
+        door->seconds=open&&rows[i].open_anim>=0?
+            (float)(door->model->clips[door->clip].frame_count-1u)/door->model->fps:0;
+
     }
     return 1;
 }
@@ -2331,6 +2330,12 @@ int c3_field_story_attach_partner(C3FieldStory *story,C3Title *model,char *error
              (double)p->public.pose.position[0],(double)p->public.pose.position[2]);
     return 1;
 }
+void c3_field_story_set_move_input(C3FieldStory *story,uint16_t held,int stick_x,int stick_y)
+{
+    Impl *s=story?story->impl:NULL;
+    if(s)s->move_input=(held&PAD_DIRECTIONS)||stick_x>2||stick_x< -2||stick_y>2||stick_y< -2;
+}
+
 int c3_field_story_tick(C3FieldStory *story,float seconds,uint16_t pressed,char *error)
 {
     Impl *s=story?story->impl:NULL;

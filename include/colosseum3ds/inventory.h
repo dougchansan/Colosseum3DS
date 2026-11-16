@@ -28,6 +28,9 @@ int c3_inventory_remove(C3GameState *state,const C3PdaAssets *assets,unsigned id
  * Returns 0 when all were removed, the amount missing (nothing removed)
  * when the bag holds fewer, -1 for an unknown item. Owned memory only. */
 int c3_inventory_take(C3GameState *state,const C3PdaAssets *assets,unsigned id,unsigned count);
+/* D8 mode1: clear persistent poison/toxic conditions (IDs 3 and 4) only;
+ * preserve HP, PP and all other conditions. Returns members cured or -1. */
+int c3_inventory_clear_party_poison(C3GameState *state);
 int c3_inventory_restore_party(C3GameState *state,const C3PdaAssets *assets);
 C3InventoryCode c3_inventory_apply(C3GameState *state,const C3PdaAssets *assets,const C3InventoryRequest *request,C3InventoryResult *result);
 #endif
