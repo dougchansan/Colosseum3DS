@@ -170,6 +170,16 @@ def admitted_spline(node):
         raise ValueError("HSD path track has no spline object")
     kind, count = node.flags >> 8, node.n
     cv, lengths, poly = node.s1, node.s2, node.s3
+    if kind == 0:
+        # Linear (spline.c type 0): n points, n cumulative normalised
+        # lengths, no arc-length polynomials.
+        if (not 2 <= count <= 64 or not isinstance(cv, list) or len(cv) != count or
+                not isinstance(lengths, list) or len(lengths) != count or any(len(row) != 3 for row in cv)):
+            raise ValueError("Malformed HSD linear path spline")
+        values = [node.f1, *lengths, *(v for row in cv for v in row)]
+        if any(not math.isfinite(v) for v in values) or lengths[0] != 0 or any(b <= a for a, b in zip(lengths, lengths[1:])):
+            raise ValueError("HSD linear path spline lengths are not increasing")
+        return {"kind": 0, "count": count, "total": node.f1, "cv": [tuple(row) for row in cv], "lengths": list(lengths)}
     if kind != 3:
         raise ValueError("Unreviewed HSD path spline type")
     if (not 2 <= count <= 64 or not isinstance(cv, list) or len(cv) != count + 2 or
@@ -181,7 +191,7 @@ def admitted_spline(node):
         raise ValueError("Nonfinite HSD path spline")
     if lengths[0] != 0 or any(b < a for a, b in zip(lengths, lengths[1:])) or node.f1 <= 0:
         raise ValueError("HSD path spline lengths are not cumulative")
-    return {"count": count, "tension": node.f0, "total": node.f1, "cv": [tuple(row) for row in cv],
+    return {"kind": 3, "count": count, "tension": node.f0, "total": node.f1, "cv": [tuple(row) for row in cv],
             "lengths": list(lengths), "poly": [tuple(row) for row in poly]}
 
 
@@ -214,6 +224,9 @@ def spline_parameter(spline, distance):
     lengths, index = spline["lengths"], 0
     while lengths[index + 1] < distance:
         index += 1
+    if spline.get("kind") == 0:
+        result = (distance - lengths[index]) / (lengths[index + 1] - lengths[index])
+        return (result + index) / (spline["count"] - 1.0)
     remaining = spline["total"] * (distance - lengths[index])
     start, end, result = 0.0, 1.0, 0.0
     while abs(start - end) >= 0.00001:
@@ -228,10 +241,17 @@ def spline_parameter(spline, distance):
 
 
 def spline_point(spline, u):
-    """spline.c:fn_801B2038 (splGetSplinePoint), cardinal case."""
+    """spline.c:fn_801B2038 (splGetSplinePoint), linear and cardinal cases."""
     cv, count = spline["cv"], spline["count"]
     if not 0 <= u <= 1:
         raise ValueError("HSD path parameter outside the spline")
+    if spline.get("kind") == 0:  # linear case
+        if u >= 1:
+            return cv[count - 1]
+        u *= count - 1
+        index = int(u)
+        u -= index
+        return tuple(u * (cv[index + 1][axis] - cv[index][axis]) + cv[index][axis] for axis in range(3))
     if u >= 1:
         return cv[count]
     u *= count - 1
