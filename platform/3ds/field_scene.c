@@ -384,7 +384,7 @@ static int play_story_battle(C3FieldStory *story,C3GameState *state,uint32_t enc
                              FieldBattleHost *host,FILE *trace,char *error,size_t capacity)
 {
     C3BattlePack pack;memset(&pack,0,sizeof pack);
-    char problem[C3_GB_ERROR_SIZE]="";C3BattleEncounterInfo info;
+    char problem[C3_GB_ERROR_SIZE]="";C3BattleEncounterInfo info={0};
     if(!c3_battle_pack_load(&pack,C3_BATTLE_PACK_PATH,problem)){
         if(trace){fprintf(trace,"field_battle_engine encounter=%lu status=no_pack reason=%s\n",(unsigned long)encounter,problem);fflush(trace);}
         snprintf(error,capacity,"battles.c3x: %s",problem);
