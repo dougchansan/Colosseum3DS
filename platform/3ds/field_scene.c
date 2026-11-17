@@ -1796,6 +1796,17 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
             }
             else c3_field_ui_draw_to(bottom,&summary,phase,page,selection,yes,message,view,&ui_pager);
             c3_bottom_screen_present();dirty=0;next_console=now+UINT64_C(100000);
+#ifdef C3_ROUNDTRIP_PROBE
+            /* Probe: the hub with the new-mail envelope, once per alert. */
+            {static uint32_t mail_shot;
+             if(ingame->mail_alert&&mail_shot!=mail_alert.started){
+                char shot[96];mkdir("sdmc:/3ds/Colosseum3DS/probe",0777);
+                snprintf(shot,sizeof shot,"sdmc:/3ds/Colosseum3DS/probe/mail_alert_%lu.bmp",(unsigned long)mail_alert.started);
+                int ok=c3_n3ds_capture_bottom(shot)==0;mail_shot=mail_alert.started;
+                if(trace){fprintf(trace,"probe_mail_alert alert=%lu frames=%lu shot=%d\n",(unsigned long)mail_alert.started,
+                                  (unsigned long)mail_alert.frames,ok);fflush(trace);}
+             }}
+#endif
         }
         if(pda_preview){
             pda_seconds+=delta;
