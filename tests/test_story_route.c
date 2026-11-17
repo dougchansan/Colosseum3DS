@@ -35,6 +35,7 @@
  *   result <id>               result ID reported for the next battles (default 2, win)
  *   expect <flag> <value>     fail unless the flag holds the value
  *   expect_floor <floor>      fail unless the scene is on that floor
+ *   expect_item <item> <n>    fail unless the bag holds n of the item
  *   save <path>               write the game state as a card file (a chapter-point
  *                             save for emulator checks; keep it private)
  *   talkall                   talk to every present person with a talk script, one
@@ -89,13 +90,38 @@ static uint8_t *pda_data;
 static void path(char out[1024], const char *dir, const char *name)
 { CHECK(snprintf(out, 1024, "%s/%s", dir, name) > 0 && strlen(out) < 1023); }
 static int any_floor(uint32_t floor) { return floor >= 1 && floor <= 0xffff; }
+/* With a PDA pack (C3_ROUTE_PDA) items go into the real bag, as on the
+ * console (platform/3ds/field_scene.c receive_item); without one the bag is
+ * left alone and the result is reported as accepted. */
 static int receive(void *c, uint32_t item, uint32_t count, char *name, size_t capacity)
-{ (void)c; fprintf(report, "route_item item=%lu count=%lu\n", (unsigned long)item, (unsigned long)count);
-  snprintf(name, capacity, "ITEM"); return 0; }
+{
+    (void)c; int result = pda_data ? c3_inventory_receive(&game, &pda, item, count) : 0;
+    fprintf(report, "route_item item=%lu count=%lu result=%d real_bag=%d\n", (unsigned long)item, (unsigned long)count,
+            result, pda_data != NULL);
+    snprintf(name, capacity, "ITEM"); return result;
+}
 static int clear_poison(void *c) { return c3_inventory_clear_party_poison(c); }
 static int restore(void *c) { (void)c; return 6; }
 static int item_change(void *c, uint32_t item, int32_t count)
-{ (void)c; fprintf(report, "route_item_change item=%lu count=%ld\n", (unsigned long)item, (long)count); return 0; }
+{
+    (void)c; int result = 0;
+    if (pda_data) result = count < 0 ? c3_inventory_remove(&game, &pda, item, (unsigned)(-(int64_t)count))
+                                     : c3_inventory_receive(&game, &pda, item, (unsigned)count);
+    fprintf(report, "route_item_change item=%lu count=%ld result=%d real_bag=%d\n", (unsigned long)item, (long)count,
+            result, pda_data != NULL);
+    return result;
+}
+/* How many of an item the bag holds (every pocket). */
+static unsigned bag_count(uint32_t id)
+{
+    unsigned total = 0;
+    for (unsigned pocket = 0; pocket < 6; ++pocket)
+        for (unsigned slot = 0; slot < c3_inventory_capacity(pocket); ++slot) {
+            unsigned item, count;
+            if (c3_inventory_slot(&game, pocket, slot, &item, &count) && item == id) total += count;
+        }
+    return total;
+}
 /* Item and species names for message controls, from the PDA pack's tables
  * (platform/3ds/field_scene.c story_namer). */
 static int namer(void *c, unsigned kind, uint32_t id, C3StoryValue *value)
@@ -259,6 +285,10 @@ static int run(unsigned frames, int until_control)
         if (v->item_menu) {
             fprintf(report, "route_item_menu floor=%03lx use=%lu\n", (unsigned long)scene->floor, (unsigned long)use_item);
             uint32_t item = use_item; use_item = 0;
+            /* The pause menu lists only what the bag holds. */
+            if (item && pda_data && !bag_count(item)) {
+                snprintf(error, sizeof error, "item %03lx is not in the bag", (unsigned long)item); return 0;
+            }
             if (!c3_field_story_item_menu_result(&scene->story, item, error)) return 0;
         }
         if (v->name_entry && !c3_field_story_name_result(&scene->story, "RUI", error)) return 0;
@@ -300,6 +330,13 @@ static int step(char *line)
         if (!c3_game_state_get_flag(&game, (uint32_t)a, &value) || value != b) {
             snprintf(error, sizeof error, "flag %03lx is %lu, expected %lu", a, (unsigned long)value, b); return 0;
         }
+        return 1;
+    }
+    if (!strcmp(word, "expect_item")) {
+        CHECK(sscanf(line, "%li %li", (long *)&a, (long *)&b) == 2);
+        unsigned total = bag_count((uint32_t)a);
+        fprintf(report, "route_bag item=%03lx count=%u\n", a, total);
+        if (total != b) { snprintf(error, sizeof error, "item %03lx count is %u, expected %lu", a, total, b); return 0; }
         return 1;
     }
     if (!strcmp(word, "expect_floor")) {
