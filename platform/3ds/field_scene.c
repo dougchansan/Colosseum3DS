@@ -26,6 +26,7 @@
 #include "colosseum3ds/inventory.h"
 #include "colosseum3ds/name_entry.h"
 #include "colosseum3ds/pc_menu.h"
+#include "colosseum3ds/mail_alert.h"
 #include "world_map_scene.h"
 #include "ending_scene.h"
 #include "dna_key_scene.h"
@@ -748,6 +749,8 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     C3PdaPreview *pda_preview=NULL;
     float pda_seconds=0;
     int pda_audio_ready=0;
+    /* New-mail alert (mailMainStartSe / fn_801D2404) for native AD deliveries. */
+    C3MailAlert mail_alert={0};uint32_t mail_seen=0;float mail_frames=0;
     char path[160],message[256]={0},story_error[C3_STORY_ERROR]={0};
     const C3FieldStoryView *view=NULL;
     if(!ingame){snprintf(error,capacity,"In-game menu allocation failed.");return -1;}
@@ -1405,6 +1408,18 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         if(page==PAUSE_CLOSED){
             c3_field_story_set_move_input(&story,input.held,input.stick_x,input.stick_y);
             if(!c3_field_story_tick(&story,delta,phase==FIELD_CONTROL?input.pressed:0,story_error))goto story_failed;
+            if(view->mail_received!=mail_seen){
+                mail_seen=view->mail_received;
+                unsigned sort=0,tone=0;
+                if(c3_game_state_mail_settings(state,&sort,&tone)&&c3_mail_alert_start(&mail_alert,tone)){
+                    char audio_error[192]="";mail_frames=0;
+                    if(!pda_audio_ready)pda_audio_ready=c3_pda_audio_open("sdmc:/3ds/Colosseum3DS",audio_error,sizeof audio_error);
+                    int playing=pda_audio_ready&&c3_pda_audio_preview(tone,audio_error,sizeof audio_error);
+                    if(!playing)mail_alert.tone_playing=0; /* missing ringtones: the envelope still blinks */
+                    if(trace){fprintf(trace,"mail_alert start=%lu tone=%u sound=%d reason=%s
+",(unsigned long)mail_alert.started,tone,playing,audio_error);fflush(trace);}
+                }
+            }
 #ifdef C3_FINAL_EVENT_PROBE
             uint32_t encounter;
             if(c3_field_story_battle_pending(&story,&encounter)){
@@ -1754,6 +1769,20 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
             if(phase==FIELD_FADE_IN)fade=fminf(fade,phase_seconds/(arrival?1.0f:.5f));
         }
         if(!c3_game_state_summary(state,&summary)){snprintf(error,capacity,"Game state became unavailable.");result=-1;break;}
+        if(mail_alert.active){
+            /* A battle ends the alert (mailMainReceiveTerminate in fight.c). */
+            if(view->battle_id&&c3_mail_alert_terminate(&mail_alert))c3_pda_audio_stop();
+            mail_frames+=delta*60.0f;uint32_t step=(uint32_t)mail_frames;mail_frames-=(float)step;
+            int was=ingame->mail_alert;
+            c3_mail_alert_tick(&mail_alert,step,mail_alert.tone_playing&&c3_pda_audio_playing());
+            ingame->mail_alert=(unsigned)c3_mail_alert_visible(&mail_alert);
+            if((int)ingame->mail_alert!=was)dirty=1;
+            if(!mail_alert.active){
+                if(page==PAUSE_CLOSED&&pda_audio_ready){c3_pda_audio_close();pda_audio_ready=0;}
+                if(trace){fprintf(trace,"mail_alert end=%lu frames=%lu
+",(unsigned long)mail_alert.started,(unsigned long)mail_alert.frames);fflush(trace);}
+            }
+        }
         if(dirty||input.pressed||now>=next_console){
             C3BottomUi *bottom=c3_bottom_screen_begin();
             if(naming)c3_name_entry_draw(&name_entry,bottom);

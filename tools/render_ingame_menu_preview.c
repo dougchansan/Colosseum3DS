@@ -53,6 +53,9 @@ int main(int argc,char **argv)
         }
     }
     ok=snapshot(&menu,&state,&assets,argv[4],"hub");
+    /* The field bottom screen while new mail arrives: idle hub with the
+     * original envelope in its visible half-second. */
+    menu.idle=1;menu.mail_alert=1;ok&=snapshot(&menu,&state,&assets,argv[4],"hub-mail-alert");menu.idle=0;menu.mail_alert=0;
     tap(&menu,&state,C3_PAD_A);ok&=snapshot(&menu,&state,&assets,argv[4],"party");tap(&menu,&state,C3_PAD_A);
     ok&=snapshot(&menu,&state,&assets,argv[4],"pokemon");tap(&menu,&state,C3_PAD_R);ok&=snapshot(&menu,&state,&assets,argv[4],"stats");
     tap(&menu,&state,C3_PAD_R);ok&=snapshot(&menu,&state,&assets,argv[4],"moves");tap(&menu,&state,C3_PAD_B);tap(&menu,&state,C3_PAD_B);

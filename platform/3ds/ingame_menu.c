@@ -360,7 +360,13 @@ void c3_ingame_draw_to(C3IngameMenu *m,const C3GameState *state,C3BottomUi *ui)
             c3_ui_rect(ui,x,y,2,29,i==chosen?0x66ff55u:0x235d35u);
             if(i==chosen)c3_ui_sprite(ui,C3_UI_HAND,x+3,y+5,21,16);
             c3_ui_text(ui,x+(i==chosen?26:10),y+6,i==chosen?89:105,1,labels[i],i==chosen?C3_UI_WHITE:0x8dcbaau);
-        }c3_ui_footer(ui,m->idle?"Tap an item   X / START: menu":"D-pad: choose   A: open   B: resume");break;
+        }c3_ui_footer(ui,m->idle?"Tap an item   X / START: menu":"D-pad: choose   A: open   B: resume");
+        /* fn_801D2404 blinks the new-mail envelope (0x0C881200) in the
+         * screen's top corner at half its 57x41 size; on the 320x240 P*DA
+         * it sits in the free right end of the header bar, clear of the
+         * label. Packs without it show the P*DA's own unread envelope. */
+        if(m->mail_alert){size_t n;if(c3_pda_entry(&m->assets,6,5,&n))image(m,ui,5,262,18,29,21);else image(m,ui,3,262,18,31,22);}
+        break;
     }
     case C3_GAME_PDA:{
         static const char *const labels[]={"SNAG LIST","STRATEGY MEMO","MAIL","CANCEL"};uint32_t unlocked=0;c3_game_state_get_flag(state,0x3f0,&unlocked);
