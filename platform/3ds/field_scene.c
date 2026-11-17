@@ -28,6 +28,7 @@
 #include "colosseum3ds/pc_menu.h"
 #include "world_map_scene.h"
 #include "ending_scene.h"
+#include "dna_key_scene.h"
 #include "colosseum3ds/area_lights.h"
 #include "colosseum3ds/title.h"
 #include "colosseum3ds/shop.h"
@@ -966,6 +967,9 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     c3_field_story_set_species_namer(&story,field_species_name,ingame);
     c3_field_story_enable_shop(&story,1);
     c3_field_story_enable_menu_floor(&story,0x391,1); /* the PC (pc_menu.h) */
+    /* Native CC's disc puzzle, floor 0x387 (dna_key_scene.c), when its
+     * original models and cameras are on the SD card. */
+    c3_field_story_enable_menu_floor(&story,0x387,c3_dna_key_scene_available());
     c3_field_story_set_item_service(&story,receive_item,state);
     c3_field_story_set_item_change_service(&story,change_item,state);
     c3_field_story_set_namer(&story,story_namer,state);
@@ -1282,6 +1286,29 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                 if(!c3_field_story_shop_done(&story,story_error))goto story_failed;
             }
             input.pressed=0;input.touch_pressed=false;
+        }
+        /* Native CC pushing the DNA disc puzzle, floor 0x387: the field's
+         * models make room as for a 3D battle, the original screen runs on
+         * the top display, and its retail result resumes CC. */
+        if(view->menu_floor==0x387&&page==PAUSE_CLOSED){
+            FieldBattleHost host={storage,models,actor_models,model_paths,&story,&npc,ingame,
+                                  count,tv_index,skin_actors,view->tv_enabled,frames,elapsed};
+            uint16_t species[3];memcpy(species,view->dna_species,sizeof species);
+            if(trace){fprintf(trace,"dna_open floor=387 species=%x,%x,%x
+",species[0],species[1],species[2]);fflush(trace);}
+            int released=field_battle_release(&host,trace,story_error,sizeof story_error);
+            if(released<0){result=1;break;}
+            if(!released)goto story_failed;
+            int puzzle=c3_dna_key_scene_run(species,trace,story_error,sizeof story_error);
+            int restored=field_battle_restore(&host,0,trace,error,capacity);
+            if(restored<0){result=1;break;}
+            if(!restored){result=-1;break;}
+            if(trace){fprintf(trace,"dna_close floor=387 result=%d
+",puzzle);fflush(trace);}
+            if(puzzle<0)goto story_failed;
+            if(!c3_field_story_dna_result(&story,puzzle,story_error))goto story_failed;
+            previous=c3_n3ds_active_time_us(); /* puzzle time must not advance the field */
+            dirty=1;next_console=0;continue;
         }
         /* Native 62 pushing the PC box floor 0x391: the PC menu with the
          * original texts. It owns all input; Save uses the scene's save. */
