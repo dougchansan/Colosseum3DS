@@ -263,7 +263,7 @@ int c3_battle_general_scene_run(const C3BattlePack *pack, C3GeneralBattle *b, FI
                 c3_battle_music_end(&music);
                 return 0;
             }
-        } else if (c3_battle_general_autoplaying()) {
+        } else if (c3_battle_general_autoplaying() || b->info.cpu_side0) {
             /* Probe builds: the probe hero's commands, no input. */
             C3GeneralCommand c[2]; char error[C3_GB_ERROR_SIZE];
             c3_battle_general_probe_commands(b, pack, c);

@@ -18,6 +18,7 @@
 #define STRUGGLE 165u
 #define SHADOW_ROWS 0x61u  /* common_rel 0x1439D8: Shadow data IDs 0..0x60 */
 #define SHADOW_ROW 0x38u
+#define SIDE0_ROW 580u     /* id, count, trainer 52, kind 12, 6 records, 2 names */
 
 static uint16_t be16(const uint8_t *p){return (uint16_t)((unsigned)p[0]<<8|p[1]);}
 static uint32_t be32(const uint8_t *p){return (uint32_t)p[0]<<24|(uint32_t)p[1]<<16|(uint32_t)p[2]<<8|p[3];}
@@ -35,6 +36,13 @@ static const uint8_t *species_row(const C3BattlePack *p,uint16_t id)
 {return id&&id<p->species?p->bytes+p->species_at+id*SPECIES_ROW:NULL;}
 static void copy_name(char out[C3_GB_NAME],const uint8_t *in)
 {memcpy(out,in,C3_GB_NAME);out[C3_GB_NAME-1]=0;if(!out[0])snprintf(out,C3_GB_NAME,"?");}
+/* The side-0 CPU trainer row of an encounter (pack v3), or NULL. */
+static const uint8_t *side0_row(const C3BattlePack *p,uint32_t id)
+{
+    for(uint32_t i=0;p&&p->bytes&&i<p->side0_count;++i){const uint8_t *r=p->bytes+p->side0_at+i*SIDE0_ROW;
+        if(be16(r)==id)return r;}
+    return NULL;
+}
 
 int c3_battle_pack_decode(C3BattlePack *out,const void *bytes,size_t size,char *e)
 {
@@ -44,20 +52,27 @@ int c3_battle_pack_decode(C3BattlePack *out,const void *bytes,size_t size,char *
     k.encounters=be32(p+12);k.moves=be32(p+16);k.species=be32(p+20);k.types=be32(p+24);k.growth=be32(p+28);
     k.species_at=be32(p+112);k.types_at=be32(p+116);k.growth_at=be32(p+120);k.entries_at=be32(p+124);
     unsigned version=size>=8?be32(p+4):0;
-    if(memcmp(p,"C3B2",4)||(version!=1&&version!=2)||be32(p+8)!=size||!k.encounters||k.encounters>4096||
+    if(memcmp(p,"C3B2",4)||version<1||version>3||be32(p+8)!=size||!k.encounters||k.encounters>4096||
        k.moves<STRUGGLE+1||k.moves>1024||k.species<2||k.species>1024||k.types!=18||k.growth!=8)
         return fail(e,"Unsupported story-battle pack header.");
     k.names_at=k.entries_at+k.encounters*ENTRY;
-    k.shadow_at=version==2?k.names_at+(k.species+k.moves+2u*k.encounters)*C3_GB_NAME:0;
+    k.shadow_at=version>=2?k.names_at+(k.species+k.moves+2u*k.encounters)*C3_GB_NAME:0;
+    if(version==3){uint64_t at=(uint64_t)k.shadow_at+SHADOW_ROWS*SHADOW_ROW;
+        if(at+4u>size)return fail(e,"Story-battle pack sections do not match its size.");
+        k.side0_at=(uint32_t)at+4u;k.side0_count=be32(p+at);
+        if(k.side0_count>k.encounters)return fail(e,"Story-battle pack sections do not match its size.");}
     if(k.species_at!=HEADER+k.moves*MOVE_ROW||k.types_at!=k.species_at+k.species*SPECIES_ROW||
        k.growth_at!=k.types_at+k.types*TYPE_ROW||k.entries_at!=k.growth_at+k.growth*GROWTH_ROW||
        (uint64_t)k.names_at+(uint64_t)(k.species+k.moves+2u*k.encounters)*C3_GB_NAME+
-       (version==2?SHADOW_ROWS*SHADOW_ROW:0u)!=size)
+       (version>=2?SHADOW_ROWS*SHADOW_ROW:0u)+(version==3?4u+(uint64_t)k.side0_count*SIDE0_ROW:0u)!=size)
         return fail(e,"Story-battle pack sections do not match its size.");
     c3_save_codec_sha1(digest,p+HEADER,size-HEADER);
     if(memcmp(digest,p+72,20))return fail(e,"Story-battle pack digest mismatch.");
     for(uint32_t i=0;i<k.encounters;++i){const uint8_t *r=p+k.entries_at+i*ENTRY;
         if(be16(r)!=i||r[2]>C3_GB_PARTY||be16(r+4)>5)return fail(e,"Damaged story-battle encounter index.");}
+    for(uint32_t i=0;i<k.side0_count;++i){const uint8_t *r=p+k.side0_at+i*SIDE0_ROW;
+        if(be16(r)>=k.encounters||!r[2]||r[2]>C3_GB_PARTY||be16(p+k.entries_at+be16(r)*ENTRY+4))
+            return fail(e,"Damaged story-battle side-0 trainer.");}
     k.bytes=malloc(size);if(!k.bytes)return fail(e,"Story-battle pack allocation failed.");
     memcpy(k.bytes,p,size);k.size=size;*out=k;if(e)e[0]=0;return 1;
 }
@@ -123,6 +138,11 @@ int c3_battle_pack_info(const C3BattlePack *p,uint32_t id,C3BattleEncounterInfo 
         i.species[k]=be16(m+10);i.levels[k]=m[4];i.shadow_count=(uint8_t)(i.shadow_count+(m[3]!=0));}
     const uint8_t *names=p->bytes+p->names_at+(p->species+p->moves+2u*id)*C3_GB_NAME;
     copy_name(i.trainer,names);copy_name(i.title,names+C3_GB_NAME);
+    {const uint8_t *s0=side0_row(p,id);
+     /* An older pack has no side-0 roster: the encounter stays refused. */
+     if(be16(enc+24)!=1||be32(enc+28)!=1){if(!s0&&!i.reason)i.reason=1;}
+     if(s0&&!i.reason){i.cpu_side0=1;i.side0_party_count=s0[2];
+        copy_name(i.side0_trainer,s0+548);copy_name(i.side0_title,s0+564);}}
     *out=i;return 1;
 }
 
@@ -233,10 +253,11 @@ static const char *who(C3GeneralBattle *b,unsigned pos)
     if(!m)return "?";
     snprintf(text[pos],sizeof text[pos],"%s%s",pos/2!=b->viewer?"Foe ":"",m->name);return text[pos];
 }
-static const char *side_label(const C3GeneralBattle *b,unsigned s){return b->link?b->side_name[s]:b->info.trainer;}
+static const char *side_label(const C3GeneralBattle *b,unsigned s)
+{return b->link?b->side_name[s]:b->info.cpu_side0&&!s?b->info.side0_trainer:b->info.trainer;}
 static void announce_send(C3GeneralBattle *b,unsigned s,unsigned a,const C3GeneralMon *m)
 {
-    if(s==b->viewer)say(b,C3_GB_EVENT_SWITCH,s*2+a,255,0,"Go, %s!",m->name);
+    if(s==b->viewer&&!b->info.cpu_side0)say(b,C3_GB_EVENT_SWITCH,s*2+a,255,0,"Go, %s!",m->name);
     else say(b,C3_GB_EVENT_SWITCH,s*2+a,255,0,"%s sent out %s!",side_label(b,s),m->name);
 }
 static int roll(C3GeneralBattle *b,unsigned n,unsigned *out)
@@ -270,7 +291,14 @@ int c3_general_battle_begin(C3GeneralBattle *out,const C3BattlePack *p,uint32_t 
     b->magic=MAGIC;b->encounter=id;b->info=info;b->outcome=C3_GB_RUNNING;
     b->active_count=info.active_per_side==1?1:2;
     c3_battle_rng_init(&b->rng,seed);
-    for(unsigned i=0;i<C3_GB_PARTY;++i){
+    if(info.cpu_side0){
+        /* fightTrainerCreate for a CPU trainer in slot 0: its roster, not the hero's party. */
+        const uint8_t *s0=side0_row(p,id);
+        for(unsigned i=0;i<s0[2];++i){
+            if(!mon_from_trainer(p,&b->party[0][b->party_count[0]],s0+68+i*TRAINER_MON)){free(b);return fail(e,"Damaged side-0 Pokemon record.");}
+            b->player_order[b->party_count[0]]=(uint8_t)i;++b->party_count[0];
+        }
+    }else for(unsigned i=0;i<C3_GB_PARTY;++i){
         if(!be16(party+i*C3_GB_POKEMON_SIZE))continue;
         if(!mon_from_party(p,&b->party[0][b->party_count[0]],party+i*C3_GB_POKEMON_SIZE,i))continue;
         b->player_order[b->party_count[0]++]=(uint8_t)i;
@@ -284,7 +312,9 @@ int c3_general_battle_begin(C3GeneralBattle *out,const C3BattlePack *p,uint32_t 
     if(b->active[0][0]==NO_MON){free(b);return fail(e,"The hero has no Pokemon able to battle.");}
     if(b->active[1][0]==NO_MON){free(b);return fail(e,"The opponent has no Pokemon.");}
     mark_faced(b);
-    say(b,C3_GB_EVENT_MESSAGE,255,255,0,"%s %s would like to battle!",info.title,info.trainer);
+    if(info.cpu_side0)say(b,C3_GB_EVENT_MESSAGE,255,255,0,"%s %s and %s %s are battling!",
+        info.side0_title,info.side0_trainer,info.title,info.trainer);
+    else say(b,C3_GB_EVENT_MESSAGE,255,255,0,"%s %s would like to battle!",info.title,info.trainer);
     for(unsigned a=0;a<b->active_count;++a)if(b->active[1][a]!=NO_MON)announce_send(b,1,a,&b->party[1][b->active[1][a]]);
     for(unsigned a=0;a<b->active_count;++a)if(b->active[0][a]!=NO_MON)announce_send(b,0,a,&b->party[0][b->active[0][a]]);
     *out=*b;free(b);if(e)e[0]=0;return 1;
@@ -833,13 +863,15 @@ static int turn_core(C3GeneralBattle *out,const C3BattlePack *p,const C3GeneralC
     if(!out||!p||!player||out->magic!=MAGIC||out->outcome!=C3_GB_RUNNING||out->turn>=C3_GB_MAX_TURNS)
         return fail(e,"Invalid or finished battle.");
     for(unsigned pos=0;pos<4;++pos){
-        if(!link&&pos/2)continue;
+        if(!link&&(pos/2||out->info.cpu_side0))continue;
         if(pos%2<out->active_count&&!command_valid(out,p,pos,player[pos]))return fail(e,"Choose a usable move or a healthy Pokemon.");
     }
     C3GeneralBattle *b=malloc(sizeof *b);if(!b)return fail(e,"Turn allocation failed.");
     *b=*out;b->event_count=0;++b->turn;
     C3GeneralCommand cmd[4]={{0}};uint8_t order[4],count=0,acted[4]={0};int ok=0;unsigned r;
-    for(unsigned a=0;a<b->active_count;++a){if(alive(b,a))cmd[a]=player[a];
+    for(unsigned a=0;a<b->active_count;++a){
+        if(b->info.cpu_side0){if(alive(b,a)&&!c3_general_battle_choose(b,p,a,&cmd[a]))goto failed;}
+        else if(alive(b,a))cmd[a]=player[a];
         if(link){if(alive(b,2+a))cmd[2+a]=player[2+a];}
         else if(alive(b,2+a)&&!c3_general_battle_choose(b,p,2+a,&cmd[2+a]))goto failed;}
     for(unsigned pos=0;pos<4;++pos)if(alive(b,pos))order[count++]=(uint8_t)pos;
@@ -875,7 +907,10 @@ static int turn_core(C3GeneralBattle *out,const C3BattlePack *p,const C3GeneralC
         unsigned foe=1u-b->viewer;int won=b->outcome==(b->viewer?C3_GB_LOST:C3_GB_WON);
         if(b->outcome==C3_GB_DRAW)say(b,C3_GB_EVENT_OUTCOME,255,255,0,"The battle with %s ended in a draw.",b->side_name[foe]);
         else say(b,C3_GB_EVENT_OUTCOME,255,255,0,won?"You won the battle against %s!":"You lost the battle against %s...",b->side_name[foe]);
-    }else if(b->outcome!=C3_GB_RUNNING)
+    }else if(b->outcome!=C3_GB_RUNNING&&b->info.cpu_side0)
+        say(b,C3_GB_EVENT_OUTCOME,255,255,0,b->outcome==C3_GB_DRAW?"The battle ended in a draw.":"%s %s won the battle!",
+            b->outcome==C3_GB_WON?b->info.side0_title:b->info.title,b->outcome==C3_GB_WON?b->info.side0_trainer:b->info.trainer);
+    else if(b->outcome!=C3_GB_RUNNING)
         say(b,C3_GB_EVENT_OUTCOME,255,255,0,b->outcome==C3_GB_WON?"You defeated %s %s!":
             b->outcome==C3_GB_LOST?"You lost to %s %s...":"The battle with %s %s ended in a draw.",b->info.title,b->info.trainer);
     *out=*b;ok=1;if(e)e[0]=0;
@@ -957,6 +992,9 @@ int c3_general_battle_writeback(const C3GeneralBattle *b,const C3BattlePack *p,
     out.wipeout=b->outcome!=C3_GB_WON&&b->info.wipeout;
     memcpy(out.balls_used,b->balls_used,sizeof out.balls_used);
     for(unsigned i=0;i<b->party_count[1];++i)if(b->caught[i])out.caught[out.caught_count++]=(uint8_t)i;
+    /* A CPU trainer fought on the hero's side: the hero copy is untouched
+     * and the result says which side won (2 side 0, 3 side 1). */
+    if(b->info.cpu_side0){out.wipeout=0;*rw=out;return 1;}
     for(unsigned i=0;i<b->party_count[0];++i)
         if(be16(party[b->party[0][i].party_slot])!=b->party[0][i].species)return 0;
     /* backSaveDataFlag clear: the hero copy (party, money) is discarded. */

@@ -30,6 +30,8 @@ typedef struct C3BattlePack {
     uint32_t encounters, moves, species, types, growth;
     uint32_t species_at, types_at, growth_at, entries_at, names_at;
     uint32_t shadow_at; /* version 2: the Shadow table (0x61 x 0x38-byte rows), else 0 */
+    /* version 3: side-0 CPU trainers (encounters the hero watches, 525). */
+    uint32_t side0_at, side0_count;
 } C3BattlePack;
 
 typedef struct C3BattleEncounterInfo {
@@ -49,6 +51,11 @@ typedef struct C3BattleEncounterInfo {
      * nigeru, getExp, getOkane, okanePool, doCriticalAttack and
      * darkpokemonHypermode. */
     uint8_t back_save, use_item, can_run, get_exp, get_money, money_pool, critical, hyper_mode;
+    /* Side 0 is a CPU trainer, not the hero (pack v3; encounter 525, Eagun
+     * vs Skrub): both sides are chosen by the trainer AI, nothing is written
+     * back, and the result is 2 when side 0 wins, 3 when side 1 does. */
+    uint8_t cpu_side0, side0_party_count;
+    char side0_trainer[C3_GB_NAME], side0_title[C3_GB_NAME];
 } C3BattleEncounterInfo;
 
 typedef enum {

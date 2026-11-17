@@ -5,7 +5,8 @@ The pack holds original big-endian rows only: every encounter row with its
 floor, kind, type, opponent trainer, trainer kind and up to six trainer
 Pokemon records, plus the move, species, type-chart and growth tables the
 native general battle (src/battle_general.c) reads, and (version 2) the
-Shadow table that snagging reads. Nothing is generated.
+Shadow table that snagging reads, and (version 3) the side-0 CPU trainer
+of encounters the hero does not fight in (525). Nothing is generated.
 
 With --stories, every C3S1 story pack in the given directories is scanned for
 native 0x98/0x66 call sites; the JSON report then lists each requested
@@ -47,6 +48,12 @@ NAME_SIZE = 16
 # Common REL message groups (tools/prepare_pda.py): species +0x18, move +0x20,
 # trainer +8 and trainer kind +4 hold UTF-16BE message IDs.
 MESSAGE_GROUPS = ((0x58044, 0x647B4), (0x647B4, None))
+# Version 3: a player-side section for encounters whose side 0 is a CPU
+# trainer instead of the hero (fightEncount slot 0 != (1, 1), e.g. 525,
+# Eagun vs Cipher Peon Skrub): u32 count, then per encounter u16 id, u8
+# party count, u8 0, the trainer row (52), its trainer kind row (12), six
+# 80-byte Pokemon records and two 16-byte names (trainer, title).
+SIDE0_ROW = 4 + 52 + 12 + 6 * 80 + 2 * NAME_SIZE
 REASONS = {0: "admitted", 1: "player side is not the hero alone",
            2: "more than one opponent trainer", 3: "opponent has no Pokemon",
            4: "unsupported battle type", 5: "encounter index out of range"}
@@ -101,6 +108,42 @@ def roster(rel, trainer):
     return party
 
 
+def side0_roster(rel, slot):
+    """A CPU trainer on side 0 (fightTrainerCreate for slot 0 when it is not
+    the hero): its trainer row, kind row and roster, or None."""
+    if slot == (1, 1) or not slot[0]:
+        return None
+    try:
+        trainer = rel.row("trainer", slot[0])
+        kind = rel.row("trainer_kind", u16(trainer, 2))
+    except ValueError:
+        return None
+    party = roster(rel, trainer)
+    return (trainer, kind, party) if party else None
+
+
+def side0_section(rel, rel_bytes):
+    table = message_names(rel_bytes)
+    rows = []
+    for index in range(rel.count("encounter")):
+        encounter = rel.row("encounter", index)
+        side0 = side0_roster(rel, (u16(encounter, 24), u32(encounter, 28)))
+        _, reason, _ = encounter_entry(rel, index)
+        if not side0 or reason:
+            continue
+        trainer, kind, party = side0
+        row = bytearray(SIDE0_ROW)
+        struct.pack_into(">HB", row, 0, index, len(party))
+        row[4:56] = trainer
+        row[56:68] = kind
+        for i, record in enumerate(party):
+            row[68 + i * 80:148 + i * 80] = record
+        row[548:564] = ascii_name(table, u32(trainer, 8))
+        row[564:580] = ascii_name(table, u32(kind, 4))
+        rows.append(bytes(row))
+    return struct.pack(">I", len(rows)) + b"".join(rows), len(rows)
+
+
 def encounter_entry(rel, index):
     entry = bytearray(ENTRY_SIZE)
     struct.pack_into(">H", entry, 0, index)
@@ -114,7 +157,8 @@ def encounter_entry(rel, index):
     except ValueError:
         return bytes(entry[:4]) + bytes(ENTRY_SIZE - 4), 5, []
     opponents = [s for s in slots[1:] if s[0]]
-    if slots[0] != (1, 1):
+    side0 = side0_roster(rel, slots[0])
+    if slots[0] != (1, 1) and not side0:
         reason = 1
     elif len(opponents) != 1:
         reason = 2
@@ -196,9 +240,11 @@ def make_pack(rel_bytes, dol_bytes, source_commit=None, common_sha1=None, dol_sh
     growth_at = types_at + len(types)
     entries_at = growth_at + len(growth)
     shadow = rel_bytes[REL_DATA + SHADOW[0]:REL_DATA + SHADOW[0] + SHADOW[1] * SHADOW[2]]
-    body = moves + species + types + growth + b"".join(entries) + names_section(rel, rel_bytes, entries) + shadow
+    side0, _ = side0_section(rel, rel_bytes)
+    body = (moves + species + types + growth + b"".join(entries) + names_section(rel, rel_bytes, entries)
+            + shadow + side0)
     header = bytearray(HEADER_SIZE)
-    struct.pack_into(">4s7I", header, 0, MAGIC, 2, HEADER_SIZE + len(body), count,
+    struct.pack_into(">4s7I", header, 0, MAGIC, 3, HEADER_SIZE + len(body), count,
                      rel.count("move"), rel.count("species"), TYPE_CHART[2], GROWTH[2])
     if source_commit:
         header[32:52] = bytes.fromhex(source_commit)

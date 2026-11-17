@@ -242,7 +242,9 @@ static int run(const C3BattlePack *pack, C3GeneralBattle *b, C3BattleLinkHooks *
                 if ((hooks->control_mask >> a & 1u) && b->active[0][a] != 255 && b->party[0][b->active[0][a]].hp)
                     c3_general_battle_choose_with(b, pack, a, &local_rng, &c[a]);
             link_submit(hooks, &ui, c); dirty = 1;
-        } else if (autoplay && !hooks && ui.page != C3_GUI_EVENTS && ui.page != C3_GUI_RESULT) {
+        } else if ((autoplay || b->info.cpu_side0) && !hooks && ui.page != C3_GUI_EVENTS && ui.page != C3_GUI_RESULT) {
+            /* A CPU trainer on side 0 (encounter 525): the engine's trainer AI
+             * picks both sides; the hero watches. */
             C3GeneralCommand c[2]; memset(c, 0, sizeof c);
             for (unsigned a = 0; a < b->active_count; ++a)
                 if (b->active[0][a] != 255 && b->party[0][b->active[0][a]].hp) probe_hero_command(b, pack, a, &c[a]);
