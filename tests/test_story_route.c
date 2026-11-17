@@ -69,6 +69,8 @@ typedef struct Scene {
     C3FieldPlayer hero;
     C3Title wes, npc;
     C3Title *models[C3_AREA_MAX_ACTORS];
+    C3Title scene_models[4];      /* event-scene models (aux3 C3SM), loaded for real */
+    unsigned scene_model_count;
     C3AreaCamera camera;
     uint32_t floor, entrance, previous;
     int loaded;
@@ -145,7 +147,8 @@ static void unload(void)
 {
     if (!scene->loaded) return;
     c3_field_story_close(&scene->story); c3_field_close(&scene->map); c3_area_close(&scene->area);
-    c3_title_close(&scene->wes); c3_title_close(&scene->npc);
+    c3_title_close(&scene->wes); c3_title_close(&scene->npc); c3_area_camera_close(&scene->camera);
+    for (unsigned i = 0; i < scene->scene_model_count; ++i) c3_title_close(scene->scene_models + i);
     memset(scene, 0, sizeof *scene);
 }
 
@@ -164,10 +167,24 @@ static int load(uint32_t floor, uint32_t entrance, uint32_t previous)
     snprintf(name, sizeof name, "f%03lx.c3a", (unsigned long)floor); path(file, root, name);
     if (!c3_area_load(&scene->area, file, error, sizeof error)) { c3_field_close(&scene->map); return 0; }
     stand_in(&scene->wes); stand_in(&scene->npc);
-    for (uint32_t i = 0; i < scene->area.actor_count && i < C3_AREA_MAX_ACTORS; ++i) scene->models[i] = &scene->npc;
+    for (uint32_t i = 0; i < scene->area.actor_count && i < C3_AREA_MAX_ACTORS; ++i) {
+        scene->models[i] = &scene->npc;
+        /* An event scene's scripted model (the train) times its natives 73/75
+         * waits and carries the part Wes rides on: use its prepared pack. */
+        if (scene->area.actors[i].aux3 == 0x4333534Du && scene->scene_model_count < 4) {
+            C3Title *model = scene->scene_models + scene->scene_model_count;
+            path(file, root, scene->area.actors[i].file);
+            if (!c3_title_load(model, file, error, sizeof error)) { c3_area_close(&scene->area); c3_field_close(&scene->map); return 0; }
+            ++scene->scene_model_count; scene->models[i] = model;
+        }
+    }
     if (!c3_field_spawn(&scene->map, entrance, &scene->hero) && !c3_field_spawn(&scene->map, 0, &scene->hero)) {
         snprintf(error, sizeof error, "entrance %lu is unavailable", (unsigned long)entrance); return 0;
     }
+    /* The floor's event camera, when prepared (native 2A plays it, 2E waits). */
+    snprintf(name, sizeof name, "f%03lx_camera.c3c", (unsigned long)floor); path(file, root, name);
+    FILE *camera = fopen(file, "rb");
+    if (camera) { fclose(camera); if (!c3_area_camera_load(&scene->camera, file, error, sizeof error)) return 0; }
     snprintf(name, sizeof name, "f%03lx.c3s", (unsigned long)floor); path(file, root, name);
     if (!c3_field_story_load(&scene->story, file, &game, &scene->map, &scene->area, &scene->hero, &scene->wes,
                              scene->models, &scene->camera, trace, error)) return 0;
