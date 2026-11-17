@@ -128,6 +128,9 @@ typedef struct C3GeneralBattle {
     uint8_t snag;
     uint16_t balls[13], balls_used[13];
     uint8_t caught[C3_GB_PARTY];
+    /* Floor status 0x5B: the turn's shared Quick Claw roll, drawn at the
+     * start of the battle and again at the end of every turn. */
+    uint16_t quick_claw_roll;
     uint32_t event_count;
     C3GeneralEvent events[C3_GB_EVENT_LIMIT];
 } C3GeneralBattle;

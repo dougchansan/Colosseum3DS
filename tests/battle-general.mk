@@ -4,9 +4,15 @@ build/test_battle_general: tests/test_battle_general.c $(BATTLE_GENERAL_SOURCES)
 	$(CC) $(CPPFLAGS) -Ibuild -Isrc $(CFLAGS) tests/test_battle_general.c $(BATTLE_GENERAL_SOURCES) $(LDFLAGS) -lm -o $@
 
 all: build/test_battle_general
+
+# Original turn rules (synthetic): order, priority, speed items, ties, targeting, damage, end of turn.
+build/test_battle_turn_rules: tests/test_battle_turn_rules.c $(BATTLE_GENERAL_SOURCES) include/colosseum3ds/battle_general.h build/battle_rng_source.h $(HEADERS) $(UPSTREAM)
+	$(CC) $(CPPFLAGS) -Ibuild -Isrc $(CFLAGS) tests/test_battle_turn_rules.c $(BATTLE_GENERAL_SOURCES) $(LDFLAGS) -lm -o $@
+all: build/test_battle_turn_rules
 .PHONY: battle-general-check
-battle-general-check: build/test_battle_general build/test_battle3d_index build/test_wzx_player
+battle-general-check: build/test_battle_general build/test_battle_turn_rules build/test_battle3d_index build/test_wzx_player
 	./build/test_battle_general
+	./build/test_battle_turn_rules
 	./build/test_battle3d_index
 	./build/test_wzx_player
 
