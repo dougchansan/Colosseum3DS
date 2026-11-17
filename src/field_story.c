@@ -761,11 +761,14 @@ static int run_native(Impl *s,RunTask *t,char *error)
     }break;
     /* fn_80117AE4: texture-change animation of the floor's screens. */
     case 0xab:note_presentation(s,0xab,"texture_change_animation");value=1;break;
-    /* mailMainSendByScrpt: deliver mail once; the new-mail sound is not played. */
+    /* mailMainSendByScrpt: deliver mail once (mailAddMailbox). The scene
+     * starts the new-mail tone and envelope (mailMainStartSe) when
+     * view.mail_received changes. */
     case 0xad:{
         int added=c3_game_state_mail_add(s->game,a[0]);
         if(added<0)return fail(error,"Original mail %lu cannot be delivered",(unsigned long)a[0]);
-        if(added){++s->mail_sent;log_line(s,"story_mail id=%lu status=delivered",(unsigned long)a[0]);}
+        if(added){++s->mail_sent;s->view.mail_received=s->mail_sent;
+            log_line(s,"story_mail id=%lu status=delivered alert=%lu",(unsigned long)a[0],(unsigned long)s->mail_sent);}
     }break;
     /* scriptStoreTemochiPokemon copies the party's cries and personality
      * values into lbl_804670B4 for later presentation natives. */

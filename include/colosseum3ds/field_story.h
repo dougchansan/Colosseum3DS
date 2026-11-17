@@ -40,6 +40,8 @@ typedef struct C3FieldStoryView {
     uint32_t unported_menu; /* last native whose menu step is not ported (took the decline branch) */
     int relive_pick;        /* native C2 waits for a party choice (c3_field_story_relive_pick) */
     int item_menu;          /* native D0 waits while the scene shows the pause menu's Items */
+    uint32_t mail_received; /* native AD deliveries so far (mailMainSendByScrpt): a change
+                             * starts the scene's new-mail alert (colosseum3ds/mail_alert.h) */
     float fade, camera_seconds;
     C3TitleCamera camera;
 } C3FieldStoryView;

@@ -769,10 +769,43 @@ static void dna_regressions(void)
     free(s);c3_game_state_free(&game);CHECK(!unlink(file));CHECK(!rmdir(directory));
     puts("field-story DNA puzzle handoff regressions passed");
 }
+/* Native AD (mailMainSendByScrpt) adds each mail once, unread, and counts
+ * the deliveries in view.mail_received so the scene starts the new-mail
+ * alert; a repeated mail neither re-adds nor re-alerts. */
+static void mail_regressions(void)
+{
+    char directory[]="/tmp/c3-field-story-mail-XXXXXX",file[1024];CHECK(mkdtemp(directory));path(file,directory,"unit.c3s");
+    C3GameState game={0};synthetic_game(&game);Scene *s=calloc(1,sizeof(*s));CHECK(s);
+    Program code[8];memset(code,0,sizeof code);
+    uint32_t args[1];
+    args[0]=15;native(code+3,0xad,1,args,1);args[0]=15;native(code+3,0xad,1,args,1);args[0]=23;native(code+3,0xad,1,args,1);
+    unsigned before=0;CHECK(c3_game_state_mail_count(&game,&before));
+    synthetic_load(s,&game,file,code,0,0,0x1000003);
+    CHECK(c3_field_story_view(&s->story)->mail_received==0);
+    CHECK(c3_field_story_enter(&s->story,error));CHECK(c3_field_story_tick(&s->story,0,0,error));
+    CHECK(c3_field_story_view(&s->story)->mail_received==2);
+    unsigned count=0;CHECK(c3_game_state_mail_count(&game,&count)&&count==before+2);
+    C3GameMail mail;
+    CHECK(c3_game_state_mail(&game,before,&mail)&&mail.id==15&&!mail.read);
+    CHECK(c3_game_state_mail(&game,before+1,&mail)&&mail.id==23&&!mail.read);
+    close_scene(s);
+    /* Mail already in the mailbox (a later floor) is not delivered again. */
+    synthetic_load(s,&game,file,code,0,0,0x1000003);
+    CHECK(c3_field_story_enter(&s->story,error));CHECK(c3_field_story_tick(&s->story,0,0,error));
+    CHECK(c3_field_story_view(&s->story)->mail_received==0);
+    CHECK(c3_game_state_mail_count(&game,&count)&&count==before+2);close_scene(s);
+    /* An ID outside the 512-entry mailbox fails the script. */
+    memset(code,0,sizeof code);args[0]=512;native(code+3,0xad,1,args,1);
+    synthetic_load(s,&game,file,code,0,0,0x1000003);CHECK(c3_field_story_enter(&s->story,error));
+    CHECK(!c3_field_story_tick(&s->story,0,0,error)&&strstr(error,"cannot be delivered"));close_scene(s);
+    free(s);c3_game_state_free(&game);CHECK(!unlink(file));CHECK(!rmdir(directory));
+    puts("field-story mail delivery regressions passed");
+}
 int main(int argc,char **argv)
 {
     synthetic_regressions();
     dna_regressions();
+    mail_regressions();
     if(argc==3&&!strcmp(argv[1],"--premium")){premium_regressions(argv[2]);return 0;}
     if(argc<2){puts("field-story private integration skipped: supply privately prepared boot directory");return 0;}
     trace=argc>2?fopen(argv[2],"w+"):tmpfile();CHECK(trace!=NULL);
