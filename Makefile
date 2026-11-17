@@ -87,17 +87,18 @@ build/test_field_story: tests/test_field_story.c $(FIELD_STORY_SOURCES) $(HEADER
 
 build/test_phenac_story: tests/test_phenac_story.c src/floor_profile.c $(FIELD_STORY_SOURCES) $(HEADERS)
 	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_phenac_story.c src/floor_profile.c $(FIELD_STORY_SOURCES) $(LDFLAGS) -lm -o $@
-build/test_phenac_events: tests/test_phenac_events.c src/floor_profile.c $(FIELD_STORY_SOURCES) $(HEADERS)
-	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_phenac_events.c src/floor_profile.c $(FIELD_STORY_SOURCES) $(LDFLAGS) -lm -o $@
+build/test_phenac_events: tests/test_phenac_events.c tests/route_battles.c tests/route_battles.h src/floor_profile.c $(FIELD_STORY_SOURCES) $(WORLD_BATTLE_SOURCES) build/battle_rng_source.h $(HEADERS) $(UPSTREAM)
+	$(CC) $(CPPFLAGS) -Ibuild -Isrc $(CFLAGS) tests/test_phenac_events.c tests/route_battles.c src/floor_profile.c $(FIELD_STORY_SOURCES) $(WORLD_BATTLE_SOURCES) $(LDFLAGS) -lm -o $@
 
 WORLD_BATTLE_SOURCES = src/inventory.c src/pda.c src/battle_general.c src/battle_story.c src/battle_rng.c src/decomp_rng.c
 build/test_world_story: tests/test_world_story.c $(FIELD_STORY_SOURCES) $(WORLD_BATTLE_SOURCES) build/battle_rng_source.h $(HEADERS) $(UPSTREAM)
 	$(CC) $(CPPFLAGS) -Ibuild -Isrc $(CFLAGS) tests/test_world_story.c $(FIELD_STORY_SOURCES) $(WORLD_BATTLE_SOURCES) $(LDFLAGS) -lm -o $@
 
-build/test_story_route: tests/test_story_route.c src/pda.c src/inventory.c $(FIELD_STORY_SOURCES) $(HEADERS)
-	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_story_route.c src/pda.c src/inventory.c $(FIELD_STORY_SOURCES) $(LDFLAGS) -lm -o $@
-build/test_story_crawl: tests/test_story_crawl.c src/inventory.c src/pda.c $(FIELD_STORY_SOURCES) $(HEADERS) $(UPSTREAM)
-	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_story_crawl.c src/inventory.c src/pda.c $(FIELD_STORY_SOURCES) $(LDFLAGS) -lm -o $@
+ROUTE_BATTLE_SOURCES = tests/route_battles.c $(WORLD_BATTLE_SOURCES)
+build/test_story_route: tests/test_story_route.c tests/route_battles.h $(FIELD_STORY_SOURCES) $(ROUTE_BATTLE_SOURCES) build/battle_rng_source.h $(HEADERS) $(UPSTREAM)
+	$(CC) $(CPPFLAGS) -Ibuild -Isrc $(CFLAGS) tests/test_story_route.c $(FIELD_STORY_SOURCES) $(ROUTE_BATTLE_SOURCES) $(LDFLAGS) -lm -o $@
+build/test_story_crawl: tests/test_story_crawl.c tests/route_battles.c tests/route_battles.h $(FIELD_STORY_SOURCES) $(WORLD_BATTLE_SOURCES) build/battle_rng_source.h $(HEADERS) $(UPSTREAM)
+	$(CC) $(CPPFLAGS) -Ibuild -Isrc $(CFLAGS) tests/test_story_crawl.c tests/route_battles.c $(FIELD_STORY_SOURCES) $(WORLD_BATTLE_SOURCES) $(LDFLAGS) -lm -o $@
 
 RELIVE_SOURCES = src/relive.c src/relive_purify.c src/game_state.c src/save.c src/decomp_pokemon.c build/save_codec.c src/battle_general.c src/battle_rng.c src/decomp_rng.c
 build/test_relive: tests/test_relive.c $(RELIVE_SOURCES) build/battle_rng_source.h $(HEADERS) $(UPSTREAM)

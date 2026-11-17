@@ -2,6 +2,7 @@
 #include "colosseum3ds/field_story.h"
 #include "colosseum3ds/inventory.h"
 #include "colosseum3ds/pda.h"
+#include "route_battles.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -30,7 +31,14 @@
  *   run <frames>              tick with no input (a floor change is followed)
  *   pad <mask>                hold these buttons for ten ticks (0x1-0x8 D-pad),
  *                             then run until the hero has control
- *   result <id>               result ID reported for the next battles (default 2, win)
+ *   result <id>               result ID reported for the next battles (default 2, win;
+ *                             with real battles, only for a declared engine gap)
+ *   battles win|any           real battles: replay a lost battle until a win (win,
+ *                             the default) or apply the first outcome (any)
+ *   engine_gap <encounter>    real battles: the engine cannot play this encounter yet
+ *                             (battle-rules lane); reported, given the result ID
+ *   expect_battle <encounter> real battles: fail unless the encounter was played
+ *   expect_battles <n>        real battles: fail unless at least n were played
  *   expect <flag> <value>     fail unless the flag holds the value
  *   expect_floor <floor>      fail unless the scene is on that floor
  *   save <path>               write the game state as a card file (a chapter-point
@@ -52,7 +60,10 @@
  * (direct bag change) is reported as a "route_item_change" line.
  * Each step ends in one "route" line; flag writes, messages, battles and
  * floor changes are "route_flag", "route_message", "route_battle" and
- * "route_floor" lines. Without arguments nothing private is checked. */
+ * "route_floor" lines. Without arguments nothing private is checked.
+ * C3_ROUTE_BATTLES=<battles.c3x> plays every battle on the general engine
+ * as the field does (tests/route_battles.h); without it the result ID is
+ * reported ("skipped_as_result=1") and the expect_battle lines pass. */
 static char error[C3_STORY_ERROR];
 static FILE *report, *trace;
 static unsigned failures, steps;
@@ -87,7 +98,8 @@ static int receive(void *c, uint32_t item, uint32_t count, char *name, size_t ca
 { (void)c; fprintf(report, "route_item item=%lu count=%lu\n", (unsigned long)item, (unsigned long)count);
   snprintf(name, capacity, "ITEM"); return 0; }
 static int clear_poison(void *c) { return c3_inventory_clear_party_poison(c); }
-static int restore(void *c) { (void)c; return 6; }
+/* With real battles the party service heals (pokemonAllKaihuku). */
+static int restore(void *c) { (void)c; return route_battles_enabled() ? route_battles_heal(&game) : 6; }
 static int item_change(void *c, uint32_t item, int32_t count)
 { (void)c; fprintf(report, "route_item_change item=%lu count=%ld\n", (unsigned long)item, (long)count); return 0; }
 /* Item and species names for message controls, from the PDA pack's tables
@@ -227,9 +239,9 @@ static int run(unsigned frames, int until_control)
         uint16_t pressed = (v->dialogue || v->choice) && frame % 15 == 0 ? 0x100 : 0;
         uint32_t encounter;
         if (c3_field_story_battle_pending(&scene->story, &encounter)) {
-            fprintf(report, "route_battle floor=%03lx encounter=%lu result=%lu skipped_as_result=1\n",
-                    (unsigned long)scene->floor, (unsigned long)encounter, (unsigned long)result_id);
-            if (!c3_field_story_battle_result(&scene->story, result_id, error)) return 0;
+            if (!route_battle_play(&scene->story, &game, scene->floor, result_id, report, NULL, error, sizeof error)) return 0;
+            /* A whiteout leaves for its floor: follow it on the next frame. */
+            if (c3_field_story_view(&scene->story)->next_floor) continue;
         }
         if (v->shop && !c3_field_story_shop_done(&scene->story, error)) return 0;
         if (v->item_menu) {
@@ -268,6 +280,22 @@ static int step(char *line)
     if (!strcmp(word, "set")) {
         CHECK(sscanf(line, "%li %li", (long *)&a, (long *)&b) == 2 && c3_game_state_set_flag(&game, (uint32_t)a, (uint32_t)b));
         fprintf(report, "route_shortcut flag=%03lx value=%lu\n", a, b); snapshot(); return 1;
+    }
+    if (!strcmp(word, "battles")) {
+        char mode[8] = "";
+        CHECK(sscanf(line, "%7s", mode) == 1 && (!strcmp(mode, "win") || !strcmp(mode, "any")));
+        route_battles_set_any(!strcmp(mode, "any")); return 1;
+    }
+    if (!strcmp(word, "engine_gap")) { CHECK(sscanf(line, "%li", (long *)&a) == 1); route_battles_add_gap((uint32_t)a); return 1; }
+    if (!strcmp(word, "expect_battle")) {
+        CHECK(sscanf(line, "%li", (long *)&a) == 1);
+        if (!route_battles_enabled() || route_battles_was_played((uint32_t)a)) return 1;
+        snprintf(error, sizeof error, "battle %lu was not played", a); return 0;
+    }
+    if (!strcmp(word, "expect_battles")) {
+        CHECK(sscanf(line, "%li", (long *)&a) == 1);
+        if (!route_battles_enabled() || route_battles_played() >= a) return 1;
+        snprintf(error, sizeof error, "%u battles played, expected at least %lu", route_battles_played(), a); return 0;
     }
     if (!strcmp(word, "result")) { CHECK(sscanf(line, "%li", (long *)&a) == 1); result_id = (uint32_t)a; return 1; }
     if (!strcmp(word, "expect")) {
@@ -448,6 +476,7 @@ int main(int argc, char **argv)
         rewind(f); pda_data = malloc((size_t)size); CHECK(pda_data && fread(pda_data, 1, (size_t)size, f) == (size_t)size);
         fclose(f); CHECK(c3_pda_assets_open(&pda, pda_data, (size_t)size));
     }
+    CHECK(route_battles_open(error, sizeof error));
     FILE *route = fopen(argv[4], "r"); CHECK(route);
     for (unsigned number = 1; fgets(line, sizeof line, route); ++number) {
         char *hash = strchr(line, '#'); if (hash) *hash = 0;
@@ -464,6 +493,7 @@ int main(int argc, char **argv)
     }
     fclose(route);
     unload(); free(scene); c3_game_state_free(&game); free(pda_data);
+    failures += route_battles_close(report);
     printf("story-route: steps=%u failures=%u\n", steps, failures);
     if (report != stdout) fclose(report);
     return failures ? 1 : 0;

@@ -1,6 +1,7 @@
 #define _POSIX_C_SOURCE 200809L
 #include "colosseum3ds/field_story.h"
 #include "colosseum3ds/floor_profile.h"
+#include "route_battles.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -57,7 +58,9 @@ static int any_floor(uint32_t floor){return floor>=1&&floor<0x400;}
 static unsigned gifts;
 static int receive(void *c,uint32_t item,uint32_t count,char *name,size_t capacity)
 {(void)c;(void)item;(void)count;++gifts;snprintf(name,capacity,"ITEM");return 0;}
-static int restore(void *c){(void)c;return 6;}
+static C3GameState *current_game;
+static uint32_t current_floor;
+static int restore(void *c){(void)c;return route_battles_enabled()?route_battles_heal(current_game):6;}
 static void path(char out[1024],const char *dir,const char *name)
 {CHECK(snprintf(out,1024,"%s/%s",dir,name)>0&&strlen(out)<1023);}
 static int present(const char *dir,const char *name)
@@ -126,8 +129,9 @@ static int run(Scene *s,unsigned budget)
         if(frame>30&&v->control&&!v->dialogue)return 1;
         if(c3_field_story_battle_pending(&s->story,&encounter)){
             if(battle_count<32)battle_log[battle_count++]=encounter;
-            fprintf(trace,"phenac_event_battle encounter=%lu reported=2\n",(unsigned long)encounter);
-            if(!c3_field_story_battle_result(&s->story,2,error))return 0;
+            /* Real battles with C3_ROUTE_BATTLES (tests/route_battles.h). */
+            if(!route_battle_play(&s->story,current_game,current_floor,2,trace,"phenac_event_battle",error,sizeof error))return 0;
+            if(c3_field_story_view(&s->story)->next_floor)continue;
         }
         if(v->shop&&!c3_field_story_shop_done(&s->story,error))return 0;
         if(v->name_entry&&!c3_field_story_name_result(&s->story,"RUI",error))return 0;
@@ -167,7 +171,7 @@ static void load_state(C3GameState *game,const char *save,uint32_t floor,uint32_
 static int play(const Event *e,uint8_t before[FLAGS],uint8_t after[FLAGS],C3GameState *game)
 {
     Scene *s=calloc(1,sizeof *s);int ok=0;CHECK(s);
-    battle_count=0;link_floor=0;error[0]=0;
+    battle_count=0;link_floor=0;error[0]=0;current_game=game;current_floor=e->floor;
     load_state(game,e->save,e->floor,e->spawn);
     for(unsigned i=0;i<16&&e->set[i];++i)CHECK(c3_game_state_set_flag(game,e->set[i],1));
     for(unsigned i=0;i<24&&e->clear[i];++i)CHECK(c3_game_state_set_flag(game,e->clear[i],0));
@@ -331,6 +335,7 @@ int main(int argc,char **argv)
     newgame=argv[1];root=argv[2];saves=argv[3];
     if(argc>4&&!strcmp(argv[4],"--explore")){trace=stdout;return explore(argc-5,argv+5);}
     trace=argc>4?fopen(argv[4],"w"):tmpfile();CHECK(trace);
+    CHECK(route_battles_open(error,sizeof error));
     static uint8_t before[FLAGS],after[FLAGS];
     for(size_t i=0;i<sizeof EVENTS/sizeof EVENTS[0];++i){
         const Event *e=EVENTS+i;C3GameState game={0};
@@ -353,6 +358,9 @@ int main(int argc,char **argv)
      * font). An unknown message control fails its script and the row. */
     CHECK(messages>0);
     talk_sweep();
+    {unsigned played=route_battles_played(),missing=route_battles_close(trace);
+     if(played)printf("phenac-events real battles: %u played\n",played);
+     CHECK(!missing);}
     printf("phenac-events private integration: %u events, %u messages (%u with non-ASCII), %u checks passed\n",
            (unsigned)(sizeof EVENTS/sizeof EVENTS[0]),messages,odd_glyphs,checks);
     return 0;
