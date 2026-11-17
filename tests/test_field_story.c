@@ -439,6 +439,24 @@ static void synthetic_regressions(void)
         for(unsigned row=0;row<3;++row){CHECK(fabsf(s->hero.position[row]-origin[row])<1e-4f);
             CHECK(fabsf(s->wes.draw_vertices[0].pos[row]-origin[row]-vertex[row])<1e-4f);}}
     close_scene(s);
+    /* An event scene's scripted model (C3SM row) answers to its original
+     * resource: native 72 hides it and native 46 seats Wes on the part the
+     * row retains; any other part is refused, not left detached. */
+    for(unsigned wrong=0;wrong<2;++wrong){
+        memset(code,0,sizeof code);args[0]=0x10851001;args[1]=0;native(code+3,0x72,2,args,1);
+        args[0]=0;args[1]=100;args[2]=29;args[3]=0x10851001;args[4]=wrong?11:12;native(code+3,0x46,5,args,1);
+        synthetic_load(s,&game,file,code,0,0,0x1000003);
+        C3AreaActor *row=s->area.actors;row->resource=0x10851001;row->aux3=0x4333534Du;row->aux2=12;row->part1_bone_plus_one=1;
+        actor=c3_field_story_actor(&s->story,3);actor->pose.position[0]=5;actor->pose.position[1]=6;actor->pose.position[2]=7;
+        CHECK(actor->visible);CHECK(c3_field_story_enter(&s->story,error));
+        if(wrong){CHECK(!c3_field_story_tick(&s->story,0,0,error)&&strstr(error,"scene-model part 11"));close_scene(s);continue;}
+        CHECK(c3_field_story_tick(&s->story,0,0,error));CHECK(!actor->visible);
+        CHECK(c3_field_story_sample(&s->story,error));
+        const float *m=s->actors[0].pose.matrices[0];
+        CHECK(fabsf(s->hero.position[0]-(5+m[3]))<1e-4f&&fabsf(s->hero.position[1]-(6+m[7]))<1e-4f&&
+              fabsf(s->hero.position[2]-(7+m[11]))<1e-4f);
+        close_scene(s);
+    }
     /* Exact source0 mapping and material owning-joint world transform. */
     memset(code,0,sizeof code);args[0]=0;args[1]=100;args[2]=args[3]=0;args[4]=1;native(code+3,0x33,5,args,1);
     synthetic_load(s,&game,file,code,0,0,0x1000003);CHECK(c3_field_story_enter(&s->story,error));CHECK(c3_field_story_tick(&s->story,0,0,error));

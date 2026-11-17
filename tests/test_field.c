@@ -130,6 +130,21 @@ int main(int argc,char **argv)
     p[280+52]=2;CHECK(c3_field_parse(&map,p,bytes,error,sizeof error));
     CHECK(map.object_count==3 && c3_field_object_enabled(&map,2));
     free(p);c3_field_close(&map);
+    {   /* An event scene (subway rides 0x8A-0x8D): no entrance, no collision;
+         * any entrance gives the scene origin for the scripts to move. */
+        unsigned char *e=fixture(&bytes);
+        word(e+8,256);word(e+24,0);word(e+28,0);word(e+32,0);word(e+40,256);word(e+44,256);
+        CHECK(c3_field_parse(&map,e,256,error,sizeof error));
+        CHECK(map.spawn_count==0 && map.walk_count==0 && map.wall_count==0);
+        player.position[0]=5;CHECK(c3_field_spawn(&map,3,&player));
+        CHECK(player.position[0]==0 && player.position[1]==0 && player.position[2]==0 && player.yaw==0);
+        float height;const float point[3]={0,0,0};CHECK(!c3_field_ground(&map,point,&height));
+        /* Entrances without a walk triangle remain invalid. */
+        word(e+24,1);word(e+8,280);word(e+40,280);word(e+44,280);
+        unsigned char *f=calloc(1,280);CHECK(f);memcpy(f,e,256);
+        CHECK(!c3_field_parse(&map,f,280,error,sizeof error));
+        free(f);free(e);c3_field_close(&map);
+    }
     if(argc>1) {
         CHECK(c3_field_load(&map,argv[1],error,sizeof error));
         CHECK(map.floor==1 && map.spawn_count==5 && map.walk_count==136 && map.wall_count==244);
