@@ -1,6 +1,8 @@
 #define _POSIX_C_SOURCE 200809L
 #include "colosseum3ds/field_story.h"
 #include "colosseum3ds/inventory.h"
+#include "colosseum3ds/pda.h"
+#include "dna_route.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -23,6 +25,11 @@
  * partner keyboard answers "RUI". Dialogue is advanced with A and every
  * shown text is written with its ID, so unknown control codes are visible.
  * Each flag a script changes is written as "crawl_flag".
+ *
+ * With C3_CRAWL_PDA naming a P*DA pack (tools/prepare_pda.py) the player
+ * also reads each mail as it arrives (native AD): the original read
+ * transaction (read flag, hints) and its field callback, a "crawl_mail" line.
+ * Native CC's DNA disc puzzle (floor 0x387) is played by tests/dna_route.h.
  *
  * usage: test_story_crawl <newgame dir> <boot dir> <save.gci> <floor hex>
  *        <entrance> <report> [out.gci] [steps]
@@ -149,6 +156,38 @@ static void close_scene(Scene *s)
     memset(s, 0, sizeof *s);
 }
 
+static C3PdaAssets pda;
+static uint8_t *pda_data;
+static unsigned mails_read;
+/* A player who reads new mail at once: each unread mail's original read
+ * transaction (mailMain fn_801D228C) and its field callback. Returns 1 when a
+ * callback script started (the caller keeps ticking), 0 none, -1 failure. */
+static int read_new_mail(Scene *s)
+{
+    if (!pda_data) return 0;
+    unsigned count = 0; C3GameMail mail;
+    if (!c3_game_state_mail_count(&game, &count)) return -1;
+    for (unsigned i = 0; i < count; ++i) {
+        if (!c3_game_state_mail(&game, i, &mail)) return -1;
+        if (mail.read) continue;
+        C3PdaMailAction action;
+        if (!c3_pda_mail_action(&pda, &game, mail.id, &action)) { snprintf(error, sizeof error, "mail %u read plan failed", mail.id); return -1; }
+        if (action.script && !c3_field_story_menu_event(&s->story, action.script, error)) return -1;
+        if (!c3_game_state_mail_read(&game, &action.save, 1)) {
+            if (action.script) c3_field_story_cancel_menu_event(&s->story);
+            snprintf(error, sizeof error, "mail %u read failed", mail.id); return -1;
+        }
+        ++mails_read;
+        fprintf(report, "crawl_mail floor=%03lx id=%u flags=%u hints=%u callback=%08lx\n", (unsigned long)s->floor, mail.id,
+                action.save.flag_count, action.save.hint_count, (unsigned long)action.script);
+        for (unsigned k = 0; k < action.save.flag_count; ++k)
+            fprintf(report, "crawl_mail_flag floor=%03lx id=%u flag=%03lx value=%lu\n", (unsigned long)s->floor, mail.id,
+                    (unsigned long)action.save.flags[k].id, (unsigned long)action.save.flags[k].value);
+        if (action.script) return 1;
+    }
+    return 0;
+}
+
 /* Ticks until the hero has control again. Returns 0 on a script failure. */
 static int run(Scene *s, unsigned frames, uint32_t *next, uint32_t *spawn)
 {
@@ -165,7 +204,12 @@ static int run(Scene *s, unsigned frames, uint32_t *next, uint32_t *spawn)
                     (unsigned long)v->message_id, text);
         }
         if (!v->dialogue) shown = 0;
-        if (frame > 30 && v->control && !v->dialogue) return 1;
+        if (frame > 30 && v->control && !v->dialogue) {
+            int started = read_new_mail(s);
+            if (started < 0) return 0;
+            if (!started) return 1;
+            continue;
+        }
         if (*next && frame > 30 && !v->dialogue && v->fade >= 1.0f) return 1;
         uint16_t pressed = (v->dialogue || v->choice) && frame % 15 == 0 ? 0x100 : 0;
         uint32_t encounter;
@@ -177,6 +221,7 @@ static int run(Scene *s, unsigned frames, uint32_t *next, uint32_t *spawn)
         }
         if (v->shop && !c3_field_story_shop_done(&s->story, error)) return 0;
         if (v->name_entry && !c3_field_story_name_result(&s->story, "RUI", error)) return 0;
+        if (v->menu_floor == 0x387 && !dna_route_answer(&s->story, report, "crawl", s->floor, error)) return 0;
         if (v->item_menu) {
             /* Use the first registered item the hero holds, else close. */
             uint32_t items[8], use = 0;
@@ -226,6 +271,7 @@ static int load(Scene *s, uint32_t floor, uint32_t spawn, uint32_t *next, uint32
     c3_field_story_set_floor_support(&s->story, any_floor);
     c3_field_story_enable_name_entry(&s->story, 1);
     c3_field_story_enable_item_menu(&s->story, 1);
+    c3_field_story_enable_menu_floor(&s->story, 0x387, 1); /* native CC's disc puzzle (dna_route.h) */
     c3_field_story_set_item_service(&s->story, receive, NULL);
     c3_field_story_set_item_change_service(&s->story, change, NULL);
     c3_field_story_set_species_namer(&s->story, species_name, NULL);
@@ -324,8 +370,14 @@ int main(int argc, char **argv)
     if (argc > 8) steps_left = (unsigned)strtoul(argv[8], NULL, 10);
     char file[1024], gerror[C3_GAME_ERROR_SIZE] = {0};
     path(file, newgame, "newgame.c3g");
-    CHECK(c3_game_state_load(&game, argv[3], file, gerror));
+    if (!c3_game_state_load(&game, argv[3], file, gerror)) { fprintf(stderr, "save: %s\n", gerror); return 1; }
     trace = fopen(getenv("C3_CRAWL_TRACE") ? getenv("C3_CRAWL_TRACE") : "/dev/null", "w"); CHECK(trace);
+    const char *pda_path = getenv("C3_CRAWL_PDA");
+    if (pda_path && *pda_path) {
+        FILE *f = fopen(pda_path, "rb"); long size; CHECK(f && fseek(f, 0, SEEK_END) == 0 && (size = ftell(f)) > 0);
+        rewind(f); pda_data = malloc((size_t)size); CHECK(pda_data && fread(pda_data, 1, (size_t)size, f) == (size_t)size);
+        fclose(f); CHECK(c3_pda_assets_open(&pda, pda_data, (size_t)size));
+    }
     /* C3_CRAWL_FLAGS="884=1,885=1": flags another engine part writes (for
      * example the battle engine's Shadow Pokemon rows) preset, and recorded. */
     for (const char *p = getenv("C3_CRAWL_FLAGS"); p && *p;) {
@@ -416,7 +468,7 @@ int main(int argc, char **argv)
         CHECK(c3_game_state_set_floor(&game, floor, summary.previous_floor, spawn));
         CHECK(c3_game_state_save(&game, argv[7], gerror));
     }
-    printf("story-crawl: floors=%u flag_changes=%u battles=%u texts=%u\n", clock_tick, flag_changes, battles, messages);
+    printf("story-crawl: floors=%u flag_changes=%u battles=%u texts=%u mails_read=%u\n", clock_tick, flag_changes, battles, messages, mails_read);
     close_scene(s); free(s);
     c3_game_state_free(&game);
     fclose(report); fclose(trace);
