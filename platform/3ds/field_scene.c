@@ -472,6 +472,8 @@ int c3_field_scene_available(void)
     return 1;
 }
 
+/* A native 22 auto event queued just before a floor link (hero_move.c work). */
+static uint32_t carried_auto_event[5];
 /* Optional first-person view; kept across floor loads like the recomp mod. */
 static C3FirstPerson first_person;
 /* Third-person orbit / free camera (orbit_camera.h); kept across floors. */
@@ -974,6 +976,10 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     c3_field_story_set_poison_service(&story,clear_party_poison,state);
     purify_trace=trace;c3_field_story_set_purify_service(&story,purify_party,state);
     c3_field_story_set_audio_service(&story,story_audio,NULL);
+    if(carried_auto_event[0]){
+        if(trace){fprintf(trace,"field_auto_event floor=%03lx script=%08lx\n",(unsigned long)map.floor,(unsigned long)carried_auto_event[0]);fflush(trace);}
+        c3_field_story_set_auto_event(&story,carried_auto_event);memset(carried_auto_event,0,sizeof carried_auto_event);
+    }
     if(!c3_field_story_prepare(&story,story_error))goto story_failed;
     view=c3_field_story_view(&story);
     if(trace){fprintf(trace,"field_begin floor=%lu previous=%lu spawn=%u new=%d maps=%lu npcs=%lu models=%lu arrival=%d duration=%.3f\n",
@@ -1395,6 +1401,8 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                 tour.control=view->control;tour.message=view->message_id;
                 result=3;break;
 #endif
+                /* heroMoveAddAutoEvent work outlives the floor (Realgam dome doors). */
+                if(!c3_field_story_pending_auto_event(&story,carried_auto_event))memset(carried_auto_event,0,sizeof carried_auto_event);
                 if(view->next_spawn>255||!c3_game_state_set_floor(state,view->next_floor,map.floor,(uint8_t)view->next_spawn)){
                     snprintf(error,capacity,"Original doorway checkpoint is invalid.");result=-1;break;
                 }
