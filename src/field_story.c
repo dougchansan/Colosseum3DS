@@ -12,6 +12,10 @@
 #define PAD_B 0x0200u
 #define PAD_DIRECTIONS 0x000fu
 #define DYNAMIC_MARKER 0x43334459u /* C3DY: private prepared model reservation. */
+/* C3SM: a scripted model of an event scene (tools/prepare_event_scene.py).
+ * Natives address it by its original resource ID; aux2 is the GSpart index
+ * its scripts attach to and part1_bone_plus_one that part's sampled bone. */
+#define SCENE_MODEL_MARKER 0x4333534Du
 #define MAX_WAYPOINTS 64u /* Phenac actor 24 allocates 36 points (bank 013E0E00 fn 34). */
 
 typedef enum { W_NONE, W_SECONDS, W_TASK, W_MOTION, W_MOVE, W_CAMERA,
@@ -277,6 +281,10 @@ static Person *person(Impl *s,uint32_t group,uint32_t id)
      * in any group. Floor actors are the only other people here. */
     for(uint32_t i=0;i<s->area->actor_count;++i)if(s->actors[i].public.index==id&&
         (s->actors[i].source->aux3!=DYNAMIC_MARKER||s->actors[i].dynamic_active))return s->actors+i;
+    /* fn_801CB954 and its siblings take a map-model resource where no person
+     * matches: an event scene's scripted model answers to its resource. */
+    if(id>0xffffu)for(uint32_t i=0;i<s->area->actor_count;++i)
+        if(s->actors[i].source->aux3==SCENE_MODEL_MARKER&&s->actors[i].source->resource==id)return s->actors+i;
     return NULL;
 }
 static void partner_place_behind(Impl *s);
@@ -683,6 +691,20 @@ static int run_native(Impl *s,RunTask *t,char *error)
     case 0x46:{
         p=person(s,a[0],a[1]);Person *parent=person(s,a[2],a[3]);
         if(!p||!parent)break;
+        if(parent->source&&parent->source->aux3==SCENE_MODEL_MARKER){
+            /* fn_801845E4 on an event scene's model: GSmodelGetPart(model,
+             * part) is retained as the row's sampled bone. Its world matrix
+             * carries the full rotation (as native A6's root part does). */
+            if(a[4]!=parent->source->aux2||!parent->public.model||!parent->source->part1_bone_plus_one||
+               parent->source->part1_bone_plus_one>parent->public.model->bone_count||parent->parent||p==parent)
+                return fail(error,"Original scene-model part %lu is not prepared",(unsigned long)a[4]);
+            p->parent=parent;p->parent_bone_plus_one=parent->source->part1_bone_plus_one;p->parent_root=1;
+            p->moving=p->turning=p->waypoint_active=0;
+            memset(p->local_position,0,sizeof p->local_position);memset(p->local_rotation,0,sizeof p->local_rotation);
+            log_line(s,"story_attach child=%lu,%lu parent=%08lx part=%lu bone=%lu",(unsigned long)a[0],(unsigned long)a[1],
+                     (unsigned long)a[3],(unsigned long)a[4],(unsigned long)p->parent_bone_plus_one-1u);
+            value=1;break;
+        }
         if(!parent->source||parent->source->resource!=0x010b0400u||a[4]!=1||
            !parent->public.model||!parent->source->part1_bone_plus_one||
            parent->source->part1_bone_plus_one>parent->public.model->bone_count||parent->parent||p==parent)
@@ -2126,6 +2148,8 @@ int c3_field_story_load(C3FieldStory *story,const char *path,C3GameState *game,
         p->want_visible=a->aux3==DYNAMIC_MARKER?0:(a->flags>>31)&1;p->public.visible=p->want_visible;p->public.clip=a->motions[0];
         p->public.flags=0x0cu|(a->talk_start==1?0x10u:a->talk_start==2?0x20u:0u)|(a->talk_end==1?0x40u:0u);
         p->public.loop=1;p->public.playing=1;p->speed=1;
+        /* A scene model rests on its first frame until native 73 plays it. */
+        if(a->aux3==SCENE_MODEL_MARKER){p->public.loop=0;p->public.playing=0;p->public.flags=0;}
         if(p->public.model&&p->public.clip>=p->public.model->clip_count){
             c3_story_free(&s->vm);free(s);return fail(error,"Actor idle motion is absent");
         }
