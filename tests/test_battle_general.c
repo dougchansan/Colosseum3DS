@@ -241,6 +241,72 @@ static void synthetic(void)
     puts("battle-general: synthetic pack, win/loss, determinism and writeback ok");
 }
 
+/* Encounter 525's shape: a CPU trainer on side 0 (pack v3 side-0 section).
+ * A v2 pack refuses it (player side is not the hero); a v3 pack fights it
+ * with the trainer AI on both sides and writes nothing back. */
+static uint8_t *make_side0_pack(int version3, size_t *size)
+{
+    size_t n; uint8_t *base = make_pack(2, 5, &n);
+    size_t extra = version3 ? 4 + 580 + 4 + 4 + 4 + 4 + 2 : 0; /* side-0 row, then empty AI, nature and filter sections */
+    uint8_t *b = calloc(1, n + extra);
+    memcpy(b, base, n); free(base);
+    uint8_t *r = b + g32(b + 124);           /* encounter 0 */
+    p16(r + 8 + 24, 780); p32(r + 8 + 28, 0); /* slot 0: CPU trainer 780 */
+    if (version3) {
+        uint8_t *s = b + n;
+        p32(s, 1); s += 4;
+        p16(s, 0); s[2] = 1;
+        uint8_t *t = s + 68;                  /* one level-60 HERO, TACKLE */
+        t[4] = 60; p16(t + 10, 1); p32(t + 0x34, 1);
+        strcpy((char *)s + 548, "EAGUN"); strcpy((char *)s + 564, "ELDER");
+        p32(b + 4, 3);
+    }
+    p32(b + 8, (uint32_t)(n + extra));
+    c3_save_codec_sha1(b + 72, b + 128, n + extra - 128);
+    *size = n + extra;
+    return b;
+}
+static void side0_cpu(void)
+{
+    size_t n; uint8_t *bytes = make_side0_pack(0, &n);
+    C3BattlePack pack = {0}; C3BattleEncounterInfo info;
+    CHECK(c3_battle_pack_decode(&pack, bytes, n, error));
+    CHECK(c3_battle_pack_info(&pack, 0, &info) && info.reason == 1 && !info.cpu_side0);
+    c3_battle_pack_free(&pack); free(bytes);
+
+    bytes = make_side0_pack(1, &n);
+    CHECK(c3_battle_pack_decode(&pack, bytes, n, error) && pack.side0_count == 1);
+    CHECK(c3_battle_pack_info(&pack, 0, &info) && info.reason == 0 && info.cpu_side0 && info.side0_party_count == 1);
+    CHECK(!strcmp(info.side0_trainer, "EAGUN") && !strcmp(info.side0_title, "ELDER"));
+    {   /* a damaged side-0 row is refused */
+        C3BattlePack bad = {0}; uint8_t *copy = malloc(n); CHECK(copy); memcpy(copy, bytes, n);
+        copy[n - 18 - 580 + 2] = 7; c3_save_codec_sha1(copy + 72, copy + 128, n - 128);
+        CHECK(!c3_battle_pack_decode(&bad, copy, n, error)); free(copy);
+    }
+    uint8_t party[6][0x138], copy[6][0x138];
+    make_party(party, 2, 3, 1, 0);           /* the hero's own party is not used */
+    static C3GeneralBattle b, again;
+    CHECK(c3_general_battle_begin(&b, &pack, 0, party, 9, error));
+    CHECK(b.party_count[0] == 1 && b.party[0][0].species == 1 && b.party[0][0].level == 60);
+    CHECK(strstr(b.events[0].text, "EAGUN") && strstr(b.events[0].text, "are battling"));
+    again = b;
+    /* The hero's commands are ignored: Struggle at an empty slot would be invalid. */
+    unsigned turns = 0;
+    while (b.outcome == C3_GB_RUNNING) {
+        C3GeneralCommand junk[2] = {{1, 5, 9}, {1, 5, 9}};
+        CHECK(c3_general_battle_turn(&b, &pack, junk, error)); ++turns;
+    }
+    CHECK(b.outcome == C3_GB_WON && turns < 20);
+    CHECK(strstr(b.events[b.event_count - 1].text, "EAGUN won"));
+    unsigned t2 = 0; CHECK(play(&again, &pack, &t2) == C3_GB_WON && t2 == turns);
+    C3GeneralRewards rw; memcpy(copy, party, sizeof copy);
+    CHECK(c3_general_battle_writeback(&b, &pack, copy, &rw));
+    CHECK(rw.result_code == 2 && !rw.written && !rw.wipeout && !rw.prize && !rw.exp[0]);
+    CHECK(!memcmp(copy, party, sizeof copy));
+    c3_battle_pack_free(&pack); free(bytes);
+    puts("battle-general: side-0 CPU trainer (encounter 525 shape) ok");
+}
+
 /* Writeback invariants for one finished story battle against the
  * untouched party: nothing changes without backSaveDataFlag; otherwise
  * species and identity stay, HP/PP/levels/effort stay legal, experience
@@ -250,6 +316,8 @@ static void check_writeback(const C3BattlePack *pack, const C3GeneralBattle *b, 
                             uint8_t before[6][0x138], uint8_t after[6][0x138], const C3GeneralRewards *rw)
 {
     CHECK(rw->result_code == (b->outcome == C3_GB_WON ? 2u : 3u));
+    if (info->cpu_side0) { /* the hero only watched: no whiteout, nothing written */
+        CHECK(!rw->wipeout && !rw->written && !rw->prize && !memcmp(before, after, 6 * 0x138)); return; }
     CHECK(rw->wipeout == (b->outcome != C3_GB_WON && info->wipeout));
     if (!info->back_save) { CHECK(!rw->written && !memcmp(before, after, 6 * 0x138)); return; }
     CHECK(rw->written);
@@ -359,6 +427,7 @@ static void private_sweep(const char *pack_path, const char *newgame_dir, const 
 int main(int argc, char **argv)
 {
     synthetic();
+    side0_cpu();
     if (argc >= 4) private_sweep(argv[1], argv[2], argv[3]);
     else puts("battle-general: private sweep skipped (needs <battles.c3x> <newgame dir> <save.gci>)");
     return 0;

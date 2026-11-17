@@ -1,6 +1,7 @@
 #include "battle_general_3d.h"
 #include "battle_general_scene.h"
 #include "battle_general_stage.h"
+#include "move_forget_scene.h"
 #include "battle_audio_player.h"
 #include "sfx_player.h"
 #include "bottom_screen.h"
@@ -78,6 +79,7 @@ static int battle_cue_pan(uint32_t sound, float pan)
     return 1;
 }
 static int autoplay; /* unattended probe: the hero uses the opponent policy */
+static unsigned hyper_shot_at; /* probe: frame to capture a Hyper Mode entry at */
 static char story_prefix[48];
 void c3_battle_general_3d_set_autoplay(int on, const char *prefix)
 {
@@ -129,7 +131,10 @@ static int open_stage(C3BattleGeneralStage *s, const C3Battle3dIndex *index, con
 }
 
 static int run(const C3BattlePack *pack, C3GeneralBattle *b, C3BattleLinkHooks *hooks, FILE *trace);
-int c3_battle_general_3d_run(const C3BattlePack *pack, C3GeneralBattle *b, FILE *trace) { return run(pack, b, NULL, trace); }
+/* Story battles: the writeback that follows asks the forget-a-move prompt
+ * (colosseum3ds/move_forget.h); it stays bound for purification too. */
+int c3_battle_general_3d_run(const C3BattlePack *pack, C3GeneralBattle *b, FILE *trace)
+{ c3_move_forget_scene_bind(trace); return run(pack, b, NULL, trace); }
 int c3_battle_general_3d_run_link(const C3BattlePack *pack, C3GeneralBattle *view, C3BattleLinkHooks *hooks, FILE *trace)
 {
     int saved = autoplay;
@@ -242,13 +247,18 @@ static int run(const C3BattlePack *pack, C3GeneralBattle *b, C3BattleLinkHooks *
                 if ((hooks->control_mask >> a & 1u) && b->active[0][a] != 255 && b->party[0][b->active[0][a]].hp)
                     c3_general_battle_choose_with(b, pack, a, &local_rng, &c[a]);
             link_submit(hooks, &ui, c); dirty = 1;
-        } else if (autoplay && !hooks && ui.page != C3_GUI_EVENTS && ui.page != C3_GUI_RESULT) {
+        } else if ((autoplay || b->info.cpu_side0) && !hooks && ui.page != C3_GUI_EVENTS && ui.page != C3_GUI_RESULT) {
+            /* A CPU trainer on side 0 (encounter 525): the engine's trainer AI
+             * picks both sides; the hero watches. */
             C3GeneralCommand c[2]; memset(c, 0, sizeof c);
             for (unsigned a = 0; a < b->active_count; ++a)
                 if (b->active[0][a] != 255 && b->party[0][b->active[0][a]].hp) probe_hero_command(b, pack, a, &c[a]);
             if (!c3_general_battle_turn(b, pack, c, error)) goto done;
             if (trace) { fprintf(trace, "general_battle_turn turn=%lu events=%lu outcome=%d autoplay=1\n",
                 (unsigned long)b->turn, (unsigned long)b->event_count, (int)b->outcome); fflush(trace); }
+            for (uint32_t k = 0; k < b->event_count; ++k) if (b->events[k].hyper) {
+                if (trace) { fprintf(trace, "general_battle_hyper turn=%lu event=%lu text=\"%s\"\n", (unsigned long)b->turn, (unsigned long)k, b->events[k].text); fflush(trace); }
+            }
             ui.page = C3_GUI_EVENTS; c3_general_view_restart(&view, b); count = 0; dirty = 1;
         }
         if (ui.page == C3_GUI_RESULT) {
@@ -267,6 +277,8 @@ static int run(const C3BattlePack *pack, C3GeneralBattle *b, C3BattleLinkHooks *
         if (dirty) {
             c3_general_ui_draw(pack, b, &ui, shown < b->event_count ? &b->events[shown] : NULL);
             drawn_page = ui.page; dirty = 0;
+            /* probe: capture the Hyper Mode entry while its message is up */
+            if (autoplay && !hyper_shot_at && shown < b->event_count && b->events[shown].hyper) hyper_shot_at = frames + 20u;
         }
         C3StageBattleHud hud = {0};
         if (c3_stage_renderer_set_battle_hud(&hud, error, sizeof error) != C3_RENDER_OK) goto done;
@@ -280,9 +292,9 @@ static int run(const C3BattlePack *pack, C3GeneralBattle *b, C3BattleLinkHooks *
             error[0] = 0;
         } else {
             ++frames;
-            if (autoplay && (frames == 240 || frames == 900 || frames == 1800 || frames == 3000)) {
+            if (autoplay && (frames == 240 || frames == 900 || frames == 1800 || frames == 3000 || frames == hyper_shot_at)) {
                 char shot[96];
-                const char *prefix = hooks && hooks->shot_prefix ? hooks->shot_prefix : story_prefix[0] ? story_prefix : "general3d";
+                const char *prefix = frames == hyper_shot_at ? "hyper" : hooks && hooks->shot_prefix ? hooks->shot_prefix : story_prefix[0] ? story_prefix : "general3d";
                 snprintf(shot, sizeof shot, "sdmc:/3ds/Colosseum3DS/%s_%u_top.bmp", prefix, frames);
                 int top = c3_n3ds_capture_top(shot) == 0;
                 snprintf(shot, sizeof shot, "sdmc:/3ds/Colosseum3DS/%s_%u_bottom.bmp", prefix, frames);
@@ -322,10 +334,55 @@ int c3_battle_general_3d_probe_run(uint32_t encounter)
     int ok = b && c3_game_state_new(&state, "WES", 0x12345678u, "sdmc:/3ds/Colosseum3DS/boot/newgame.c3g", error) &&
              c3_battle_pack_load(&pack, C3_BATTLE_PACK_PATH, error);
     for (unsigned i = 0; ok && i < C3_GB_PARTY; ++i) ok = c3_game_state_pokemon(&state, i, party[i]);
+#ifdef C3_BATTLE_RULES_PROBE
+    /* The lead becomes the hero's Shadow Pokemon (Shadow ID 1, full gauge)
+     * knowing only Shadow Rush, so Hyper Mode can show up unattended. */
+    C3ShadowInfo shadow_row;
+    if (ok && c3_battle_pack_shadow(&pack, 1, &shadow_row)) {
+        uint8_t *r = party[0];
+        r[0xd8] = 0; r[0xd9] = 1;
+        /* 70% of the gauge (dark level 2) and nature 0, so Shadow Rush
+         * enters Hyper Mode by the nature row's level-2 chance. */
+        uint32_t dp = (uint32_t)shadow_row.gauge * 70u;
+        uint32_t pid = (uint32_t)r[4] << 24 | (uint32_t)r[5] << 16 | (uint32_t)r[6] << 8 | r[7];
+        pid -= pid % 25u; r[4] = (uint8_t)(pid >> 24); r[5] = (uint8_t)(pid >> 16); r[6] = (uint8_t)(pid >> 8); r[7] = (uint8_t)pid;
+        r[0xdc] = (uint8_t)(dp >> 24); r[0xdd] = (uint8_t)(dp >> 16); r[0xde] = (uint8_t)(dp >> 8); r[0xdf] = (uint8_t)dp;
+        for (unsigned k = 0; k < 4; ++k) { r[0x78 + 4 * k] = 0x01; r[0x79 + 4 * k] = 0x64; r[0x7a + 4 * k] = 5; r[0x7b + 4 * k] = 0; }
+        if (trace) { fprintf(trace, "battle_rules_probe shadow_lead species=%u gauge=%lu nature=%lu\n", (unsigned)(r[0] << 8 | r[1]), (unsigned long)dp,
+                             (unsigned long)(((uint32_t)r[4] << 24 | (uint32_t)r[5] << 16 | (uint32_t)r[6] << 8 | r[7]) % 25u)); fflush(trace); }
+    }
+#endif
     if (ok) ok = c3_general_battle_begin(b, &pack, encounter, party, 0x5EED0000u ^ encounter, error);
     if (ok && !c3_battle_general_3d_ready(b, trace, error, sizeof error)) ok = 0;
     if (trace) { fprintf(trace, "general3d_probe encounter=%lu ready=%d error=%s save_writes=0\n", (unsigned long)encounter, ok, error); fflush(trace); }
     if (ok) { autoplay = 1; result = c3_battle_general_3d_run(&pack, b, trace) == 0 ? 0 : 1; }
+#ifdef C3_BATTLE_RULES_PROBE
+    /* The forget-a-move prompt: purification experience into the second
+     * party member (four moves) up to its next level-up move, answered by a
+     * script (yes, forget the first move), each page captured. */
+    if (ok && (party[1][0] | party[1][1])) {
+        uint8_t r[C3_GB_POKEMON_SIZE], scratch[C3_GB_POKEMON_SIZE]; C3ExpRecovery o; uint32_t add = 0;
+        memcpy(r, party[1], sizeof r);
+        static const uint16_t fill[4] = {1, 10, 33, 45};
+        for (unsigned k = 0; k < 4; ++k) if (!(r[0x78 + 4 * k] | r[0x79 + 4 * k])) c3_battle_pack_set_move(&pack, r, k, fill[k]);
+        c3_general_set_forget_prompt(NULL, NULL);
+        for (uint32_t step = 0; step < 400 && !add; ++step) {
+            memcpy(scratch, r, sizeof scratch);
+            if (!c3_battle_pack_recover_exp(&pack, scratch, (step + 1u) * 250u, &o)) break;
+            if (o.skipped_count) add = (step + 1u) * 250u;
+        }
+        if (trace) { fprintf(trace, "battle_rules_probe forget_setup species=%u level=%u add=%lu\n", (unsigned)(r[0] << 8 | r[1]), (unsigned)r[0x60], (unsigned long)add); fflush(trace); }
+        if (add) {
+            static const int answers[] = {1, 0};
+            c3_move_forget_scene_bind(trace);
+            c3_move_forget_scene_set_script(answers, 2, 2500);
+            int learned = c3_battle_pack_recover_exp(&pack, r, add, &o);
+            c3_move_forget_scene_set_script(NULL, 0, 0);
+            if (trace) { fprintf(trace, "battle_rules_probe forget_done ok=%d level=%u learned=%u skipped=%u forgot0=%u move0=%u\n", learned, (unsigned)r[0x60],
+                                 o.learned_count, o.skipped_count, o.learned_count ? o.forgot[o.learned_count - 1] : 0u, (unsigned)(r[0x78] << 8 | r[0x79])); fflush(trace); }
+        }
+    }
+#endif
     if (trace) { fprintf(trace, "general3d_probe_end result=%d outcome=%d turns=%lu\n", result, b ? (int)b->outcome : 0, b ? (unsigned long)b->turn : 0ul); fclose(trace); }
     if (!ok) { consoleClear(); printf("GENERAL 3D PROBE\n\n%s\n\nSTART + SELECT: exit\n", error); c3_n3ds_wait_for_exit(); }
     free(b); c3_battle_pack_free(&pack); c3_game_state_free(&state);

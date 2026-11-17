@@ -6,7 +6,10 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-enum { MOVES = 166, SPECIES = 3, ENCOUNTERS = 2, ENTRY = 672 };
+#ifndef C3_FIXTURE_MOVES
+#define C3_FIXTURE_MOVES 166 /* a test that needs Shadow Rush (0x164) asks for more */
+#endif
+enum { MOVES = C3_FIXTURE_MOVES, SPECIES = 3, ENCOUNTERS = 2, ENTRY = 672 };
 static inline void p16(uint8_t *p, unsigned v) { p[0] = (uint8_t)(v >> 8); p[1] = (uint8_t)v; }
 static inline void p32(uint8_t *p, uint32_t v) { p[0] = (uint8_t)(v >> 24); p[1] = (uint8_t)(v >> 16); p[2] = (uint8_t)(v >> 8); p[3] = (uint8_t)v; }
 static inline unsigned g16(const uint8_t *p) { return (unsigned)p[0] << 8 | p[1]; }

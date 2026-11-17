@@ -1,6 +1,7 @@
 #include "battle_general_scene.h"
 #include "battle_general_3d.h"
 #include "bottom_screen.h"
+#include "move_forget_scene.h"
 #include "n3ds_platform.h"
 #include "music_player.h"
 #include <stdlib.h>
@@ -100,8 +101,8 @@ void c3_general_ui_draw(const C3BattlePack *pack, const C3GeneralBattle *b, cons
         }
         unsigned balls[12];
         int can_ball = ball_list(b, balls) > 0, can_switch = b->party_count[0] > b->active_count;
-        c3_ui_footer(s, can_switch && can_ball ? "A: use  B: back  Y: switch  X: ball" : can_switch ? "A: use  B: back  Y: switch" :
-                        can_ball ? "A: use  B: back  X: ball" : "A: use  B: back");
+        c3_ui_footer(s, can_switch && can_ball ? "A: use  Y: switch  X: ball  L: call" : can_switch ? "A: use  B: back  Y: switch  L: call" :
+                        can_ball ? "A: use  B: back  X: ball  L: call" : "A: use  B: back  L: call");
     } else if (ui->page == C3_GUI_BALL) {
         unsigned balls[12], n = ball_list(b, balls);
         for (unsigned i = 0; i < n && i < 4; ++i) {
@@ -156,6 +157,10 @@ int c3_general_ui_press(C3GeneralUi *ui, const C3BattlePack *pack, C3GeneralBatt
         unsigned balls[12];
         if ((pressed & C3_PAD_X) && ball_list(b, balls)) { ui->page = C3_GUI_BALL; ui->cursor = 0; }
         else if ((pressed & C3_PAD_Y) && b->party_count[0] > b->active_count) { ui->page = C3_GUI_SWITCH; ui->cursor = 0; }
+        else if ((pressed & C3_PAD_L) && c3_general_battle_can_call(b, ui->position)) {
+            C3GeneralCommand *c = &ui->commands[ui->position];
+            c->kind = 3; c->slot = 0; c->target = (uint8_t)ui->position; submit = 1;
+        }
         else if (pressed & C3_PAD_B) {
             int back = -1;
             for (int p = (int)ui->position - 1; p >= 0; --p) {
@@ -235,6 +240,7 @@ int c3_general_ui_press(C3GeneralUi *ui, const C3BattlePack *pack, C3GeneralBatt
 
 int c3_battle_general_scene_run(const C3BattlePack *pack, C3GeneralBattle *b, FILE *trace)
 {
+    c3_move_forget_scene_bind(trace);
     C3GeneralUi ui;
     C3N3dsInput input;
     unsigned event = 0;
@@ -263,7 +269,7 @@ int c3_battle_general_scene_run(const C3BattlePack *pack, C3GeneralBattle *b, FI
                 c3_battle_music_end(&music);
                 return 0;
             }
-        } else if (c3_battle_general_autoplaying()) {
+        } else if (c3_battle_general_autoplaying() || b->info.cpu_side0) {
             /* Probe builds: the probe hero's commands, no input. */
             C3GeneralCommand c[2]; char error[C3_GB_ERROR_SIZE];
             c3_battle_general_probe_commands(b, pack, c);

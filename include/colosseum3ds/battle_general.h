@@ -30,6 +30,12 @@ typedef struct C3BattlePack {
     uint32_t encounters, moves, species, types, growth;
     uint32_t species_at, types_at, growth_at, entries_at, names_at;
     uint32_t shadow_at; /* version 2: the Shadow table (0x61 x 0x38-byte rows), else 0 */
+    /* version 3: side-0 CPU trainers (encounters the hero watches, 525). */
+    uint32_t side0_at, side0_count;
+    /* version 3: trainer AI data rows (40 bytes) and AI value codes (s32). */
+    uint32_t ai_at, ai_count, ai_value_at, ai_value_count;
+    /* version 3: nature rows (40 bytes) and heart gauge filter values (s8). */
+    uint32_t nature_at, nature_count, dp_filter_at, dp_filter_count;
 } C3BattlePack;
 
 typedef struct C3BattleEncounterInfo {
@@ -49,6 +55,11 @@ typedef struct C3BattleEncounterInfo {
      * nigeru, getExp, getOkane, okanePool, doCriticalAttack and
      * darkpokemonHypermode. */
     uint8_t back_save, use_item, can_run, get_exp, get_money, money_pool, critical, hyper_mode;
+    /* Side 0 is a CPU trainer, not the hero (pack v3; encounter 525, Eagun
+     * vs Skrub): both sides are chosen by the trainer AI, nothing is written
+     * back, and the result is 2 when side 0 wins, 3 when side 1 does. */
+    uint8_t cpu_side0, side0_party_count;
+    char side0_trainer[C3_GB_NAME], side0_title[C3_GB_NAME];
 } C3BattleEncounterInfo;
 
 typedef enum {
@@ -72,10 +83,16 @@ typedef struct C3GeneralMon {
     uint32_t exp;
     uint16_t ev_gain[6]; /* effort earned this battle (species giveEffort, +0x90) */
     char name[C3_GB_NAME];
+    /* Shadow Pokemon of the hero (PokemonBios +0xDC, status 0xC5: heart
+     * gauge x100) and its Shadow row's full gauge x100 (status 0xC4).
+     * hyper: joutai 0x3E (Hyper Mode); gauge_dropped: flag 0xD1 (the send-out
+     * gauge drop is once per battle). */
+    int32_t dp, dp_max;
+    uint8_t hyper, gauge_dropped;
 } C3GeneralMon;
 
 typedef struct C3GeneralCommand {
-    uint8_t kind;   /* 0 move, 1 switch, 2 throw a ball (snag) */
+    uint8_t kind;   /* 0 move, 1 switch, 2 throw a ball (snag), 3 call (the hero's own Pokemon) */
     uint8_t slot;   /* move slot 0..3, 4 = Struggle; party index to switch in; or ball item 1..12 */
     uint8_t target; /* battle position 0..3 (side*2 + active index) */
 } C3GeneralCommand;
@@ -93,6 +110,7 @@ typedef struct C3GeneralEvent {
     int8_t stat, stat_delta; /* a stage change: stat 0..6 and delta; stat -1 otherwise */
     uint8_t status;     /* a new status condition (C3_GB_SLEEP..), 0 otherwise */
     uint8_t ball;       /* the ball of the Pokemon at `actor` (item id, 0 none) */
+    uint8_t hyper;      /* the Pokemon at `actor` went into Hyper Mode here */
     char text[96];
 } C3GeneralEvent;
 
@@ -121,6 +139,9 @@ typedef struct C3GeneralBattle {
     uint8_t snag;
     uint16_t balls[13], balls_used[13];
     uint8_t caught[C3_GB_PARTY];
+    /* Floor status 0x5B: the turn's shared Quick Claw roll, drawn at the
+     * start of the battle and again at the end of every turn. */
+    uint16_t quick_claw_roll;
     uint32_t event_count;
     C3GeneralEvent events[C3_GB_EVENT_LIMIT];
 } C3GeneralBattle;
@@ -132,9 +153,10 @@ typedef struct C3GeneralRewards {
     uint8_t levels_gained[C3_GB_PARTY];
     int wipeout;          /* a loss with the encounter's zenmetu flag set */
     int written;          /* the party was written back (backSaveDataFlag) */
-    /* Level-up moves (species getWaza) put into a free slot, and those that
-     * needed the forget prompt (not ported: left unlearned and reported). */
-    uint16_t learned[C3_GB_PARTY][4], skipped[C3_GB_PARTY][4];
+    /* Level-up moves (species getWaza) learned (into a free slot, or over
+     * the move the forget prompt chose: forgot[] holds it, 0 for a free
+     * slot), and those not learned (no prompt bound, or the player gave up). */
+    uint16_t learned[C3_GB_PARTY][4], skipped[C3_GB_PARTY][4], forgot[C3_GB_PARTY][4];
     uint8_t learned_count[C3_GB_PARTY], skipped_count[C3_GB_PARTY];
     /* Snagged Shadow Pokemon (opponent party index) and the balls thrown. */
     uint8_t caught_count, caught[C3_GB_PARTY];
@@ -169,6 +191,12 @@ typedef struct C3ShadowInfo {
 int c3_battle_pack_shadow(const C3BattlePack *pack, unsigned id, C3ShadowInfo *info);
 /* The ball item's name (1..12), "" otherwise. */
 const char *c3_general_ball_name(unsigned ball);
+/* pokemonGetDarkPokemonLevel: 0 (gauge full) .. 6 (empty), 7 not Shadow. */
+unsigned c3_general_dark_level(const C3GeneralMon *mon);
+/* Whether the hero may Call the Pokemon at `position` (always for the
+ * hero's own side outside link battles; it snaps a Shadow Pokemon out of
+ * Hyper Mode or wakes a sleeper). */
+int c3_general_battle_can_call(const C3GeneralBattle *battle, unsigned position);
 /* Whether the hero at `position` may throw `ball` at `target` now. */
 int c3_general_battle_can_snag(const C3GeneralBattle *battle, const C3BattlePack *pack,
                                unsigned position, unsigned ball, unsigned target);
@@ -196,10 +224,27 @@ typedef struct C3ExpRecovery {
     uint8_t levels[C3_EXP_RECOVERY_MAX];          /* each level reached, in order */
     uint16_t learned[C3_EXP_RECOVERY_MAX];        /* moves put into a free slot */
     uint8_t learned_level[C3_EXP_RECOVERY_MAX];
-    uint16_t skipped[C3_EXP_RECOVERY_MAX];        /* moves that needed a forget prompt */
+    uint16_t skipped[C3_EXP_RECOVERY_MAX];        /* moves not learned (no prompt, or given up) */
+    uint16_t forgot[C3_EXP_RECOVERY_MAX];         /* per learned move: the move it replaced, 0 none */
 } C3ExpRecovery;
 int c3_battle_pack_recover_exp(const C3BattlePack *pack, uint8_t record[C3_GB_POKEMON_SIZE],
                                uint32_t add, C3ExpRecovery *out);
+
+/* The forget-a-move prompt (evolutionWazaLearn's callback, cbWazaForget, and
+ * the in-battle fightMenuWazaWasure): asked when a level-up move finds four
+ * moves known, with the record as it stands and the new move. It returns
+ * the slot 0..3 to forget, or -1 when the player gives up learning. A slot
+ * holding an HM (move row +0x12) is refused and counts as giving up. With
+ * no prompt bound (host sweeps, tests) the move is not learned and is
+ * reported in skipped[]. The writeback and c3_battle_pack_recover_exp ask it
+ * level by level, in the original order. */
+typedef int (*C3MoveForgetPrompt)(void *context, const C3BattlePack *pack,
+                                  const uint8_t record[C3_GB_POKEMON_SIZE], uint16_t move);
+void c3_general_set_forget_prompt(C3MoveForgetPrompt prompt, void *context);
+/* Whether the move is an HM (wazaDataBiosGetHidenFlag, row +0x12): it can't be forgotten. */
+int c3_battle_pack_move_is_hm(const C3BattlePack *pack, uint16_t move);
+/* pokemonWazaCreate into slot: the move with its full PP and no PP Ups. */
+int c3_battle_pack_set_move(const C3BattlePack *pack, uint8_t record[C3_GB_POKEMON_SIZE], unsigned slot, uint16_t move);
 
 /* party: the save body's six consecutive 0x138-byte records, read-only. */
 int c3_general_battle_begin(C3GeneralBattle *battle, const C3BattlePack *pack,
