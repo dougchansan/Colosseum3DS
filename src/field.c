@@ -56,8 +56,12 @@ int c3_field_parse(C3FieldMap *map,const void *data,size_t bytes,char *error,siz
         return fail(error,capacity,"Invalid C3F1 field header.");
     next.floor=le32(p+16);next.map_resource=le32(p+20);
     next.spawn_count=le32(p+24);next.walk_count=le32(p+28);next.wall_count=le32(p+32);
-    if(!next.floor || !next.map_resource || !next.spawn_count || next.spawn_count>C3_FIELD_MAX_SPAWNS ||
-       !next.walk_count || next.walk_count>C3_FIELD_MAX_TRIANGLES || next.wall_count>C3_FIELD_MAX_TRIANGLES ||
+    /* An event scene (the subway rides 0x8A-0x8D) has no entrance and no
+     * collision at all; its scripts place every person. */
+    int event_scene=!next.spawn_count&&!next.walk_count&&!next.wall_count;
+    if(!next.floor || !next.map_resource || (!event_scene&&(!next.spawn_count||!next.walk_count)) ||
+       next.spawn_count>C3_FIELD_MAX_SPAWNS ||
+       next.walk_count>C3_FIELD_MAX_TRIANGLES || next.wall_count>C3_FIELD_MAX_TRIANGLES ||
        le32(p+36)!=HEADER_BYTES || le32(p+48)!=TRIANGLE_BYTES || le32(p+52)!=SPAWN_BYTES ||
        le32(p+56) || le32(p+60))return fail(error,capacity,"Invalid field counts or layout.");
     size_t walk_offset=HEADER_BYTES+(size_t)next.spawn_count*SPAWN_BYTES;
@@ -102,10 +106,10 @@ int c3_field_parse(C3FieldMap *map,const void *data,size_t bytes,char *error,siz
     if(next.actor_first_vertex>UINT32_MAX-next.actor_vertex_count || next.actor_vertex_count%3u ||
        next.idle_clip>=3 || next.walk_clip>=3 || next.run_clip>=3)
         return fail(error,capacity,"Invalid field actor range or clips.");
-    next.spawns=calloc(next.spawn_count,sizeof(*next.spawns));
-    next.walk=calloc(next.walk_count,sizeof(*next.walk));
+    if(next.spawn_count)next.spawns=calloc(next.spawn_count,sizeof(*next.spawns));
+    if(next.walk_count)next.walk=calloc(next.walk_count,sizeof(*next.walk));
     if(next.wall_count)next.walls=calloc(next.wall_count,sizeof(*next.walls));
-    if(!next.spawns || !next.walk || (next.wall_count&&!next.walls)) {
+    if((next.spawn_count&&!next.spawns) || (next.walk_count&&!next.walk) || (next.wall_count&&!next.walls)) {
         c3_field_close(&next);return fail(error,capacity,"Field table allocation failed.");
     }
     for(uint32_t i=0;i<next.spawn_count;++i) {
@@ -148,7 +152,13 @@ int c3_field_load(C3FieldMap *map,const char *path,char *error,size_t capacity)
 
 int c3_field_spawn(const C3FieldMap *map,uint32_t index,C3FieldPlayer *player)
 {
-    if(!map||!player||!map->spawns)return 0;
+    if(!map||!player)return 0;
+    if(!map->spawn_count&&!map->walk_count&&!map->wall_count){
+        /* An event scene: the hero starts at the scene origin, unposed,
+         * until the floor's scripts place (or attach) him. */
+        memset(player,0,sizeof(*player));return 1;
+    }
+    if(!map->spawns)return 0;
     for(uint32_t i=0;i<map->spawn_count;++i)if(map->spawns[i].source_index==index) {
         memset(player,0,sizeof(*player));memcpy(player->position,map->spawns[i].position,sizeof(player->position));
         player->yaw=map->spawns[i].yaw;return 1;

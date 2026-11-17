@@ -55,6 +55,8 @@ int c3_field_parse(C3FieldMap *map, const void *data, size_t bytes,
                     char *error, size_t capacity);
 int c3_field_load(C3FieldMap *map, const char *path, char *error, size_t capacity);
 void c3_field_close(C3FieldMap *map);
+/* A field with no entrance and no collision is an event scene: any entrance
+ * gives the scene origin, and the floor's scripts place the hero. */
 int c3_field_spawn(const C3FieldMap *map, uint32_t source_index, C3FieldPlayer *player);
 int c3_field_set_object_enabled(C3FieldMap *map, uint32_t object, int enabled);
 /* object_count is implied by the walk/wall rows, but event surfaces (area
