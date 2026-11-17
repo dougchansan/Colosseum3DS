@@ -974,6 +974,14 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     c3_field_story_set_poison_service(&story,clear_party_poison,state);
     purify_trace=trace;c3_field_story_set_purify_service(&story,purify_party,state);
     c3_field_story_set_audio_service(&story,story_audio,NULL);
+    {   /* An event scene's scripted models (C3SM rows: the subway train)
+         * are part of the scene its init script drives at once, so their
+         * packs must be attached before the scripts start. */
+        int scene_models=0;
+        for(uint32_t i=0;i<area.actor_count;++i)scene_models|=area.actors[i].aux3==0x4333534Du;
+        if(scene_models&&!npc_stream_attach(&npc,1,storage,models,actor_models,model_paths,&story,count,skin_actors,
+                                            tv_index,1,0,trace,error,capacity))goto done;
+    }
     if(!c3_field_story_prepare(&story,story_error))goto story_failed;
     view=c3_field_story_view(&story);
     if(trace){fprintf(trace,"field_begin floor=%lu previous=%lu spawn=%u new=%d maps=%lu npcs=%lu models=%lu arrival=%d duration=%.3f\n",
