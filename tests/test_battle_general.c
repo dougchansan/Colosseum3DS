@@ -247,7 +247,7 @@ static void synthetic(void)
 static uint8_t *make_side0_pack(int version3, size_t *size)
 {
     size_t n; uint8_t *base = make_pack(2, 5, &n);
-    size_t extra = version3 ? 4 + 580 : 0;
+    size_t extra = version3 ? 4 + 580 + 4 + 4 : 0; /* side-0 row, then empty AI sections */
     uint8_t *b = calloc(1, n + extra);
     memcpy(b, base, n); free(base);
     uint8_t *r = b + g32(b + 124);           /* encounter 0 */
@@ -280,7 +280,7 @@ static void side0_cpu(void)
     CHECK(!strcmp(info.side0_trainer, "EAGUN") && !strcmp(info.side0_title, "ELDER"));
     {   /* a damaged side-0 row is refused */
         C3BattlePack bad = {0}; uint8_t *copy = malloc(n); CHECK(copy); memcpy(copy, bytes, n);
-        copy[n - 580 + 2] = 7; c3_save_codec_sha1(copy + 72, copy + 128, n - 128);
+        copy[n - 8 - 580 + 2] = 7; c3_save_codec_sha1(copy + 72, copy + 128, n - 128);
         CHECK(!c3_battle_pack_decode(&bad, copy, n, error)); free(copy);
     }
     uint8_t party[6][0x138], copy[6][0x138];

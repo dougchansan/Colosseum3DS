@@ -9,10 +9,16 @@ all: build/test_battle_general
 build/test_battle_turn_rules: tests/test_battle_turn_rules.c $(BATTLE_GENERAL_SOURCES) include/colosseum3ds/battle_general.h build/battle_rng_source.h $(HEADERS) $(UPSTREAM)
 	$(CC) $(CPPFLAGS) -Ibuild -Isrc $(CFLAGS) tests/test_battle_turn_rules.c $(BATTLE_GENERAL_SOURCES) $(LDFLAGS) -lm -o $@
 all: build/test_battle_turn_rules
+
+# Original trainer AI (synthetic version-3 pack): scored moves, random rows, switching.
+build/test_battle_trainer_ai: tests/test_battle_trainer_ai.c $(BATTLE_GENERAL_SOURCES) include/colosseum3ds/battle_general.h build/battle_rng_source.h $(HEADERS) $(UPSTREAM)
+	$(CC) $(CPPFLAGS) -Ibuild -Isrc $(CFLAGS) tests/test_battle_trainer_ai.c $(BATTLE_GENERAL_SOURCES) $(LDFLAGS) -lm -o $@
+all: build/test_battle_trainer_ai
 .PHONY: battle-general-check
-battle-general-check: build/test_battle_general build/test_battle_turn_rules build/test_battle3d_index build/test_wzx_player
+battle-general-check: build/test_battle_general build/test_battle_turn_rules build/test_battle_trainer_ai build/test_battle3d_index build/test_wzx_player
 	./build/test_battle_general
 	./build/test_battle_turn_rules
+	./build/test_battle_trainer_ai
 	./build/test_battle3d_index
 	./build/test_wzx_player
 

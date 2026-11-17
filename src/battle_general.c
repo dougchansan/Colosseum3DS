@@ -19,6 +19,7 @@
 #define SHADOW_ROWS 0x61u  /* common_rel 0x1439D8: Shadow data IDs 0..0x60 */
 #define SHADOW_ROW 0x38u
 #define SIDE0_ROW 580u     /* id, count, trainer 52, kind 12, 6 records, 2 names */
+#define AI_ROW 40u         /* FightTrainerAiData */
 
 static uint16_t be16(const uint8_t *p){return (uint16_t)((unsigned)p[0]<<8|p[1]);}
 static uint32_t be32(const uint8_t *p){return (uint32_t)p[0]<<24|(uint32_t)p[1]<<16|(uint32_t)p[2]<<8|p[3];}
@@ -60,11 +61,17 @@ int c3_battle_pack_decode(C3BattlePack *out,const void *bytes,size_t size,char *
     if(version==3){uint64_t at=(uint64_t)k.shadow_at+SHADOW_ROWS*SHADOW_ROW;
         if(at+4u>size)return fail(e,"Story-battle pack sections do not match its size.");
         k.side0_at=(uint32_t)at+4u;k.side0_count=be32(p+at);
-        if(k.side0_count>k.encounters)return fail(e,"Story-battle pack sections do not match its size.");}
+        if(k.side0_count>k.encounters)return fail(e,"Story-battle pack sections do not match its size.");
+        at=(uint64_t)k.side0_at+(uint64_t)k.side0_count*SIDE0_ROW;
+        if(at+4u>size)return fail(e,"Story-battle pack sections do not match its size.");
+        k.ai_count=be32(p+at);k.ai_at=(uint32_t)at+4u;at+=4u+(uint64_t)k.ai_count*AI_ROW;
+        if(k.ai_count>4096||at+4u>size)return fail(e,"Story-battle pack sections do not match its size.");
+        k.ai_value_count=be32(p+at);k.ai_value_at=(uint32_t)at+4u;
+        if(k.ai_value_count>4096)return fail(e,"Story-battle pack sections do not match its size.");}
     if(k.species_at!=HEADER+k.moves*MOVE_ROW||k.types_at!=k.species_at+k.species*SPECIES_ROW||
        k.growth_at!=k.types_at+k.types*TYPE_ROW||k.entries_at!=k.growth_at+k.growth*GROWTH_ROW||
        (uint64_t)k.names_at+(uint64_t)(k.species+k.moves+2u*k.encounters)*C3_GB_NAME+
-       (version>=2?SHADOW_ROWS*SHADOW_ROW:0u)+(version==3?4u+(uint64_t)k.side0_count*SIDE0_ROW:0u)!=size)
+       (version>=2?SHADOW_ROWS*SHADOW_ROW:0u)+(version==3?12u+(uint64_t)k.side0_count*SIDE0_ROW+(uint64_t)k.ai_count*AI_ROW+4u*(uint64_t)k.ai_value_count:0u)!=size)
         return fail(e,"Story-battle pack sections do not match its size.");
     c3_save_codec_sha1(digest,p+HEADER,size-HEADER);
     if(memcmp(digest,p+72,20))return fail(e,"Story-battle pack digest mismatch.");
@@ -770,6 +777,224 @@ int c3_general_battle_choose_with(const C3GeneralBattle *cb,const C3BattlePack *
     if(!c3_battle_rng_next16(rng,&v))return 0;
     c->target=(uint8_t)foes[v%nf];return 1;
 }
+/* ---- trainer AI ------------------------------------------------------------
+ * fn_802342CC (fight_range_exact_80233DB0.c:395) for a trainer whose data
+ * names an AI row (trainer row +6), on its side's active Pokemon:
+ *  1. switch roll: AI +7 > draw % 100, then per Pokemon
+ *     fightTrainerAiSelectFightActionIrekae: switch when
+ *     fightTrainerAiGetFightPokemonIrekaeModosuValue > 0;
+ *  2. item roll (AI +8) when the fight kind allows items: drawn, but the
+ *     trainers' items are not modelled, so no item is used;
+ *  3. combo roll (AI +6): drawn; fn_8024E534 is a stub returning 0;
+ *  4. the Pokemon still without an action, sorted by speed
+ *     (fightFloorSortFightOutPokemonPtrArySub without priority), each pick
+ *     a target and a move (fn_8023A308): a random target (AI +0x11) or the
+ *     scored one, a random move (AI +0x12) or fn_8023A740's scores.
+ * fn_8023A740: each usable move's score is its value function's (AI +0x13;
+ * the per-move fightTrainerAiWazaValue* functions are not ported: 0), then
+ * the AI value codes (pack: s32 per code, added with the +-200 clamp of
+ * fn_80239984): 0x3C the move can hit (the per-move hit functions and the
+ * ability immunities aiWazaHitCheck reads are not modelled: always), 0x3F
+ * resisted / 0x40 no effect (fn_8023793C, damaging moves), 0x42 the AI's
+ * preferred types (AI +0x20 pairs, value scaled by fn_802398E4), 0x44 the
+ * highest estimated damage, 0x45 more than the target's HP, 0x46 at least
+ * its HP, 0x47 that and the best accuracy, 0x4A a both-foes move against
+ * two; then the jitter draw % (2*AI +0x19 + 1) - AI +0x19 (retail has
+ * lbl_8047882E set), and fightTrainerAiGetValueAryMaxBanme's choice (ties
+ * at random, one draw). The damage estimate (AI +0xE; the per-move
+ * fightTrainerAiWazaDamage* functions are not ported) is the engine's
+ * damage at the full roll without a critical hit. Not ported: the
+ * fightTrainerAiWazaValue/Hit/Damage per-move functions, codes 0x41, 0x43,
+ * 0x48, 0x49, 0x4B, 0x4C, the scored target choice's special cases
+ * (fn_8023B498: the foe whose best move scores highest is taken), and the
+ * switch value's codes 1-5 and 8 and its bad-condition code. */
+static const uint8_t *ai_row(const C3GeneralBattle *b,const C3BattlePack *p,unsigned side)
+{
+    const uint8_t *t=NULL;
+    if(!p->ai_count||b->link)return NULL;
+    if(side==1)t=entry(p,b->encounter)+128;
+    else if(b->info.cpu_side0){const uint8_t *s0=side0_row(p,b->encounter);t=s0?s0+4:NULL;}
+    if(!t)return NULL;
+    unsigned id=be16(t+6);
+    return id<p->ai_count?p->bytes+p->ai_at+id*AI_ROW:NULL;
+}
+static int32_t ai_code(const C3BattlePack *p,unsigned code)
+{return code<p->ai_value_count?(int32_t)be32(p->bytes+p->ai_value_at+code*4u):0;}
+/* fn_80239984 / fightTrainerAiAddValue: add, clamped to +-200 on the side moved. */
+static int32_t ai_add(int32_t v,int32_t d)
+{if(d>0)return v+d>200?200:v+d;if(d<0)return v+d<-200?-200:v+d;return v;}
+static int32_t ai_add_scaled(int32_t v,uint8_t x,int32_t code)
+{int16_t f=(int16_t)(x*100/255-50);return ai_add(v,(int16_t)(f*code/50));}
+static int ai_draw(C3GeneralBattle *b,unsigned n,unsigned *out){uint16_t v;if(!c3_battle_rng_next16(&b->rng,&v))return 0;*out=n?v%n:v;return 1;}
+/* fn_802395C8 with the type check flag: Struggle, Shadow Rush, Beat Up and
+ * 0x161 count as typeless (9). */
+static unsigned ai_move_type(const uint8_t *ai,uint16_t id,const uint8_t *mv)
+{return ai[0xB]==1&&(id==0xa5||id==0x164||id==0xf8||id==0x161)?9u:mv[2];}
+/* fn_8023793C's result: 0x43 no effect, 0x42 resisted, 0x41 super
+ * effective, 0x3F otherwise (and for the typeless 9). */
+static unsigned ai_effect_code(const C3BattlePack *p,unsigned type,const C3GeneralMon *d)
+{
+    unsigned num,den;
+    if(type==9)return 0x3f;
+    if(!effectiveness(p,type,d,&num,&den))return 0x43;
+    return num>den?0x41:num<den?0x42:0x3f;
+}
+/* The estimate: the engine's damage formula at the full roll, no critical
+ * hit; fixed-damage effects give their amount. */
+static uint32_t ai_damage(C3GeneralBattle *b,const C3BattlePack *p,unsigned a,unsigned d,uint16_t id)
+{
+    C3GeneralMon *x=at(b,a),*y=at(b,d);const uint8_t *mv=move_row(p,id);
+    if(!x||!y||!mv)return 0;
+    unsigned power=(unsigned)(int16_t)be16(mv+22),effect=be16(mv+26),num,den,type=mv[2],special=type>=10;
+    if(!power)return 0;
+    if(!effectiveness(p,type,y,&num,&den))return 0;
+    if(effect==E_DRAGON_RAGE)return 40;
+    if(effect==E_SONICBOOM)return 20;
+    if(effect==E_LEVEL_DAMAGE)return x->level;
+    if(effect==E_SUPER_FANG)return y->hp/2u?y->hp/2u:1u;
+    if(effect==E_OHKO)return x->level<y->level?0:y->hp;
+    unsigned atk=staged(x->stats[special?3:1],x->stages[special?2:0]),def=staged(y->stats[special?4:2],y->stages[special?3:1]);
+    if(!def)def=1;
+    uint32_t v=atk*power*(2u*x->level/5u+2u)/def/50u;
+    if(!special&&x->status==C3_GB_BURN)v/=2u;
+    unsigned side=d/2,defenders=0;
+    for(unsigned i=0;i<b->active_count;++i)defenders+=alive(b,side*2+i)!=0;
+    int doubles=b->active_count==2;
+    if(b->screens[side][special]&&a/2!=d/2)v=doubles&&defenders>=2?v/3u*2u:v/2u;
+    if(doubles&&mv[3]==4&&defenders>=2)v/=2u;
+    if(!v)v=1;
+    v+=2u;
+    if(type==x->types[0]||type==x->types[1])v=v*3u/2u;
+    return v*num/den;
+}
+/* fn_802367CC: the usable moves (PP left) as slots; 0 when only Struggle. */
+static unsigned ai_moves(C3GeneralBattle *b,const C3BattlePack *p,unsigned pos,uint8_t slots[4])
+{
+    uint8_t mask=c3_general_battle_legal_moves(b,p,pos);unsigned n=0;
+    for(unsigned i=0;i<4;++i)if(mask>>i&1u)slots[n++]=(uint8_t)i;
+    return n;
+}
+static unsigned ai_foes(C3GeneralBattle *b,unsigned pos,unsigned foes[2])
+{unsigned n=0,foe=1-pos/2;for(unsigned i=0;i<b->active_count;++i)if(alive(b,foe*2+i))foes[n++]=foe*2+i;return n;}
+/* fn_8023A740 without the jitter and the final choice: scores[] per slot. */
+static void ai_scores(C3GeneralBattle *b,const C3BattlePack *p,const uint8_t *ai,unsigned pos,unsigned target,
+                      const uint8_t *slots,unsigned n,int32_t scores[4])
+{
+    C3GeneralMon *x=at(b,pos),*y=at(b,target);
+    int32_t dmg[4]={0},diff[4]={0},metric[4]={0},max_dmg=-0xFFFF,max_metric=0;
+    unsigned hp=y?y->hp:0;
+    for(unsigned k=0;k<n;++k){uint16_t id=x->moves[slots[k]];const uint8_t *mv=move_row(p,id);
+        dmg[k]=ai[0xE]==1?(int32_t)ai_damage(b,p,pos,target,id):0;
+        diff[k]=(int32_t)hp-dmg[k];
+        if(mv&&be16(mv+22)){if(max_dmg<dmg[k])max_dmg=dmg[k];
+            if(diff[k]<=0){metric[k]=mv[4]?mv[4]:100;if(max_metric<metric[k])max_metric=metric[k];}}}
+    for(unsigned k=0;k<n;++k){uint16_t id=x->moves[slots[k]];const uint8_t *mv=move_row(p,id);
+        int32_t sc=0;int damaging=mv&&be16(mv+22);
+        unsigned type=mv?ai_move_type(ai,id,mv):9;
+        sc=ai_add(sc,ai_code(p,0x3C));
+        if(type!=9&&damaging&&y&&ai[0xB]==1){unsigned code=ai_effect_code(p,type,y);
+            if(code==0x42)sc=ai_add(sc,ai_code(p,0x3F));
+            if(code==0x43)sc=ai_add(sc,ai_code(p,0x40));}
+        if(type!=9)for(unsigned j=0;j<2;++j){unsigned t=ai[0x20+2*j];
+            if(t!=9&&type==t)sc=ai_add_scaled(sc,ai[0x21+2*j],ai_code(p,0x42));}
+        if(damaging){
+            if(max_dmg<=dmg[k])sc=ai_add(sc,ai_code(p,0x44));
+            if(diff[k]<0)sc=ai_add(sc,ai_code(p,0x45));
+            if(diff[k]<=0)sc=ai_add(sc,ai_code(p,0x46));
+            if(diff[k]<=0&&max_metric<=metric[k])sc=ai_add(sc,ai_code(p,0x47));
+        }
+        if(mv&&mv[3]==4&&y){unsigned two=0;for(unsigned i=0;i<b->active_count;++i)two+=alive(b,(target/2)*2+i)!=0;
+            if(two>=2)sc=ai_add(sc,ai_code(p,0x4A));}
+        scores[k]=sc;}
+}
+/* fightTrainerAiGetValueAryMaxBanme with random ties: -1 when every value
+ * is under -200. */
+static int ai_argmax(C3GeneralBattle *b,const int32_t *v,unsigned n,int *out)
+{
+    int32_t best=-200;unsigned ties=0,r;int first=-1;
+    for(unsigned i=0;i<n;++i){if(v[i]<-200)continue;if(first<0||v[i]>best){best=v[i];first=(int)i;ties=1;}else if(v[i]==best)++ties;}
+    if(first<0){*out=-1;return 1;}
+    if(ties==1){*out=first;return 1;}
+    if(!ai_draw(b,0,&r))return 0;
+    r=(r&0xFFFFu)%ties;
+    for(unsigned i=0;i<n;++i)if(v[i]==best&&!r--){*out=(int)i;return 1;}
+    *out=first;return 1;
+}
+/* fn_8023A308 for one Pokemon. */
+static int ai_pick_move(C3GeneralBattle *b,const C3BattlePack *p,const uint8_t *ai,unsigned pos,C3GeneralCommand *c)
+{
+    uint8_t slots[4];unsigned n=ai_moves(b,p,pos,slots),foes[2],nf=ai_foes(b,pos,foes),r,target;
+    c->kind=0;c->slot=4;c->target=nf?(uint8_t)foes[0]:(uint8_t)(2-2*(pos/2));
+    if(!n||!nf)return 1;   /* Struggle */
+    if(ai[0x11]==1){if(!ai_draw(b,0,&r))return 0;target=foes[(r&0xFFFFu)%nf];}
+    else{   /* fn_8023B498's main path: the foe whose best score is highest */
+        int32_t best=-0x7fffffff;target=foes[0];
+        for(unsigned i=0;i<nf;++i){int32_t sc[4];ai_scores(b,p,ai,pos,foes[i],slots,n,sc);
+            for(unsigned k=0;k<n;++k)if(sc[k]>best){best=sc[k];target=foes[i];}}
+    }
+    int k;
+    if(ai[0x12]==1){if(!ai_draw(b,0,&r))return 0;k=(int)((r&0xFFFFu)%n);}
+    else{
+        int32_t sc[4];ai_scores(b,p,ai,pos,target,slots,n,sc);
+        unsigned jit=ai[0x19];
+        for(unsigned i=0;i<n;++i){if(!ai_draw(b,0,&r))return 0;
+            sc[i]=ai_add(sc[i],(int32_t)((r&0xFFFFu)%(2u*jit+1u))-(int32_t)jit);}
+        if(!ai_argmax(b,sc,n,&k))return 0;
+        if(k<0)return 1;
+    }
+    c->slot=slots[k];c->target=(uint8_t)target;return 1;
+}
+/* fightTrainerAiGetFightPokemonIrekaeModosuValue: code 6 when no usable
+ * move can affect any foe, code 7 when a damaging one would knock a foe
+ * out; fightTrainerAiSelectIrekaeDasuFightPokemon: the first healthy
+ * Pokemon in reserve with a move that affects a foe, else the first. */
+static int ai_switch(C3GeneralBattle *b,const C3BattlePack *p,unsigned pos,C3GeneralCommand *c)
+{
+    uint8_t slots[4];unsigned n=ai_moves(b,p,pos,slots),foes[2],nf=ai_foes(b,pos,foes);
+    C3GeneralMon *x=at(b,pos);int hittable=0,faster=0;int32_t value=0;
+    for(unsigned i=0;i<nf;++i)for(unsigned k=0;k<n;++k){uint16_t id=x->moves[slots[k]];const uint8_t *mv=move_row(p,id);
+        unsigned num,den;int hit=mv&&effectiveness(p,mv[2],at(b,foes[i]),&num,&den);
+        if(hit)hittable=1;
+        if(!mv||!be16(mv+22))continue;
+        if(at(b,foes[i])->hp>=ai_damage(b,p,pos,foes[i],id))continue;
+        if(hit)faster=1;}
+    if(!hittable)value=ai_add(value,ai_code(p,6));
+    if(faster)value=ai_add(value,ai_code(p,7));
+    if(value<=0)return 0;
+    unsigned s=pos/2;int pick=-1;
+    for(unsigned i=0;i<b->party_count[s];++i){
+        int used=0;for(unsigned a=0;a<b->active_count;++a)used|=b->active[s][a]==i;
+        const C3GeneralMon *m=&b->party[s][i];
+        if(used||!m->hp)continue;
+        if(pick<0)pick=(int)i;
+        for(unsigned k=0;k<4;++k){const uint8_t *mv=m->moves[k]&&m->pp[k]?move_row(p,m->moves[k]):NULL;unsigned num,den;
+            for(unsigned f=0;mv&&be16(mv+22)&&f<nf;++f)if(effectiveness(p,mv[2],at(b,foes[f]),&num,&den)){c->kind=1;c->slot=(uint8_t)i;c->target=0;return 1;}}
+    }
+    if(pick<0)return 0;
+    c->kind=1;c->slot=(uint8_t)pick;c->target=0;return 1;
+}
+/* fn_802342CC for side s: fills cmd[s*2 + a] for its live positions.
+ * Returns 0 on an RNG failure, -1 when the side has no AI row. */
+static int order_actors(C3GeneralBattle *b,const C3BattlePack *p,const C3GeneralCommand *cmd,int use_pri,uint8_t ary[4]);
+static int ai_side(C3GeneralBattle *b,const C3BattlePack *p,unsigned s,C3GeneralCommand cmd[4])
+{
+    const uint8_t *ai=ai_row(b,p,s);unsigned r;uint8_t done[4]={0};
+    if(!ai)return -1;
+    if(!ai_draw(b,0,&r))return 0;
+    if(ai[7]>(r&0xFFFFu)%100u)
+        for(unsigned a=0;a<b->active_count;++a){unsigned pos=s*2+a;
+            if(alive(b,pos)&&ai_switch(b,p,pos,&cmd[pos])){done[pos]=1;
+                for(unsigned q=0;q<4;++q)if(q!=pos&&done[q]&&cmd[q].kind==1&&cmd[q].slot==cmd[pos].slot){done[pos]=0;cmd[pos].kind=0;}}}
+    if(b->info.use_item&&!ai_draw(b,0,&r))return 0;   /* item roll: no trainer items modelled */
+    if(!ai_draw(b,0,&r))return 0;                     /* combo roll: fn_8024E534 returns 0 */
+    uint8_t ary[4];
+    if(!order_actors(b,p,NULL,0,ary))return 0;
+    for(unsigned k=0;k<4;++k){unsigned pos=ary[k];
+        if(pos>=4||pos/2!=s||done[pos])continue;
+        if(!ai_pick_move(b,p,ai,pos,&cmd[pos]))return 0;}
+    return 1;
+}
+
 /* ---- snagging ------------------------------------------------------------ */
 
 static const char *const ball_name[13]={"","MASTER BALL","ULTRA BALL","GREAT BALL","POKE BALL",
@@ -831,6 +1056,12 @@ static int throw_ball(C3GeneralBattle *b,const C3BattlePack *p,unsigned a,C3Gene
 int c3_general_battle_choose(C3GeneralBattle *b,const C3BattlePack *p,unsigned pos,C3GeneralCommand *c)
 {
     if(!b||!c||b->magic!=MAGIC||!alive(b,pos))return 0;
+    {   /* the original trainer AI for an AI trainer's position */
+        C3GeneralCommand all[4];memset(all,0,sizeof all);
+        int r=ai_side(b,p,pos/2,all);
+        if(r==0)return 0;
+        if(r>0){*c=all[pos];return 1;}
+    }
     uint8_t mask=c3_general_battle_legal_moves(b,p,pos);unsigned slots[4],n=0,r,foes[2],nf=0;
     for(unsigned i=0;i<4;++i)if(mask>>i&1u)slots[n++]=i;
     c->kind=0;c->slot=4;
@@ -951,11 +1182,14 @@ static int turn_core(C3GeneralBattle *out,const C3BattlePack *p,const C3GeneralC
     C3GeneralBattle *b=malloc(sizeof *b);if(!b)return fail(e,"Turn allocation failed.");
     *b=*out;b->event_count=0;++b->turn;
     C3GeneralCommand cmd[4]={{0}};uint8_t order[4],count=0,acted[4]={0};int ok=0;
-    for(unsigned a=0;a<b->active_count;++a){
-        if(b->info.cpu_side0){if(alive(b,a)&&!c3_general_battle_choose(b,p,a,&cmd[a]))goto failed;}
-        else if(alive(b,a))cmd[a]=player[a];
-        if(link){if(alive(b,2+a))cmd[2+a]=player[2+a];}
-        else if(alive(b,2+a)&&!c3_general_battle_choose(b,p,2+a,&cmd[2+a]))goto failed;}
+    for(unsigned s=0;s<2;++s){
+        int human=link||(s==0&&!b->info.cpu_side0);
+        int r=human?-1:ai_side(b,p,s,cmd);
+        if(!r)goto failed;
+        for(unsigned a=0;a<b->active_count;++a){unsigned pos=s*2+a;
+            if(!alive(b,pos))continue;
+            if(human)cmd[pos]=player[pos];
+            else if(r<0&&!c3_general_battle_choose(b,p,pos,&cmd[pos]))goto failed;}}
     if(!order_actors(b,p,cmd,1,order))goto failed;
     count=4;
     for(unsigned i=0;i<count;++i){unsigned pos=order[i];

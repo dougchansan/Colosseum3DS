@@ -32,6 +32,8 @@ typedef struct C3BattlePack {
     uint32_t shadow_at; /* version 2: the Shadow table (0x61 x 0x38-byte rows), else 0 */
     /* version 3: side-0 CPU trainers (encounters the hero watches, 525). */
     uint32_t side0_at, side0_count;
+    /* version 3: trainer AI data rows (40 bytes) and AI value codes (s32). */
+    uint32_t ai_at, ai_count, ai_value_at, ai_value_count;
 } C3BattlePack;
 
 typedef struct C3BattleEncounterInfo {

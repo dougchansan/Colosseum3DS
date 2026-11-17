@@ -38,6 +38,10 @@ TABLES = {
     "pokemon": (0x9E5DC, 0x14A6B4, 80, 5510),
     "move": (0x11C7C4, 0x14A6D4, 56, 358),
     "species": (0x121A04, 0x14A6E0, 284, 413),
+    # fightTrainerAiDataBiosGetPtr (lbl_80478F30/34) rows, and the AI value
+    # add/sub rows (fightTrainerAiValueAddsubDataBiosGetPtr, lbl_80478F28/2C).
+    "ai": (0x9BD14, 0x14A6B0, 40, 261),
+    "ai_value": (0x118E4C, 0x14A6C8, 20, 553),
 }
 # Shadow table (fn_801EEE44 catch rate +0, field08 gauge +8, snag flag +0x12),
 # ids 0..0x60, appended as pack version 2.
@@ -54,6 +58,9 @@ MESSAGE_GROUPS = ((0x58044, 0x647B4), (0x647B4, None))
 # party count, u8 0, the trainer row (52), its trainer kind row (12), six
 # 80-byte Pokemon records and two 16-byte names (trainer, title).
 SIDE0_ROW = 4 + 52 + 12 + 6 * 80 + 2 * NAME_SIZE
+# Version 3 then holds the trainer AI: u32 count and the 40-byte AI data
+# rows (trainer row +6 picks one), then u32 count and each add/sub row's
+# value (+0, s32), indexed by the scoring code.
 REASONS = {0: "admitted", 1: "player side is not the hero alone",
            2: "more than one opponent trainer", 3: "opponent has no Pokemon",
            4: "unsupported battle type", 5: "encounter index out of range"}
@@ -241,6 +248,9 @@ def make_pack(rel_bytes, dol_bytes, source_commit=None, common_sha1=None, dol_sh
     entries_at = growth_at + len(growth)
     shadow = rel_bytes[REL_DATA + SHADOW[0]:REL_DATA + SHADOW[0] + SHADOW[1] * SHADOW[2]]
     side0, _ = side0_section(rel, rel_bytes)
+    ai_value = rel.table("ai_value")
+    side0 += (struct.pack(">I", rel.count("ai")) + rel.table("ai") + struct.pack(">I", rel.count("ai_value"))
+              + b"".join(ai_value[i * 20:i * 20 + 4] for i in range(rel.count("ai_value"))))
     body = (moves + species + types + growth + b"".join(entries) + names_section(rel, rel_bytes, entries)
             + shadow + side0)
     header = bytearray(HEADER_SIZE)
