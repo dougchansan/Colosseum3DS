@@ -56,7 +56,8 @@ int c3_move_forget_scene_prompt(void *context, const C3BattlePack *pack,
     if (!c3_battle_pack_move_name(pack, move, names[4])) snprintf(names[4], sizeof names[4], "?");
     if (trace) { fprintf(trace, "move_forget_open pokemon=%s move=%s known=%s,%s,%s,%s pda=%d\n", nickname, names[4],
                          names[0], names[1], names[2], names[3], pda != NULL); fflush(trace); }
-    int yes = 1, cursor = 0, dirty = 1, sounded = 0;
+    int yes = 1, cursor = 0, dirty = 1, sounded = 0, captured = 0;
+    static unsigned page_number;
     C3MoveForgetStep shown = (C3MoveForgetStep)-1;
     uint64_t page_start = c3_n3ds_time_us();
     C3N3dsInput input; memset(&input, 0, sizeof input);
@@ -64,7 +65,7 @@ int c3_move_forget_scene_prompt(void *context, const C3BattlePack *pack,
         if (input.exit_requested) break;
         uint16_t m; uint32_t id = c3_move_forget_message(&f, &m);
         if (f.step != shown) {
-            shown = f.step; dirty = 1; page_start = c3_n3ds_time_us(); yes = 1; cursor = 0; sounded = 0;
+            shown = f.step; dirty = 1; page_start = c3_n3ds_time_us(); yes = 1; cursor = 0; sounded = 0; captured = 0;
             text[0] = 0;
             if (id) {
                 char mv[C3_GB_NAME] = "?"; int sound = 0;
@@ -84,6 +85,12 @@ int c3_move_forget_scene_prompt(void *context, const C3BattlePack *pack,
         }
         uint16_t pressed = input.pressed;
         uint64_t held_ms = (c3_n3ds_time_us() - page_start) / 1000u;
+        if (script_count && !captured && held_ms >= script_hold_ms / 2u) {
+            char shot[96]; captured = 1;
+            snprintf(shot, sizeof shot, "sdmc:/3ds/Colosseum3DS/forget_%u_%s_bottom.bmp", ++page_number, step_name(f.step));
+            int okb = c3_n3ds_capture_bottom(shot) == 0;
+            if (trace) { fprintf(trace, "move_forget_shot page=%u step=%s bottom=%d\n", page_number, step_name(f.step), okb); fflush(trace); }
+        }
         int answer = -1;
         if (script_count) {
             if (held_ms >= script_hold_ms) {
@@ -107,7 +114,7 @@ int c3_move_forget_scene_prompt(void *context, const C3BattlePack *pack,
             C3MoveForgetStep before = f.step;
             c3_move_forget_answer(&f, answer);
             if (trace) { fprintf(trace, "move_forget_answer step=%s answer=%d hm_refused=%d\n", step_name(before), answer, f.hm_refused); fflush(trace); }
-            if (f.step == before) dirty = 1;
+            if (f.step == before) { dirty = 1; captured = 0; page_start = c3_n3ds_time_us(); }
         }
         if (dirty) {
             C3BottomUi *ui = c3_bottom_screen_begin();

@@ -100,7 +100,8 @@ trainer row's nature (gender and ability fit are not drawn as
 `pokemonCreate` does), the nickname is the pack's ASCII species name in
 GSchar, the attest bytes are copied from the hero's first record, and
 condition entry 0x3E (`fn_8011B950`) is not added. Hyper Mode
-(`darkpokemonHypermodeFlag`) is not modelled in battle.
+(`darkpokemonHypermodeFlag`) is modelled in battle for the hero's Shadow
+Pokemon ([battle-rules-lane.md](battle-rules-lane.md)).
 
 ## Colosseum and Mt. Battle runs
 
@@ -159,10 +160,10 @@ models load.
 
 | Gap | State |
 | --- | --- |
-| Encounter 525 (Agate, Eagun's Pikachu vs Cipher Peon Skrub's Shadow Hitmontop, fight type 0) | both sides are CPU trainers; the pack has only the opposing roster, so the field still reports result 2 (`field_battle_skipped`) |
-| Encounters 0, 1, 7, 8, 9, 521, 524 | refused (test rows, link rows, empty rosters); no story script requests them |
-| Turn rules | the general engine's documented Gen-3 approximation, not the original battle scripts; the opponent picks uniformly among legal moves (the original 16-slot AI scoring is qualified in `battle_rules.c` but not wired) |
+| Encounter 525 (Agate, Eagun's Pikachu vs Cipher Peon Skrub's Shadow Hitmontop) | plays with pack v3 (side-0 CPU trainer, [battle-rules-lane.md](battle-rules-lane.md)); an older pack still refuses it |
+| Encounters 0, 1, 8, 9, 521, 524 | refused (test rows, link rows, empty rosters); no story script requests them |
+| Turn rules | original order, speed, targets, damage order and end of turn for the modelled effects; the trainer AI from the original AI rows (per-move AI functions not ported); see [battle-rules-lane.md](battle-rules-lane.md) |
 | Bag in battle, escape | not offered |
-| Move forget prompt, post-battle evolution | reported, not run |
-| Hyper Mode, heart gauge drops in battle | not modelled |
+| Move forget prompt | asked (original messages) when a battle scene has bound it; post-battle evolution is still reported, not run |
+| Hyper Mode, heart gauge drops in battle | modelled for the hero's Shadow Pokemon; the nature rate for the drops is taken as 1/1 |
 | Snag presentation | the snagged Pokemon leaves with its faint sequence; the original throw and shake effects (`fightTrainerHokakuThrowEffect`) are not drawn |
