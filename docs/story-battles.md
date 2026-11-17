@@ -44,7 +44,9 @@ from the pack, both sides on the engine's policy, then
 `c3_battle_story_apply` (writeback, EXP, prize, snagging, whiteout). A lost
 battle is replayed with a healed party and the next seed until the hero
 wins, as a player who whites out and comes back would (`attempts=` in the
-report); `C3_ROUTE_BATTLE_MODE=any` applies the first outcome instead. A
+report); watched CPU-vs-CPU scenes always apply their first real outcome
+(525 ends with Eagun losing, result 3). `C3_ROUTE_BATTLE_MODE=any` applies
+the first outcome to hero battles too. A
 refused encounter fails the run unless it is declared in
 `C3_ROUTE_ENGINE_GAPS`. `tools/run_story_battle_routes.sh` runs every
 region and checks each one's expected encounters
@@ -59,10 +61,10 @@ battles played, none skipped.
 | Agate and Mt. Battle (`test_story_route`, Agate route) | 195, 196, 197 (Relic Cave), 543 (Relic Forest), 544 (Dakim, Mt. Battle area 1), and 525 (CPU-vs-CPU with pack v3) |
 | Pyrite (`test_story_route`, `tests/routes/pyrite.route`) | 169-172 (Pyrite Colosseum), 101, 126, 129, 164 (Miror B.) |
 | Shadow Pokemon Lab, Pyrite revisit, Snagem Hideout (`test_story_crawl`) | 381, 382, 383, 386, 389, 397, 398, 401, 402, 405 (Ein), 392, 393, 394, 200; 55; 475 |
-| The Under (`tools/run_under_chapter.py`, `tests/routes/under-venus.txt`) | 328 (Venus), 333, 336, 339, 342; the recipe then stops at the Subway Key pickup (under-2 lane) |
+| The Under (`test_story_route`, `tests/routes/under-subway.route`) | 328 (Venus), 333, 336, 339, 342; the route continues through the Subway Key and elevator-key pickups, both train rides and the Pyrite elevator |
 
-Realgam Tower's chapter route belongs to the realgam-run lane; its harness
-can call the same helper.
+Realgam Tower's chapter route (`tests/routes/realgam.route`) uses the same
+battle helper and continues through the staff roll, clear save and Continue.
 
 ## Fight kind rules (FightKindData)
 

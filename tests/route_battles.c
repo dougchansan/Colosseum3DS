@@ -112,7 +112,9 @@ int route_battle_play(C3FieldStory *story, C3GameState *game, uint32_t floor, ui
                     !c3_general_battle_choose(b, &pack, a, &c[a])) { snprintf(error, capacity, "no legal command"); goto fail; }
             if (!c3_general_battle_turn(b, &pack, c, problem)) { snprintf(error, capacity, "turn: %s", problem); goto fail; }
         }
-        if (any_outcome || b->outcome == C3_GB_WON) break;
+        /* Scripted CPU-vs-CPU scenes (525) are watched, not retried by the hero.
+         * Their first real outcome must resume the original event, including a loss. */
+        if (info.cpu_side0 || any_outcome || b->outcome == C3_GB_WON) break;
         /* A player who loses whites out, is healed at a Pokemon Center
          * and comes back: retry with the healed party. */
         if (route_battles_heal(game) < 0) { snprintf(error, capacity, "party heal failed"); goto fail; }

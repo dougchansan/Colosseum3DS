@@ -26,7 +26,8 @@
  *   C3_ROUTE_BATTLE_MODE=win|any     win (default): a lost battle is replayed
  *                                    with the next seed until the hero wins,
  *                                    as a player retries; any: the first
- *                                    outcome is applied (losses, whiteouts)
+ *                                    outcome is applied (losses, whiteouts).
+ *                                    CPU-vs-CPU scenes always apply the first outcome.
  *   C3_ROUTE_EXPECT_BATTLES=a,b,...  route_battles_close fails unless every
  *                                    listed encounter was played
  *   C3_ROUTE_ENGINE_GAPS=a,b,...     encounters the engine cannot play yet

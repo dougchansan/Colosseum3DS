@@ -13,7 +13,7 @@
 #   WORLD_PACKS SAVE_3641 AGATE_ROUTE         Agate route (docs/agate-story.md)
 #   PYRITE_PACKS PYRITE_START                 tests/routes/pyrite.route
 #   CIPHER_PACKS CIPHER_SAVE_3641 CIPHER_SAVE_5007   Shadow Lab, Pyrite, Snagem crawls
-#   UNDER_BOOT UNDER_SAVE                     tools/run_under_chapter.py
+#   UNDER_BOOT UNDER_SAVE                     tests/routes/under-subway.route
 #   OUT                output directory (default private/story-battles)
 # Regions whose inputs are unset are reported as skipped.
 set -u
@@ -52,16 +52,12 @@ if [ -n "${CIPHER_PACKS:-}" ] && [ -n "${CIPHER_SAVE_3641:-}" ] && [ -n "${CIPHE
 else skip cipher; fi
 
 # The Under: Venus 328, then the four subway-platform trainers 333, 336, 339, 342.
-# The chapter recipe then stops at the Subway Key pickup (under-2 lane); the
-# battles are checked in its report.
+# Continue through the actual key pickups, both train rides and Pyrite elevator.
 if [ -n "${UNDER_BOOT:-}" ] && [ -n "${UNDER_SAVE:-}" ]; then
   C3_ROUTE_EXPECT_BATTLES=328,333,336,339,342 \
-    run under python3 tools/run_under_chapter.py --boot "$UNDER_BOOT" --saves "$UNDER_SAVE" \
-      --recipe tests/routes/under-venus.txt --output "$OUT/under"
-  for e in 328 333 336 339 342; do
-    grep -q "chapter_battle .*encounter=$e played=1" "$OUT"/under/*.txt || printf '1 under-battle-%s\n' "$e" | tee -a "$OUT/status"
-  done
+    run under ./build/test_story_route "$NEWGAME" "$UNDER_BOOT" "$UNDER_SAVE" \
+      tests/routes/under-subway.route "$OUT/under.report" "$OUT/under.trace"
 else skip under; fi
 
-grep -h "played=1" "$OUT"/*.report "$OUT"/*.trace "$OUT"/under/*.txt 2>/dev/null | wc -l | sed 's/^/battles played: /'
-! grep -qv -E '^(0 |skip |1 under$)' "$OUT/status"
+grep -h -E "played=1( |$)" "$OUT"/*.report "$OUT"/*.trace 2>/dev/null | wc -l | sed 's/^/battles played: /'
+! grep -qv -E '^(0 |skip )' "$OUT/status"
