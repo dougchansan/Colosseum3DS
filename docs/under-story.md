@@ -1,11 +1,95 @@
 # The Under and Deep Colosseum
 
 The lane is **not complete**. Nineteen walkable floors have pinned profiles,
-original private packs and door bindings. The original chapter runs through
-Venus and her escape on the host, with five explicitly synthetic battle wins.
-The Subway Key pickup, train menu callbacks and cinematic travel remain blockers
-before the next unlock. Colosseum/battle scene sets remain assigned to battles.
+original private packs and door bindings, and the four subway event scenes
+(0x8A-0x8D) run their original scripts. On the host the chapter now plays from
+the Rob chapter save through Venus, the subway trainers, the Subway Key, the
+train to the Shadow Pokemon Lab and back, and the Under elevator to Pyrite
+(round 2, below). Colosseum/battle scene sets remain assigned to battles.
 No progress flag is granted to bypass an unported dependency.
+
+## Round 2: Subway Key, train and elevator
+
+`tests/routes/under-subway.route`, played by `tests/test_story_route.c` from
+`pokemon-colosseum.3641.gci` with one persistent game state, checks only flags
+that original scripts set and items in the real bag (`C3_ROUTE_PDA`):
+
+| Step | Original source | Checked |
+| --- | --- | --- |
+| Venus's house 0x37, person 3 | battle 0x148 (result 2) | 0x44A, 0x44C |
+| Subway B2 0x3A, persons 1-4 | battles 0x14D/0x150/0x153/0x156 | 0x44E |
+| Subway B3 0x3C arrival | Venus sequence | 0x44F |
+| Train 0x3D arrival from 0x3C, door 0 | fn2 sets 0x450; fn10 -> 0x3C | 0x450, 0xAFB |
+| Subway Key, 0x3A | REL125 treasure row 45 (shown after 0xAFB) | 0xC4, item 0x1FC |
+| Train key slot, inspect 4 | fn11 opens the pause menu (native D0), kind-4 surface 4 runs fn8: native 11 registers 0x1FC -> fn6 | |
+| fn6 with 0x450 set | message 0x55DA, floorLink 0x8A | |
+| Event scene 0x8A -> 0x8D -> 0x3D | train clip, Wes on part 12, camera 0x10851800 / 0x10831800 | 0x450 cleared (fn2: previous 0x8D) |
+| Train door to the Lab garage 0x49 | fn10 with 0x450 clear -> 0x49 | |
+| Elevator key, garage 0x49 | treasure row 27 | 0xB2, item 0x1FB |
+| Garage door 0, key slot inspect 5 | fn9 registers 0x1FC -> fn7: floorLink 0x8C | |
+| Event scene 0x8C -> 0x8B -> 0x3D | as above | 0x450 set (fn2: previous 0x8B) |
+| Train door 0 | fn10 -> 0x3C | |
+| Under 0x2F elevator panel, inspect 0 | fn32 opens the pause menu; fn33 registers keys 0x1F7-0x1FB to fn31; 0x1FB sets floor variable 5 = 5 | |
+| Elevator floor, touch 11 | fn26, variable 5 = 5: elevator ride, floorLink 0x0F; Pyrite's scripts continue to 0x18 | 0xB5C, 0x43A |
+
+Battles are reported as result 2 (win), as before; the battles lanes own them.
+The walk between subway floors and up to 0x2F uses `floor` steps (the route
+player has no walking); every floor change inside a step is the scripts' own.
+
+### What changed
+
+- **Treasure** (`src/field_story.c`): rows were compared in source units with
+  the field-unit hero, so no treasure on any floor could be picked up. Rows are
+  now scaled and grounded from their row position, as the original grounds a
+  treasure person (`fn_8018E9B4`). The Subway Key lies on the lower level of
+  0x3A (y = 0) beside the 12-unit platform.
+- **Event scenes** (`tools/prepare_event_scene.py`): each archive has a script
+  bank and one map scene (tunnel model 0, train model 1, four lights, one
+  camera) and no REL, collision, entrance or people. The packs are the generic
+  `f08a`..`f08d` set: map packs, the train as a C3SM scene-model row (every
+  clip kept, none looping, part 12 retained as a sampled bone), Wes, the scene
+  camera with its original resource ID, the lifecycle scripts and the script
+  bank. Animated lights keep their first values (recorded approximation).
+- **Field** (`src/field.c`): a C3F with no entrance and no walk or wall
+  triangle is an event scene; any entrance gives the scene origin and the
+  scripts place the hero. Walkable floors still need both.
+- **Scene models** (`src/field_story.c`): natives 72/73/75 address a C3SM row
+  by its resource; it rests on frame 0 until native 73 plays it; native 46
+  attaches a person to the row's retained part with its full rotation and
+  refuses any other part. `platform/3ds/field_scene.c` attaches streamed packs
+  before the scripts start on a floor with C3SM rows.
+- **Route player** (`tests/test_story_route.c`): loads treasure packs, event
+  cameras and the real pack of a C3SM row; `floor <floor> <entrance>
+  [previous]`; `press` stands on the ground (optional source height);
+  `expect_item`; items go to the real bag and `use` refuses an item the bag
+  lacks.
+
+### Azahar evidence
+
+Probe build (`-DC3_ROUNDTRIP_PROBE`, source 11aabf4 plus the probe film
+change), my lane's portable Azahar copy, no keypresses, probe route
+`start 8a` / `frames 8a 60 8` (event scenes are filmed without hero control,
+every 8th frame). The trace shows the original sequence on the console
+runtime: 0x8A attaches Wes to the train's part 12 (sampled bone 19), the
+train clip and camera play, `story_floor_link 138 -> 141`; 0x8D attaches
+(bone 17) and links `141 -> 61`; every floor ends with result 2. The 28
+filmed frames show Wes in the train cab, then the camera following the train
+out through the tunnel. Frames and trace stay private (the lane's notes
+folder has a contact sheet); binary SHA256 `af802421...8ca1`, save SHA256
+`f7c778d9...0c31`, unchanged.
+
+### Still missing
+
+- **Deep Colosseum**: the Under elevator reaches 0x3E only with key 0x1FA
+  (floor variable 5 = 4, sets 0xDC3 and 0x43A). 0x1FA is treasure row 54 on
+  0x85 (Snagem Hideout 2F, shown after 0xA2A), outside this chapter, and the
+  colosseum sets 0x3F/0x40 belong to the battles lane. Not routed.
+- Keys 0x1F9 (0x2F fn15) and the other elevator destinations (variable 5 =
+  1-3) are not routed.
+- Presentation: natives BE/BF/C1 (light animation) and 68 (train sound
+  0x4C0/0x4C1) are recorded as unrendered; the tunnel model's material
+  animation is frozen.
+- The lab chapter on 0x49 is the cipher lane's; the route only takes the key.
 
 ## Floors and private SD packs
 
