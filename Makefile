@@ -569,6 +569,16 @@ build/test_realgam_messages: tests/test_realgam_messages.c src/story.c include/c
 	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_realgam_messages.c src/story.c $(LDFLAGS) -lm -o $@
 
 # Original DNA-key selector rules (no disc bytes or scene renderer needed).
+build/test_mail_alert: tests/test_mail_alert.c src/mail_alert.c include/colosseum3ds/mail_alert.h | build
+	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_mail_alert.c src/mail_alert.c $(LDFLAGS) -o $@
+
+all: build/test_mail_alert
+
+.PHONY: mail-alert-check
+test: mail-alert-check
+mail-alert-check: build/test_mail_alert
+	./build/test_mail_alert
+
 build/test_dna_key: tests/test_dna_key.c src/dna_key.c include/colosseum3ds/dna_key.h | build
 	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_dna_key.c src/dna_key.c $(LDFLAGS) -o $@
 .PHONY: dna-key-check
