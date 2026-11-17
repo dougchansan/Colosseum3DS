@@ -1,6 +1,7 @@
 #include "battle_general_3d.h"
 #include "battle_general_scene.h"
 #include "battle_general_stage.h"
+#include "move_forget_scene.h"
 #include "battle_audio_player.h"
 #include "sfx_player.h"
 #include "bottom_screen.h"
@@ -129,7 +130,10 @@ static int open_stage(C3BattleGeneralStage *s, const C3Battle3dIndex *index, con
 }
 
 static int run(const C3BattlePack *pack, C3GeneralBattle *b, C3BattleLinkHooks *hooks, FILE *trace);
-int c3_battle_general_3d_run(const C3BattlePack *pack, C3GeneralBattle *b, FILE *trace) { return run(pack, b, NULL, trace); }
+/* Story battles: the writeback that follows asks the forget-a-move prompt
+ * (colosseum3ds/move_forget.h); it stays bound for purification too. */
+int c3_battle_general_3d_run(const C3BattlePack *pack, C3GeneralBattle *b, FILE *trace)
+{ c3_move_forget_scene_bind(trace); return run(pack, b, NULL, trace); }
 int c3_battle_general_3d_run_link(const C3BattlePack *pack, C3GeneralBattle *view, C3BattleLinkHooks *hooks, FILE *trace)
 {
     int saved = autoplay;

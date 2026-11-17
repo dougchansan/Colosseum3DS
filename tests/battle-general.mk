@@ -14,11 +14,17 @@ all: build/test_battle_turn_rules
 build/test_battle_trainer_ai: tests/test_battle_trainer_ai.c $(BATTLE_GENERAL_SOURCES) include/colosseum3ds/battle_general.h build/battle_rng_source.h $(HEADERS) $(UPSTREAM)
 	$(CC) $(CPPFLAGS) -Ibuild -Isrc $(CFLAGS) tests/test_battle_trainer_ai.c $(BATTLE_GENERAL_SOURCES) $(LDFLAGS) -lm -o $@
 all: build/test_battle_trainer_ai
+
+# Forget-a-move prompt (synthetic; a prepared pda.c3pd as argument renders the original messages).
+build/test_move_forget: tests/test_move_forget.c src/move_forget.c src/pda.c $(BATTLE_GENERAL_SOURCES) include/colosseum3ds/move_forget.h include/colosseum3ds/battle_general.h build/battle_rng_source.h $(HEADERS) $(UPSTREAM)
+	$(CC) $(CPPFLAGS) -Ibuild -Isrc $(CFLAGS) tests/test_move_forget.c src/move_forget.c src/pda.c $(BATTLE_GENERAL_SOURCES) $(LDFLAGS) -lm -o $@
+all: build/test_move_forget
 .PHONY: battle-general-check
-battle-general-check: build/test_battle_general build/test_battle_turn_rules build/test_battle_trainer_ai build/test_battle3d_index build/test_wzx_player
+battle-general-check: build/test_battle_general build/test_battle_turn_rules build/test_battle_trainer_ai build/test_move_forget build/test_battle3d_index build/test_wzx_player
 	./build/test_battle_general
 	./build/test_battle_turn_rules
 	./build/test_battle_trainer_ai
+	./build/test_move_forget
 	./build/test_battle3d_index
 	./build/test_wzx_player
 

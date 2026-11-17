@@ -1,6 +1,7 @@
 #include "battle_general_scene.h"
 #include "battle_general_3d.h"
 #include "bottom_screen.h"
+#include "move_forget_scene.h"
 #include "n3ds_platform.h"
 #include "music_player.h"
 #include <stdlib.h>
@@ -235,6 +236,7 @@ int c3_general_ui_press(C3GeneralUi *ui, const C3BattlePack *pack, C3GeneralBatt
 
 int c3_battle_general_scene_run(const C3BattlePack *pack, C3GeneralBattle *b, FILE *trace)
 {
+    c3_move_forget_scene_bind(trace);
     C3GeneralUi ui;
     C3N3dsInput input;
     unsigned event = 0;

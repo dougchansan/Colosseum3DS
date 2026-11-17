@@ -1286,6 +1286,29 @@ void c3_general_battle_mirror(const C3GeneralBattle *in,C3GeneralBattle *out)
 
 /* ---- writeback ----------------------------------------------------------- */
 
+static C3MoveForgetPrompt forget_prompt;static void *forget_context;
+void c3_general_set_forget_prompt(C3MoveForgetPrompt prompt,void *context){forget_prompt=prompt;forget_context=context;}
+int c3_battle_pack_move_is_hm(const C3BattlePack *p,uint16_t id){const uint8_t *m=p&&p->bytes?move_row(p,id):NULL;return m&&m[0x12]==1;}
+int c3_battle_pack_set_move(const C3BattlePack *p,uint8_t r[C3_GB_POKEMON_SIZE],unsigned slot,uint16_t id)
+{
+    if(!p||!r||slot>3||!move_row(p,id))return 0;
+    uint8_t *w=r+0x78+4*slot;put16(w,id);w[2]=(uint8_t)move_pp(p,id,0);w[3]=0;return 1;
+}
+/* A level's move for record r (four known: the prompt). Returns the slot it
+ * went into (forgot = the move replaced, 0 for a free slot), or -1. */
+static int learn_move(const C3BattlePack *p,uint8_t r[C3_GB_POKEMON_SIZE],uint16_t id,uint16_t *forgot)
+{
+    int free_slot=-1;*forgot=0;
+    for(unsigned k=0;k<4;++k){uint16_t have=be16(r+0x78+4*k);if(!have&&free_slot<0)free_slot=(int)k;}
+    if(free_slot<0){
+        if(!forget_prompt)return -1;
+        int slot=forget_prompt(forget_context,p,r,id);
+        if(slot<0||slot>3||c3_battle_pack_move_is_hm(p,be16(r+0x78+4*slot)))return -1;
+        *forgot=be16(r+0x78+4*slot);free_slot=slot;
+    }
+    c3_battle_pack_set_move(p,r,(unsigned)free_slot,id);
+    return free_slot;
+}
 static uint32_t exp_for(const C3BattlePack *p,unsigned group,unsigned level)
 {return be32(p->bytes+p->growth_at+(group<8?group:0)*GROWTH_ROW+(level>100?100:level)*4u);}
 int c3_general_battle_writeback(const C3GeneralBattle *b,const C3BattlePack *p,
@@ -1341,12 +1364,11 @@ int c3_general_battle_writeback(const C3GeneralBattle *b,const C3BattlePack *p,
             for(unsigned lv=from+1;lv<=level;++lv)for(unsigned j=0;j<20;++j){
                 const uint8_t *l=s+0xba+4*j;uint16_t id=be16(l+2);
                 if(l[0]!=lv||!id||id>=p->moves)continue;
-                int known=0,free_slot=-1;
-                for(unsigned k=0;k<4;++k){uint16_t have=be16(r+0x78+4*k);known|=have==id;if(!have&&free_slot<0)free_slot=(int)k;}
+                int known=0;uint16_t forgot;
+                for(unsigned k=0;k<4;++k)known|=be16(r+0x78+4*k)==id;
                 if(known)continue;
-                if(free_slot<0){if(out.skipped_count[slot]<4)out.skipped[slot][out.skipped_count[slot]++]=id;continue;}
-                uint8_t *w=r+0x78+4*free_slot;put16(w,id);w[3]=0;w[2]=(uint8_t)move_pp(p,id,0);
-                if(out.learned_count[slot]<4)out.learned[slot][out.learned_count[slot]++]=id;
+                if(learn_move(p,r,id,&forgot)<0){if(out.skipped_count[slot]<4)out.skipped[slot][out.skipped_count[slot]++]=id;continue;}
+                if(out.learned_count[slot]<4){out.forgot[slot][out.learned_count[slot]]=forgot;out.learned[slot][out.learned_count[slot]++]=id;}
             }
         }
     }
@@ -1387,9 +1409,8 @@ int c3_general_snag_record(const C3BattlePack *p,const C3GeneralBattle *b,unsign
  * level's threshold, recomputes the stats (the writeback's stat rule and HP
  * carry) and tries the species' level-up moves for the new level
  * (pokemonGetOboeWazaDataId): a move the Pokemon lacks goes into a free slot
- * with its full PP; with four moves known the original asks which to forget
- * (evolutionWazaLearn), which is not ported, so the move is reported as
- * skipped. The remainder that does not reach a level is added and the
+ * with its full PP; with four moves known the bound forget prompt asks which
+ * to forget (evolutionWazaLearn with cbWazaForget), else it is skipped. The remainder that does not reach a level is added and the
  * stored-up experience (status 0xC6, +0xE0) is cleared; at level 100 the
  * loop stops and leaves it, as the original does. */
 int c3_battle_pack_recover_exp(const C3BattlePack *p,uint8_t r[C3_GB_POKEMON_SIZE],uint32_t add,C3ExpRecovery *out)
@@ -1418,12 +1439,11 @@ int c3_battle_pack_recover_exp(const C3BattlePack *p,uint8_t r[C3_GB_POKEMON_SIZ
         if(o.level_count<C3_EXP_RECOVERY_MAX)o.levels[o.level_count++]=(uint8_t)level;
         for(unsigned j=0;j<20;++j){const uint8_t *l=s+0xba+4*j;uint16_t id=be16(l+2);
             if(l[0]!=level||!id||id>=p->moves)continue;
-            int known=0,slot=-1;
-            for(unsigned k=0;k<4;++k){uint16_t have=be16(r+0x78+4*k);known|=have==id;if(!have&&slot<0)slot=(int)k;}
+            int known=0;uint16_t forgot;
+            for(unsigned k=0;k<4;++k)known|=be16(r+0x78+4*k)==id;
             if(known)continue;
-            if(slot<0){if(o.skipped_count<C3_EXP_RECOVERY_MAX)o.skipped[o.skipped_count++]=id;continue;}
-            put16(r+0x78+4*slot,id);r[0x7a+4*slot]=(uint8_t)move_pp(p,id,0);r[0x7b+4*slot]=0;
-            if(o.learned_count<C3_EXP_RECOVERY_MAX){o.learned[o.learned_count]=id;o.learned_level[o.learned_count++]=(uint8_t)level;}
+            if(learn_move(p,r,id,&forgot)<0){if(o.skipped_count<C3_EXP_RECOVERY_MAX)o.skipped[o.skipped_count++]=id;continue;}
+            if(o.learned_count<C3_EXP_RECOVERY_MAX){o.forgot[o.learned_count]=forgot;o.learned[o.learned_count]=id;o.learned_level[o.learned_count++]=(uint8_t)level;}
         }
     }
     *out=o;return 1;
