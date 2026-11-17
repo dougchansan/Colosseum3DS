@@ -8,6 +8,75 @@ fresh process loads that written checkpoint and returns control. This final
 run explicitly warps the latest supplied uncleared save onto floor `0x76` and skips
 six battles as wins. It does not prove travel from Agate through the final chapter.
 
+Round 2 (branch `claude/lane-realgam-run-652261`): the chapter now plays as one
+host story route, `tests/routes/realgam.route`, from a Realgam chapter checkpoint
+to the clear save and Continue, following only the original scripts, doors and
+flags (no floor warps, no `set` shortcuts). See "Continuous chapter route" below.
+
+## Continuous chapter route
+
+### Checkpoint
+
+No supplied save sits between the Under lab (`M4_labo_B1` function 8 sets
+`0x45D`, the world map's final-Realgam switch) and Realgam. Save `24219`
+(WES/RUI, 26:03, six-member natural playthrough) is past both, so the route's
+`clear` lines reset every flag the final-chapter D4 banks write (`0x7B`,
+`0x67`-`0x76`, `0x7C`; `D4_out` `0x66` is the earlier Realgam visit and keeps its
+flags), the staff roll's `0x478`, and the eight Realgam Shadow snag flags the
+dome and tower banks branch on (`0x860 0x862 0x864 0x86F 0x870-0x873`, the
+first-time encounter variants). The party, bag and other chapters' flags are the
+save's own. The route writes chapter-point saves (private) at the `0x7B`
+arrival and on tower 2F.
+
+### Order the scripts impose
+
+| Step | Floor | Original trigger | Writes |
+| --- | --- | --- | --- |
+| World map | 0x38E | `gs_title.c`: Realgam (0x66) opens as 0x7B once `0x45D` | |
+| Arrival | 0x7B | function 4 | `0x45E`, then door 0 sets `0xAF1`, `0xAF9` |
+| Dome lobby | 0x67 | dome doors run common function 12 | |
+| Dome transfer | 0x7B | common fn 12 queues 0x7B fn 7 (native 22) and links to 0x7B; fn 7 links on | |
+| Rooms | 0x68, 0x6A | talk: battles 165, 214; keys 533, 534 | `0x45F 0xB3F`, `0x461 0x463` |
+| Rooms | 0x6B, 0x6D, 0x6E | talk: 410; 411 and 414; 329 (key 535) | `0x465`, `0xAC9 0x466`, `0x467 0x9E2` |
+| Key gate | 0x6F | inspect 0/1/3 + item menu (D0): keys 533-535 | `0xACB 0x9E4 0x9E5` |
+| Room | 0x71 (via 0x70) | talk: battle 406, key 536 | `0xA5C 0xA5E` |
+| Key gate | 0x6F | inspect 2 + key 536, then fn 7; floor box: battle 417 | `0x9E6 0xACC`, `0xA5B` |
+| Tower 1F | 0x72 | box: 423; line: (event); line: 421; box: 422; talk: 420 | `0x9E7 0xA5F 0xA4B 0xA47 0xA48 0x468` |
+| 1F rooms | 0x73, 0x74 | talk 424; line 425; talk 426 | `0xA49 0xA4A`, `0x46A` |
+| Tower 2F | 0x75 (touch from 0x72) | arrival; box; box: cutscene and battle 427 | `0x46B`, `0x46C`, `0x46D 0x9EA-0x9EC` |
+| 2F_2 | 0x7C | talk: battle 430 | `0xDC4` |
+| Final | 0x76 (touch from 0x75) | arrival function 4: battles 432-442, scenes, `5F(0x39F)` | `0x46F 0x471 0x473-0x477 0x9C1 0x9C6 0x9FA` |
+| Staff roll | 0x39F | `movie.c` fn_80035F64 via `src/ending.c`: 0x444C Yes | `0x478`; clear save (2, prev 1, entrance 1) |
+| Return | 2 | floor link (2, 1), fade 05960008 | |
+| Continue | 2 | the written card, reloaded fresh | |
+
+Twenty-three story battles are reported by the route (skipped as wins, as in
+every host route; combat and writeback are the battles lanes'). 93 messages
+decode; three contain non-ASCII glyphs.
+
+### What the route needed
+
+- **Native 22 across floor links.** `hero_move.c` stores
+  `heroMoveAddAutoEvent`'s script in hero-move work, and the main step
+  (`fn_8013024C`) starts it with its four arguments once the hero is free. The
+  dome doors queue 0x7B function 7 with the destination and then link to 0x7B,
+  so the queue must survive the floor change. `src/field_story.c` now starts a
+  pending script at control time and exposes `c3_field_story_pending_auto_event`
+  / `c3_field_story_set_auto_event`; the field scene and route player carry it
+  to the next floor's story. Without it every dome door returned to 0x7B.
+- **Route player steps** (`tests/test_story_route.c`): `map` (the original
+  world-map choice), `clearsave`, `continue`, and the 0x39F staff roll run
+  through `src/ending.c` (prepared stream header and last frame, decoded
+  prompts). Floor-profile pack names reach floor 2 (`shop`). The 0x76 arrival
+  is the whole final event, so an arrival may take up to an hour of frames.
+
+Run (private inputs; boot directory with the `f%03x` and Outskirt packs,
+`staffroll.c3s`, `pda.c3pd`, `newgame.c3g`):
+
+```bash
+C3_ROUTE_PDA=<boot>/pda.c3pd C3_ROUTE_STAFFROLL=<boot>/staffroll.c3v build/test_story_route <boot> <boot> <copy of 24219> tests/routes/realgam.route report.txt trace.log
+```
+
 ## Floors, profiles and doors
 
 `tools/realgam_profiles.py` makes all identities permanent, without requiring a
