@@ -1,8 +1,13 @@
 #define _POSIX_C_SOURCE 200809L
+#include "colosseum3ds/ending.h"
 #include "colosseum3ds/field_story.h"
+#include "colosseum3ds/floor_profile.h"
 #include "colosseum3ds/inventory.h"
+#include "colosseum3ds/movie.h"
 #include "colosseum3ds/pda.h"
 #include "route_battles.h"
+#include "colosseum3ds/story.h"
+#include "colosseum3ds/world_map.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -60,6 +65,22 @@
  *   use <item>                when a script next opens the pause menu at Items
  *                             (native D0), use this key item (0 closes the menu)
  *                             (talk scripts that check where the hero stands)
+ *   map <floor> [from]        choose <floor> on the world map (src/world_map.c,
+ *                             gs_title.c: Realgam 0x66 opens as 0x7B once 0x45D is
+ *                             set) after the last field floor, or after [from]
+ *                             when no floor is loaded; arrives at entrance 0
+ *   clearsave <path>          the card the staff roll's clear-save prompt writes
+ *                             (movie.c fn_80035F64 through src/ending.c); the
+ *                             prompts are answered Yes. Without it a script that
+ *                             links to the staff roll (0x39F) fails the step
+ *   continue <path>           what the title's Continue does: load that card into
+ *                             a fresh game state and enter its saved floor
+ * A script link to the staff roll floor 0x39F runs src/ending.c with host
+ * services: the movie is the prepared staff roll (C3_ROUTE_STAFFROLL names its
+ * .c3v; its header and last frame are read, nothing is shown) and both prompt
+ * messages are decoded from staffroll.c3s in the boot directory. The source
+ * return link (floor 2, entrance 1, previous 0x39F) is then loaded like any
+ * other floor change. Floors with a src/floor_profile.c row use its pack names.
  * door and touch refuse a surface whose CCD objects are all disabled. Item
  * and species names in messages come from the C3_ROUTE_PDA pack; native DB
  * (direct bag change) is reported as a "route_item_change" line.
@@ -97,6 +118,10 @@ static uint32_t result_id = 2, last_message, use_item;
 static Scene *scene;
 static C3PdaAssets pda;
 static uint8_t *pda_data;
+static char clear_save[1024];
+static C3Story staffroll_story;
+static uint32_t last_floor;
+static uint32_t carried_auto_event[5];   /* native 22 across a floor link */
 
 static void path(char out[1024], const char *dir, const char *name)
 { CHECK(snprintf(out, 1024, "%s/%s", dir, name) > 0 && strlen(out) < 1023); }
@@ -200,9 +225,15 @@ static int load(uint32_t floor, uint32_t entrance, uint32_t previous)
     error[0] = 0;
     scene->floor = floor; scene->entrance = entrance; scene->previous = previous;
     CHECK(c3_game_state_set_floor(&game, floor, previous, (uint8_t)entrance));
-    snprintf(name, sizeof name, "f%03lx.c3f", (unsigned long)floor); path(file, root, name);
+    /* The pack names the production scene uses (Outskirt floors 1 and 2
+     * are "outskirt" and "shop"); other floors are f%03x. */
+    const C3FloorProfile *profile = c3_floor_profile(floor);
+    char prefix[32], story_name[64];
+    if (profile) { snprintf(prefix, sizeof prefix, "%s", profile->prefix); snprintf(story_name, sizeof story_name, "%s", profile->story); }
+    else { snprintf(prefix, sizeof prefix, "f%03lx", (unsigned long)floor); snprintf(story_name, sizeof story_name, "%s.c3s", prefix); }
+    snprintf(name, sizeof name, "%s.c3f", prefix); path(file, root, name);
     if (!c3_field_load(&scene->map, file, error, sizeof error)) return 0;
-    snprintf(name, sizeof name, "f%03lx.c3a", (unsigned long)floor); path(file, root, name);
+    snprintf(name, sizeof name, "%s.c3a", prefix); path(file, root, name);
     if (!c3_area_load(&scene->area, file, error, sizeof error)) { c3_field_close(&scene->map); return 0; }
     stand_in(&scene->wes); stand_in(&scene->npc);
     for (uint32_t i = 0; i < scene->area.actor_count && i < C3_AREA_MAX_ACTORS; ++i) {
@@ -220,15 +251,20 @@ static int load(uint32_t floor, uint32_t entrance, uint32_t previous)
         snprintf(error, sizeof error, "entrance %lu is unavailable", (unsigned long)entrance); return 0;
     }
     /* The floor's event camera, when prepared (native 2A plays it, 2E waits). */
-    snprintf(name, sizeof name, "f%03lx_camera.c3c", (unsigned long)floor); path(file, root, name);
+    snprintf(name, sizeof name, "%s_camera.c3c", prefix); path(file, root, name);
     FILE *camera = fopen(file, "rb");
     if (camera) { fclose(camera); if (!c3_area_camera_load(&scene->camera, file, error, sizeof error)) return 0; }
-    snprintf(name, sizeof name, "f%03lx.c3s", (unsigned long)floor); path(file, root, name);
+    path(file, root, story_name);
     if (!c3_field_story_load(&scene->story, file, &game, &scene->map, &scene->area, &scene->hero, &scene->wes,
                              scene->models, &scene->camera, trace, error)) return 0;
-    scene->loaded = 1;
+    scene->loaded = 1; last_floor = floor;
+    if (carried_auto_event[0]) {
+        fprintf(report, "route_auto_event floor=%03lx script=%08lx\n", (unsigned long)floor, (unsigned long)carried_auto_event[0]);
+        c3_field_story_set_auto_event(&scene->story, carried_auto_event);
+        memset(carried_auto_event, 0, sizeof carried_auto_event);
+    }
     /* The floor's treasure rows (prepare_story.py .c3r), if it has any. */
-    snprintf(name, sizeof name, "f%03lx.c3r", (unsigned long)floor); path(file, root, name);
+    snprintf(name, sizeof name, "%s.c3r", prefix); path(file, root, name);
     if (!c3_field_story_load_treasure(&scene->story, file, error)) return 0;
     c3_field_story_set_floor_support(&scene->story, any_floor);
     c3_field_story_enable_name_entry(&scene->story, 1);
@@ -246,7 +282,9 @@ static int load(uint32_t floor, uint32_t entrance, uint32_t previous)
     fprintf(report, "route_floor floor=%03lx entrance=%lu previous=%03lx actors=%lu links=%lu\n", (unsigned long)floor,
             (unsigned long)entrance, (unsigned long)previous, (unsigned long)scene->area.actor_count,
             (unsigned long)scene->area.link_count);
-    int arrived = run(6000, 1);
+    /* An arrival can be a whole final event (Realgam 0x76: battles, cutscenes
+     * and the link to the staff roll), so it gets an hour of frames. */
+    int arrived = run(216000, 1);
     /* Where each person stands after the arrival (for writing routes). */
     if (scene->loaded && scene->floor == floor)
         for (uint32_t i = 0; i < scene->area.actor_count; ++i) {
@@ -260,6 +298,74 @@ static int load(uint32_t floor, uint32_t entrance, uint32_t previous)
     return arrived;
 }
 
+/* Staff roll services for src/ending.c: the movie's prepared stream is opened
+ * and its last frame read (its natural end), and each prompt's original text
+ * is decoded before it is answered Yes. */
+static int staffroll_movie(void *context)
+{
+    (void)context;
+    const char *movie_path = getenv("C3_ROUTE_STAFFROLL");
+    if (!movie_path || !*movie_path) { fprintf(report, "route_staffroll movie=unverified reason=C3_ROUTE_STAFFROLL unset\n"); return 0; }
+    C3Movie movie = {0}; char merror[256] = {0};
+    /* src/movie.c returns 0 on success. */
+    if (c3_movie_open(&movie, movie_path, merror, sizeof merror) != 0) { snprintf(error, sizeof error, "staff roll: %.150s", merror); return -1; }
+    void *pixels = malloc(movie.frame_bytes ? movie.frame_bytes : 1);
+    int ok = pixels && movie.frame_count &&
+             c3_movie_read_frame(&movie, movie.frame_count - 1, pixels, movie.frame_bytes, merror, sizeof merror) == 0;
+    fprintf(report, "route_staffroll movie=%s frames=%lu fps=%lu/%lu last_frame_read=%d\n", movie_path,
+            (unsigned long)movie.frame_count, (unsigned long)movie.fps_num, (unsigned long)movie.fps_den, ok);
+    free(pixels); c3_movie_close(&movie);
+    if (!ok) { snprintf(error, sizeof error, "staff roll last frame: %.150s", merror); return -1; }
+    return 0;
+}
+static int staffroll_choice(void *context, uint32_t id, int initial_no)
+{
+    (void)context;
+    char text[C3_STORY_MESSAGE], serror[C3_STORY_ERROR] = {0};
+    if (!c3_story_message(&staffroll_story, id, "WES", "RUI", NULL, text, sizeof text, serror)) {
+        snprintf(error, sizeof error, "prompt %04lx: %.150s", (unsigned long)id, serror); return -1;
+    }
+    int wide = 0;
+    for (const char *c = text; *c; ++c) wide |= (unsigned char)*c >= 0x80;
+    fprintf(report, "route_prompt message=%04lx initial_no=%d answer=yes non_ascii=%d\n", (unsigned long)id, initial_no, wide);
+    return 0;
+}
+static void staffroll_save_error(void *context, const char *why)
+{ (void)context; fprintf(report, "route_clear_save_error reason=%s\n", why); }
+
+/* Floor 0x39F: the staff roll (movie.c fn_800361C0/fn_80035F64) and its
+ * clear-save prompt, then the source return link to floor 2. */
+static int staffroll(uint32_t from)
+{
+    char file[1024], gerror[C3_GAME_ERROR_SIZE] = {0};
+    int saved = 0;
+    unload();
+    CHECK(c3_game_state_set_floor(&game, 0x39f, from, 0));
+    fprintf(report, "route_floor floor=39f entrance=0 previous=%03lx staffroll=1\n", (unsigned long)from);
+    if (!clear_save[0]) { snprintf(error, sizeof error, "the staff roll needs a clearsave step"); return 0; }
+    path(file, root, "staffroll.c3s");
+    if (!c3_story_load(&staffroll_story, file, error)) return 0;
+    C3EndingServices services = {staffroll_movie, staffroll_choice, staffroll_save_error, NULL};
+    int result = c3_ending_run(&game, clear_save, &services, &saved, gerror);
+    c3_story_free(&staffroll_story);
+    if (result) { if (!error[0]) snprintf(error, sizeof error, "staff roll result %d: %.150s", result, gerror); return 0; }
+    C3GameSummary summary;
+    CHECK(c3_game_state_summary(&game, &summary));
+    fprintf(report, "route_clear_save path=%s saved=%d next=%03lx entrance=%u previous=%03lx\n", clear_save, saved,
+            (unsigned long)summary.floor, summary.spawn, (unsigned long)summary.previous_floor);
+    for (uint32_t id = FLAG_FIRST; id < FLAG_LAST; ++id) {   /* 0x478 and other writes */
+        uint32_t value;
+        if (valid[id] && c3_game_state_get_flag(&game, id, &value) && value != shadow[id]) {
+            fprintf(report, "route_flag floor=39f flag=%03lx %lu->%lu\n", (unsigned long)id, (unsigned long)shadow[id], (unsigned long)value);
+            shadow[id] = value;
+        }
+    }
+    return load(summary.floor, summary.spawn, summary.previous_floor);
+}
+
+static int map_flag(void *context, uint32_t id, uint32_t *value)
+{ (void)context; return c3_game_state_get_flag(&game, id, value); }
+
 /* Tick until the hero has control again (until_control) or for `frames`.
  * A floor change requested by a script loads the next floor. */
 static int run(unsigned frames, int until_control)
@@ -270,7 +376,9 @@ static int run(unsigned frames, int until_control)
         if (v->next_floor) {
             uint32_t next = v->next_floor, spawn = v->next_spawn, from = scene->floor;
             flag_writes();
-            if (next == 0x38e) { fprintf(report, "route_world_map from=%03lx\n", (unsigned long)from); unload(); return 1; }
+            if (next == 0x38e) { fprintf(report, "route_world_map from=%03lx\n", (unsigned long)from); last_floor = from; unload(); return 1; }
+            if (next == 0x39f) return staffroll(from);
+            c3_field_story_pending_auto_event(&scene->story, carried_auto_event);
             return load(next, spawn, from);
         }
         if (v->message_id && v->message_id != last_message) {
@@ -404,6 +512,42 @@ static int step(char *line)
         }
         if (scene->loaded) flag_writes(); else snapshot();
         return 1;
+    }
+    if (!strcmp(word, "clearsave")) {
+        CHECK(sscanf(line, " %1023s", clear_save) == 1);
+        remove(clear_save);   /* a fresh card: the overwrite prompt does not apply */
+        return 1;
+    }
+    if (!strcmp(word, "map")) {
+        unsigned long from = 0; C3WorldMap map; uint32_t chosen = 0; int travel = 0, visible = -1;
+        int count = sscanf(line, "%li %li", (long *)&a, (long *)&from);
+        CHECK(count >= 1);
+        if (scene->loaded) { snprintf(error, sizeof error, "map needs the world map; floor %03lx is loaded", (unsigned long)scene->floor); return 0; }
+        uint32_t previous = count == 2 ? (uint32_t)from : last_floor;
+        if (!c3_world_map_open(&map, previous, map_flag, NULL)) { snprintf(error, sizeof error, "world map cannot open"); return 0; }
+        for (uint32_t i = 0; i < map.visible_count && visible < 0; ++i) {
+            C3WorldMapEntry entry; int index = c3_world_map_visible(&map, i);
+            if (index >= 0 && c3_world_map_entry((uint32_t)index, &entry) && entry.floor == a) visible = (int)i;
+        }
+        if (visible < 0) { snprintf(error, sizeof error, "floor %03lx is not shown on the world map", a); return 0; }
+        if (!c3_world_map_choose(&map, visible, map_flag, NULL, &chosen, &travel)) { snprintf(error, sizeof error, "world map choice failed"); return 0; }
+        fprintf(report, "route_map from=%03lx chose=%03lx floor=%03lx travel=%d\n", (unsigned long)previous, a,
+                (unsigned long)chosen, travel);
+        return load(chosen, 0, C3_FLOOR_WORLD_MAP_ID);
+    }
+    if (!strcmp(word, "continue")) {
+        char card[1024], file[1024], gerror[C3_GAME_ERROR_SIZE] = {0}; C3GameSummary summary;
+        CHECK(sscanf(line, " %1023s", card) == 1);
+        unload(); c3_game_state_free(&game); memset(&game, 0, sizeof game);
+        path(file, newgame, "newgame.c3g");
+        if (!c3_game_state_load(&game, card, file, gerror)) { snprintf(error, sizeof error, "continue: %.150s", gerror); return 0; }
+        CHECK(c3_game_state_summary(&game, &summary));
+        uint32_t cleared = 0; c3_game_state_get_flag(&game, 0x478, &cleared);
+        fprintf(report, "route_continue path=%s floor=%03lx entrance=%u previous=%03lx saves=%lu flag478=%lu\n", card,
+                (unsigned long)summary.floor, summary.spawn, (unsigned long)summary.previous_floor,
+                (unsigned long)summary.saved_count, (unsigned long)cleared);
+        snapshot();
+        return load(summary.floor, summary.spawn, summary.previous_floor);
     }
     if (!strcmp(word, "floor")) {
         unsigned long previous = 0;

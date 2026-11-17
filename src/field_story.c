@@ -2497,7 +2497,35 @@ int c3_field_story_tick(C3FieldStory *story,float seconds,uint16_t pressed,char 
     }
     s->view.control=s->entered&&s->hero_ready&&!s->event_depth&&!s->hero_event&&!s->talk_key&&!s->event_key&&
         !s->view.dialogue&&!s->pending_floor&&!s->view.blocked[0]&&!s->treasure_active;
+    /* hero_move.c fn_8013024C main step: once the hero is free, a script
+     * queued by heroMoveAddAutoEvent (native 22) starts with its four
+     * arguments before any touch event. The queue is hero work, not floor
+     * work, so a door that queues it and then links (common function 12 of
+     * the Realgam dome) runs it on the destination floor. */
+    if(s->view.control&&s->auto_event[0]){
+        uint32_t script=s->auto_event[0],args[4]={s->auto_event[1],s->auto_event[2],s->auto_event[3],s->auto_event[4]};
+        memset(s->auto_event,0,sizeof s->auto_event);
+        log_line(s,"story_auto_event_start script=%08lx args=%lu,%lu,%lu,%lu",(unsigned long)script,(unsigned long)args[0],
+                 (unsigned long)args[1],(unsigned long)args[2],(unsigned long)args[3]);
+        s->view.control=0;
+        if(!start(s,script,args,4,&s->event_key,error))return 0;
+    }
     return 1;
+}
+
+int c3_field_story_pending_auto_event(const C3FieldStory *story,uint32_t out[5])
+{
+    const Impl *s=story?story->impl:NULL;
+    if(!s||!s->auto_event[0])return 0;
+    memcpy(out,s->auto_event,sizeof s->auto_event);return 1;
+}
+
+void c3_field_story_set_auto_event(C3FieldStory *story,const uint32_t in[5])
+{
+    Impl *s=story?story->impl:NULL;
+    if(!s||!in)return;
+    memcpy(s->auto_event,in,sizeof s->auto_event);
+    log_line(s,"story_auto_event_carried script=%08lx",(unsigned long)in[0]);
 }
 
 static float dot3(const float a[3],const float b[3]){return a[0]*b[0]+a[1]*b[1]+a[2]*b[2];}

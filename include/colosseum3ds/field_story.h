@@ -212,6 +212,11 @@ int c3_field_story_enter(C3FieldStory *story, char *error);
 /* Native 6F reads held directions and signed controller axes (dead zone 2),
  * independently of the edge presses consumed by dialogue/choice windows. */
 void c3_field_story_set_move_input(C3FieldStory *story,uint16_t held,int stick_x,int stick_y);
+/* heroMoveAddAutoEvent (native 22) is hero-move work that survives a floor
+ * link: a scene reads the pending script before closing a floor's story and
+ * hands it to the next floor's story; it starts once the hero has control. */
+int c3_field_story_pending_auto_event(const C3FieldStory *story,uint32_t out[5]);
+void c3_field_story_set_auto_event(C3FieldStory *story,const uint32_t in[5]);
 int c3_field_story_tick(C3FieldStory *story, float seconds, uint16_t pressed,
                         char *error);
 const C3FieldStoryView *c3_field_story_view(const C3FieldStory *story);

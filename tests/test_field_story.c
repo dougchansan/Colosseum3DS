@@ -698,6 +698,30 @@ static void synthetic_regressions(void)
      CHECK(c3_game_state_save_point(&game,&floor,&previous,&spawn)&&floor==1&&previous==0&&spawn==0);
      CHECK(c3_game_state_set_floor(&game,5,1,2));
      CHECK(c3_game_state_save_point(&game,&floor,NULL,NULL)&&floor==1);}
+    CHECK(c3_game_state_set_floor(&game,2,1,1));
+    /* heroMoveAddAutoEvent (native 22): the queued script starts with its
+     * four arguments once the hero is free, on the floor that queued it
+     * (here it clears the fade at once: effect 3, no duration)... */
+    memset(code,0,sizeof code);
+    {uint32_t q[5]={0x1000005,7,8,9,10};native(code+3,0x22,5,q,1);}
+    native(code+3,0x1f,0,args,1);
+    {uint32_t f[2]={3,0};native(code+5,0x1c,2,f,1);}
+    synthetic_load_at(s,&game,file,code,0,0,0x1000003,2);CHECK(c3_field_story_enter(&s->story,error));
+    CHECK(c3_field_story_tick(&s->story,0,0,error));
+    for(unsigned i=0;i<20&&c3_field_story_view(&s->story)->fade!=0;++i)CHECK(c3_field_story_tick(&s->story,1.0f/60.0f,0,error));
+    {uint32_t out[5]={0};CHECK(c3_field_story_view(&s->story)->fade==0&&!c3_field_story_pending_auto_event(&s->story,out));}
+    close_scene(s);
+    /* ...and, handed over by the scene, on the floor a door links to. */
+    memset(code,0,sizeof code);native(code+3,0x1f,0,args,1);
+    {uint32_t f[2]={3,0};native(code+5,0x1c,2,f,1);}
+    synthetic_load_at(s,&game,file,code,0,0,0x1000003,2);
+    {uint32_t in[5]={0x1000005,1,2,3,4},out[5]={0};c3_field_story_set_auto_event(&s->story,in);
+     CHECK(c3_field_story_pending_auto_event(&s->story,out)&&out[0]==0x1000005&&out[4]==4);}
+    CHECK(c3_field_story_enter(&s->story,error));CHECK(c3_field_story_tick(&s->story,0,0,error));
+    CHECK(c3_field_story_view(&s->story)->fade==1);
+    for(unsigned i=0;i<20&&c3_field_story_view(&s->story)->fade!=0;++i)CHECK(c3_field_story_tick(&s->story,1.0f/60.0f,0,error));
+    CHECK(c3_field_story_view(&s->story)->fade==0);close_scene(s);
+    CHECK(c3_game_state_set_floor(&game,1,0,0));
     free(s);c3_game_state_free(&game);CHECK(!unlink(file));CHECK(!rmdir(directory));
     printf("field-story synthetic regressions: %u checks passed\n",checks);
 }

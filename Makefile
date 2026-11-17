@@ -94,7 +94,7 @@ WORLD_BATTLE_SOURCES = src/inventory.c src/pda.c src/battle_general.c src/battle
 build/test_world_story: tests/test_world_story.c $(FIELD_STORY_SOURCES) $(WORLD_BATTLE_SOURCES) build/battle_rng_source.h $(HEADERS) $(UPSTREAM)
 	$(CC) $(CPPFLAGS) -Ibuild -Isrc $(CFLAGS) tests/test_world_story.c $(FIELD_STORY_SOURCES) $(WORLD_BATTLE_SOURCES) $(LDFLAGS) -lm -o $@
 
-ROUTE_BATTLE_SOURCES = tests/route_battles.c $(WORLD_BATTLE_SOURCES)
+ROUTE_BATTLE_SOURCES = tests/route_battles.c $(WORLD_BATTLE_SOURCES) src/floor_profile.c src/world_map.c src/ending.c src/movie.c
 build/test_story_route: tests/test_story_route.c tests/route_battles.h $(FIELD_STORY_SOURCES) $(ROUTE_BATTLE_SOURCES) build/battle_rng_source.h $(HEADERS) $(UPSTREAM)
 	$(CC) $(CPPFLAGS) -Ibuild -Isrc $(CFLAGS) tests/test_story_route.c $(FIELD_STORY_SOURCES) $(ROUTE_BATTLE_SOURCES) $(LDFLAGS) -lm -o $@
 build/test_story_crawl: tests/test_story_crawl.c tests/route_battles.c tests/route_battles.h $(FIELD_STORY_SOURCES) $(WORLD_BATTLE_SOURCES) build/battle_rng_source.h $(HEADERS) $(UPSTREAM)
