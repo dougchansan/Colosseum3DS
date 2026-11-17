@@ -20,11 +20,50 @@ original, where it comes from, and what is still approximate.
 3. Traces: `field_battle_engine ... mode=played result=1 code=<2|3>`,
    `field_battle_writeback ...` and one `field_battle_snag ...` per snag.
 
-The old "skip as a win" path (`field_battle_skipped`) runs only for an
-encounter the pack refuses. Of the 277 encounters the prepared story
-scripts request with a literal ID (369 call sites, scanned with
-`prepare_battle_encounters.py --stories`), 276 are admitted. The one left
-is listed under [Remaining gaps](#remaining-gaps).
+No battle is skipped as a win any more. When the field cannot play the
+waiting encounter (no `battles.c3x` on the SD card, or the pack refuses the
+encounter), `c3_field_story_battle_refuse` leaves native 98 waiting, the
+bottom screen names the encounter and the reason ("Battle N cannot be
+played in this build ..."), START quits, and the trace has
+`field_battle_refused encounter=N reason=...`. Nothing is written and no
+result is invented. The old shortcut (`field_battle_skipped`, result 2)
+exists only in debug builds made with
+`C3_EXTRA_CFLAGS=-DC3_STORY_BATTLE_SKIP_REFUSED`; the warp tour, campaign
+and final-event probe builds keep their own documented auto-results.
+
+Of the 277 encounters the prepared story scripts request with a literal ID
+(369 call sites, scanned with `prepare_battle_encounters.py --stories`),
+276 are admitted. The one left is listed under
+[Remaining gaps](#remaining-gaps).
+
+## Chapter routes with real battles
+
+The headless chapter harnesses play every battle on the general engine,
+the same way the field does, when `C3_ROUTE_BATTLES=<battles.c3x>` is set
+(`tests/route_battles.c`): the original encounter row, trainer and team
+from the pack, both sides on the engine's policy, then
+`c3_battle_story_apply` (writeback, EXP, prize, snagging, whiteout). A lost
+battle is replayed with a healed party and the next seed until the hero
+wins, as a player who whites out and comes back would (`attempts=` in the
+report); `C3_ROUTE_BATTLE_MODE=any` applies the first outcome instead. A
+refused encounter fails the run unless it is declared in
+`C3_ROUTE_ENGINE_GAPS`. `tools/run_story_battle_routes.sh` runs every
+region and checks each one's expected encounters
+(`C3_ROUTE_EXPECT_BATTLES`, or `expect_battle` lines in a route file).
+
+2026-11-16 run (pack v2, chapter saves from `private/lanes/saves`): 62
+battles played, none skipped.
+
+| Region (harness) | Encounters played on the engine |
+| --- | --- |
+| Phenac (`test_phenac_events`, 19 events from four saves) | 26 (Snagem grunts), 15, 17 (mayor's-house ambush), 20, 21 (town trainers), 22-25 and 36 (Pre Gym, Justy), 16, 19 (late mayor talks), 532-534 (late town trainers) |
+| Agate and Mt. Battle (`test_story_route`, Agate route) | 195, 196, 197 (Relic Cave), 543 (Relic Forest), 544 (Dakim, Mt. Battle area 1); 525 is the declared engine gap |
+| Pyrite (`test_story_route`, `tests/routes/pyrite.route`) | 169-172 (Pyrite Colosseum), 101, 126, 129, 164 (Miror B.) |
+| Shadow Pokemon Lab, Pyrite revisit, Snagem Hideout (`test_story_crawl`) | 381, 382, 383, 386, 389, 397, 398, 401, 402, 405 (Ein), 392, 393, 394, 200; 55; 475 |
+| The Under (`tools/run_under_chapter.py`, `tests/routes/under-venus.txt`) | 328 (Venus), 333, 336, 339, 342; the recipe then stops at the Subway Key pickup (under-2 lane) |
+
+Realgam Tower's chapter route belongs to the realgam-run lane; its harness
+can call the same helper.
 
 ## Fight kind rules (FightKindData)
 
@@ -159,7 +198,7 @@ models load.
 
 | Gap | State |
 | --- | --- |
-| Encounter 525 (Agate, Eagun's Pikachu vs Cipher Peon Skrub's Shadow Hitmontop, fight type 0) | both sides are CPU trainers; the pack has only the opposing roster, so the field still reports result 2 (`field_battle_skipped`) |
+| Encounter 525 (Agate, Eagun's Pikachu vs Cipher Peon Skrub's Shadow Hitmontop, fight type 0) | both sides are CPU trainers; the pack has only the opposing roster (reason 1, "player side is not the hero alone"). The field now refuses it and the Relic Forest event waits; the engine side (the hero-side trainer roster and a CPU-vs-CPU battle) is claimed by the battle-rules lane. Once the pack admits it, `play_story_battle` plays it with no field change |
 | Encounters 0, 1, 7, 8, 9, 521, 524 | refused (test rows, link rows, empty rosters); no story script requests them |
 | Turn rules | the general engine's documented Gen-3 approximation, not the original battle scripts; the opponent picks uniformly among legal moves (the original 16-slot AI scoring is qualified in `battle_rules.c` but not wired) |
 | Bag in battle, escape | not offered |

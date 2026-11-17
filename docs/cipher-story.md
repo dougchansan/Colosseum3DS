@@ -22,8 +22,9 @@ Both saves are listed in the private `saves/INDEX.md`.
 persistent game state: every person, touch, A-button surface, treasure,
 the boxes the floor's main loop tests the hero against (native 3A) and the
 spots in a trainer's line of sight (native A9), then the next door, and
-follows the floor each script requests. Battles are skipped as wins and
-logged, every text and flag change is written. Without arguments it checks
+follows the floor each script requests. Battles play on the battle engine
+with `C3_ROUTE_BATTLES` (else they are reported as skipped), every text and
+flag change is written. Without arguments it checks
 nothing private.
 
 ```text
