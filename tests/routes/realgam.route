@@ -25,6 +25,9 @@ expect 0xa59 1
 # The Under's exterior (0x7A) is where the lab leaves the player.
 map 0x66 0x7a
 expect_floor 0x7b
+expect 0x45e 1
+# Chapter-point saves for emulator checks (private; never commit them).
+save private/realgam/saves/realgam-1-arrival.gci
 door 0
 expect_floor 0x67
 door 2
@@ -120,6 +123,7 @@ at -55 8
 expect 0x46d 1
 expect 0x9eb 1
 expect 0x9ec 1
+save private/realgam/saves/realgam-2-tower-2f.gci
 door 1
 expect_floor 0x7c
 talk 0

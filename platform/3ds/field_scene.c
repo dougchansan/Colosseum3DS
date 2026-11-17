@@ -659,7 +659,7 @@ static int field_renderer_init(C3Title *storage,const C3Title *const *models,uin
 static struct { uint32_t start, start_spawn, floor[64], source[64]; uint8_t interact[64]; unsigned count, next; int loaded;
                 uint32_t film_floor, film_frames; unsigned shadow_slot, shadow_id;
                 uint32_t flag_id[16], flag_value[16]; uint32_t ball_id[4], ball_count[4]; unsigned flags, balls, name_mode; int partner, stayed;
-                uint32_t walk_floor, walk_frames, walked; int walk_x, walk_y; } probe_route;
+                uint32_t walk_floor, walk_frames, walked; int walk_x, walk_y; int continue_save; uint32_t stop; } probe_route;
 static void probe_route_load(void)
 {
     if(probe_route.loaded)return;
@@ -672,7 +672,12 @@ static void probe_route_load(void)
          * "frames <floor> <count>": in that floor, before leaving, save
          * <count> consecutive top-screen frames (probe/film_<floor>_<n>.bmp)
          * to compare animation against an emulator capture. */
-        if(sscanf(line,"start %lx %lx",&a,&b)==2){probe_route.start=(uint32_t)a;probe_route.start_spawn=(uint32_t)b;}
+        /* "continue": start where the save says (its floor, previous floor
+         * and entrance), as the title's Continue does, instead of a world-map
+         * area; "stop <floor>": end the probe once that floor's area exits. */
+        if(!strncmp(line,"continue",8))probe_route.continue_save=1;
+        else if(sscanf(line,"stop %lx",&a)==1)probe_route.stop=(uint32_t)a;
+        else if(sscanf(line,"start %lx %lx",&a,&b)==2){probe_route.start=(uint32_t)a;probe_route.start_spawn=(uint32_t)b;}
         else if(sscanf(line,"start %lx",&a)==1)probe_route.start=(uint32_t)a;
         else if(sscanf(line,"frames %lx %lu",&a,&b)==2&&b<=600){probe_route.film_floor=(uint32_t)a;probe_route.film_frames=(uint32_t)b;}
         /* "shadow <slot> <id>": the probe makes that party member a Shadow
@@ -2038,13 +2043,20 @@ int c3_field_scene_roundtrip_probe(C3GameState *state,FILE *trace,char *error,si
     if(probe_route.partner>=0)c3_game_state_set_partner(state,probe_route.partner);
     for(unsigned i=0;i<probe_route.balls;++i){int ok=c3_game_state_put_item(state,2,probe_route.ball_id[i],probe_route.ball_count[i]);
         if(trace){fprintf(trace,"roundtrip_ball item=%lu count=%lu ok=%d\n",(unsigned long)probe_route.ball_id[i],(unsigned long)probe_route.ball_count[i],ok);fflush(trace);}}
-    if(!c3_game_state_set_floor(state,start,C3_FLOOR_WORLD_MAP_ID,(uint8_t)probe_route.start_spawn)){snprintf(error,capacity,"floor rejected");return -1;}
+    if(probe_route.continue_save){C3GameSummary s;
+        if(trace&&c3_game_state_summary(state,&s)){fprintf(trace,"roundtrip_continue floor=%03lx previous=%03lx spawn=%u\n",
+            (unsigned long)s.floor,(unsigned long)s.previous_floor,s.spawn);fflush(trace);}}
+    else if(!c3_game_state_set_floor(state,start,C3_FLOOR_WORLD_MAP_ID,(uint8_t)probe_route.start_spawn)){snprintf(error,capacity,"floor rejected");return -1;}
     /* Memory check: after every area exit the allocator must be back near
      * the first exit's level (an area's packs are all released on exit). */
     size_t baseline=0,worst=0;unsigned exits=0;int leak=0;
     for(unsigned i=0;i<AREAS;++i){
         C3GameSummary summary;uint32_t floor=c3_game_state_summary(state,&summary)?summary.floor:0;
-        result=run_area(state,0,"sdmc:/3ds/Colosseum3DS/probe-unused.gci",trace,error,capacity);
+        /* The staff roll runs the production ending scene; its clear save
+         * goes to a probe card, never the player's save. */
+        if(floor==0x39f){mkdir("sdmc:/3ds/Colosseum3DS/probe",0777);
+            result=c3_ending_scene_run(state,"sdmc:/3ds/Colosseum3DS/probe/clear.gci",trace,error,capacity);}
+        else result=run_area(state,0,"sdmc:/3ds/Colosseum3DS/probe-unused.gci",trace,error,capacity);
         snprintf(stage,sizeof stage,"roundtrip_%u_field_%03lx_end",i,(unsigned long)floor);
         c3_n3ds_log_memory(trace,stage);
         {   size_t used=c3_n3ds_heap_used();
@@ -2054,6 +2066,8 @@ int c3_field_scene_roundtrip_probe(C3GameState *state,FILE *trace,char *error,si
             if(trace){fprintf(trace,"roundtrip_memory exit=%u floor=%03lx used=%lu baseline=%lu growth=%lu ok=%d\n",exits,
                               (unsigned long)floor,(unsigned long)used,(unsigned long)baseline,(unsigned long)growth,ok);fflush(trace);} }
         if(result!=2||i+1==AREAS)break;
+        if(probe_route.stop&&floor==probe_route.stop){
+            if(trace){fprintf(trace,"roundtrip_stop floor=%03lx\n",(unsigned long)floor);fflush(trace);}break;}
         /* A door led to another field floor: no world-map visit. */
         if(c3_game_state_summary(state,&summary)&&summary.floor!=C3_FLOOR_WORLD_MAP_ID)continue;
         result=c3_world_map_scene_run(state,trace,error,capacity);
