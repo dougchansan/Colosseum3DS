@@ -655,7 +655,7 @@ static int field_renderer_init(C3Title *storage,const C3Title *const *models,uin
  * "t<source>" fires that touch surface's link (an elevator, a door).
  * Other floors leave for the world map as before. */
 static struct { uint32_t start, start_spawn, floor[64], source[64]; uint8_t interact[64]; unsigned count, next; int loaded;
-                uint32_t film_floor, film_frames; unsigned shadow_slot, shadow_id;
+                uint32_t film_floor, film_frames, film_stride; unsigned shadow_slot, shadow_id;
                 uint32_t flag_id[16], flag_value[16]; uint32_t ball_id[4], ball_count[4]; unsigned flags, balls, name_mode; int partner, stayed;
                 uint32_t walk_floor, walk_frames, walked; int walk_x, walk_y; } probe_route;
 static void probe_route_load(void)
@@ -672,7 +672,9 @@ static void probe_route_load(void)
          * to compare animation against an emulator capture. */
         if(sscanf(line,"start %lx %lx",&a,&b)==2){probe_route.start=(uint32_t)a;probe_route.start_spawn=(uint32_t)b;}
         else if(sscanf(line,"start %lx",&a)==1)probe_route.start=(uint32_t)a;
-        else if(sscanf(line,"frames %lx %lu",&a,&b)==2&&b<=600){probe_route.film_floor=(uint32_t)a;probe_route.film_frames=(uint32_t)b;}
+        else if(sscanf(line,"frames %lx %lu",&a,&b)==2&&b<=600){probe_route.film_floor=(uint32_t)a;probe_route.film_frames=(uint32_t)b;
+            /* "frames <floor> <count> <stride>": every stride-th frame. */
+            unsigned long stride;probe_route.film_stride=sscanf(line,"frames %*x %*u %lu",&stride)==1&&stride>=1&&stride<=600?(uint32_t)stride:1u;}
         /* "shadow <slot> <id>": the probe makes that party member a Shadow
          * Pokemon whose heart is open, in memory only (the probe saves to
          * probe-unused.gci), to try the Relic Stone. */
@@ -974,6 +976,14 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     c3_field_story_set_poison_service(&story,clear_party_poison,state);
     purify_trace=trace;c3_field_story_set_purify_service(&story,purify_party,state);
     c3_field_story_set_audio_service(&story,story_audio,NULL);
+    {   /* An event scene's scripted models (C3SM rows: the subway train)
+         * are part of the scene its init script drives at once, so their
+         * packs must be attached before the scripts start. */
+        int scene_models=0;
+        for(uint32_t i=0;i<area.actor_count;++i)scene_models|=area.actors[i].aux3==0x4333534Du;
+        if(scene_models&&!npc_stream_attach(&npc,1,storage,models,actor_models,model_paths,&story,count,skin_actors,
+                                            tv_index,1,0,trace,error,capacity))goto done;
+    }
     if(!c3_field_story_prepare(&story,story_error))goto story_failed;
     view=c3_field_story_view(&story);
     if(trace){fprintf(trace,"field_begin floor=%lu previous=%lu spawn=%u new=%d maps=%lu npcs=%lu models=%lu arrival=%d duration=%.3f\n",
@@ -1863,7 +1873,11 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
              }}
             /* Film: consecutive top frames once the hero has control. */
             {static uint32_t filmed;
-             if(probe_route.film_frames&&probe_route.film_floor==map.floor&&npc.attached&&view->control&&filmed<probe_route.film_frames){
+             /* An event scene (no entrance, no collision) never gives the
+              * hero control: film it from its first drawn frame. */
+             int event_scene=!map.spawn_count&&!map.walk_count;
+             if(probe_route.film_frames&&probe_route.film_floor==map.floor&&npc.attached&&(view->control||event_scene)&&
+                filmed<probe_route.film_frames&&frames%(probe_route.film_stride?probe_route.film_stride:1u)==0){
                  char shot[96];mkdir("sdmc:/3ds/Colosseum3DS/probe",0777);
                  snprintf(shot,sizeof shot,"sdmc:/3ds/Colosseum3DS/probe/film_%03lx_%03lu.bmp",(unsigned long)map.floor,(unsigned long)filmed);
                  (void)c3_n3ds_capture_top(shot);

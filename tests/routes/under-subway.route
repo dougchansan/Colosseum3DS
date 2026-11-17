@@ -1,0 +1,84 @@
+# The Under from the Rob chapter save (pokemon-colosseum.3641.gci, Agate
+# Pokemon Center, Under opening flags 0x43E-0x446 set) through Venus, the
+# subway trainers, the Subway Key and the train ride to the Shadow Pokemon
+# Lab and back. Played by tests/test_story_route.c; battles are reported as
+# result 2 (win). No flag is written by this route: every expect is set by an
+# original script.
+#
+# Venus's house (0x37), arriving from the Under (0x2F).
+floor 0x37 0 0x2f
+talk 3
+expect 0x44a 1
+expect 0x44c 1
+# Subway B1 and B2 (0x39, 0x3A): four trainers open the way down.
+floor 0x39 0
+floor 0x3a 0
+talk 1
+talk 2
+talk 3
+talk 4
+expect 0x44e 1
+# Subway B3 (0x3C): Venus's sequence clears the roadblock.
+floor 0x3c 0
+expect 0x44f 1
+# Train (0x3D): its door goes back to B3 while the train is on the Under side.
+floor 0x3d 0
+expect 0x450 1
+door 0
+expect_floor 0x3c
+expect 0xafb 1
+# Back on B2: the Subway Key (item 0x1FC) is treasure row 45, shown after
+# 0xAFB; picking it up sets 0xC4.
+floor 0x3a 0
+press -76.57 -50.67 180 0
+expect 0xc4 1
+# Train (0x3D) again: the key slot (inspect surface 4) opens the pause menu;
+# using the Subway Key runs train function 6 (0x450 set: the train is on
+# the Under side), which leaves for the Shadow Pokemon Lab through the
+# subway event scenes 0x8A (Under departure) and 0x8D (Lab arrival).
+floor 0x3c 0
+floor 0x3d 0
+use 0x1fc
+inspect 4
+# The ride runs by itself: 0x8A plays the train and its camera with Wes
+# attached to the train's part 12, links to 0x8D, which links to the train
+# on the Lab side (arrival from 0x8D clears 0x450).
+run 6000
+expect_floor 0x3d
+expect 0x450 0
+# The train's door now opens onto the Lab garage (0x49). Its treasure row 27
+# is the elevator key 0x1FB (pickup flag 0xB2); the garage door 0 returns
+# to the train.
+door 0
+expect_floor 0x49
+press 154.23 -74.77 270 0
+expect 0xb2 1
+expect_item 0x1fb 1
+door 0
+expect_floor 0x3d
+# Back to the Under: the other key slot (surface 5) runs train function 7,
+# through 0x8C (Lab departure) and 0x8B (Under arrival); arriving from
+# 0x8B sets 0x450 again.
+use 0x1fc
+inspect 5
+run 6000
+expect_floor 0x3d
+expect 0x450 1
+# The train's door leads back to subway B3 while 0x450 is set.
+door 0
+expect_floor 0x3c
+# Up to the Under (0x3C -> 0x3B -> 0x3A -> 0x39 -> 0x2F through their
+# original doors is the player's walk; the route enters 0x2F from the
+# subway stairs). The elevator panel (inspect surface 0) opens the pause
+# menu; key 0x1FB sets floor variable 5 to 5 (function 31) and the elevator
+# floor (touch 11, function 26) rides to Pyrite (0x0F), setting 0xB5C and
+# 0x43A; Pyrite's own scripts then carry on to floor 0x18. Key 0x1FA (the Deep Colosseum, variable 5 = 4) is a treasure in
+# the Snagem Hideout (0x85), outside this chapter.
+floor 0x2f 0 0x39
+use 0x1fb
+inspect 0
+touch 11
+run 6000
+expect 0xb5c 1
+expect 0x43a 1
+expect_floor 0x18

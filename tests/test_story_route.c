@@ -22,7 +22,9 @@
  * Route lines (# starts a comment):
  *   clear <flag> [flag ...]   write 0 (the chapter checkpoint)
  *   set <flag> <value>        write a flag (recorded as a shortcut)
- *   floor <floor> <entrance>  load a floor at an entrance and run its arrival
+ *   floor <floor> <entrance> [previous]
+ *                             load a floor at an entrance and run its arrival
+ *                             (previous floor: the loaded one, else the world map)
  *   talk <person index>       stand in front of the person and press A
  *   touch <surface>           touch a surface (event kind 2)
  *   door <surface>            cross a surface (event kind 1); a floor change follows
@@ -33,6 +35,7 @@
  *   result <id>               result ID reported for the next battles (default 2, win)
  *   expect <flag> <value>     fail unless the flag holds the value
  *   expect_floor <floor>      fail unless the scene is on that floor
+ *   expect_item <item> <n>    fail unless the bag holds n of the item
  *   save <path>               write the game state as a card file (a chapter-point
  *                             save for emulator checks; keep it private)
  *   talkall                   talk to every present person with a talk script, one
@@ -43,7 +46,9 @@
  *                             named by C3_ROUTE_PDA (tools/prepare_pda.py)
  *   inspect <surface>         press A at a surface (event kind 3): stand half a
  *                             unit in front of its first enabled triangle
- *   press <x> <z> <yaw>       press A from a source position facing yaw degrees
+ *   press <x> <z> <yaw> [y]   press A from a source position facing yaw degrees,
+ *                             standing on the walkable ground found from source
+ *                             height y (default: the highest ground there)
  *   use <item>                when a script next opens the pause menu at Items
  *                             (native D0), use this key item (0 closes the menu)
  *                             (talk scripts that check where the hero stands)
@@ -65,6 +70,8 @@ typedef struct Scene {
     C3FieldPlayer hero;
     C3Title wes, npc;
     C3Title *models[C3_AREA_MAX_ACTORS];
+    C3Title scene_models[4];      /* event-scene models (aux3 C3SM), loaded for real */
+    unsigned scene_model_count;
     C3AreaCamera camera;
     uint32_t floor, entrance, previous;
     int loaded;
@@ -83,13 +90,38 @@ static uint8_t *pda_data;
 static void path(char out[1024], const char *dir, const char *name)
 { CHECK(snprintf(out, 1024, "%s/%s", dir, name) > 0 && strlen(out) < 1023); }
 static int any_floor(uint32_t floor) { return floor >= 1 && floor <= 0xffff; }
+/* With a PDA pack (C3_ROUTE_PDA) items go into the real bag, as on the
+ * console (platform/3ds/field_scene.c receive_item); without one the bag is
+ * left alone and the result is reported as accepted. */
 static int receive(void *c, uint32_t item, uint32_t count, char *name, size_t capacity)
-{ (void)c; fprintf(report, "route_item item=%lu count=%lu\n", (unsigned long)item, (unsigned long)count);
-  snprintf(name, capacity, "ITEM"); return 0; }
+{
+    (void)c; int result = pda_data ? c3_inventory_receive(&game, &pda, item, count) : 0;
+    fprintf(report, "route_item item=%lu count=%lu result=%d real_bag=%d\n", (unsigned long)item, (unsigned long)count,
+            result, pda_data != NULL);
+    snprintf(name, capacity, "ITEM"); return result;
+}
 static int clear_poison(void *c) { return c3_inventory_clear_party_poison(c); }
 static int restore(void *c) { (void)c; return 6; }
 static int item_change(void *c, uint32_t item, int32_t count)
-{ (void)c; fprintf(report, "route_item_change item=%lu count=%ld\n", (unsigned long)item, (long)count); return 0; }
+{
+    (void)c; int result = 0;
+    if (pda_data) result = count < 0 ? c3_inventory_remove(&game, &pda, item, (unsigned)(-(int64_t)count))
+                                     : c3_inventory_receive(&game, &pda, item, (unsigned)count);
+    fprintf(report, "route_item_change item=%lu count=%ld result=%d real_bag=%d\n", (unsigned long)item, (long)count,
+            result, pda_data != NULL);
+    return result;
+}
+/* How many of an item the bag holds (every pocket). */
+static unsigned bag_count(uint32_t id)
+{
+    unsigned total = 0;
+    for (unsigned pocket = 0; pocket < 6; ++pocket)
+        for (unsigned slot = 0; slot < c3_inventory_capacity(pocket); ++slot) {
+            unsigned item, count;
+            if (c3_inventory_slot(&game, pocket, slot, &item, &count) && item == id) total += count;
+        }
+    return total;
+}
 /* Item and species names for message controls, from the PDA pack's tables
  * (platform/3ds/field_scene.c story_namer). */
 static int namer(void *c, unsigned kind, uint32_t id, C3StoryValue *value)
@@ -141,7 +173,8 @@ static void unload(void)
 {
     if (!scene->loaded) return;
     c3_field_story_close(&scene->story); c3_field_close(&scene->map); c3_area_close(&scene->area);
-    c3_title_close(&scene->wes); c3_title_close(&scene->npc);
+    c3_title_close(&scene->wes); c3_title_close(&scene->npc); c3_area_camera_close(&scene->camera);
+    for (unsigned i = 0; i < scene->scene_model_count; ++i) c3_title_close(scene->scene_models + i);
     memset(scene, 0, sizeof *scene);
 }
 
@@ -160,14 +193,31 @@ static int load(uint32_t floor, uint32_t entrance, uint32_t previous)
     snprintf(name, sizeof name, "f%03lx.c3a", (unsigned long)floor); path(file, root, name);
     if (!c3_area_load(&scene->area, file, error, sizeof error)) { c3_field_close(&scene->map); return 0; }
     stand_in(&scene->wes); stand_in(&scene->npc);
-    for (uint32_t i = 0; i < scene->area.actor_count && i < C3_AREA_MAX_ACTORS; ++i) scene->models[i] = &scene->npc;
+    for (uint32_t i = 0; i < scene->area.actor_count && i < C3_AREA_MAX_ACTORS; ++i) {
+        scene->models[i] = &scene->npc;
+        /* An event scene's scripted model (the train) times its natives 73/75
+         * waits and carries the part Wes rides on: use its prepared pack. */
+        if (scene->area.actors[i].aux3 == 0x4333534Du && scene->scene_model_count < 4) {
+            C3Title *model = scene->scene_models + scene->scene_model_count;
+            path(file, root, scene->area.actors[i].file);
+            if (!c3_title_load(model, file, error, sizeof error)) { c3_area_close(&scene->area); c3_field_close(&scene->map); return 0; }
+            ++scene->scene_model_count; scene->models[i] = model;
+        }
+    }
     if (!c3_field_spawn(&scene->map, entrance, &scene->hero) && !c3_field_spawn(&scene->map, 0, &scene->hero)) {
         snprintf(error, sizeof error, "entrance %lu is unavailable", (unsigned long)entrance); return 0;
     }
+    /* The floor's event camera, when prepared (native 2A plays it, 2E waits). */
+    snprintf(name, sizeof name, "f%03lx_camera.c3c", (unsigned long)floor); path(file, root, name);
+    FILE *camera = fopen(file, "rb");
+    if (camera) { fclose(camera); if (!c3_area_camera_load(&scene->camera, file, error, sizeof error)) return 0; }
     snprintf(name, sizeof name, "f%03lx.c3s", (unsigned long)floor); path(file, root, name);
     if (!c3_field_story_load(&scene->story, file, &game, &scene->map, &scene->area, &scene->hero, &scene->wes,
                              scene->models, &scene->camera, trace, error)) return 0;
     scene->loaded = 1;
+    /* The floor's treasure rows (prepare_story.py .c3r), if it has any. */
+    snprintf(name, sizeof name, "f%03lx.c3r", (unsigned long)floor); path(file, root, name);
+    if (!c3_field_story_load_treasure(&scene->story, file, error)) return 0;
     c3_field_story_set_floor_support(&scene->story, any_floor);
     c3_field_story_enable_name_entry(&scene->story, 1);
     c3_field_story_set_item_service(&scene->story, receive, NULL);
@@ -235,6 +285,10 @@ static int run(unsigned frames, int until_control)
         if (v->item_menu) {
             fprintf(report, "route_item_menu floor=%03lx use=%lu\n", (unsigned long)scene->floor, (unsigned long)use_item);
             uint32_t item = use_item; use_item = 0;
+            /* The pause menu lists only what the bag holds. */
+            if (item && pda_data && !bag_count(item)) {
+                snprintf(error, sizeof error, "item %03lx is not in the bag", (unsigned long)item); return 0;
+            }
             if (!c3_field_story_item_menu_result(&scene->story, item, error)) return 0;
         }
         if (v->name_entry && !c3_field_story_name_result(&scene->story, "RUI", error)) return 0;
@@ -278,6 +332,13 @@ static int step(char *line)
         }
         return 1;
     }
+    if (!strcmp(word, "expect_item")) {
+        CHECK(sscanf(line, "%li %li", (long *)&a, (long *)&b) == 2);
+        unsigned total = bag_count((uint32_t)a);
+        fprintf(report, "route_bag item=%03lx count=%u\n", a, total);
+        if (total != b) { snprintf(error, sizeof error, "item %03lx count is %u, expected %lu", a, total, b); return 0; }
+        return 1;
+    }
     if (!strcmp(word, "expect_floor")) {
         CHECK(sscanf(line, "%li", (long *)&a) == 1);
         if (!scene->loaded || scene->floor != a) { snprintf(error, sizeof error, "on floor %03lx", (unsigned long)scene->floor); return 0; }
@@ -317,8 +378,10 @@ static int step(char *line)
         return 1;
     }
     if (!strcmp(word, "floor")) {
-        CHECK(sscanf(line, "%li %li", (long *)&a, (long *)&b) == 2);
-        return load((uint32_t)a, (uint32_t)b, scene->loaded ? scene->floor : 0x38e);
+        unsigned long previous = 0;
+        int fields = sscanf(line, "%li %li %li", (long *)&a, (long *)&b, (long *)&previous);
+        CHECK(fields >= 2);
+        return load((uint32_t)a, (uint32_t)b, fields == 3 ? (uint32_t)previous : scene->loaded ? scene->floor : 0x38e);
     }
     if (!scene->loaded) { snprintf(error, sizeof error, "no floor is loaded"); return 0; }
     if (!strcmp(word, "pad")) {
@@ -384,10 +447,15 @@ static int step(char *line)
     }
     if (!strcmp(word, "use")) { CHECK(sscanf(line, "%li", (long *)&a) == 1); use_item = (uint32_t)a; return 1; }
     if (!strcmp(word, "press")) {
-        float yaw;
-        CHECK(sscanf(line, "%f %f %f", &x, &z, &yaw) == 3);
+        float yaw, height = INFINITY;
+        CHECK(sscanf(line, "%f %f %f %f", &x, &z, &yaw, &height) >= 3);
         scene->hero.position[0] = x * scene->map.scale; scene->hero.position[2] = z * scene->map.scale;
         scene->hero.yaw = yaw * 3.14159265f / 180.0f;
+        /* Stand on the ground there, found from the given source height
+         * (default: the highest); the hero keeps the entrance's height
+         * otherwise, e.g. at the top of a stairway. */
+        float ground, probe[3] = { scene->hero.position[0], height * scene->map.scale, scene->hero.position[2] };
+        if (c3_field_ground(&scene->map, probe, &ground)) scene->hero.position[1] = ground;
         memcpy(scene->hero.proposed, scene->hero.position, sizeof scene->hero.position);
         if (!c3_field_story_interact(&scene->story, error)) return 0;
         return run(30000, 1);
