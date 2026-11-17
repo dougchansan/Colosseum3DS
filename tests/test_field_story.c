@@ -439,6 +439,24 @@ static void synthetic_regressions(void)
         for(unsigned row=0;row<3;++row){CHECK(fabsf(s->hero.position[row]-origin[row])<1e-4f);
             CHECK(fabsf(s->wes.draw_vertices[0].pos[row]-origin[row]-vertex[row])<1e-4f);}}
     close_scene(s);
+    /* An event scene's scripted model (C3SM row) answers to its original
+     * resource: native 72 hides it and native 46 seats Wes on the part the
+     * row retains; any other part is refused, not left detached. */
+    for(unsigned wrong=0;wrong<2;++wrong){
+        memset(code,0,sizeof code);args[0]=0x10851001;args[1]=0;native(code+3,0x72,2,args,1);
+        args[0]=0;args[1]=100;args[2]=29;args[3]=0x10851001;args[4]=wrong?11:12;native(code+3,0x46,5,args,1);
+        synthetic_load(s,&game,file,code,0,0,0x1000003);
+        C3AreaActor *row=s->area.actors;row->resource=0x10851001;row->aux3=0x4333534Du;row->aux2=12;row->part1_bone_plus_one=1;
+        actor=c3_field_story_actor(&s->story,3);actor->pose.position[0]=5;actor->pose.position[1]=6;actor->pose.position[2]=7;
+        CHECK(actor->visible);CHECK(c3_field_story_enter(&s->story,error));
+        if(wrong){CHECK(!c3_field_story_tick(&s->story,0,0,error)&&strstr(error,"scene-model part 11"));close_scene(s);continue;}
+        CHECK(c3_field_story_tick(&s->story,0,0,error));CHECK(!actor->visible);
+        CHECK(c3_field_story_sample(&s->story,error));
+        const float *m=s->actors[0].pose.matrices[0];
+        CHECK(fabsf(s->hero.position[0]-(5+m[3]))<1e-4f&&fabsf(s->hero.position[1]-(6+m[7]))<1e-4f&&
+              fabsf(s->hero.position[2]-(7+m[11]))<1e-4f);
+        close_scene(s);
+    }
     /* Exact source0 mapping and material owning-joint world transform. */
     memset(code,0,sizeof code);args[0]=0;args[1]=100;args[2]=args[3]=0;args[4]=1;native(code+3,0x33,5,args,1);
     synthetic_load(s,&game,file,code,0,0,0x1000003);CHECK(c3_field_story_enter(&s->story,error));CHECK(c3_field_story_tick(&s->story,0,0,error));
@@ -680,6 +698,30 @@ static void synthetic_regressions(void)
      CHECK(c3_game_state_save_point(&game,&floor,&previous,&spawn)&&floor==1&&previous==0&&spawn==0);
      CHECK(c3_game_state_set_floor(&game,5,1,2));
      CHECK(c3_game_state_save_point(&game,&floor,NULL,NULL)&&floor==1);}
+    CHECK(c3_game_state_set_floor(&game,2,1,1));
+    /* heroMoveAddAutoEvent (native 22): the queued script starts with its
+     * four arguments once the hero is free, on the floor that queued it
+     * (here it clears the fade at once: effect 3, no duration)... */
+    memset(code,0,sizeof code);
+    {uint32_t q[5]={0x1000005,7,8,9,10};native(code+3,0x22,5,q,1);}
+    native(code+3,0x1f,0,args,1);
+    {uint32_t f[2]={3,0};native(code+5,0x1c,2,f,1);}
+    synthetic_load_at(s,&game,file,code,0,0,0x1000003,2);CHECK(c3_field_story_enter(&s->story,error));
+    CHECK(c3_field_story_tick(&s->story,0,0,error));
+    for(unsigned i=0;i<20&&c3_field_story_view(&s->story)->fade!=0;++i)CHECK(c3_field_story_tick(&s->story,1.0f/60.0f,0,error));
+    {uint32_t out[5]={0};CHECK(c3_field_story_view(&s->story)->fade==0&&!c3_field_story_pending_auto_event(&s->story,out));}
+    close_scene(s);
+    /* ...and, handed over by the scene, on the floor a door links to. */
+    memset(code,0,sizeof code);native(code+3,0x1f,0,args,1);
+    {uint32_t f[2]={3,0};native(code+5,0x1c,2,f,1);}
+    synthetic_load_at(s,&game,file,code,0,0,0x1000003,2);
+    {uint32_t in[5]={0x1000005,1,2,3,4},out[5]={0};c3_field_story_set_auto_event(&s->story,in);
+     CHECK(c3_field_story_pending_auto_event(&s->story,out)&&out[0]==0x1000005&&out[4]==4);}
+    CHECK(c3_field_story_enter(&s->story,error));CHECK(c3_field_story_tick(&s->story,0,0,error));
+    CHECK(c3_field_story_view(&s->story)->fade==1);
+    for(unsigned i=0;i<20&&c3_field_story_view(&s->story)->fade!=0;++i)CHECK(c3_field_story_tick(&s->story,1.0f/60.0f,0,error));
+    CHECK(c3_field_story_view(&s->story)->fade==0);close_scene(s);
+    CHECK(c3_game_state_set_floor(&game,1,0,0));
     free(s);c3_game_state_free(&game);CHECK(!unlink(file));CHECK(!rmdir(directory));
     printf("field-story synthetic regressions: %u checks passed\n",checks);
 }
@@ -703,9 +745,109 @@ static void premium_regressions(const char *prepared)
     free(s);c3_game_state_free(&game);CHECK(!unlink(file));CHECK(!rmdir(directory));
     puts("premium native BC/BB original flag roundtrip passed");
 }
+/* Native CC (fn_801C8688): three disc items name grid species, then floor
+ * 0x387 runs and CC answers 1 only for its result 0. The script hides actor
+ * 3 (native 64), then passes CC's value as its visibility, so the script's
+ * own branch value is observed. */
+static void dna_cc_program(Program *code,uint32_t a,uint32_t b,uint32_t c)
+{
+    memset(code,0,8*sizeof *code);Program *p=code+3;
+    uint32_t hide[2]={3,0},discs[3]={a,b,c};
+    native(p,0x64,2,hide,1);
+    push(p,0);push(p,0x64);push(p,3);native(p,0xcc,3,discs,0);call_end(p,2,1);
+}
+static int dna_visible(Scene *s){return c3_field_story_actor(&s->story,3)->visible;}
+static void dna_regressions(void)
+{
+    char directory[]="/tmp/c3-field-story-dna-XXXXXX",file[1024];CHECK(mkdtemp(directory));path(file,directory,"unit.c3s");
+    C3GameState game={0};synthetic_game(&game);Scene *s=calloc(1,sizeof(*s));CHECK(s);
+    Program code[8];
+    /* Without the puzzle floor (assets absent) CC keeps the recorded
+     * temporary solve: 1, no wait. */
+    dna_cc_program(code,0x200,0x202,0x205);
+    synthetic_load(s,&game,file,code,0,0,0x1000003);CHECK(c3_field_story_enter(&s->story,error));
+    CHECK(c3_field_story_tick(&s->story,0,0,error));
+    CHECK(c3_field_story_view(&s->story)->menu_floor==0&&dna_visible(s));
+    CHECK(!c3_field_story_dna_result(&s->story,0,error)&&strstr(error,"No DNA puzzle"));close_scene(s);
+    /* Enabled: the script waits on floor 0x387 with the discs' species
+     * (0x204/0x205 are one species pair) until the scene reports. */
+    static const int results[3]={0,1,2};static const int answers[3]={1,0,0};
+    for(unsigned r=0;r<3;++r){
+        synthetic_load(s,&game,file,code,0,0,0x1000003);c3_field_story_enable_menu_floor(&s->story,0x387,1);
+        CHECK(c3_field_story_enter(&s->story,error));
+        for(unsigned i=0;i<4;++i)CHECK(c3_field_story_tick(&s->story,1.0f/60.0f,0,error));
+        const C3FieldStoryView *v=c3_field_story_view(&s->story);
+        CHECK(v->menu_floor==0x387&&v->dna_species[0]==0x99&&v->dna_species[1]==0x9c&&v->dna_species[2]==0x9f);
+        CHECK(!dna_visible(s)&&!v->control);
+        /* The PC's menu-floor return is not the puzzle's answer path. */
+        CHECK(!c3_field_story_menu_floor_done(&s->story,error)&&strstr(error,"DNA puzzle"));
+        CHECK(!c3_field_story_dna_result(&s->story,3,error)&&strstr(error,"Invalid DNA"));
+        CHECK(!c3_field_story_dna_result(&s->story,-1,error));
+        CHECK(v->menu_floor==0x387);
+        CHECK(c3_field_story_dna_result(&s->story,results[r],error));
+        CHECK(v->menu_floor==0&&!v->dna_species[0]);
+        CHECK(c3_field_story_tick(&s->story,1.0f/60.0f,0,error));
+        CHECK(dna_visible(s)==answers[r]);
+        CHECK(!c3_field_story_dna_result(&s->story,0,error));close_scene(s);
+    }
+    /* A disc outside 0x200-0x211 is gbaConvCheckIds result 2: CC is 0 and
+     * floor 0x387 is never pushed, even when the scene could run it. */
+    dna_cc_program(code,0x200,0x42,0x204);
+    synthetic_load(s,&game,file,code,0,0,0x1000003);c3_field_story_enable_menu_floor(&s->story,0x387,1);
+    CHECK(c3_field_story_enter(&s->story,error));CHECK(c3_field_story_tick(&s->story,0,0,error));
+    CHECK(c3_field_story_view(&s->story)->menu_floor==0&&!dna_visible(s));close_scene(s);
+    /* Every disc pair maps to its grid species (the retail check tests
+     * membership only, so a one-species triple still reaches the puzzle). */
+    static const uint16_t species[9]={0x99,0x9c,0x9f,0xb9,0xc8,0x11f,0xf3,0xf4,0xf5};
+    for(uint32_t item=0x200;item<=0x211;++item){
+        dna_cc_program(code,item,item,item);
+        synthetic_load(s,&game,file,code,0,0,0x1000003);c3_field_story_enable_menu_floor(&s->story,0x387,1);
+        CHECK(c3_field_story_enter(&s->story,error));CHECK(c3_field_story_tick(&s->story,0,0,error));
+        CHECK(c3_field_story_view(&s->story)->menu_floor==0x387);
+        CHECK(c3_field_story_view(&s->story)->dna_species[1]==species[(item-0x200)/2]);
+        CHECK(c3_field_story_dna_result(&s->story,0,error));CHECK(c3_field_story_tick(&s->story,0,0,error));
+        CHECK(dna_visible(s));close_scene(s);
+    }
+    free(s);c3_game_state_free(&game);CHECK(!unlink(file));CHECK(!rmdir(directory));
+    puts("field-story DNA puzzle handoff regressions passed");
+}
+/* Native AD (mailMainSendByScrpt) adds each mail once, unread, and counts
+ * the deliveries in view.mail_received so the scene starts the new-mail
+ * alert; a repeated mail neither re-adds nor re-alerts. */
+static void mail_regressions(void)
+{
+    char directory[]="/tmp/c3-field-story-mail-XXXXXX",file[1024];CHECK(mkdtemp(directory));path(file,directory,"unit.c3s");
+    C3GameState game={0};synthetic_game(&game);Scene *s=calloc(1,sizeof(*s));CHECK(s);
+    Program code[8];memset(code,0,sizeof code);
+    uint32_t args[1];
+    args[0]=15;native(code+3,0xad,1,args,1);args[0]=15;native(code+3,0xad,1,args,1);args[0]=23;native(code+3,0xad,1,args,1);
+    unsigned before=0;CHECK(c3_game_state_mail_count(&game,&before));
+    synthetic_load(s,&game,file,code,0,0,0x1000003);
+    CHECK(c3_field_story_view(&s->story)->mail_received==0);
+    CHECK(c3_field_story_enter(&s->story,error));CHECK(c3_field_story_tick(&s->story,0,0,error));
+    CHECK(c3_field_story_view(&s->story)->mail_received==2);
+    unsigned count=0;CHECK(c3_game_state_mail_count(&game,&count)&&count==before+2);
+    C3GameMail mail;
+    CHECK(c3_game_state_mail(&game,before,&mail)&&mail.id==15&&!mail.read);
+    CHECK(c3_game_state_mail(&game,before+1,&mail)&&mail.id==23&&!mail.read);
+    close_scene(s);
+    /* Mail already in the mailbox (a later floor) is not delivered again. */
+    synthetic_load(s,&game,file,code,0,0,0x1000003);
+    CHECK(c3_field_story_enter(&s->story,error));CHECK(c3_field_story_tick(&s->story,0,0,error));
+    CHECK(c3_field_story_view(&s->story)->mail_received==0);
+    CHECK(c3_game_state_mail_count(&game,&count)&&count==before+2);close_scene(s);
+    /* An ID outside the 512-entry mailbox fails the script. */
+    memset(code,0,sizeof code);args[0]=512;native(code+3,0xad,1,args,1);
+    synthetic_load(s,&game,file,code,0,0,0x1000003);CHECK(c3_field_story_enter(&s->story,error));
+    CHECK(!c3_field_story_tick(&s->story,0,0,error)&&strstr(error,"cannot be delivered"));close_scene(s);
+    free(s);c3_game_state_free(&game);CHECK(!unlink(file));CHECK(!rmdir(directory));
+    puts("field-story mail delivery regressions passed");
+}
 int main(int argc,char **argv)
 {
     synthetic_regressions();
+    dna_regressions();
+    mail_regressions();
     if(argc==3&&!strcmp(argv[1],"--premium")){premium_regressions(argv[2]);return 0;}
     if(argc<2){puts("field-story private integration skipped: supply privately prepared boot directory");return 0;}
     trace=argc>2?fopen(argv[2],"w+"):tmpfile();CHECK(trace!=NULL);
@@ -795,7 +937,16 @@ int main(int argc,char **argv)
      CHECK(c3_field_story_battle_pending(&scene->story,&encounter)&&encounter==10);
      CHECK(!c3_field_story_battle_result(&scene->story,0,error));
      CHECK(c3_field_story_battle_pending(&scene->story,NULL)&&flag(&game,0x3de)==0);
+     /* A battle the scene cannot play is refused, never won: native 98
+      * keeps waiting, the view names the encounter, no flag is written. */
+     CHECK(c3_field_story_battle_refuse(&scene->story,"test refusal",error));
+     CHECK(c3_field_story_battle_pending(&scene->story,NULL)&&c3_field_story_view(&scene->story)->battle_refused==10);
+     CHECK(strstr(c3_field_story_view(&scene->story)->blocked,"Battle 10 cannot be played")!=NULL);
+     for(frame=0;frame<120;++frame)CHECK(c3_field_story_tick(&scene->story,1.0f/60.0f,0x100,error));
+     CHECK(c3_field_story_battle_pending(&scene->story,NULL)&&flag(&game,0x3de)==0);unchanged_party(&game,&original);
+     CHECK(logged("story_battle_refused encounter=10 reason=\"test refusal\" result_written=0 native98_waiting=1"));
      CHECK(c3_field_story_battle_result(&scene->story,2,error));
+     CHECK(!c3_field_story_view(&scene->story)->battle_refused);
      CHECK(!c3_field_story_battle_pending(&scene->story,NULL));
      CHECK(!c3_field_story_battle_result(&scene->story,2,error));
      CHECK(!c3_field_story_view(&scene->story)->blocked[0]&&!c3_field_story_view(&scene->story)->battle_id);

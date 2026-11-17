@@ -30,6 +30,10 @@ void c3_pda_audio_stop(void){
     if(opened&&active_sound)c3_battle_audio_player_stop(sequence,active_sound,error,sizeof error);
     active_sound=0;
 }
+int c3_pda_audio_playing(void){
+    char error[128];
+    return opened&&active_sound&&c3_battle_audio_player_status(sequence,active_sound,error,sizeof error)==C3_BATTLE_AUDIO_CUE_ACTIVE;
+}
 void c3_pda_audio_close(void){
     if(opened)c3_battle_audio_player_close();
     opened=0;sequence=0;active_sound=0;directory[0]=0;

@@ -1,7 +1,14 @@
 #define _POSIX_C_SOURCE 200809L
+#include "colosseum3ds/ending.h"
 #include "colosseum3ds/field_story.h"
+#include "colosseum3ds/floor_profile.h"
 #include "colosseum3ds/inventory.h"
+#include "colosseum3ds/movie.h"
+#include "dna_route.h"
 #include "colosseum3ds/pda.h"
+#include "route_battles.h"
+#include "colosseum3ds/story.h"
+#include "colosseum3ds/world_map.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -22,7 +29,9 @@
  * Route lines (# starts a comment):
  *   clear <flag> [flag ...]   write 0 (the chapter checkpoint)
  *   set <flag> <value>        write a flag (recorded as a shortcut)
- *   floor <floor> <entrance>  load a floor at an entrance and run its arrival
+ *   floor <floor> <entrance> [previous]
+ *                             load a floor at an entrance and run its arrival
+ *                             (previous floor: the loaded one, else the world map)
  *   talk <person index>       stand in front of the person and press A
  *   touch <surface>           touch a surface (event kind 2)
  *   door <surface>            cross a surface (event kind 1); a floor change follows
@@ -30,9 +39,17 @@
  *   run <frames>              tick with no input (a floor change is followed)
  *   pad <mask>                hold these buttons for ten ticks (0x1-0x8 D-pad),
  *                             then run until the hero has control
- *   result <id>               result ID reported for the next battles (default 2, win)
+ *   result <id>               result ID reported for the next battles (default 2, win;
+ *                             with real battles, only for a declared engine gap)
+ *   battles win|any           real battles: replay a lost battle until a win (win,
+ *                             the default) or apply the first outcome (any)
+ *   engine_gap <encounter>    real battles: the engine cannot play this encounter yet
+ *                             (battle-rules lane); reported, given the result ID
+ *   expect_battle <encounter> real battles: fail unless the encounter was played
+ *   expect_battles <n>        real battles: fail unless at least n were played
  *   expect <flag> <value>     fail unless the flag holds the value
  *   expect_floor <floor>      fail unless the scene is on that floor
+ *   expect_item <item> <n>    fail unless the bag holds n of the item
  *   save <path>               write the game state as a card file (a chapter-point
  *                             save for emulator checks; keep it private)
  *   talkall                   talk to every present person with a talk script, one
@@ -43,16 +60,39 @@
  *                             named by C3_ROUTE_PDA (tools/prepare_pda.py)
  *   inspect <surface>         press A at a surface (event kind 3): stand half a
  *                             unit in front of its first enabled triangle
- *   press <x> <z> <yaw>       press A from a source position facing yaw degrees
+ *   press <x> <z> <yaw> [y]   press A from a source position facing yaw degrees,
+ *                             standing on the walkable ground found from source
+ *                             height y (default: the highest ground there)
+ *   (native CC's DNA disc puzzle, floor 0x387, is played with the original
+ *   rules: one wrong trio, then the discs' species; a "route_dna" line)
  *   use <item>                when a script next opens the pause menu at Items
  *                             (native D0), use this key item (0 closes the menu)
  *                             (talk scripts that check where the hero stands)
+ *   map <floor> [from]        choose <floor> on the world map (src/world_map.c,
+ *                             gs_title.c: Realgam 0x66 opens as 0x7B once 0x45D is
+ *                             set) after the last field floor, or after [from]
+ *                             when no floor is loaded; arrives at entrance 0
+ *   clearsave <path>          the card the staff roll's clear-save prompt writes
+ *                             (movie.c fn_80035F64 through src/ending.c); the
+ *                             prompts are answered Yes. Without it a script that
+ *                             links to the staff roll (0x39F) fails the step
+ *   continue <path>           what the title's Continue does: load that card into
+ *                             a fresh game state and enter its saved floor
+ * A script link to the staff roll floor 0x39F runs src/ending.c with host
+ * services: the movie is the prepared staff roll (C3_ROUTE_STAFFROLL names its
+ * .c3v; its header and last frame are read, nothing is shown) and both prompt
+ * messages are decoded from staffroll.c3s in the boot directory. The source
+ * return link (floor 2, entrance 1, previous 0x39F) is then loaded like any
+ * other floor change. Floors with a src/floor_profile.c row use its pack names.
  * door and touch refuse a surface whose CCD objects are all disabled. Item
  * and species names in messages come from the C3_ROUTE_PDA pack; native DB
  * (direct bag change) is reported as a "route_item_change" line.
  * Each step ends in one "route" line; flag writes, messages, battles and
  * floor changes are "route_flag", "route_message", "route_battle" and
- * "route_floor" lines. Without arguments nothing private is checked. */
+ * "route_floor" lines. Without arguments nothing private is checked.
+ * C3_ROUTE_BATTLES=<battles.c3x> plays every battle on the general engine
+ * as the field does (tests/route_battles.h); without it the result ID is
+ * reported ("skipped_as_result=1") and the expect_battle lines pass. */
 static char error[C3_STORY_ERROR];
 static FILE *report, *trace;
 static unsigned failures, steps;
@@ -65,6 +105,8 @@ typedef struct Scene {
     C3FieldPlayer hero;
     C3Title wes, npc;
     C3Title *models[C3_AREA_MAX_ACTORS];
+    C3Title scene_models[4];      /* event-scene models (aux3 C3SM), loaded for real */
+    unsigned scene_model_count;
     C3AreaCamera camera;
     uint32_t floor, entrance, previous;
     int loaded;
@@ -79,17 +121,47 @@ static uint32_t result_id = 2, last_message, use_item;
 static Scene *scene;
 static C3PdaAssets pda;
 static uint8_t *pda_data;
+static char clear_save[1024];
+static C3Story staffroll_story;
+static uint32_t last_floor;
+static uint32_t carried_auto_event[5];   /* native 22 across a floor link */
 
 static void path(char out[1024], const char *dir, const char *name)
 { CHECK(snprintf(out, 1024, "%s/%s", dir, name) > 0 && strlen(out) < 1023); }
 static int any_floor(uint32_t floor) { return floor >= 1 && floor <= 0xffff; }
+/* With a PDA pack (C3_ROUTE_PDA) items go into the real bag, as on the
+ * console (platform/3ds/field_scene.c receive_item); without one the bag is
+ * left alone and the result is reported as accepted. */
 static int receive(void *c, uint32_t item, uint32_t count, char *name, size_t capacity)
-{ (void)c; fprintf(report, "route_item item=%lu count=%lu\n", (unsigned long)item, (unsigned long)count);
-  snprintf(name, capacity, "ITEM"); return 0; }
+{
+    (void)c; int result = pda_data ? c3_inventory_receive(&game, &pda, item, count) : 0;
+    fprintf(report, "route_item item=%lu count=%lu result=%d real_bag=%d\n", (unsigned long)item, (unsigned long)count,
+            result, pda_data != NULL);
+    snprintf(name, capacity, "ITEM"); return result;
+}
 static int clear_poison(void *c) { return c3_inventory_clear_party_poison(c); }
-static int restore(void *c) { (void)c; return 6; }
+/* With real battles the party service heals (pokemonAllKaihuku). */
+static int restore(void *c) { (void)c; return route_battles_enabled() ? route_battles_heal(&game) : 6; }
 static int item_change(void *c, uint32_t item, int32_t count)
-{ (void)c; fprintf(report, "route_item_change item=%lu count=%ld\n", (unsigned long)item, (long)count); return 0; }
+{
+    (void)c; int result = 0;
+    if (pda_data) result = count < 0 ? c3_inventory_remove(&game, &pda, item, (unsigned)(-(int64_t)count))
+                                     : c3_inventory_receive(&game, &pda, item, (unsigned)count);
+    fprintf(report, "route_item_change item=%lu count=%ld result=%d real_bag=%d\n", (unsigned long)item, (long)count,
+            result, pda_data != NULL);
+    return result;
+}
+/* How many of an item the bag holds (every pocket). */
+static unsigned bag_count(uint32_t id)
+{
+    unsigned total = 0;
+    for (unsigned pocket = 0; pocket < 6; ++pocket)
+        for (unsigned slot = 0; slot < c3_inventory_capacity(pocket); ++slot) {
+            unsigned item, count;
+            if (c3_inventory_slot(&game, pocket, slot, &item, &count) && item == id) total += count;
+        }
+    return total;
+}
 /* Item and species names for message controls, from the PDA pack's tables
  * (platform/3ds/field_scene.c story_namer). */
 static int namer(void *c, unsigned kind, uint32_t id, C3StoryValue *value)
@@ -141,7 +213,8 @@ static void unload(void)
 {
     if (!scene->loaded) return;
     c3_field_story_close(&scene->story); c3_field_close(&scene->map); c3_area_close(&scene->area);
-    c3_title_close(&scene->wes); c3_title_close(&scene->npc);
+    c3_title_close(&scene->wes); c3_title_close(&scene->npc); c3_area_camera_close(&scene->camera);
+    for (unsigned i = 0; i < scene->scene_model_count; ++i) c3_title_close(scene->scene_models + i);
     memset(scene, 0, sizeof *scene);
 }
 
@@ -155,19 +228,47 @@ static int load(uint32_t floor, uint32_t entrance, uint32_t previous)
     error[0] = 0;
     scene->floor = floor; scene->entrance = entrance; scene->previous = previous;
     CHECK(c3_game_state_set_floor(&game, floor, previous, (uint8_t)entrance));
-    snprintf(name, sizeof name, "f%03lx.c3f", (unsigned long)floor); path(file, root, name);
+    /* The pack names the production scene uses (Outskirt floors 1 and 2
+     * are "outskirt" and "shop"); other floors are f%03x. */
+    const C3FloorProfile *profile = c3_floor_profile(floor);
+    char prefix[32], story_name[64];
+    if (profile) { snprintf(prefix, sizeof prefix, "%s", profile->prefix); snprintf(story_name, sizeof story_name, "%s", profile->story); }
+    else { snprintf(prefix, sizeof prefix, "f%03lx", (unsigned long)floor); snprintf(story_name, sizeof story_name, "%s.c3s", prefix); }
+    snprintf(name, sizeof name, "%s.c3f", prefix); path(file, root, name);
     if (!c3_field_load(&scene->map, file, error, sizeof error)) return 0;
-    snprintf(name, sizeof name, "f%03lx.c3a", (unsigned long)floor); path(file, root, name);
+    snprintf(name, sizeof name, "%s.c3a", prefix); path(file, root, name);
     if (!c3_area_load(&scene->area, file, error, sizeof error)) { c3_field_close(&scene->map); return 0; }
     stand_in(&scene->wes); stand_in(&scene->npc);
-    for (uint32_t i = 0; i < scene->area.actor_count && i < C3_AREA_MAX_ACTORS; ++i) scene->models[i] = &scene->npc;
+    for (uint32_t i = 0; i < scene->area.actor_count && i < C3_AREA_MAX_ACTORS; ++i) {
+        scene->models[i] = &scene->npc;
+        /* An event scene's scripted model (the train) times its natives 73/75
+         * waits and carries the part Wes rides on: use its prepared pack. */
+        if (scene->area.actors[i].aux3 == 0x4333534Du && scene->scene_model_count < 4) {
+            C3Title *model = scene->scene_models + scene->scene_model_count;
+            path(file, root, scene->area.actors[i].file);
+            if (!c3_title_load(model, file, error, sizeof error)) { c3_area_close(&scene->area); c3_field_close(&scene->map); return 0; }
+            ++scene->scene_model_count; scene->models[i] = model;
+        }
+    }
     if (!c3_field_spawn(&scene->map, entrance, &scene->hero) && !c3_field_spawn(&scene->map, 0, &scene->hero)) {
         snprintf(error, sizeof error, "entrance %lu is unavailable", (unsigned long)entrance); return 0;
     }
-    snprintf(name, sizeof name, "f%03lx.c3s", (unsigned long)floor); path(file, root, name);
+    /* The floor's event camera, when prepared (native 2A plays it, 2E waits). */
+    snprintf(name, sizeof name, "%s_camera.c3c", prefix); path(file, root, name);
+    FILE *camera = fopen(file, "rb");
+    if (camera) { fclose(camera); if (!c3_area_camera_load(&scene->camera, file, error, sizeof error)) return 0; }
+    path(file, root, story_name);
     if (!c3_field_story_load(&scene->story, file, &game, &scene->map, &scene->area, &scene->hero, &scene->wes,
                              scene->models, &scene->camera, trace, error)) return 0;
-    scene->loaded = 1;
+    scene->loaded = 1; last_floor = floor;
+    if (carried_auto_event[0]) {
+        fprintf(report, "route_auto_event floor=%03lx script=%08lx\n", (unsigned long)floor, (unsigned long)carried_auto_event[0]);
+        c3_field_story_set_auto_event(&scene->story, carried_auto_event);
+        memset(carried_auto_event, 0, sizeof carried_auto_event);
+    }
+    /* The floor's treasure rows (prepare_story.py .c3r), if it has any. */
+    snprintf(name, sizeof name, "%s.c3r", prefix); path(file, root, name);
+    if (!c3_field_story_load_treasure(&scene->story, file, error)) return 0;
     c3_field_story_set_floor_support(&scene->story, any_floor);
     c3_field_story_enable_name_entry(&scene->story, 1);
     c3_field_story_set_item_service(&scene->story, receive, NULL);
@@ -176,6 +277,7 @@ static int load(uint32_t floor, uint32_t entrance, uint32_t previous)
     c3_field_story_set_item_change_service(&scene->story, item_change, NULL);
     c3_field_story_set_namer(&scene->story, namer, NULL);
     c3_field_story_enable_item_menu(&scene->story, 1);
+    c3_field_story_enable_menu_floor(&scene->story, 0x387, 1); /* native CC's disc puzzle (dna_route.h) */
     if (!c3_field_story_prepare(&scene->story, error)) return 0;
     for (unsigned frame = 0; frame < 3600 && !c3_field_story_view(&scene->story)->prepared; ++frame)
         if (!c3_field_story_tick(&scene->story, 1.0f/60.0f, 0, error)) return 0;
@@ -184,7 +286,9 @@ static int load(uint32_t floor, uint32_t entrance, uint32_t previous)
     fprintf(report, "route_floor floor=%03lx entrance=%lu previous=%03lx actors=%lu links=%lu\n", (unsigned long)floor,
             (unsigned long)entrance, (unsigned long)previous, (unsigned long)scene->area.actor_count,
             (unsigned long)scene->area.link_count);
-    int arrived = run(6000, 1);
+    /* An arrival can be a whole final event (Realgam 0x76: battles, cutscenes
+     * and the link to the staff roll), so it gets an hour of frames. */
+    int arrived = run(216000, 1);
     /* Where each person stands after the arrival (for writing routes). */
     if (scene->loaded && scene->floor == floor)
         for (uint32_t i = 0; i < scene->area.actor_count; ++i) {
@@ -198,6 +302,74 @@ static int load(uint32_t floor, uint32_t entrance, uint32_t previous)
     return arrived;
 }
 
+/* Staff roll services for src/ending.c: the movie's prepared stream is opened
+ * and its last frame read (its natural end), and each prompt's original text
+ * is decoded before it is answered Yes. */
+static int staffroll_movie(void *context)
+{
+    (void)context;
+    const char *movie_path = getenv("C3_ROUTE_STAFFROLL");
+    if (!movie_path || !*movie_path) { fprintf(report, "route_staffroll movie=unverified reason=C3_ROUTE_STAFFROLL unset\n"); return 0; }
+    C3Movie movie = {0}; char merror[256] = {0};
+    /* src/movie.c returns 0 on success. */
+    if (c3_movie_open(&movie, movie_path, merror, sizeof merror) != 0) { snprintf(error, sizeof error, "staff roll: %.150s", merror); return -1; }
+    void *pixels = malloc(movie.frame_bytes ? movie.frame_bytes : 1);
+    int ok = pixels && movie.frame_count &&
+             c3_movie_read_frame(&movie, movie.frame_count - 1, pixels, movie.frame_bytes, merror, sizeof merror) == 0;
+    fprintf(report, "route_staffroll movie=%s frames=%lu fps=%lu/%lu last_frame_read=%d\n", movie_path,
+            (unsigned long)movie.frame_count, (unsigned long)movie.fps_num, (unsigned long)movie.fps_den, ok);
+    free(pixels); c3_movie_close(&movie);
+    if (!ok) { snprintf(error, sizeof error, "staff roll last frame: %.150s", merror); return -1; }
+    return 0;
+}
+static int staffroll_choice(void *context, uint32_t id, int initial_no)
+{
+    (void)context;
+    char text[C3_STORY_MESSAGE], serror[C3_STORY_ERROR] = {0};
+    if (!c3_story_message(&staffroll_story, id, "WES", "RUI", NULL, text, sizeof text, serror)) {
+        snprintf(error, sizeof error, "prompt %04lx: %.150s", (unsigned long)id, serror); return -1;
+    }
+    int wide = 0;
+    for (const char *c = text; *c; ++c) wide |= (unsigned char)*c >= 0x80;
+    fprintf(report, "route_prompt message=%04lx initial_no=%d answer=yes non_ascii=%d\n", (unsigned long)id, initial_no, wide);
+    return 0;
+}
+static void staffroll_save_error(void *context, const char *why)
+{ (void)context; fprintf(report, "route_clear_save_error reason=%s\n", why); }
+
+/* Floor 0x39F: the staff roll (movie.c fn_800361C0/fn_80035F64) and its
+ * clear-save prompt, then the source return link to floor 2. */
+static int staffroll(uint32_t from)
+{
+    char file[1024], gerror[C3_GAME_ERROR_SIZE] = {0};
+    int saved = 0;
+    unload();
+    CHECK(c3_game_state_set_floor(&game, 0x39f, from, 0));
+    fprintf(report, "route_floor floor=39f entrance=0 previous=%03lx staffroll=1\n", (unsigned long)from);
+    if (!clear_save[0]) { snprintf(error, sizeof error, "the staff roll needs a clearsave step"); return 0; }
+    path(file, root, "staffroll.c3s");
+    if (!c3_story_load(&staffroll_story, file, error)) return 0;
+    C3EndingServices services = {staffroll_movie, staffroll_choice, staffroll_save_error, NULL};
+    int result = c3_ending_run(&game, clear_save, &services, &saved, gerror);
+    c3_story_free(&staffroll_story);
+    if (result) { if (!error[0]) snprintf(error, sizeof error, "staff roll result %d: %.150s", result, gerror); return 0; }
+    C3GameSummary summary;
+    CHECK(c3_game_state_summary(&game, &summary));
+    fprintf(report, "route_clear_save path=%s saved=%d next=%03lx entrance=%u previous=%03lx\n", clear_save, saved,
+            (unsigned long)summary.floor, summary.spawn, (unsigned long)summary.previous_floor);
+    for (uint32_t id = FLAG_FIRST; id < FLAG_LAST; ++id) {   /* 0x478 and other writes */
+        uint32_t value;
+        if (valid[id] && c3_game_state_get_flag(&game, id, &value) && value != shadow[id]) {
+            fprintf(report, "route_flag floor=39f flag=%03lx %lu->%lu\n", (unsigned long)id, (unsigned long)shadow[id], (unsigned long)value);
+            shadow[id] = value;
+        }
+    }
+    return load(summary.floor, summary.spawn, summary.previous_floor);
+}
+
+static int map_flag(void *context, uint32_t id, uint32_t *value)
+{ (void)context; return c3_game_state_get_flag(&game, id, value); }
+
 /* Tick until the hero has control again (until_control) or for `frames`.
  * A floor change requested by a script loads the next floor. */
 static int run(unsigned frames, int until_control)
@@ -208,7 +380,9 @@ static int run(unsigned frames, int until_control)
         if (v->next_floor) {
             uint32_t next = v->next_floor, spawn = v->next_spawn, from = scene->floor;
             flag_writes();
-            if (next == 0x38e) { fprintf(report, "route_world_map from=%03lx\n", (unsigned long)from); unload(); return 1; }
+            if (next == 0x38e) { fprintf(report, "route_world_map from=%03lx\n", (unsigned long)from); last_floor = from; unload(); return 1; }
+            if (next == 0x39f) return staffroll(from);
+            c3_field_story_pending_auto_event(&scene->story, carried_auto_event);
             return load(next, spawn, from);
         }
         if (v->message_id && v->message_id != last_message) {
@@ -227,17 +401,22 @@ static int run(unsigned frames, int until_control)
         uint16_t pressed = (v->dialogue || v->choice) && frame % 15 == 0 ? 0x100 : 0;
         uint32_t encounter;
         if (c3_field_story_battle_pending(&scene->story, &encounter)) {
-            fprintf(report, "route_battle floor=%03lx encounter=%lu result=%lu skipped_as_result=1\n",
-                    (unsigned long)scene->floor, (unsigned long)encounter, (unsigned long)result_id);
-            if (!c3_field_story_battle_result(&scene->story, result_id, error)) return 0;
+            if (!route_battle_play(&scene->story, &game, scene->floor, result_id, report, NULL, error, sizeof error)) return 0;
+            /* A whiteout leaves for its floor: follow it on the next frame. */
+            if (c3_field_story_view(&scene->story)->next_floor) continue;
         }
         if (v->shop && !c3_field_story_shop_done(&scene->story, error)) return 0;
         if (v->item_menu) {
             fprintf(report, "route_item_menu floor=%03lx use=%lu\n", (unsigned long)scene->floor, (unsigned long)use_item);
             uint32_t item = use_item; use_item = 0;
+            /* The pause menu lists only what the bag holds. */
+            if (item && pda_data && !bag_count(item)) {
+                snprintf(error, sizeof error, "item %03lx is not in the bag", (unsigned long)item); return 0;
+            }
             if (!c3_field_story_item_menu_result(&scene->story, item, error)) return 0;
         }
         if (v->name_entry && !c3_field_story_name_result(&scene->story, "RUI", error)) return 0;
+        if (v->menu_floor == 0x387 && !dna_route_answer(&scene->story, report, "route", scene->floor, error)) return 0;
         if (v->relive_pick && !c3_field_story_relive_pick(&scene->story, -1, error)) return 0;
         if (!c3_field_story_tick(&scene->story, 1.0f/60.0f, pressed, error) || !c3_field_story_sample(&scene->story, error)) return 0;
         if (v->blocked[0] && !c3_field_story_battle_pending(&scene->story, NULL)) { snprintf(error, sizeof error, "blocked: %.160s", v->blocked); return 0; }
@@ -269,6 +448,22 @@ static int step(char *line)
         CHECK(sscanf(line, "%li %li", (long *)&a, (long *)&b) == 2 && c3_game_state_set_flag(&game, (uint32_t)a, (uint32_t)b));
         fprintf(report, "route_shortcut flag=%03lx value=%lu\n", a, b); snapshot(); return 1;
     }
+    if (!strcmp(word, "battles")) {
+        char mode[8] = "";
+        CHECK(sscanf(line, "%7s", mode) == 1 && (!strcmp(mode, "win") || !strcmp(mode, "any")));
+        route_battles_set_any(!strcmp(mode, "any")); return 1;
+    }
+    if (!strcmp(word, "engine_gap")) { CHECK(sscanf(line, "%li", (long *)&a) == 1); route_battles_add_gap((uint32_t)a); return 1; }
+    if (!strcmp(word, "expect_battle")) {
+        CHECK(sscanf(line, "%li", (long *)&a) == 1);
+        if (!route_battles_enabled() || route_battles_was_played((uint32_t)a)) return 1;
+        snprintf(error, sizeof error, "battle %lu was not played", a); return 0;
+    }
+    if (!strcmp(word, "expect_battles")) {
+        CHECK(sscanf(line, "%li", (long *)&a) == 1);
+        if (!route_battles_enabled() || route_battles_played() >= a) return 1;
+        snprintf(error, sizeof error, "%u battles played, expected at least %lu", route_battles_played(), a); return 0;
+    }
     if (!strcmp(word, "result")) { CHECK(sscanf(line, "%li", (long *)&a) == 1); result_id = (uint32_t)a; return 1; }
     if (!strcmp(word, "expect")) {
         uint32_t value = 0;
@@ -276,6 +471,13 @@ static int step(char *line)
         if (!c3_game_state_get_flag(&game, (uint32_t)a, &value) || value != b) {
             snprintf(error, sizeof error, "flag %03lx is %lu, expected %lu", a, (unsigned long)value, b); return 0;
         }
+        return 1;
+    }
+    if (!strcmp(word, "expect_item")) {
+        CHECK(sscanf(line, "%li %li", (long *)&a, (long *)&b) == 2);
+        unsigned total = bag_count((uint32_t)a);
+        fprintf(report, "route_bag item=%03lx count=%u\n", a, total);
+        if (total != b) { snprintf(error, sizeof error, "item %03lx count is %u, expected %lu", a, total, b); return 0; }
         return 1;
     }
     if (!strcmp(word, "expect_floor")) {
@@ -316,9 +518,47 @@ static int step(char *line)
         if (scene->loaded) flag_writes(); else snapshot();
         return 1;
     }
+    if (!strcmp(word, "clearsave")) {
+        CHECK(sscanf(line, " %1023s", clear_save) == 1);
+        remove(clear_save);   /* a fresh card: the overwrite prompt does not apply */
+        return 1;
+    }
+    if (!strcmp(word, "map")) {
+        unsigned long from = 0; C3WorldMap map; uint32_t chosen = 0; int travel = 0, visible = -1;
+        int count = sscanf(line, "%li %li", (long *)&a, (long *)&from);
+        CHECK(count >= 1);
+        if (scene->loaded) { snprintf(error, sizeof error, "map needs the world map; floor %03lx is loaded", (unsigned long)scene->floor); return 0; }
+        uint32_t previous = count == 2 ? (uint32_t)from : last_floor;
+        if (!c3_world_map_open(&map, previous, map_flag, NULL)) { snprintf(error, sizeof error, "world map cannot open"); return 0; }
+        for (uint32_t i = 0; i < map.visible_count && visible < 0; ++i) {
+            C3WorldMapEntry entry; int index = c3_world_map_visible(&map, i);
+            if (index >= 0 && c3_world_map_entry((uint32_t)index, &entry) && entry.floor == a) visible = (int)i;
+        }
+        if (visible < 0) { snprintf(error, sizeof error, "floor %03lx is not shown on the world map", a); return 0; }
+        if (!c3_world_map_choose(&map, visible, map_flag, NULL, &chosen, &travel)) { snprintf(error, sizeof error, "world map choice failed"); return 0; }
+        fprintf(report, "route_map from=%03lx chose=%03lx floor=%03lx travel=%d\n", (unsigned long)previous, a,
+                (unsigned long)chosen, travel);
+        return load(chosen, 0, C3_FLOOR_WORLD_MAP_ID);
+    }
+    if (!strcmp(word, "continue")) {
+        char card[1024], file[1024], gerror[C3_GAME_ERROR_SIZE] = {0}; C3GameSummary summary;
+        CHECK(sscanf(line, " %1023s", card) == 1);
+        unload(); c3_game_state_free(&game); memset(&game, 0, sizeof game);
+        path(file, newgame, "newgame.c3g");
+        if (!c3_game_state_load(&game, card, file, gerror)) { snprintf(error, sizeof error, "continue: %.150s", gerror); return 0; }
+        CHECK(c3_game_state_summary(&game, &summary));
+        uint32_t cleared = 0; c3_game_state_get_flag(&game, 0x478, &cleared);
+        fprintf(report, "route_continue path=%s floor=%03lx entrance=%u previous=%03lx saves=%lu flag478=%lu\n", card,
+                (unsigned long)summary.floor, summary.spawn, (unsigned long)summary.previous_floor,
+                (unsigned long)summary.saved_count, (unsigned long)cleared);
+        snapshot();
+        return load(summary.floor, summary.spawn, summary.previous_floor);
+    }
     if (!strcmp(word, "floor")) {
-        CHECK(sscanf(line, "%li %li", (long *)&a, (long *)&b) == 2);
-        return load((uint32_t)a, (uint32_t)b, scene->loaded ? scene->floor : 0x38e);
+        unsigned long previous = 0;
+        int fields = sscanf(line, "%li %li %li", (long *)&a, (long *)&b, (long *)&previous);
+        CHECK(fields >= 2);
+        return load((uint32_t)a, (uint32_t)b, fields == 3 ? (uint32_t)previous : scene->loaded ? scene->floor : 0x38e);
     }
     if (!scene->loaded) { snprintf(error, sizeof error, "no floor is loaded"); return 0; }
     if (!strcmp(word, "pad")) {
@@ -384,10 +624,15 @@ static int step(char *line)
     }
     if (!strcmp(word, "use")) { CHECK(sscanf(line, "%li", (long *)&a) == 1); use_item = (uint32_t)a; return 1; }
     if (!strcmp(word, "press")) {
-        float yaw;
-        CHECK(sscanf(line, "%f %f %f", &x, &z, &yaw) == 3);
+        float yaw, height = INFINITY;
+        CHECK(sscanf(line, "%f %f %f %f", &x, &z, &yaw, &height) >= 3);
         scene->hero.position[0] = x * scene->map.scale; scene->hero.position[2] = z * scene->map.scale;
         scene->hero.yaw = yaw * 3.14159265f / 180.0f;
+        /* Stand on the ground there, found from the given source height
+         * (default: the highest); the hero keeps the entrance's height
+         * otherwise, e.g. at the top of a stairway. */
+        float ground, probe[3] = { scene->hero.position[0], height * scene->map.scale, scene->hero.position[2] };
+        if (c3_field_ground(&scene->map, probe, &ground)) scene->hero.position[1] = ground;
         memcpy(scene->hero.proposed, scene->hero.position, sizeof scene->hero.position);
         if (!c3_field_story_interact(&scene->story, error)) return 0;
         return run(30000, 1);
@@ -448,6 +693,7 @@ int main(int argc, char **argv)
         rewind(f); pda_data = malloc((size_t)size); CHECK(pda_data && fread(pda_data, 1, (size_t)size, f) == (size_t)size);
         fclose(f); CHECK(c3_pda_assets_open(&pda, pda_data, (size_t)size));
     }
+    CHECK(route_battles_open(error, sizeof error));
     FILE *route = fopen(argv[4], "r"); CHECK(route);
     for (unsigned number = 1; fgets(line, sizeof line, route); ++number) {
         char *hash = strchr(line, '#'); if (hash) *hash = 0;
@@ -464,6 +710,7 @@ int main(int argc, char **argv)
     }
     fclose(route);
     unload(); free(scene); c3_game_state_free(&game); free(pda_data);
+    failures += route_battles_close(report);
     printf("story-route: steps=%u failures=%u\n", steps, failures);
     if (report != stdout) fclose(report);
     return failures ? 1 : 0;

@@ -17,6 +17,7 @@ The ASCII font currently renders the device label as `P*DA`.
 | Mail | Received IDs/order and read bits from the live mailbox; source sender, subject, body and picture metadata. Empty saves stay empty. |
 | Mail sorting | Newest, oldest, sender and subject. The source sort byte changes in memory and is kept by explicit Save. |
 | Alert tone | The ten original named preferences use the actual saved selection byte. Highlighting a choice auditions its original arrangement and instruments; A keeps the preference, B cancels. |
+| Receiving mail | A script's mail (native AD) plays the saved receive tone and blinks the original envelope `0x0C881200` on the hub for 600 frames; see [dna-mail.md](dna-mail.md). |
 | Reading mail | Applies the original read bit, story flag, tone bookkeeping and any Snag List hints transactionally. Two original common-bank callbacks run through the field VM after closing the menu. Reopening a read letter does not repeat its effects. |
 | Strategy Memo | Actual registered entries, national number, species name, seen/caught state and registration marker. Registered details show category, types, US height/weight and abilities. Name/number/height/weight sorting and two-type/color search operate on the save's records. |
 | Memo unlock/update | Original flag `0x3F0` gates the page. The `0x8000` entry marker hides unregistered detail/search data. Browsing does not perform the aide's update or invent registrations. |

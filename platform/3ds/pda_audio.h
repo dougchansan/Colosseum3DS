@@ -7,6 +7,8 @@
 int c3_pda_audio_open(const char *root,char *error,size_t capacity);
 int c3_pda_audio_preview(unsigned tone,char *error,size_t capacity);
 void c3_pda_audio_stop(void);
+/* 1 while the last preview's tone is still sounding. */
+int c3_pda_audio_playing(void);
 void c3_pda_audio_close(void);
 void c3_pda_audio_trace(FILE *trace,const char *phase);
 #endif

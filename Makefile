@@ -87,17 +87,18 @@ build/test_field_story: tests/test_field_story.c $(FIELD_STORY_SOURCES) $(HEADER
 
 build/test_phenac_story: tests/test_phenac_story.c src/floor_profile.c $(FIELD_STORY_SOURCES) $(HEADERS)
 	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_phenac_story.c src/floor_profile.c $(FIELD_STORY_SOURCES) $(LDFLAGS) -lm -o $@
-build/test_phenac_events: tests/test_phenac_events.c src/floor_profile.c $(FIELD_STORY_SOURCES) $(HEADERS)
-	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_phenac_events.c src/floor_profile.c $(FIELD_STORY_SOURCES) $(LDFLAGS) -lm -o $@
-
 WORLD_BATTLE_SOURCES = src/inventory.c src/pda.c src/battle_general.c src/battle_story.c src/battle_rng.c src/decomp_rng.c
+build/test_phenac_events: tests/test_phenac_events.c tests/route_battles.c tests/route_battles.h src/floor_profile.c $(FIELD_STORY_SOURCES) $(WORLD_BATTLE_SOURCES) build/battle_rng_source.h $(HEADERS) $(UPSTREAM)
+	$(CC) $(CPPFLAGS) -Ibuild -Isrc $(CFLAGS) tests/test_phenac_events.c tests/route_battles.c src/floor_profile.c $(FIELD_STORY_SOURCES) $(WORLD_BATTLE_SOURCES) $(LDFLAGS) -lm -o $@
+
 build/test_world_story: tests/test_world_story.c $(FIELD_STORY_SOURCES) $(WORLD_BATTLE_SOURCES) build/battle_rng_source.h $(HEADERS) $(UPSTREAM)
 	$(CC) $(CPPFLAGS) -Ibuild -Isrc $(CFLAGS) tests/test_world_story.c $(FIELD_STORY_SOURCES) $(WORLD_BATTLE_SOURCES) $(LDFLAGS) -lm -o $@
 
-build/test_story_route: tests/test_story_route.c src/pda.c src/inventory.c $(FIELD_STORY_SOURCES) $(HEADERS)
-	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_story_route.c src/pda.c src/inventory.c $(FIELD_STORY_SOURCES) $(LDFLAGS) -lm -o $@
-build/test_story_crawl: tests/test_story_crawl.c src/inventory.c src/pda.c $(FIELD_STORY_SOURCES) $(HEADERS) $(UPSTREAM)
-	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_story_crawl.c src/inventory.c src/pda.c $(FIELD_STORY_SOURCES) $(LDFLAGS) -lm -o $@
+ROUTE_BATTLE_SOURCES = tests/route_battles.c $(WORLD_BATTLE_SOURCES) src/floor_profile.c src/world_map.c src/ending.c src/movie.c src/dna_key.c
+build/test_story_route: tests/test_story_route.c tests/dna_route.h tests/route_battles.h $(FIELD_STORY_SOURCES) $(ROUTE_BATTLE_SOURCES) build/battle_rng_source.h $(HEADERS) $(UPSTREAM)
+	$(CC) $(CPPFLAGS) -Ibuild -Isrc $(CFLAGS) tests/test_story_route.c $(FIELD_STORY_SOURCES) $(ROUTE_BATTLE_SOURCES) $(LDFLAGS) -lm -o $@
+build/test_story_crawl: tests/test_story_crawl.c tests/dna_route.h tests/route_battles.c tests/route_battles.h src/dna_key.c $(FIELD_STORY_SOURCES) $(WORLD_BATTLE_SOURCES) build/battle_rng_source.h $(HEADERS) $(UPSTREAM)
+	$(CC) $(CPPFLAGS) -Ibuild -Isrc $(CFLAGS) tests/test_story_crawl.c tests/route_battles.c src/dna_key.c $(FIELD_STORY_SOURCES) $(WORLD_BATTLE_SOURCES) $(LDFLAGS) -lm -o $@
 
 RELIVE_SOURCES = src/relive.c src/relive_purify.c src/game_state.c src/save.c src/decomp_pokemon.c build/save_codec.c src/battle_general.c src/battle_rng.c src/decomp_rng.c
 build/test_relive: tests/test_relive.c $(RELIVE_SOURCES) build/battle_rng_source.h $(HEADERS) $(UPSTREAM)
@@ -569,6 +570,16 @@ build/test_realgam_messages: tests/test_realgam_messages.c src/story.c include/c
 	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_realgam_messages.c src/story.c $(LDFLAGS) -lm -o $@
 
 # Original DNA-key selector rules (no disc bytes or scene renderer needed).
+build/test_mail_alert: tests/test_mail_alert.c src/mail_alert.c include/colosseum3ds/mail_alert.h | build
+	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_mail_alert.c src/mail_alert.c $(LDFLAGS) -o $@
+
+all: build/test_mail_alert
+
+.PHONY: mail-alert-check
+test: mail-alert-check
+mail-alert-check: build/test_mail_alert
+	./build/test_mail_alert
+
 build/test_dna_key: tests/test_dna_key.c src/dna_key.c include/colosseum3ds/dna_key.h | build
 	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_dna_key.c src/dna_key.c $(LDFLAGS) -o $@
 .PHONY: dna-key-check

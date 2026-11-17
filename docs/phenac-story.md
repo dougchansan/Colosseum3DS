@@ -41,7 +41,7 @@ private packs. 7,230 checks pass.
 
 | Area | Shortcut | Where recorded |
 | --- | --- | --- |
-| Battle 14 | No battle scene exists for it. The field scene offers "skip as a win": result ID 2 is reported and the script continues. Nothing is written to the party | trace `field_battle_skipped ... temporary=1` |
+| Battle 14 | Plays on the general battle engine like every story battle ([story-battles.md](story-battles.md)); no battle is skipped as a win | trace `field_battle_engine encounter=14 ... mode=played` |
 | Partner name | Native `16` mode 1 waits while the field scene shows the port's own bottom-screen keyboard; the name goes to hero `+0xAC2`. The original name-entry floor `0x390` is not ported, and other modes keep the saved name | trace `name_entry_open`, `story_name_entry status=named` |
 | Partner on the field | Person `(0,101)` has no model yet; natives addressed to it are the original no-op for a missing person. The save's partner byte (hero `+0xA98`) is written | `c3_game_state_partner` |
 | Jingle wait | Native `82` blocks for the jingle length, which lives in the sound data; the port waits two seconds | trace `jingle_backend_pending_wait_2s` |
@@ -71,7 +71,7 @@ private packs. 7,230 checks pass.
 | Mayor's welcome | mayor's-house bank `014E0E00` sets flag `0x9A4` | runs to the end on a New 3DS |
 | Leaving the mayor's house | exit surfaces sit on CCD object 3 of a three-object walk/wall set | `c3_field_cover_objects` enables event-only objects; fixed |
 | Stadium receptionist | stadium function 7 reads `0x9A0` with native `52` (GSflagGet), then sets `0x3E6` once `0x9A4` is set | native `52` lowered; `0x3E6` set on hardware |
-| Back in town | Phenac main (function 7) runs function 4 once `0x3E6` is set: grunts confront Wes, a battle, then `0x3E7`; Rui suggests buying Poke Balls | plays on hardware; the battle is skipped as a win (shortcut above) |
+| Back in town | Phenac main (function 7) runs function 4 once `0x3E6` is set: grunts confront Wes, a battle, then `0x3E7`; Rui suggests buying Poke Balls | plays on hardware; encounter 26 plays on the battle engine |
 
 | Poke Mart | shop bank `01610E00` function 8 (a shopper at (-1.6, -5.0)) checks `0x413` and `0x3E7`, then sets `0x99E` and says Poke Balls are sold at the Outskirt Stand | plays on hardware (save 8) |
 
@@ -190,10 +190,12 @@ the expected flags and request exactly the expected encounters.
 | | 0x0D, receptionist | `0x9B7` |
 
 Arrival, the partner event and trainer 15 (encounter 21, approached by
-gaze) are in `tests/test_phenac_story.c`. Every encounter above is still
-reported as a win with nothing written to the party, the documented
-shortcut; the list is handed to the battles lane in the claims ledger, with
-the Phenac Colosseum tournament (stadium function 4, flags `0xB12`-`0xB16`).
+gaze) are in `tests/test_phenac_story.c`. With `C3_ROUTE_BATTLES` set,
+`test_phenac_events` plays every encounter above on the battle engine with
+the original trainers and teams and checks each event's list
+([story-battles.md](story-battles.md#chapter-routes-with-real-battles)).
+The Phenac Colosseum tournament (stadium function 4, flags `0xB12`-`0xB16`)
+plays each round the stadium script requests.
 
 The same test talks to every visible person on every Phenac floor from the
 saves `35188`, `15310` and `27046`: 155 conversations end and give control
@@ -206,7 +208,7 @@ font's extended glyphs.
 ## Not done
 
 - No audio, no partner follower, no door sounds.
-- Every Phenac battle is skipped as a win (handed to the battles lane).
+- Every Phenac battle plays on the general battle engine (story-battles.md).
 - Native C7 (select menu) takes the first row and native EB (save menu)
   reports "not saved": the card dealer loops and the PC B1 attendant's save
   is not offered (systems lane).

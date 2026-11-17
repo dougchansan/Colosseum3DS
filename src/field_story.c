@@ -12,6 +12,10 @@
 #define PAD_B 0x0200u
 #define PAD_DIRECTIONS 0x000fu
 #define DYNAMIC_MARKER 0x43334459u /* C3DY: private prepared model reservation. */
+/* C3SM: a scripted model of an event scene (tools/prepare_event_scene.py).
+ * Natives address it by its original resource ID; aux2 is the GSpart index
+ * its scripts attach to and part1_bone_plus_one that part's sampled bone. */
+#define SCENE_MODEL_MARKER 0x4333534Du
 #define MAX_WAYPOINTS 64u /* Phenac actor 24 allocates 36 points (bank 013E0E00 fn 34). */
 
 typedef enum { W_NONE, W_SECONDS, W_TASK, W_MOTION, W_MOVE, W_CAMERA,
@@ -277,6 +281,10 @@ static Person *person(Impl *s,uint32_t group,uint32_t id)
      * in any group. Floor actors are the only other people here. */
     for(uint32_t i=0;i<s->area->actor_count;++i)if(s->actors[i].public.index==id&&
         (s->actors[i].source->aux3!=DYNAMIC_MARKER||s->actors[i].dynamic_active))return s->actors+i;
+    /* fn_801CB954 and its siblings take a map-model resource where no person
+     * matches: an event scene's scripted model answers to its resource. */
+    if(id>0xffffu)for(uint32_t i=0;i<s->area->actor_count;++i)
+        if(s->actors[i].source->aux3==SCENE_MODEL_MARKER&&s->actors[i].source->resource==id)return s->actors+i;
     return NULL;
 }
 static void partner_place_behind(Impl *s);
@@ -683,6 +691,20 @@ static int run_native(Impl *s,RunTask *t,char *error)
     case 0x46:{
         p=person(s,a[0],a[1]);Person *parent=person(s,a[2],a[3]);
         if(!p||!parent)break;
+        if(parent->source&&parent->source->aux3==SCENE_MODEL_MARKER){
+            /* fn_801845E4 on an event scene's model: GSmodelGetPart(model,
+             * part) is retained as the row's sampled bone. Its world matrix
+             * carries the full rotation (as native A6's root part does). */
+            if(a[4]!=parent->source->aux2||!parent->public.model||!parent->source->part1_bone_plus_one||
+               parent->source->part1_bone_plus_one>parent->public.model->bone_count||parent->parent||p==parent)
+                return fail(error,"Original scene-model part %lu is not prepared",(unsigned long)a[4]);
+            p->parent=parent;p->parent_bone_plus_one=parent->source->part1_bone_plus_one;p->parent_root=1;
+            p->moving=p->turning=p->waypoint_active=0;
+            memset(p->local_position,0,sizeof p->local_position);memset(p->local_rotation,0,sizeof p->local_rotation);
+            log_line(s,"story_attach child=%lu,%lu parent=%08lx part=%lu bone=%lu",(unsigned long)a[0],(unsigned long)a[1],
+                     (unsigned long)a[3],(unsigned long)a[4],(unsigned long)p->parent_bone_plus_one-1u);
+            value=1;break;
+        }
         if(!parent->source||parent->source->resource!=0x010b0400u||a[4]!=1||
            !parent->public.model||!parent->source->part1_bone_plus_one||
            parent->source->part1_bone_plus_one>parent->public.model->bone_count||parent->parent||p==parent)
@@ -761,11 +783,14 @@ static int run_native(Impl *s,RunTask *t,char *error)
     }break;
     /* fn_80117AE4: texture-change animation of the floor's screens. */
     case 0xab:note_presentation(s,0xab,"texture_change_animation");value=1;break;
-    /* mailMainSendByScrpt: deliver mail once; the new-mail sound is not played. */
+    /* mailMainSendByScrpt: deliver mail once (mailAddMailbox). The scene
+     * starts the new-mail tone and envelope (mailMainStartSe) when
+     * view.mail_received changes. */
     case 0xad:{
         int added=c3_game_state_mail_add(s->game,a[0]);
         if(added<0)return fail(error,"Original mail %lu cannot be delivered",(unsigned long)a[0]);
-        if(added){++s->mail_sent;log_line(s,"story_mail id=%lu status=delivered",(unsigned long)a[0]);}
+        if(added){++s->mail_sent;s->view.mail_received=s->mail_sent;
+            log_line(s,"story_mail id=%lu status=delivered alert=%lu",(unsigned long)a[0],(unsigned long)s->mail_sent);}
     }break;
     /* scriptStoreTemochiPokemon copies the party's cries and personality
      * values into lbl_804670B4 for later presentation natives. */
@@ -920,20 +945,30 @@ static int run_native(Impl *s,RunTask *t,char *error)
         log_line(s,"story_save_menu status=unported_not_saved");value=0;break;
     /* fn_801C8688(item, item, item): the three DNA disc items (0x200-0x211,
      * each pair one species) must all name species of the 3x3 grid
-     * lbl_8026F488; then gbaConvCheckIds pushes floor 0x387 (the disc
-     * puzzle) and returns its result; 1 when that result is 0. Floor 0x387
-     * is not ported here (realgam lane): the puzzle is taken as solved and
-     * recorded, the way battles are skipped as wins. */
+     * lbl_8026F488 (gbaConvCheckIds; result 2 otherwise, no floor push).
+     * Then fn_800FF730(0x387) pushes the disc puzzle floor and CC returns 1
+     * when its result (fn_80087C64) is 0. The scene runs floor 0x387 when it
+     * enables that menu floor; otherwise the puzzle is taken as solved and
+     * recorded, for headless callers without the modal scene enabled. */
     case 0xcc:{
         static const uint16_t grid[9]={0xb9,0xc8,0xf4,0x11f,0x9c,0xf3,0x99,0xf5,0x9f};
-        int ok=1;
+        uint16_t species[3];int ok=1;
         for(unsigned i=0;i<3;++i){unsigned sp=disc_species(a[i]&0xffffu);int found=0;
             for(unsigned j=0;j<9;++j){found|=sp&&grid[j]==sp;}
-            ok&=found;}
-        if(ok)log_line(s,"story_menu_floor floor=387 status=unported_solved temporary=1 discs=%lx,%lx,%lx",
-                       (unsigned long)a[0],(unsigned long)a[1],(unsigned long)a[2]);
-        else log_line(s,"story_dna_check discs=%lx,%lx,%lx result=2",(unsigned long)a[0],(unsigned long)a[1],(unsigned long)a[2]);
-        value=ok;break;}
+            species[i]=(uint16_t)sp;ok&=found;}
+        if(!ok){log_line(s,"story_dna_check discs=%lx,%lx,%lx result=2",(unsigned long)a[0],(unsigned long)a[1],(unsigned long)a[2]);
+            value=0;break;}
+        unsigned i;
+        for(i=0;i<s->menu_floor_count&&s->menu_floors[i]!=0x387u;++i){}
+        if(i<s->menu_floor_count){
+            s->view.menu_floor=0x387;memcpy(s->view.dna_species,species,sizeof species);
+            log_line(s,"story_menu_floor floor=387 status=waiting_scene discs=%lx,%lx,%lx species=%x,%x,%x",
+                     (unsigned long)a[0],(unsigned long)a[1],(unsigned long)a[2],species[0],species[1],species[2]);
+            t->wait=W_MENU_FLOOR;return 1;
+        }
+        log_line(s,"story_menu_floor floor=387 status=unported_solved temporary=1 discs=%lx,%lx,%lx",
+                 (unsigned long)a[0],(unsigned long)a[1],(unsigned long)a[2]);
+        value=1;break;}
     /* fn_801C8834(item): on floor 0x43 the disc's Pokemon turns as a
      * hologram (menu 0xD8, fn_800756C8); the disc becomes its used twin
      * (item + 1). Returns the species. */
@@ -1810,10 +1845,24 @@ void c3_field_story_enable_menu_floor(C3FieldStory *story,uint32_t floor,int ena
     if(enabled&&i==s->menu_floor_count&&i<8)s->menu_floors[s->menu_floor_count++]=floor;
     if(!enabled&&i<s->menu_floor_count)s->menu_floors[i]=s->menu_floors[--s->menu_floor_count];
 }
+int c3_field_story_dna_result(C3FieldStory *story,int result,char *error)
+{
+    Impl *s=story?story->impl:NULL;
+    if(!s||result<0||result>2)return fail(error,"Invalid DNA puzzle result");
+    if(s->view.menu_floor!=0x387u)return fail(error,"No DNA puzzle is waiting");
+    for(unsigned i=0;i<C3_STORY_TASKS;++i){RunTask *t=s->tasks+i;
+        if(!t->key||t->wait!=W_MENU_FLOOR)continue;
+        log_line(s,"story_menu_floor floor=387 status=returned result=%d native_cc=%d",result,result==0);
+        s->view.menu_floor=0;memset(s->view.dna_species,0,sizeof s->view.dna_species);
+        return resume(s,t,result==0,error);
+    }
+    return fail(error,"No DNA puzzle is waiting");
+}
 int c3_field_story_menu_floor_done(C3FieldStory *story,char *error)
 {
     Impl *s=story?story->impl:NULL;
     if(!s)return fail(error,"Invalid menu floor result");
+    if(s->view.menu_floor==0x387u)return fail(error,"The DNA puzzle returns through c3_field_story_dna_result");
     for(unsigned i=0;i<C3_STORY_TASKS;++i){RunTask *t=s->tasks+i;
         if(!t->key||t->wait!=W_MENU_FLOOR)continue;
         log_line(s,"story_menu_floor floor=%03lx status=returned",(unsigned long)s->view.menu_floor);
@@ -1860,7 +1909,11 @@ int c3_field_story_load_treasure(C3FieldStory *story,const char *path,char *erro
         r->index=(uint32_t)(row[0]|row[1]<<8);r->type=(row[2]>>2)&7u;r->kind=(row[2]>>5)&7u;r->count=row[3];
         int16_t rotation=(int16_t)(row[6]|row[7]<<8);
         r->taken_flag=(uint32_t)(row[8]|row[9]<<8);r->hide_flag=(uint32_t)(row[10]|row[11]<<8);r->item=le32_at(row+12);
-        for(unsigned k=0;k<3;++k)r->position[k]=lef32_at(row+16+4*k);
+        /* Rows hold source units; the hero and map are in field units. */
+        for(unsigned k=0;k<3;++k)r->position[k]=lef32_at(row+16+4*k)*s->map->scale;
+        /* A treasure is a person (floorEventInitTresure -> peopleOpen), so it
+         * stands on the ground found from its row position (fn_8018E9B4). */
+        {float ground;if(c3_field_ground(s->map,r->position,&ground))r->position[1]=ground;}
         r->yaw=(float)rotation*PI/180.0f;
         if(r->index<512&&treasure_session[r->index].changed){r->item=treasure_session[r->index].item;r->count=treasure_session[r->index].count;}
         s->treasure_display[i]=-1;
@@ -2017,13 +2070,24 @@ int c3_field_story_battle_result(C3FieldStory *story,uint32_t result,char *error
     if(!s||!result||result>0xffffu)return fail(error,"Invalid fight result");
     for(unsigned i=0;i<C3_STORY_TASKS;++i){RunTask *t=s->tasks+i;
         if(!t->key||t->wait!=W_BATTLE||(t->call.native!=0x98&&t->call.native!=0x66))continue;
-        s->fight_result=result;s->view.blocked[0]=0;s->view.battle_id=0;
+        s->fight_result=result;s->view.blocked[0]=0;s->view.battle_id=0;s->view.battle_refused=0;
         s->fade_from=0;s->fade_to=1;s->fade_elapsed=0;s->fade_duration=.5f;s->view.fade=0;
         log_line(s,"story_battle_result encounter=%lu result=%lu native98_resumed=1",
                  (unsigned long)t->call.args[0],(unsigned long)result);
         return resume(s,t,result,error);
     }
     return fail(error,"No original battle request is waiting for a result");
+}
+int c3_field_story_battle_refuse(C3FieldStory *story,const char *reason,char *error)
+{
+    Impl *s=story?story->impl:NULL;uint32_t encounter;
+    if(!s||!c3_field_story_battle_pending(story,&encounter))return fail(error,"No original battle request is waiting");
+    s->view.battle_refused=encounter;
+    snprintf(s->view.blocked,sizeof s->view.blocked,"Battle %lu cannot be played in this build (%.80s). START: quit.",
+             (unsigned long)encounter,reason&&reason[0]?reason:"no reason given");
+    log_line(s,"story_battle_refused encounter=%lu reason=\"%s\" result_written=0 native98_waiting=1",
+             (unsigned long)encounter,reason?reason:"");
+    return 1;
 }
 /* A floor link (native 5F/7D) to a floor this build cannot load waits with
  * view.blocked set. Refusing it resumes the script as if the link had been
@@ -2078,7 +2142,7 @@ int c3_field_story_battle_whiteout(C3FieldStory *story,char *error)
         log_line(s,"story_battle_whiteout return_point=missing resumed_with=3");
         return c3_field_story_battle_result(story,3,error);
     }
-    s->fight_result=3;s->view.blocked[0]=0;s->view.battle_id=0;
+    s->fight_result=3;s->view.blocked[0]=0;s->view.battle_id=0;s->view.battle_refused=0;
     /* The waiting request ends here: the floor is left, not resumed. */
     for(unsigned i=0;i<C3_STORY_TASKS;++i){RunTask *t=s->tasks+i;
         if(!t->key||t->wait!=W_BATTLE||(t->call.native!=0x98&&t->call.native!=0x66))continue;
@@ -2122,6 +2186,8 @@ int c3_field_story_load(C3FieldStory *story,const char *path,C3GameState *game,
         p->want_visible=a->aux3==DYNAMIC_MARKER?0:(a->flags>>31)&1;p->public.visible=p->want_visible;p->public.clip=a->motions[0];
         p->public.flags=0x0cu|(a->talk_start==1?0x10u:a->talk_start==2?0x20u:0u)|(a->talk_end==1?0x40u:0u);
         p->public.loop=1;p->public.playing=1;p->speed=1;
+        /* A scene model rests on its first frame until native 73 plays it. */
+        if(a->aux3==SCENE_MODEL_MARKER){p->public.loop=0;p->public.playing=0;p->public.flags=0;}
         if(p->public.model&&p->public.clip>=p->public.model->clip_count){
             c3_story_free(&s->vm);free(s);return fail(error,"Actor idle motion is absent");
         }
@@ -2458,7 +2524,35 @@ int c3_field_story_tick(C3FieldStory *story,float seconds,uint16_t pressed,char 
     }
     s->view.control=s->entered&&s->hero_ready&&!s->event_depth&&!s->hero_event&&!s->talk_key&&!s->event_key&&
         !s->view.dialogue&&!s->pending_floor&&!s->view.blocked[0]&&!s->treasure_active;
+    /* hero_move.c fn_8013024C main step: once the hero is free, a script
+     * queued by heroMoveAddAutoEvent (native 22) starts with its four
+     * arguments before any touch event. The queue is hero work, not floor
+     * work, so a door that queues it and then links (common function 12 of
+     * the Realgam dome) runs it on the destination floor. */
+    if(s->view.control&&s->auto_event[0]){
+        uint32_t script=s->auto_event[0],args[4]={s->auto_event[1],s->auto_event[2],s->auto_event[3],s->auto_event[4]};
+        memset(s->auto_event,0,sizeof s->auto_event);
+        log_line(s,"story_auto_event_start script=%08lx args=%lu,%lu,%lu,%lu",(unsigned long)script,(unsigned long)args[0],
+                 (unsigned long)args[1],(unsigned long)args[2],(unsigned long)args[3]);
+        s->view.control=0;
+        if(!start(s,script,args,4,&s->event_key,error))return 0;
+    }
     return 1;
+}
+
+int c3_field_story_pending_auto_event(const C3FieldStory *story,uint32_t out[5])
+{
+    const Impl *s=story?story->impl:NULL;
+    if(!s||!s->auto_event[0])return 0;
+    memcpy(out,s->auto_event,sizeof s->auto_event);return 1;
+}
+
+void c3_field_story_set_auto_event(C3FieldStory *story,const uint32_t in[5])
+{
+    Impl *s=story?story->impl:NULL;
+    if(!s||!in)return;
+    memcpy(s->auto_event,in,sizeof s->auto_event);
+    log_line(s,"story_auto_event_carried script=%08lx",(unsigned long)in[0]);
 }
 
 static float dot3(const float a[3],const float b[3]){return a[0]*b[0]+a[1]*b[1]+a[2]*b[2];}

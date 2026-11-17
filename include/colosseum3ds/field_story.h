@@ -36,9 +36,13 @@ typedef struct C3FieldStoryView {
     uint32_t name_entry; /* native 16 mode + 1 while the scene must collect a name */
     uint32_t shop;       /* native 19 shop number + 1 while the scene shows the shop */
     uint32_t menu_floor; /* native 62 menu floor (0x391 PC box ...) while the scene shows it */
+    uint16_t dna_species[3]; /* native CC: the discs' species while menu_floor is 0x387 */
     uint32_t unported_menu; /* last native whose menu step is not ported (took the decline branch) */
     int relive_pick;        /* native C2 waits for a party choice (c3_field_story_relive_pick) */
     int item_menu;          /* native D0 waits while the scene shows the pause menu's Items */
+    uint32_t battle_refused; /* the waiting encounter the scene could not play (c3_field_story_battle_refuse) */
+    uint32_t mail_received; /* native AD deliveries so far (mailMainSendByScrpt): a change
+                             * starts the scene's new-mail alert (colosseum3ds/mail_alert.h) */
     float fade, camera_seconds;
     C3TitleCamera camera;
 } C3FieldStoryView;
@@ -57,6 +61,10 @@ int c3_field_story_bind_battle(C3FieldStory *story,const char *path,char *error)
  * once and makes the same ID readable through native 67. */
 int c3_field_story_battle_pending(const C3FieldStory *story,uint32_t *encounter);
 int c3_field_story_battle_result(C3FieldStory *story,uint32_t result,char *error);
+/* The scene cannot play the waiting encounter (no battle pack, or the pack
+ * refuses it). No result is invented: native 98 keeps waiting, view.blocked
+ * names the encounter and the reason, and view.battle_refused holds it. */
+int c3_field_story_battle_refuse(C3FieldStory *story,const char *reason,char *error);
 /* A floor link to a floor the scene cannot load (see floor_supported)
  * waits with view.blocked set. refused reports the requested floor;
  * stay_on_floor resumes the script without linking, so play continues. */
@@ -81,6 +89,13 @@ void c3_field_story_enable_shop(C3FieldStory *story,int enabled);
  * once (recorded as not ported). */
 void c3_field_story_enable_menu_floor(C3FieldStory *story,uint32_t floor,int enabled);
 int c3_field_story_menu_floor_done(C3FieldStory *story,char *error);
+/* Native CC (fn_801C8688) checks three DNA discs against the species grid
+ * and pushes floor 0x387, the disc puzzle. With 0x387 enabled as a menu
+ * floor the script waits with view.menu_floor = 0x387 and view.dna_species
+ * set until dna_result reports the puzzle's retail result (0 matched,
+ * 1 cancelled, 2 invalid); CC then returns 1 only for 0. Not enabled, the
+ * puzzle is recorded as solved (temporary, as before). */
+int c3_field_story_dna_result(C3FieldStory *story,int result,char *error);
 /* An original message (field, common or names group) as plain text, for
  * the scene's menus; name answers value controls 32/36. 0 when absent. */
 int c3_field_story_text(C3FieldStory *story,uint32_t id,const char *name,char *out,size_t capacity);
@@ -207,6 +222,11 @@ int c3_field_story_enter(C3FieldStory *story, char *error);
 /* Native 6F reads held directions and signed controller axes (dead zone 2),
  * independently of the edge presses consumed by dialogue/choice windows. */
 void c3_field_story_set_move_input(C3FieldStory *story,uint16_t held,int stick_x,int stick_y);
+/* heroMoveAddAutoEvent (native 22) is hero-move work that survives a floor
+ * link: a scene reads the pending script before closing a floor's story and
+ * hands it to the next floor's story; it starts once the hero has control. */
+int c3_field_story_pending_auto_event(const C3FieldStory *story,uint32_t out[5]);
+void c3_field_story_set_auto_event(C3FieldStory *story,const uint32_t in[5]);
 int c3_field_story_tick(C3FieldStory *story, float seconds, uint16_t pressed,
                         char *error);
 const C3FieldStoryView *c3_field_story_view(const C3FieldStory *story);

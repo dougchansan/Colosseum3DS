@@ -1,5 +1,6 @@
 #define _POSIX_C_SOURCE 200809L
 #include "colosseum3ds/field_story.h"
+#include "route_battles.h"
 #include "colosseum3ds/inventory.h"
 #include <math.h>
 #include <stdio.h>
@@ -79,8 +80,10 @@ static int ticks(unsigned frames,unsigned pressed)
         const C3FieldStoryView *v=c3_field_story_view(&scene->story);
         uint32_t encounter;
         if(c3_field_story_battle_pending(&scene->story,&encounter)) {
-            fprintf(report,"chapter_battle encounter=%lu result=2 synthetic=1\n",(unsigned long)encounter); ++battles;
-            if(!c3_field_story_battle_result(&scene->story,2,error))return 0;
+            ++battles; /* real battles with C3_ROUTE_BATTLES (tests/route_battles.h) */
+            C3GameSummary at;uint32_t floor=c3_game_state_summary(&game,&at)?at.floor:0;
+            if(!route_battle_play(&scene->story,&game,floor,2,report,"chapter_battle",error,sizeof error))return 0;
+            if(c3_field_story_view(&scene->story)->next_floor)break;
         }
         uint16_t input=(uint16_t)pressed;
         if((v->dialogue||v->choice)&&frame%15==0)input|=0x100;
@@ -138,6 +141,7 @@ int main(int argc,char **argv)
     if(argc!=6){puts("under-chapter: private integration skipped (needs BOOT SAVE RECIPE REPORT TRACE)");return 0;}
     boot=argv[1];report=fopen(argv[4],"w");trace=fopen(argv[5],"w+");FILE *recipe=fopen(argv[3],"r");
     if(!report||!trace||!recipe)return 2;
+    if(!route_battles_open(error,sizeof error)){fprintf(stderr,"%s\n",error);return 2;}
     fprintf(report,"chapter_shortcuts placements=recipe dialogue_auto=1 choice=first battle=synthetic_win persistent_game=1 flag_grants=0 save_write=0\n");
     void *data=NULL;
     char file[1024];path(file,"newgame.c3g");
@@ -170,7 +174,9 @@ int main(int argc,char **argv)
         for(unsigned i=0;i<0x1000;++i){uint32_t after;if(c3_game_state_get_flag(&game,i,&after)&&after!=before[i])fprintf(report,"chapter_changed id=%04x before=%lu after=%lu\n",i,(unsigned long)before[i],(unsigned long)after);}
         if(!ok)goto fail;
     }
+    if(route_battles_close(report)){snprintf(error,sizeof error,"an expected battle was not played");goto fail;}
     fprintf(report,"chapter_summary status=ok synthetic_battles=%u\n",battles);close_scene();c3_game_state_free(&game);free(data);fclose(recipe);fclose(trace);fclose(report);return 0;
 fail:
+    route_battles_close(report);
     fprintf(report,"chapter_summary status=blocked synthetic_battles=%u reason=%s\n",battles,error);close_scene();c3_game_state_free(&game);free(data);fclose(recipe);fclose(trace);fclose(report);return 1;
 }

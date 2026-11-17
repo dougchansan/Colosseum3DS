@@ -10,7 +10,8 @@ static uint32_t rd32(const uint8_t *p) { return (uint32_t)p[0] << 24 | (uint32_t
 int c3_battle_story_prepare(const C3GameState *state, C3GeneralBattle *battle)
 {
     if (!state || !battle) return 0;
-    battle->snag = 1;
+    /* No Snag Machine when a CPU trainer fights on side 0 (encounter 525). */
+    battle->snag = battle->info.cpu_side0 ? 0 : 1;
     memset(battle->balls, 0, sizeof battle->balls);
     for (unsigned slot = 0; slot < 16; ++slot) {
         C3GameItem item;
@@ -79,7 +80,7 @@ int c3_battle_story_apply(C3FieldStory *story, C3GameState *state,
     for (unsigned i = 0; i < C3_GB_PARTY; ++i)
         if (!c3_game_state_pokemon(state, i, party[i])) return fail(error, "Party read failed.");
     if (!c3_general_battle_writeback(battle, pack, party, &rw)) return fail(error, "Party writeback refused.");
-    for (unsigned i = 0; i < battle->party_count[0]; ++i) {
+    for (unsigned i = 0; i < battle->party_count[0] && !battle->info.cpu_side0; ++i) {
         unsigned slot = battle->party[0][i].party_slot;
         if (!c3_game_state_set_pokemon(state, slot, party[slot])) return fail(error, "Party record rejected.");
     }

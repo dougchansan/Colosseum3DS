@@ -155,9 +155,12 @@ def prepare(main_dol, common_rel, files):
               (1, "pda_menu.fsys", 0x0B4F1200, (0, 0, 640, 96)),
               (2, "pda_menu.fsys", 0x06271200, (0, 0, 560, 180)),
               (3, "pda_menu.fsys", 0x03731200, (110, 86, 31, 22)),
-              (4, "pda_menu.fsys", 0x03731200, (159, 85, 31, 25)))
+              (4, "pda_menu.fsys", 0x03731200, (159, 85, 31, 25)),
+              # New-mail envelope fn_801D2404 blinks while mail arrives.
+              (5, "common.fsys", 0x0C881200, None))
     for key, name, mid, rect in images:
-        w, h, pixels = crop(decode_texture(read_member(archives[name], mid, 1024 * 1024)), rect)
+        texture = decode_texture(read_member(archives[name], mid, 1024 * 1024))
+        w, h, pixels = crop(texture, rect) if rect else texture
         entries[6, key] = struct.pack("<II", w, h) + pixels
     for i, mid in enumerate((0x05CE1200, 0x11EA1200, 0x11EB1200)):
         w, h, pixels = decode_texture(read_member(archives["mail%03d.fsys" % i], mid, 1024 * 1024))

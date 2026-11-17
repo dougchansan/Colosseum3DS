@@ -124,6 +124,6 @@ favour of under's, which was claimed first).
 | Area | Shortcut | Where recorded |
 | --- | --- | --- |
 | Gear on the console | The host route answers D0 with the gear; the console field scene does not enable the item menu yet (`c3_field_story_enable_item_menu`), so there D0 closes at once and the generator cannot be repaired | cipher lane's pause-menu work |
-| Battles | encounters 169, 170, 171, 172 (Colosseum), 101, 126, 129, 164 are skipped as wins; nothing is written to the party | `route_battle ... skipped_as_result=1`; for the battles lane |
+| Battles | encounters 169, 170, 171, 172 (Colosseum), 101, 126, 129, 164 play on the battle engine with `C3_ROUTE_BATTLES` (the route's `expect_battle` lines); without it they are reported as skipped | `route_battle ... played=1` |
 | Optional trainers | sight-triggered trainers (town fn 18/25, building 2F/3F, cave) are not fought: the port has no trainer sight | not in the route |
 | Start | the chapter starts from a Phenac save with `0x3F8` set; the Realgam visit that writes it belongs to the realgam lane | `route_shortcut flag=3f8` |
