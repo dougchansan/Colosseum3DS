@@ -19,6 +19,8 @@ SOURCES = [
     "src/area_camera.c", "src/field.c", "src/title.c", "src/game_state.c",
     "src/save.c", "src/decomp_pokemon.c", "src/battle.c", "src/relive.c",
     "build/save_codec.c",
+    # Real battles with C3_ROUTE_BATTLES (tests/route_battles.h).
+    "tests/route_battles.c", "src/battle_general.c", "src/battle_story.c", "src/battle_rng.c", "src/decomp_rng.c",
 ]
 
 
@@ -37,9 +39,10 @@ def main():
     args.output.mkdir(parents=True, exist_ok=True)
     (REPO / "build").mkdir(exist_ok=True)
     subprocess.run([sys.executable, "tools/prepare_save_codec.py"], cwd=REPO, check=True)
+    subprocess.run([sys.executable, "tools/prepare_battle_rng.py"], cwd=REPO, check=True)
     executable = REPO / "build" / ("test_under_chapter.exe" if os.name == "nt" else "test_under_chapter")
     command = [args.cc, "-Iinclude", "-Icompat/include", "-Ivendor/colosseum/include",
-               "-Isrc", "-std=c11", "-O2", "-g", "-Wall", "-Wextra", "-Wpedantic", "-Werror"]
+               "-Ibuild", "-Isrc", "-std=c11", "-O2", "-g", "-Wall", "-Wextra", "-Wpedantic", "-Werror"]
     if os.name == "nt":
         command += ["-Dfsync=_commit", "-include", "io.h"]
     command += SOURCES + ["-lzstd", "-lz", "-lm", "-o", str(executable)]

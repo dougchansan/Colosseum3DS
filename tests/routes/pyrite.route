@@ -105,3 +105,14 @@ talk 17
 expect 0x418 1
 expect 0x9df 1
 save private/pyrite/saves/pyrite-4-agate.gci
+# With C3_ROUTE_BATTLES every battle above played on the general engine with
+# the original trainers and teams (tests/route_battles.h); without it these
+# lines pass and the battles are reported as skipped.
+expect_battle 169
+expect_battle 170
+expect_battle 171
+expect_battle 172
+expect_battle 101
+expect_battle 126
+expect_battle 129
+expect_battle 164

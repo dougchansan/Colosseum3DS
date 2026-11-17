@@ -813,7 +813,16 @@ int main(int argc,char **argv)
      CHECK(c3_field_story_battle_pending(&scene->story,&encounter)&&encounter==10);
      CHECK(!c3_field_story_battle_result(&scene->story,0,error));
      CHECK(c3_field_story_battle_pending(&scene->story,NULL)&&flag(&game,0x3de)==0);
+     /* A battle the scene cannot play is refused, never won: native 98
+      * keeps waiting, the view names the encounter, no flag is written. */
+     CHECK(c3_field_story_battle_refuse(&scene->story,"test refusal",error));
+     CHECK(c3_field_story_battle_pending(&scene->story,NULL)&&c3_field_story_view(&scene->story)->battle_refused==10);
+     CHECK(strstr(c3_field_story_view(&scene->story)->blocked,"Battle 10 cannot be played")!=NULL);
+     for(frame=0;frame<120;++frame)CHECK(c3_field_story_tick(&scene->story,1.0f/60.0f,0x100,error));
+     CHECK(c3_field_story_battle_pending(&scene->story,NULL)&&flag(&game,0x3de)==0);unchanged_party(&game,&original);
+     CHECK(logged("story_battle_refused encounter=10 reason=\"test refusal\" result_written=0 native98_waiting=1"));
      CHECK(c3_field_story_battle_result(&scene->story,2,error));
+     CHECK(!c3_field_story_view(&scene->story)->battle_refused);
      CHECK(!c3_field_story_battle_pending(&scene->story,NULL));
      CHECK(!c3_field_story_battle_result(&scene->story,2,error));
      CHECK(!c3_field_story_view(&scene->story)->blocked[0]&&!c3_field_story_view(&scene->story)->battle_id);

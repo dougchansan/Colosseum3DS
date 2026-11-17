@@ -1,5 +1,6 @@
 #define _POSIX_C_SOURCE 200809L
 #include "colosseum3ds/field_story.h"
+#include "route_battles.h"
 #include "colosseum3ds/inventory.h"
 
 #include <math.h>
@@ -68,7 +69,7 @@ static int receive(void *c, uint32_t item, uint32_t count, char *name, size_t ca
     return 0;
 }
 static int clear_poison(void *c) { return c3_inventory_clear_party_poison(c); }
-static int restore(void *c) { (void)c; return 6; }
+static int restore(void *c) { (void)c; return route_battles_enabled() ? route_battles_heal(&game) : 6; }
 static int species_name(void *c, unsigned species, char *out, size_t capacity)
 { (void)c; snprintf(out, capacity, "SPECIES %u", species); return 1; }
 /* scriptAddItem (native DB) and the DNA disc exchange: signed change. */
@@ -171,9 +172,9 @@ static int run(Scene *s, unsigned frames, uint32_t *next, uint32_t *spawn)
         uint32_t encounter;
         if (c3_field_story_battle_pending(&s->story, &encounter)) {
             ++battles;
-            fprintf(report, "crawl_battle floor=%03lx encounter=%lu result=2 skipped_as_win=1\n",
-                    (unsigned long)s->floor, (unsigned long)encounter);
-            if (!c3_field_story_battle_result(&s->story, 2, error)) return 0;
+            /* Real battles with C3_ROUTE_BATTLES (tests/route_battles.h). */
+            if (!route_battle_play(&s->story, &game, s->floor, 2, report, "crawl_battle", error, sizeof error)) return 0;
+            if (c3_field_story_view(&s->story)->next_floor) continue; /* a whiteout: the loop top takes the floor */
         }
         if (v->shop && !c3_field_story_shop_done(&s->story, error)) return 0;
         if (v->name_entry && !c3_field_story_name_result(&s->story, "RUI", error)) return 0;
@@ -326,6 +327,7 @@ int main(int argc, char **argv)
     path(file, newgame, "newgame.c3g");
     CHECK(c3_game_state_load(&game, argv[3], file, gerror));
     trace = fopen(getenv("C3_CRAWL_TRACE") ? getenv("C3_CRAWL_TRACE") : "/dev/null", "w"); CHECK(trace);
+    CHECK(route_battles_open(error, sizeof error));
     /* C3_CRAWL_FLAGS="884=1,885=1": flags another engine part writes (for
      * example the battle engine's Shadow Pokemon rows) preset, and recorded. */
     for (const char *p = getenv("C3_CRAWL_FLAGS"); p && *p;) {
@@ -417,8 +419,9 @@ int main(int argc, char **argv)
         CHECK(c3_game_state_save(&game, argv[7], gerror));
     }
     printf("story-crawl: floors=%u flag_changes=%u battles=%u texts=%u\n", clock_tick, flag_changes, battles, messages);
+    unsigned missing = route_battles_close(report);
     close_scene(s); free(s);
     c3_game_state_free(&game);
     fclose(report); fclose(trace);
-    return 0;
+    return missing ? 1 : 0;
 }

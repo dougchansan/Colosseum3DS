@@ -94,7 +94,7 @@ C3_ROUTE_PDA=<pda.c3pd> build/test_story_route <newgame dir> <boot dir> <save.gc
 
 | Area | Shortcut | Where recorded |
 | --- | --- | --- |
-| Battles 195, 196, 197, 525, 543, 544 (story) and 203, 219 (optional) | skipped as a win (result 2) by the route; on the console the field scene offers "skip as win". The battles lane owns them | `route_battle ... skipped_as_result=1` |
+| Battle 525 (Eagun's Pikachu vs Skrub, both CPU) | the pack refuses it (player side is not the hero alone): the console field waits with the reason shown; the route declares it with `C3_ROUTE_ENGINE_GAPS=525`. 195, 196, 197, 543, 544 play on the battle engine (story-battles.md) | `route_battle ... engine_gap=1` |
 | Chapter checkpoint | built from save 3641 by clearing the lane's flags, 0xDCB and 0x9E3; flags of later chapters stay as the save has them | route line 2 |
 | Mail 0 | the checkpoint save holds it as read, so the read transaction is a no-op; the route writes the PDA pack's own read flag (0xDCB) | `route_mail_flag ... checkpoint_already_read=1` |
 | Menus 54, 55, 56, 57 | party/rename/challenge menus are not ported: the original cancel branch (house D 0x2E persons 0 and 1, Mt. Battle reception person 1, Agate person 6) | `route_talk ... status=partial unported_menu=..` |
@@ -125,7 +125,7 @@ this lane: the work is the engine and the route.
 
 - The Mt. Battle 100-trainer challenge (natives 56 and the reception's
   menus, area trainers shown while it runs) is not playable.
-- Battles are skipped as wins (battles lane).
+- Battles play on the general battle engine; 525 waits for the battle-rules lane.
 - The ceremony scene 0x385, audio, the partner follower and door sounds.
 - The chapters were played on the host and the floors loaded on Azahar;
   the full chapter has not been played through on Azahar by input.
