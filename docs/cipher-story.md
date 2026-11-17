@@ -80,9 +80,9 @@ DB), pyrite c4ce881 (native 97) and f96aa22 (print opcode), agate 7edd217
 | Item | Shortcut | Owner |
 | --- | --- | --- |
 | Battles | skip as win (result 2), nothing written to the party | battles |
-| DNA puzzle floor 0x387 | native CC takes it as solved (`story_menu_floor floor=387 status=unported_solved temporary=1`); realgam's `c3_dna_key_scene_run` replaces it | realgam / cipher |
+| DNA puzzle floor 0x387 | native CC waits for the original puzzle (`c3_dna_key_scene_run`); only without the floor-0x387 pack is it taken as solved, see [dna-mail.md](dna-mail.md) | done (dna-mail) |
 | World-map script bank `01E00E00` | not run: it sets `0xA55` (after `0xA54`), `0xA79`/`0xA7B`, `0xDFC`/`0xDFD` (from `0x884`/`0x885`), `0xA85` (from `0xB01`) | unowned |
-| Mail `0x0F` | reading it sets `0xA7C`, which shows Snagem's 1F leaders; preset in the crawl | systems (PDA) |
+| Mail `0x0F` | the exterior's dispatcher (common `0x05960015`) sends it once `0xA7B` is set; reading it sets `0xA7C`. The crawl reads mail with `C3_CRAWL_PDA`, so only the world map's `0xA7B` is preset, see [dna-mail.md](dna-mail.md) | world map (`0xA7B`) |
 | Shadow Pokemon row 3 purified (`0x850`) | gates the Snagem exterior's last scene (`0xB01`, `0xA87`); preset in the crawl | battles / Relic Stone |
 | PC box (native 62 on garage 1F) | returns at once | systems |
 | PDA notes (native F3) | recorded only | systems |

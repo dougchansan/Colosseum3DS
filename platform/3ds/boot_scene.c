@@ -390,7 +390,9 @@ int c3_boot_scene_run(int core_status)
         return stage_result?1:0;
     }
 #endif
-#ifdef C3_DNA_KEY_PROBE
+#if defined(C3_DNA_KEY_PROBE) && !defined(C3_ROUNDTRIP_PROBE)
+    /* Standalone screen check. With the round-trip probe the puzzle runs
+     * from the field instead (native CC), with the same scripted inputs. */
     {
         const uint16_t expected[3]={0x99,0x9c,0x9f};
         int dna_result=c3_dna_key_scene_run(expected,trace,error,sizeof error);

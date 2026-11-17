@@ -1,4 +1,5 @@
 #include "pda_audio.h"
+#include "battle_audio_player.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -14,6 +15,9 @@ int c3_battle_audio_player_cue(uint32_t sequence,uint32_t sound,char *error,size
 {(void)error;(void)size;++cues;last_sequence=sequence;last_sound=sound;return 1;}
 int c3_battle_audio_player_stop(uint32_t sequence,uint32_t sound,char *error,size_t size)
 {(void)error;(void)size;CHECK(sequence==last_sequence&&sound==last_sound);++stops;return 1;}
+static int cue_status=C3_BATTLE_AUDIO_CUE_ACTIVE;
+int c3_battle_audio_player_status(uint32_t sequence,uint32_t sound,char *error,size_t size)
+{(void)error;(void)size;CHECK(sequence==last_sequence&&sound==last_sound);return cue_status;}
 void c3_battle_audio_player_close(void){++closes;}
 void c3_battle_audio_player_trace(FILE *trace,const char *phase){(void)trace;(void)phase;}
 int main(void)
@@ -25,7 +29,10 @@ int main(void)
     CHECK(c3_pda_audio_preview(3,error,sizeof error)&&last_sound==17&&last_sequence==1);
     CHECK(!c3_pda_audio_preview(10,error,sizeof error)&&!stops);
     CHECK(c3_pda_audio_preview(4,error,sizeof error)&&last_sound==16&&last_sequence==2&&stops==1);
-    c3_pda_audio_stop();CHECK(stops==2);c3_pda_audio_stop();CHECK(stops==2);
+    /* The new-mail alert waits on the tone through c3_pda_audio_playing. */
+    CHECK(c3_pda_audio_playing());cue_status=C3_BATTLE_AUDIO_CUE_FINISHED;CHECK(!c3_pda_audio_playing());
+    cue_status=C3_BATTLE_AUDIO_CUE_ACTIVE;
+    c3_pda_audio_stop();CHECK(stops==2&&!c3_pda_audio_playing());c3_pda_audio_stop();CHECK(stops==2);
     c3_pda_audio_close();CHECK(closes==1);c3_pda_audio_close();CHECK(closes==1);
     CHECK(!c3_pda_audio_preview(0,error,sizeof error));
     CHECK(c3_pda_audio_open("/private",error,sizeof error));

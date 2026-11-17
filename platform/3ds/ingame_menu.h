@@ -22,6 +22,7 @@ typedef struct {
     unsigned selection,hub_selection,pda_selection,pocket,sort,tab,detail,option_mono,option_rumble;
     unsigned count,order[512],active,dirty,preview;
     unsigned idle; /* hub shown as the field bottom screen: no cursor */
+    unsigned mail_alert; /* new-mail envelope visible this frame (mail_alert.h), drawn on the hub */
     unsigned filter_types[2],filter_color,saved_filters[3];
     C3InventoryRequest inventory;
     C3InventoryResult inventory_result;
@@ -38,6 +39,9 @@ typedef struct {
 void c3_ingame_init(C3IngameMenu *menu,const C3GameState *state);
 int c3_ingame_load(C3IngameMenu *menu,const char *path);
 void c3_ingame_close(C3IngameMenu *menu);
+/* The new-mail envelope over any bottom view while menu->mail_alert is set
+ * (needs the loaded P*DA pack). Returns 1 when drawn. */
+int c3_ingame_draw_mail_alert(C3IngameMenu *menu,C3BottomUi *ui);
 /* Borrowed assets enable source-identical host previews without file ownership. */
 void c3_ingame_set_assets(C3IngameMenu *menu,const C3PdaAssets *assets);
 C3IngameEvent c3_ingame_update(C3IngameMenu *menu,C3GameState *state,const C3N3dsInput *input,float seconds);

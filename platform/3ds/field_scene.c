@@ -26,8 +26,10 @@
 #include "colosseum3ds/inventory.h"
 #include "colosseum3ds/name_entry.h"
 #include "colosseum3ds/pc_menu.h"
+#include "colosseum3ds/mail_alert.h"
 #include "world_map_scene.h"
 #include "ending_scene.h"
+#include "dna_key_scene.h"
 #include "colosseum3ds/area_lights.h"
 #include "colosseum3ds/title.h"
 #include "colosseum3ds/shop.h"
@@ -759,6 +761,8 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     C3PdaPreview *pda_preview=NULL;
     float pda_seconds=0;
     int pda_audio_ready=0;
+    /* New-mail alert (mailMainStartSe / fn_801D2404) for native AD deliveries. */
+    C3MailAlert mail_alert={0};uint32_t mail_seen=0;float mail_frames=0;
     char path[160],message[256]={0},story_error[C3_STORY_ERROR]={0};
     const C3FieldStoryView *view=NULL;
     if(!ingame){snprintf(error,capacity,"In-game menu allocation failed.");return -1;}
@@ -978,6 +982,9 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     c3_field_story_set_species_namer(&story,field_species_name,ingame);
     c3_field_story_enable_shop(&story,1);
     c3_field_story_enable_menu_floor(&story,0x391,1); /* the PC (pc_menu.h) */
+    /* Native CC's disc puzzle, floor 0x387 (dna_key_scene.c), when its
+     * original models and cameras are on the SD card. */
+    c3_field_story_enable_menu_floor(&story,0x387,c3_dna_key_scene_available());
     c3_field_story_set_item_service(&story,receive_item,state);
     c3_field_story_set_item_change_service(&story,change_item,state);
     c3_field_story_set_namer(&story,story_namer,state);
@@ -1307,6 +1314,27 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
             }
             input.pressed=0;input.touch_pressed=false;
         }
+        /* Native CC pushing the DNA disc puzzle, floor 0x387: the field's
+         * models make room as for a 3D battle, the original screen runs on
+         * the top display, and its retail result resumes CC. */
+        if(view->menu_floor==0x387&&page==PAUSE_CLOSED){
+            FieldBattleHost host={storage,models,actor_models,model_paths,&story,&npc,ingame,
+                                  count,tv_index,skin_actors,view->tv_enabled,frames,elapsed};
+            uint16_t species[3];memcpy(species,view->dna_species,sizeof species);
+            if(trace){fprintf(trace,"dna_open floor=387 species=%x,%x,%x\n",species[0],species[1],species[2]);fflush(trace);}
+            int released=field_battle_release(&host,trace,story_error,sizeof story_error);
+            if(released<0){result=1;break;}
+            if(!released)goto story_failed;
+            int puzzle=c3_dna_key_scene_run(species,trace,story_error,sizeof story_error);
+            int restored=field_battle_restore(&host,0,trace,error,capacity);
+            if(restored<0){result=1;break;}
+            if(!restored){result=-1;break;}
+            if(trace){fprintf(trace,"dna_close floor=387 result=%d\n",puzzle);fflush(trace);}
+            if(puzzle<0)goto story_failed;
+            if(!c3_field_story_dna_result(&story,puzzle,story_error))goto story_failed;
+            previous=c3_n3ds_active_time_us(); /* puzzle time must not advance the field */
+            dirty=1;next_console=0;continue;
+        }
         /* Native 62 pushing the PC box floor 0x391: the PC menu with the
          * original texts. It owns all input; Save uses the scene's save. */
         if(view->menu_floor==0x391&&!pc_open&&page==PAUSE_CLOSED){
@@ -1402,6 +1430,17 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         if(page==PAUSE_CLOSED){
             c3_field_story_set_move_input(&story,input.held,input.stick_x,input.stick_y);
             if(!c3_field_story_tick(&story,delta,phase==FIELD_CONTROL?input.pressed:0,story_error))goto story_failed;
+            if(view->mail_received!=mail_seen){
+                mail_seen=view->mail_received;
+                unsigned sort=0,tone=0;
+                if(c3_game_state_mail_settings(state,&sort,&tone)&&c3_mail_alert_start(&mail_alert,tone)){
+                    char audio_error[192]="";mail_frames=0;
+                    if(!pda_audio_ready)pda_audio_ready=c3_pda_audio_open("sdmc:/3ds/Colosseum3DS",audio_error,sizeof audio_error);
+                    int playing=pda_audio_ready&&c3_pda_audio_preview(tone,audio_error,sizeof audio_error);
+                    if(!playing)mail_alert.tone_playing=0; /* missing ringtones: the envelope still blinks */
+                    if(trace){fprintf(trace,"mail_alert start=%lu tone=%u sound=%d reason=%s\n",(unsigned long)mail_alert.started,tone,playing,audio_error);fflush(trace);}
+                }
+            }
 #ifdef C3_FINAL_EVENT_PROBE
             uint32_t encounter;
             if(c3_field_story_battle_pending(&story,&encounter)){
@@ -1763,6 +1802,19 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
             if(phase==FIELD_FADE_IN)fade=fminf(fade,phase_seconds/(arrival?1.0f:.5f));
         }
         if(!c3_game_state_summary(state,&summary)){snprintf(error,capacity,"Game state became unavailable.");result=-1;break;}
+        if(mail_alert.active){
+            /* A battle ends the alert (mailMainReceiveTerminate in fight.c). */
+            if(view->battle_id&&c3_mail_alert_terminate(&mail_alert))c3_pda_audio_stop();
+            mail_frames+=delta*60.0f;uint32_t step=(uint32_t)mail_frames;mail_frames-=(float)step;
+            int was=ingame->mail_alert;
+            c3_mail_alert_tick(&mail_alert,step,mail_alert.tone_playing&&c3_pda_audio_playing());
+            ingame->mail_alert=(unsigned)c3_mail_alert_visible(&mail_alert);
+            if((int)ingame->mail_alert!=was)dirty=1;
+            if(!mail_alert.active){
+                if(page==PAUSE_CLOSED&&pda_audio_ready){c3_pda_audio_close();pda_audio_ready=0;}
+                if(trace){fprintf(trace,"mail_alert end=%lu frames=%lu\n",(unsigned long)mail_alert.started,(unsigned long)mail_alert.frames);fflush(trace);}
+            }
+        }
         if(dirty||input.pressed||now>=next_console){
             C3BottomUi *bottom=c3_bottom_screen_begin();
             if(naming)c3_name_entry_draw(&name_entry,bottom);
@@ -1779,7 +1831,24 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                 ingame->idle=1;ingame->page=C3_GAME_HUB;c3_ingame_draw_to(ingame,state,bottom);
             }
             else c3_field_ui_draw_to(bottom,&summary,phase,page,selection,yes,message,view,&ui_pager);
+            /* The new-mail envelope over the field's bottom views, as the
+             * original draws it over the scene; not over a modal menu. */
+            int mail_drawn=0;
+            if(ingame->mail_alert&&!naming&&!shopping&&!pc_open&&!relive_pick.open&&!item_pick.open&&hub_menu_ready(ingame,state)>0)
+                mail_drawn=c3_ingame_draw_mail_alert(ingame,bottom);
+            (void)mail_drawn; /* read by the round-trip probe */
             c3_bottom_screen_present();dirty=0;next_console=now+UINT64_C(100000);
+#ifdef C3_ROUNDTRIP_PROBE
+            /* Probe: the hub with the new-mail envelope, once per alert. */
+            {static uint32_t mail_shot;
+             if(mail_drawn&&mail_shot!=mail_alert.started){
+                char shot[96];mkdir("sdmc:/3ds/Colosseum3DS/probe",0777);
+                snprintf(shot,sizeof shot,"sdmc:/3ds/Colosseum3DS/probe/mail_alert_%lu.bmp",(unsigned long)mail_alert.started);
+                int ok=c3_n3ds_capture_bottom(shot)==0;mail_shot=mail_alert.started;
+                if(trace){fprintf(trace,"probe_mail_alert alert=%lu frames=%lu shot=%d\n",(unsigned long)mail_alert.started,
+                                  (unsigned long)mail_alert.frames,ok);fflush(trace);}
+             }}
+#endif
         }
         if(pda_preview){
             pda_seconds+=delta;

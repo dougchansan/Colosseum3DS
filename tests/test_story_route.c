@@ -4,6 +4,7 @@
 #include "colosseum3ds/floor_profile.h"
 #include "colosseum3ds/inventory.h"
 #include "colosseum3ds/movie.h"
+#include "dna_route.h"
 #include "colosseum3ds/pda.h"
 #include "route_battles.h"
 #include "colosseum3ds/story.h"
@@ -62,6 +63,8 @@
  *   press <x> <z> <yaw> [y]   press A from a source position facing yaw degrees,
  *                             standing on the walkable ground found from source
  *                             height y (default: the highest ground there)
+ *   (native CC's DNA disc puzzle, floor 0x387, is played with the original
+ *   rules: one wrong trio, then the discs' species; a "route_dna" line)
  *   use <item>                when a script next opens the pause menu at Items
  *                             (native D0), use this key item (0 closes the menu)
  *                             (talk scripts that check where the hero stands)
@@ -274,6 +277,7 @@ static int load(uint32_t floor, uint32_t entrance, uint32_t previous)
     c3_field_story_set_item_change_service(&scene->story, item_change, NULL);
     c3_field_story_set_namer(&scene->story, namer, NULL);
     c3_field_story_enable_item_menu(&scene->story, 1);
+    c3_field_story_enable_menu_floor(&scene->story, 0x387, 1); /* native CC's disc puzzle (dna_route.h) */
     if (!c3_field_story_prepare(&scene->story, error)) return 0;
     for (unsigned frame = 0; frame < 3600 && !c3_field_story_view(&scene->story)->prepared; ++frame)
         if (!c3_field_story_tick(&scene->story, 1.0f/60.0f, 0, error)) return 0;
@@ -412,6 +416,7 @@ static int run(unsigned frames, int until_control)
             if (!c3_field_story_item_menu_result(&scene->story, item, error)) return 0;
         }
         if (v->name_entry && !c3_field_story_name_result(&scene->story, "RUI", error)) return 0;
+        if (v->menu_floor == 0x387 && !dna_route_answer(&scene->story, report, "route", scene->floor, error)) return 0;
         if (v->relive_pick && !c3_field_story_relive_pick(&scene->story, -1, error)) return 0;
         if (!c3_field_story_tick(&scene->story, 1.0f/60.0f, pressed, error) || !c3_field_story_sample(&scene->story, error)) return 0;
         if (v->blocked[0] && !c3_field_story_battle_pending(&scene->story, NULL)) { snprintf(error, sizeof error, "blocked: %.160s", v->blocked); return 0; }
