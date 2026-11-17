@@ -1297,8 +1297,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
             FieldBattleHost host={storage,models,actor_models,model_paths,&story,&npc,ingame,
                                   count,tv_index,skin_actors,view->tv_enabled,frames,elapsed};
             uint16_t species[3];memcpy(species,view->dna_species,sizeof species);
-            if(trace){fprintf(trace,"dna_open floor=387 species=%x,%x,%x
-",species[0],species[1],species[2]);fflush(trace);}
+            if(trace){fprintf(trace,"dna_open floor=387 species=%x,%x,%x\n",species[0],species[1],species[2]);fflush(trace);}
             int released=field_battle_release(&host,trace,story_error,sizeof story_error);
             if(released<0){result=1;break;}
             if(!released)goto story_failed;
@@ -1306,8 +1305,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
             int restored=field_battle_restore(&host,0,trace,error,capacity);
             if(restored<0){result=1;break;}
             if(!restored){result=-1;break;}
-            if(trace){fprintf(trace,"dna_close floor=387 result=%d
-",puzzle);fflush(trace);}
+            if(trace){fprintf(trace,"dna_close floor=387 result=%d\n",puzzle);fflush(trace);}
             if(puzzle<0)goto story_failed;
             if(!c3_field_story_dna_result(&story,puzzle,story_error))goto story_failed;
             previous=c3_n3ds_active_time_us(); /* puzzle time must not advance the field */
@@ -1416,8 +1414,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                     if(!pda_audio_ready)pda_audio_ready=c3_pda_audio_open("sdmc:/3ds/Colosseum3DS",audio_error,sizeof audio_error);
                     int playing=pda_audio_ready&&c3_pda_audio_preview(tone,audio_error,sizeof audio_error);
                     if(!playing)mail_alert.tone_playing=0; /* missing ringtones: the envelope still blinks */
-                    if(trace){fprintf(trace,"mail_alert start=%lu tone=%u sound=%d reason=%s
-",(unsigned long)mail_alert.started,tone,playing,audio_error);fflush(trace);}
+                    if(trace){fprintf(trace,"mail_alert start=%lu tone=%u sound=%d reason=%s\n",(unsigned long)mail_alert.started,tone,playing,audio_error);fflush(trace);}
                 }
             }
 #ifdef C3_FINAL_EVENT_PROBE
@@ -1779,8 +1776,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
             if((int)ingame->mail_alert!=was)dirty=1;
             if(!mail_alert.active){
                 if(page==PAUSE_CLOSED&&pda_audio_ready){c3_pda_audio_close();pda_audio_ready=0;}
-                if(trace){fprintf(trace,"mail_alert end=%lu frames=%lu
-",(unsigned long)mail_alert.started,(unsigned long)mail_alert.frames);fflush(trace);}
+                if(trace){fprintf(trace,"mail_alert end=%lu frames=%lu\n",(unsigned long)mail_alert.started,(unsigned long)mail_alert.frames);fflush(trace);}
             }
         }
         if(dirty||input.pressed||now>=next_console){
