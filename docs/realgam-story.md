@@ -70,6 +70,23 @@ decode; three contain non-ASCII glyphs.
   prompts). Floor-profile pack names reach floor 2 (`shop`). The 0x76 arrival
   is the whole final event, so an arrival may take up to an hour of frames.
 
+### Azahar run of the final segment
+
+`private/evidence/final-run/` (roundtrip probe, `build-3ds-rt`): the route-written
+`realgam-2-tower-2f.gci` loaded unchanged (`continue`: floor 0x75, previous 0x7B,
+entrance 0; no warp), probe route `75 1; 7c p0; 7c 2; 75 t2; stop 2`. Every battle
+was **played** by the 3D battle autopilot and won: 430 Rugen (2F_2), then on 0x76
+432 Jomas, 434 Delan, 436 Nella, 438 Ston, 440 Nascour, 442 Evice. The 0x76 scripts
+then linked to 0x39F: `movie_end name=staffroll result=0 displayed=4891 skipped=358
+elapsed_us=175175060` (5,250-frame stream; the THP has no audio track and DSP
+firmware is absent on this emulator), prompt 0x444C answered Yes, `saved=1`, return
+to floor 2 entrance 1 with fade 05960008, and the Outskirt shop rendered with control.
+47 dialogue pages on 0x76 were captured. Run time 21.6 min.
+
+`private/evidence/clear-continue/` (`build-3ds-cc`): a fresh Azahar process loads the
+clear card that run wrote: floor 2, previous 1, entrance 1, `0x476=1`, `0x478=1`,
+control and a frame at 90.
+
 Run (private inputs; boot directory with the `f%03x` and Outskirt packs,
 `staffroll.c3s`, `pda.c3pd`, `newgame.c3g`):
 
