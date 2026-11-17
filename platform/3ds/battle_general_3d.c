@@ -258,7 +258,6 @@ static int run(const C3BattlePack *pack, C3GeneralBattle *b, C3BattleLinkHooks *
                 (unsigned long)b->turn, (unsigned long)b->event_count, (int)b->outcome); fflush(trace); }
             for (uint32_t k = 0; k < b->event_count; ++k) if (b->events[k].hyper) {
                 if (trace) { fprintf(trace, "general_battle_hyper turn=%lu event=%lu text=\"%s\"\n", (unsigned long)b->turn, (unsigned long)k, b->events[k].text); fflush(trace); }
-                if (!hyper_shot_at) hyper_shot_at = frames + 150u + 70u * k;
             }
             ui.page = C3_GUI_EVENTS; c3_general_view_restart(&view, b); count = 0; dirty = 1;
         }
@@ -278,6 +277,8 @@ static int run(const C3BattlePack *pack, C3GeneralBattle *b, C3BattleLinkHooks *
         if (dirty) {
             c3_general_ui_draw(pack, b, &ui, shown < b->event_count ? &b->events[shown] : NULL);
             drawn_page = ui.page; dirty = 0;
+            /* probe: capture the Hyper Mode entry while its message is up */
+            if (autoplay && !hyper_shot_at && shown < b->event_count && b->events[shown].hyper) hyper_shot_at = frames + 20u;
         }
         C3StageBattleHud hud = {0};
         if (c3_stage_renderer_set_battle_hud(&hud, error, sizeof error) != C3_RENDER_OK) goto done;
@@ -340,7 +341,11 @@ int c3_battle_general_3d_probe_run(uint32_t encounter)
     if (ok && c3_battle_pack_shadow(&pack, 1, &shadow_row)) {
         uint8_t *r = party[0];
         r[0xd8] = 0; r[0xd9] = 1;
-        uint32_t dp = (uint32_t)shadow_row.gauge * 100u;
+        /* 70% of the gauge (dark level 2) and nature 0, so Shadow Rush
+         * enters Hyper Mode by the nature row's level-2 chance. */
+        uint32_t dp = (uint32_t)shadow_row.gauge * 70u;
+        uint32_t pid = (uint32_t)r[4] << 24 | (uint32_t)r[5] << 16 | (uint32_t)r[6] << 8 | r[7];
+        pid -= pid % 25u; r[4] = (uint8_t)(pid >> 24); r[5] = (uint8_t)(pid >> 16); r[6] = (uint8_t)(pid >> 8); r[7] = (uint8_t)pid;
         r[0xdc] = (uint8_t)(dp >> 24); r[0xdd] = (uint8_t)(dp >> 16); r[0xde] = (uint8_t)(dp >> 8); r[0xdf] = (uint8_t)dp;
         for (unsigned k = 0; k < 4; ++k) { r[0x78 + 4 * k] = 0x01; r[0x79 + 4 * k] = 0x64; r[0x7a + 4 * k] = 5; r[0x7b + 4 * k] = 0; }
         if (trace) { fprintf(trace, "battle_rules_probe shadow_lead species=%u gauge=%lu nature=%lu\n", (unsigned)(r[0] << 8 | r[1]), (unsigned long)dp,

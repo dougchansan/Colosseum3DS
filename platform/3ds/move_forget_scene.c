@@ -127,9 +127,10 @@ int c3_move_forget_scene_prompt(void *context, const C3BattlePack *pack,
                     c3_ui_footer(ui, f.hm_refused ? "An HM move can't be forgotten." : "A: forget  B: cancel");
                 } else {
                     c3_ui_header(ui, "MOVES", nickname);
-                    c3_ui_panel(ui, 12, 60, 296, 120);
-                    c3_ui_text(ui, 22, 70, 276, 7, text, C3_UI_WHITE);
-                    if (f.step == C3_MF_ASK_FORGET || f.step == C3_MF_ASK_GIVE_UP) c3_ui_choices(ui, yes);
+                    c3_ui_panel(ui, 12, 46, 296, 168);
+                    c3_ui_text(ui, 22, 52, 276, 9, text, C3_UI_WHITE);
+                    if (f.step == C3_MF_ASK_FORGET || f.step == C3_MF_ASK_GIVE_UP)
+                        c3_ui_footer(ui, yes ? "> YES     NO      A: choose" : "  YES   > NO      A: choose");
                     else c3_ui_footer(ui, "A: next");
                 }
                 c3_bottom_screen_present();
