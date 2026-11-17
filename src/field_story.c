@@ -1860,7 +1860,11 @@ int c3_field_story_load_treasure(C3FieldStory *story,const char *path,char *erro
         r->index=(uint32_t)(row[0]|row[1]<<8);r->type=(row[2]>>2)&7u;r->kind=(row[2]>>5)&7u;r->count=row[3];
         int16_t rotation=(int16_t)(row[6]|row[7]<<8);
         r->taken_flag=(uint32_t)(row[8]|row[9]<<8);r->hide_flag=(uint32_t)(row[10]|row[11]<<8);r->item=le32_at(row+12);
-        for(unsigned k=0;k<3;++k)r->position[k]=lef32_at(row+16+4*k);
+        /* Rows hold source units; the hero and map are in field units. */
+        for(unsigned k=0;k<3;++k)r->position[k]=lef32_at(row+16+4*k)*s->map->scale;
+        /* A treasure is a person (floorEventInitTresure -> peopleOpen), so it
+         * stands on the ground found from its row position (fn_8018E9B4). */
+        {float ground;if(c3_field_ground(s->map,r->position,&ground))r->position[1]=ground;}
         r->yaw=(float)rotation*PI/180.0f;
         if(r->index<512&&treasure_session[r->index].changed){r->item=treasure_session[r->index].item;r->count=treasure_session[r->index].count;}
         s->treasure_display[i]=-1;
