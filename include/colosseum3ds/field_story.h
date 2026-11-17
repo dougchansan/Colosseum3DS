@@ -36,6 +36,7 @@ typedef struct C3FieldStoryView {
     uint32_t name_entry; /* native 16 mode + 1 while the scene must collect a name */
     uint32_t shop;       /* native 19 shop number + 1 while the scene shows the shop */
     uint32_t menu_floor; /* native 62 menu floor (0x391 PC box ...) while the scene shows it */
+    uint16_t dna_species[3]; /* native CC: the discs' species while menu_floor is 0x387 */
     uint32_t unported_menu; /* last native whose menu step is not ported (took the decline branch) */
     int relive_pick;        /* native C2 waits for a party choice (c3_field_story_relive_pick) */
     int item_menu;          /* native D0 waits while the scene shows the pause menu's Items */
@@ -81,6 +82,13 @@ void c3_field_story_enable_shop(C3FieldStory *story,int enabled);
  * once (recorded as not ported). */
 void c3_field_story_enable_menu_floor(C3FieldStory *story,uint32_t floor,int enabled);
 int c3_field_story_menu_floor_done(C3FieldStory *story,char *error);
+/* Native CC (fn_801C8688) checks three DNA discs against the species grid
+ * and pushes floor 0x387, the disc puzzle. With 0x387 enabled as a menu
+ * floor the script waits with view.menu_floor = 0x387 and view.dna_species
+ * set until dna_result reports the puzzle's retail result (0 matched,
+ * 1 cancelled, 2 invalid); CC then returns 1 only for 0. Not enabled, the
+ * puzzle is recorded as solved (temporary, as before). */
+int c3_field_story_dna_result(C3FieldStory *story,int result,char *error);
 /* An original message (field, common or names group) as plain text, for
  * the scene's menus; name answers value controls 32/36. 0 when absent. */
 int c3_field_story_text(C3FieldStory *story,uint32_t id,const char *name,char *out,size_t capacity);

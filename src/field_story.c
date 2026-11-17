@@ -920,20 +920,30 @@ static int run_native(Impl *s,RunTask *t,char *error)
         log_line(s,"story_save_menu status=unported_not_saved");value=0;break;
     /* fn_801C8688(item, item, item): the three DNA disc items (0x200-0x211,
      * each pair one species) must all name species of the 3x3 grid
-     * lbl_8026F488; then gbaConvCheckIds pushes floor 0x387 (the disc
-     * puzzle) and returns its result; 1 when that result is 0. Floor 0x387
-     * is not ported here (realgam lane): the puzzle is taken as solved and
-     * recorded, the way battles are skipped as wins. */
+     * lbl_8026F488 (gbaConvCheckIds; result 2 otherwise, no floor push).
+     * Then fn_800FF730(0x387) pushes the disc puzzle floor and CC returns 1
+     * when its result (fn_80087C64) is 0. The scene runs floor 0x387 when it
+     * enables that menu floor; otherwise the puzzle is taken as solved and
+     * recorded, the way unported battles are skipped as wins. */
     case 0xcc:{
         static const uint16_t grid[9]={0xb9,0xc8,0xf4,0x11f,0x9c,0xf3,0x99,0xf5,0x9f};
-        int ok=1;
+        uint16_t species[3];int ok=1;
         for(unsigned i=0;i<3;++i){unsigned sp=disc_species(a[i]&0xffffu);int found=0;
             for(unsigned j=0;j<9;++j){found|=sp&&grid[j]==sp;}
-            ok&=found;}
-        if(ok)log_line(s,"story_menu_floor floor=387 status=unported_solved temporary=1 discs=%lx,%lx,%lx",
-                       (unsigned long)a[0],(unsigned long)a[1],(unsigned long)a[2]);
-        else log_line(s,"story_dna_check discs=%lx,%lx,%lx result=2",(unsigned long)a[0],(unsigned long)a[1],(unsigned long)a[2]);
-        value=ok;break;}
+            species[i]=(uint16_t)sp;ok&=found;}
+        if(!ok){log_line(s,"story_dna_check discs=%lx,%lx,%lx result=2",(unsigned long)a[0],(unsigned long)a[1],(unsigned long)a[2]);
+            value=0;break;}
+        unsigned i;
+        for(i=0;i<s->menu_floor_count&&s->menu_floors[i]!=0x387u;++i){}
+        if(i<s->menu_floor_count){
+            s->view.menu_floor=0x387;memcpy(s->view.dna_species,species,sizeof species);
+            log_line(s,"story_menu_floor floor=387 status=waiting_scene discs=%lx,%lx,%lx species=%x,%x,%x",
+                     (unsigned long)a[0],(unsigned long)a[1],(unsigned long)a[2],species[0],species[1],species[2]);
+            t->wait=W_MENU_FLOOR;return 1;
+        }
+        log_line(s,"story_menu_floor floor=387 status=unported_solved temporary=1 discs=%lx,%lx,%lx",
+                 (unsigned long)a[0],(unsigned long)a[1],(unsigned long)a[2]);
+        value=1;break;}
     /* fn_801C8834(item): on floor 0x43 the disc's Pokemon turns as a
      * hologram (menu 0xD8, fn_800756C8); the disc becomes its used twin
      * (item + 1). Returns the species. */
@@ -1810,10 +1820,24 @@ void c3_field_story_enable_menu_floor(C3FieldStory *story,uint32_t floor,int ena
     if(enabled&&i==s->menu_floor_count&&i<8)s->menu_floors[s->menu_floor_count++]=floor;
     if(!enabled&&i<s->menu_floor_count)s->menu_floors[i]=s->menu_floors[--s->menu_floor_count];
 }
+int c3_field_story_dna_result(C3FieldStory *story,int result,char *error)
+{
+    Impl *s=story?story->impl:NULL;
+    if(!s||result<0||result>2)return fail(error,"Invalid DNA puzzle result");
+    if(s->view.menu_floor!=0x387u)return fail(error,"No DNA puzzle is waiting");
+    for(unsigned i=0;i<C3_STORY_TASKS;++i){RunTask *t=s->tasks+i;
+        if(!t->key||t->wait!=W_MENU_FLOOR)continue;
+        log_line(s,"story_menu_floor floor=387 status=returned result=%d native_cc=%d",result,result==0);
+        s->view.menu_floor=0;memset(s->view.dna_species,0,sizeof s->view.dna_species);
+        return resume(s,t,result==0,error);
+    }
+    return fail(error,"No DNA puzzle is waiting");
+}
 int c3_field_story_menu_floor_done(C3FieldStory *story,char *error)
 {
     Impl *s=story?story->impl:NULL;
     if(!s)return fail(error,"Invalid menu floor result");
+    if(s->view.menu_floor==0x387u)return fail(error,"The DNA puzzle returns through c3_field_story_dna_result");
     for(unsigned i=0;i<C3_STORY_TASKS;++i){RunTask *t=s->tasks+i;
         if(!t->key||t->wait!=W_MENU_FLOOR)continue;
         log_line(s,"story_menu_floor floor=%03lx status=returned",(unsigned long)s->view.menu_floor);
