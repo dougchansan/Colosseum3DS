@@ -94,8 +94,9 @@ WORLD_BATTLE_SOURCES = src/inventory.c src/pda.c src/battle_general.c src/battle
 build/test_world_story: tests/test_world_story.c $(FIELD_STORY_SOURCES) $(WORLD_BATTLE_SOURCES) build/battle_rng_source.h $(HEADERS) $(UPSTREAM)
 	$(CC) $(CPPFLAGS) -Ibuild -Isrc $(CFLAGS) tests/test_world_story.c $(FIELD_STORY_SOURCES) $(WORLD_BATTLE_SOURCES) $(LDFLAGS) -lm -o $@
 
-build/test_story_route: tests/test_story_route.c src/pda.c src/inventory.c $(FIELD_STORY_SOURCES) $(HEADERS)
-	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_story_route.c src/pda.c src/inventory.c $(FIELD_STORY_SOURCES) $(LDFLAGS) -lm -o $@
+ROUTE_SOURCES = src/pda.c src/inventory.c src/floor_profile.c src/world_map.c src/ending.c src/movie.c
+build/test_story_route: tests/test_story_route.c $(ROUTE_SOURCES) $(FIELD_STORY_SOURCES) $(HEADERS) vendor/colosseum/src/rel/worldmap_menu_rel/worldmap_menu_rel.c
+	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_story_route.c $(ROUTE_SOURCES) $(FIELD_STORY_SOURCES) $(LDFLAGS) -lm -o $@
 build/test_story_crawl: tests/test_story_crawl.c src/inventory.c src/pda.c $(FIELD_STORY_SOURCES) $(HEADERS) $(UPSTREAM)
 	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_story_crawl.c src/inventory.c src/pda.c $(FIELD_STORY_SOURCES) $(LDFLAGS) -lm -o $@
 
