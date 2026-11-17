@@ -22,7 +22,9 @@
  * Route lines (# starts a comment):
  *   clear <flag> [flag ...]   write 0 (the chapter checkpoint)
  *   set <flag> <value>        write a flag (recorded as a shortcut)
- *   floor <floor> <entrance>  load a floor at an entrance and run its arrival
+ *   floor <floor> <entrance> [previous]
+ *                             load a floor at an entrance and run its arrival
+ *                             (previous floor: the loaded one, else the world map)
  *   talk <person index>       stand in front of the person and press A
  *   touch <surface>           touch a surface (event kind 2)
  *   door <surface>            cross a surface (event kind 1); a floor change follows
@@ -43,7 +45,9 @@
  *                             named by C3_ROUTE_PDA (tools/prepare_pda.py)
  *   inspect <surface>         press A at a surface (event kind 3): stand half a
  *                             unit in front of its first enabled triangle
- *   press <x> <z> <yaw>       press A from a source position facing yaw degrees
+ *   press <x> <z> <yaw> [y]   press A from a source position facing yaw degrees,
+ *                             standing on the walkable ground found from source
+ *                             height y (default: the highest ground there)
  *   use <item>                when a script next opens the pause menu at Items
  *                             (native D0), use this key item (0 closes the menu)
  *                             (talk scripts that check where the hero stands)
@@ -168,6 +172,9 @@ static int load(uint32_t floor, uint32_t entrance, uint32_t previous)
     if (!c3_field_story_load(&scene->story, file, &game, &scene->map, &scene->area, &scene->hero, &scene->wes,
                              scene->models, &scene->camera, trace, error)) return 0;
     scene->loaded = 1;
+    /* The floor's treasure rows (prepare_story.py .c3r), if it has any. */
+    snprintf(name, sizeof name, "f%03lx.c3r", (unsigned long)floor); path(file, root, name);
+    if (!c3_field_story_load_treasure(&scene->story, file, error)) return 0;
     c3_field_story_set_floor_support(&scene->story, any_floor);
     c3_field_story_enable_name_entry(&scene->story, 1);
     c3_field_story_set_item_service(&scene->story, receive, NULL);
@@ -317,8 +324,10 @@ static int step(char *line)
         return 1;
     }
     if (!strcmp(word, "floor")) {
-        CHECK(sscanf(line, "%li %li", (long *)&a, (long *)&b) == 2);
-        return load((uint32_t)a, (uint32_t)b, scene->loaded ? scene->floor : 0x38e);
+        unsigned long previous = 0;
+        int fields = sscanf(line, "%li %li %li", (long *)&a, (long *)&b, (long *)&previous);
+        CHECK(fields >= 2);
+        return load((uint32_t)a, (uint32_t)b, fields == 3 ? (uint32_t)previous : scene->loaded ? scene->floor : 0x38e);
     }
     if (!scene->loaded) { snprintf(error, sizeof error, "no floor is loaded"); return 0; }
     if (!strcmp(word, "pad")) {
@@ -384,10 +393,15 @@ static int step(char *line)
     }
     if (!strcmp(word, "use")) { CHECK(sscanf(line, "%li", (long *)&a) == 1); use_item = (uint32_t)a; return 1; }
     if (!strcmp(word, "press")) {
-        float yaw;
-        CHECK(sscanf(line, "%f %f %f", &x, &z, &yaw) == 3);
+        float yaw, height = INFINITY;
+        CHECK(sscanf(line, "%f %f %f %f", &x, &z, &yaw, &height) >= 3);
         scene->hero.position[0] = x * scene->map.scale; scene->hero.position[2] = z * scene->map.scale;
         scene->hero.yaw = yaw * 3.14159265f / 180.0f;
+        /* Stand on the ground there, found from the given source height
+         * (default: the highest); the hero keeps the entrance's height
+         * otherwise, e.g. at the top of a stairway. */
+        float ground, probe[3] = { scene->hero.position[0], height * scene->map.scale, scene->hero.position[2] };
+        if (c3_field_ground(&scene->map, probe, &ground)) scene->hero.position[1] = ground;
         memcpy(scene->hero.proposed, scene->hero.position, sizeof scene->hero.position);
         if (!c3_field_story_interact(&scene->story, error)) return 0;
         return run(30000, 1);

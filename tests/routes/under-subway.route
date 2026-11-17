@@ -1,0 +1,34 @@
+# The Under from the Rob chapter save (pokemon-colosseum.3641.gci, Agate
+# Pokemon Center, Under opening flags 0x43E-0x446 set) through Venus, the
+# subway trainers, the Subway Key and the train ride to the Shadow Pokemon
+# Lab and back. Played by tests/test_story_route.c; battles are reported as
+# result 2 (win). No flag is written by this route: every expect is set by an
+# original script.
+#
+# Venus's house (0x37), arriving from the Under (0x2F).
+floor 0x37 0 0x2f
+talk 3
+expect 0x44a 1
+expect 0x44c 1
+# Subway B1 and B2 (0x39, 0x3A): four trainers open the way down.
+floor 0x39 0
+floor 0x3a 0
+talk 1
+talk 2
+talk 3
+talk 4
+expect 0x44e 1
+# Subway B3 (0x3C): Venus's sequence clears the roadblock.
+floor 0x3c 0
+expect 0x44f 1
+# Train (0x3D): its door goes back to B3 while the train is on the Under side.
+floor 0x3d 0
+expect 0x450 1
+door 0
+expect_floor 0x3c
+expect 0xafb 1
+# Back on B2: the Subway Key (item 0x1FC) is treasure row 45, shown after
+# 0xAFB; picking it up sets 0xC4.
+floor 0x3a 0
+press -76.57 -50.67 180 0
+expect 0xc4 1
