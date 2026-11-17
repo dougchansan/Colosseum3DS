@@ -26,7 +26,7 @@ static void home(C3IngameMenu *m,C3GameState *s)
 static int snapshot(C3IngameMenu *m,C3GameState *s,const C3UiAssets *assets,const char *directory,const char *name)
 {
     uint8_t *pixels=calloc(320u*240u,3u);if(!pixels)return 0;C3BottomUi ui;
-    c3_ui_begin(&ui,pixels,0,assets,NULL);c3_ingame_draw_to(m,s,&ui);
+    c3_ui_begin(&ui,pixels,0,assets,NULL);c3_ingame_draw_to(m,s,&ui);c3_ingame_draw_mail_alert(m,&ui);
     char path[1024];snprintf(path,sizeof path,"%s/%s.ppm",directory,name);FILE *f=fopen(path,"wb");if(!f){free(pixels);return 0;}
     fprintf(f,"P6\n320 240\n255\n");int ok=fwrite(pixels,3u,320u*240u,f)==320u*240u;if(fclose(f))ok=0;free(pixels);return ok;
 }

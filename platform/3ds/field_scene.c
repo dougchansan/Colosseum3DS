@@ -1795,11 +1795,17 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                 ingame->idle=1;ingame->page=C3_GAME_HUB;c3_ingame_draw_to(ingame,state,bottom);
             }
             else c3_field_ui_draw_to(bottom,&summary,phase,page,selection,yes,message,view,&ui_pager);
+            /* The new-mail envelope over the field's bottom views, as the
+             * original draws it over the scene; not over a modal menu. */
+            int mail_drawn=0;
+            if(ingame->mail_alert&&!naming&&!shopping&&!pc_open&&!relive_pick.open&&!item_pick.open&&hub_menu_ready(ingame,state)>0)
+                mail_drawn=c3_ingame_draw_mail_alert(ingame,bottom);
+            (void)mail_drawn; /* read by the round-trip probe */
             c3_bottom_screen_present();dirty=0;next_console=now+UINT64_C(100000);
 #ifdef C3_ROUNDTRIP_PROBE
             /* Probe: the hub with the new-mail envelope, once per alert. */
             {static uint32_t mail_shot;
-             if(ingame->mail_alert&&mail_shot!=mail_alert.started){
+             if(mail_drawn&&mail_shot!=mail_alert.started){
                 char shot[96];mkdir("sdmc:/3ds/Colosseum3DS/probe",0777);
                 snprintf(shot,sizeof shot,"sdmc:/3ds/Colosseum3DS/probe/mail_alert_%lu.bmp",(unsigned long)mail_alert.started);
                 int ok=c3_n3ds_capture_bottom(shot)==0;mail_shot=mail_alert.started;

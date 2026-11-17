@@ -39,6 +39,9 @@ typedef struct {
 void c3_ingame_init(C3IngameMenu *menu,const C3GameState *state);
 int c3_ingame_load(C3IngameMenu *menu,const char *path);
 void c3_ingame_close(C3IngameMenu *menu);
+/* The new-mail envelope over any bottom view while menu->mail_alert is set
+ * (needs the loaded P*DA pack). Returns 1 when drawn. */
+int c3_ingame_draw_mail_alert(C3IngameMenu *menu,C3BottomUi *ui);
 /* Borrowed assets enable source-identical host previews without file ownership. */
 void c3_ingame_set_assets(C3IngameMenu *menu,const C3PdaAssets *assets);
 C3IngameEvent c3_ingame_update(C3IngameMenu *menu,C3GameState *state,const C3N3dsInput *input,float seconds);
