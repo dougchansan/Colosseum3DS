@@ -19,7 +19,7 @@ enum { AI_ROWS = 2, CODES = 0x4D };
 static uint8_t *make_ai_pack(unsigned ai_id, int singles, unsigned switch_pct, size_t *size)
 {
     size_t n; uint8_t *base = make_pack(2, 50, &n);
-    size_t extra = 4 + 4 + AI_ROWS * 40 + 4 + CODES * 4;
+    size_t extra = 4 + 4 + AI_ROWS * 40 + 4 + CODES * 4 + 4 + 4 + 2; /* empty nature and filter sections */
     uint8_t *b = calloc(1, n + extra);
     memcpy(b, base, n); free(base);
     uint8_t *r = b + g32(b + 124);

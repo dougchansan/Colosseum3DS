@@ -20,6 +20,8 @@
 #define SHADOW_ROW 0x38u
 #define SIDE0_ROW 580u     /* id, count, trainer 52, kind 12, 6 records, 2 names */
 #define AI_ROW 40u         /* FightTrainerAiData */
+#define NATURE_ROW 40u     /* PokemonSeikakuData */
+#define SHADOW_RUSH 0x164u
 
 static uint16_t be16(const uint8_t *p){return (uint16_t)((unsigned)p[0]<<8|p[1]);}
 static uint32_t be32(const uint8_t *p){return (uint32_t)p[0]<<24|(uint32_t)p[1]<<16|(uint32_t)p[2]<<8|p[3];}
@@ -67,11 +69,18 @@ int c3_battle_pack_decode(C3BattlePack *out,const void *bytes,size_t size,char *
         k.ai_count=be32(p+at);k.ai_at=(uint32_t)at+4u;at+=4u+(uint64_t)k.ai_count*AI_ROW;
         if(k.ai_count>4096||at+4u>size)return fail(e,"Story-battle pack sections do not match its size.");
         k.ai_value_count=be32(p+at);k.ai_value_at=(uint32_t)at+4u;
-        if(k.ai_value_count>4096)return fail(e,"Story-battle pack sections do not match its size.");}
+        if(k.ai_value_count>4096)return fail(e,"Story-battle pack sections do not match its size.");
+        at=(uint64_t)k.ai_value_at+4u*(uint64_t)k.ai_value_count;
+        if(at+4u>size)return fail(e,"Story-battle pack sections do not match its size.");
+        k.nature_count=be32(p+at);k.nature_at=(uint32_t)at+4u;at+=4u+(uint64_t)k.nature_count*NATURE_ROW;
+        if(k.nature_count>64||at+4u>size)return fail(e,"Story-battle pack sections do not match its size.");
+        k.dp_filter_count=be32(p+at);k.dp_filter_at=(uint32_t)at+4u;
+        if(k.dp_filter_count>64)return fail(e,"Story-battle pack sections do not match its size.");}
     if(k.species_at!=HEADER+k.moves*MOVE_ROW||k.types_at!=k.species_at+k.species*SPECIES_ROW||
        k.growth_at!=k.types_at+k.types*TYPE_ROW||k.entries_at!=k.growth_at+k.growth*GROWTH_ROW||
        (uint64_t)k.names_at+(uint64_t)(k.species+k.moves+2u*k.encounters)*C3_GB_NAME+
-       (version>=2?SHADOW_ROWS*SHADOW_ROW:0u)+(version==3?12u+(uint64_t)k.side0_count*SIDE0_ROW+(uint64_t)k.ai_count*AI_ROW+4u*(uint64_t)k.ai_value_count:0u)!=size)
+       (version>=2?SHADOW_ROWS*SHADOW_ROW:0u)+(version==3?20u+(uint64_t)k.side0_count*SIDE0_ROW+(uint64_t)k.ai_count*AI_ROW+4u*(uint64_t)k.ai_value_count+
+        (uint64_t)k.nature_count*NATURE_ROW+k.dp_filter_count+2u:0u)!=size)
         return fail(e,"Story-battle pack sections do not match its size.");
     c3_save_codec_sha1(digest,p+HEADER,size-HEADER);
     if(memcmp(digest,p+72,20))return fail(e,"Story-battle pack digest mismatch.");
@@ -230,6 +239,8 @@ static int mon_from_party(const C3BattlePack *p,C3GeneralMon *m,const uint8_t *r
     m->max_hp=m->stats[0];
     if(!m->max_hp||m->hp>m->max_hp)return 0;
     m->status=status_from_record(be16(r+0x64));
+    if(m->shadow){C3ShadowInfo sh;m->dp=(int32_t)be32(r+0xdc);
+        m->dp_max=c3_battle_pack_shadow(p,be16(r+0xd8),&sh)?(int32_t)sh.gauge*100:0;}
     if(m->status==C3_GB_SLEEP)m->status_turns=2; /* the record's sleep counter is not identified */
     for(unsigned j=0;j<4;++j){uint16_t id=be16(r+0x78+4*j);
         if(id&&id<p->moves){m->moves[j]=id;m->pp[j]=r[0x7a+4*j];m->pp_max[j]=(uint8_t)move_pp(p,id,r[0x7b+4*j]);
@@ -288,6 +299,7 @@ static int next_healthy(const C3GeneralBattle *b,unsigned side,unsigned slot)
     }
     return -1;
 }
+static void sent_out(C3GeneralBattle *b,const C3BattlePack *p,unsigned side,unsigned index);
 int c3_general_battle_begin(C3GeneralBattle *out,const C3BattlePack *p,uint32_t id,
     const void *party_bytes,uint32_t seed,char *e)
 {
@@ -319,6 +331,7 @@ int c3_general_battle_begin(C3GeneralBattle *out,const C3BattlePack *p,uint32_t 
     if(b->active[0][0]==NO_MON){free(b);return fail(e,"The hero has no Pokemon able to battle.");}
     if(b->active[1][0]==NO_MON){free(b);return fail(e,"The opponent has no Pokemon.");}
     mark_faced(b);
+    for(unsigned a=0;a<b->active_count;++a)if(b->active[0][a]!=NO_MON)sent_out(b,p,0,b->active[0][a]);
     if(!c3_battle_rng_next16(&b->rng,&b->quick_claw_roll)){free(b);return fail(e,"Battle random-number failure.");}
     if(info.cpu_side0)say(b,C3_GB_EVENT_MESSAGE,255,255,0,"%s %s and %s %s are battling!",
         info.side0_title,info.side0_trainer,info.title,info.trainer);
@@ -529,6 +542,7 @@ static void award(const C3BattlePack *p,C3GeneralBattle *b,unsigned foe_index)
                 if(total+y>510u)y=total<510u?510u-total:0;
                 m->ev_gain[j]=(uint16_t)(m->ev_gain[j]+y);total+=y;}}
         if(m->level>=100)continue;
+        if(m->shadow&&m->dp_max>0&&c3_general_dark_level(m)<3)continue; /* fn_802232F4: discarded above 60% */
         m->exp+=gain;m->participated=1;
         say(b,C3_GB_EVENT_MESSAGE,255,255,0,"%s gained %lu EXP. Points!",m->name,(unsigned long)gain);
     }
@@ -543,7 +557,8 @@ static int damage(C3GeneralBattle *b,const C3BattlePack *p,unsigned a,unsigned d
     unsigned crit_rate=be16(mv+26)==E_HIGH_CRITICAL?8u:16u;
     /* doCriticalAttackFlag: colosseum and Mt. Battle kinds have none. */
     if(!b->link&&!b->info.critical)*critical=0;
-    else{if(!roll(b,crit_rate,&r))return 0;*critical=r==0;}
+    else{if(!roll(b,crit_rate,&r))return 0;*critical=r==0;
+        if(!*critical&&x->hyper&&id==SHADOW_RUSH){if(!roll(b,100,&r))return 0;*critical=r<90;}}
     int as=x->stages[special?2:0],ds=y->stages[special?3:1];
     if(*critical){if(as<0)as=0;if(ds>0)ds=0;}
     unsigned atk=staged(x->stats[special?3:1],as),def=staged(y->stats[special?4:2],ds);
@@ -567,7 +582,7 @@ static int damage(C3GeneralBattle *b,const C3BattlePack *p,unsigned a,unsigned d
     if(!roll(b,16,&r))return 0;
     v=v*(85u+r)/100u;
     if(!v)v=1;
-    (void)id;*out=v;return 1;
+    *out=v;return 1;
 }
 /* fn_8022B2CC on the move's range ID (+3): 0 and 1 one chosen Pokemon,
  * 3 a random foe, 4 both foes, 6 every other Pokemon, 2/5/7 the user or
@@ -588,6 +603,125 @@ static int targets_of(C3GeneralBattle *b,unsigned a,unsigned range,unsigned chos
     if(nf==1){list[0]=(uint8_t)foes[0];return 1;}
     if(!roll(b,nf,&r))return -1;
     list[0]=(uint8_t)foes[r];return 1;
+}
+/* ---- Shadow Pokemon: Hyper Mode ---------------------------------------------
+ * Only the hero's Shadow Pokemon, only when the fight kind allows it
+ * (FightKindData darkpokemonHypermodeFlag; fight_floor status 0x31), as
+ * fightOutPokemonIsGcHeroFightOutPokemon gates it. The nature row
+ * (PokemonSeikakuData) gives the chances by dark level:
+ *  - entry (fn_8022EDEC mode 0): a draw % 100 for every move such a Pokemon
+ *    uses while it is not asleep and not in Hyper Mode; under +0x18[level]
+ *    and the move is Shadow Rush: Hyper Mode (msg 0x771B);
+ *  - each action in Hyper Mode (mode 2): a draw % 256 == 0 ends it (0x771E);
+ *  - a move other than Shadow Rush in Hyper Mode (fn_8022A504): one draw
+ *    % 100 against the cumulative +0x0B (another move, 0x770C), +0x0C and
+ *    +0x0D (it ignores the order, 0x770D/0x770E), +0x0E (a 40-power hit on
+ *    itself, 0x770F), +0x0F (no action, 0x7710), +0x10 (item misuse: no held
+ *    item is used here, 0x7712), +0x11 (it returns to the trainer, here no
+ *    action); above them it obeys;
+ *  - Shadow Rush in Hyper Mode is a critical hit when the normal roll fails
+ *    and a draw % 100 < 90 (fight_seq.c);
+ *  - the end of turn reminds (mode 1, 0x771C);
+ *  - Call (fn_80212D6C): in Hyper Mode a draw % 100 < +0x1F[level] snaps it
+ *    out (0x7707: also wakes it, heart gauge filter 2); a failure (0x7708)
+ *    wakes a sleeper on a second draw % 100 under half that chance; out of
+ *    Hyper Mode Call wakes a sleeper (0x7706) or does nothing (0x771D/0x7709).
+ * Heart gauge (pokemonAddDpFormPokemonDpFilterId): filter 0 once per battle
+ * when the Pokemon is sent out, filter 2 on a successful Call, each the
+ * filter's DP (pack) x100 into +0xDC, never below 0. The nature's rate row
+ * (kake/waru) is not located in the pinned data: the drop uses 1/1. Hyper
+ * Mode itself is not written back to the record. */
+static const uint8_t *nature_row(const C3BattlePack *p,const C3GeneralMon *m)
+{return p->nature_count&&m->nature<p->nature_count?p->bytes+p->nature_at+m->nature*NATURE_ROW:NULL;}
+unsigned c3_general_dark_level(const C3GeneralMon *m)
+{
+    if(!m||!m->shadow||m->dp_max<=0)return 7;
+    int64_t dp=m->dp<0?0:m->dp,max=m->dp_max;
+    if(dp*100>=max*100)return 0;
+    if(dp*100>=max*80)return 1;
+    if(dp*100>=max*60)return 2;
+    if(dp*100>=max*40)return 3;
+    if(dp*100>=max*20)return 4;
+    if(dp>0)return 5;
+    return 6;
+}
+static int hyper_capable(const C3GeneralBattle *b,const C3BattlePack *p,unsigned pos,const C3GeneralMon *m)
+{return m&&!b->link&&b->info.hyper_mode&&pos/2==0&&!b->info.cpu_side0&&m->shadow&&m->dp_max>0&&nature_row(p,m);}
+static void gauge_filter(const C3BattlePack *p,C3GeneralMon *m,unsigned filter)
+{
+    if(filter>=p->dp_filter_count)return;
+    int32_t v=(int8_t)p->bytes[p->dp_filter_at+filter]*100;
+    m->dp=m->dp+v<0?0:m->dp+v;
+}
+/* fn_8022E6F0: the send-out drop, once per battle (flag 0xD1). */
+static void sent_out(C3GeneralBattle *b,const C3BattlePack *p,unsigned side,unsigned index)
+{
+    C3GeneralMon *m=&b->party[side][index];
+    if(m->gauge_dropped||!hyper_capable(b,p,side*2,m))return;
+    m->gauge_dropped=1;gauge_filter(p,m,0);
+}
+int c3_general_battle_can_call(const C3GeneralBattle *b,unsigned pos)
+{return b&&b->magic==MAGIC&&!b->link&&!b->info.cpu_side0&&pos<2&&alive((C3GeneralBattle *)b,pos);}
+static int call_pokemon(C3GeneralBattle *b,const C3BattlePack *p,unsigned a)
+{
+    C3GeneralMon *x=at(b,a);unsigned r;
+    if(!x||!x->hp)return 1;
+    if(!say(b,C3_GB_EVENT_MESSAGE,a,a,0,"You called out to %s!",x->name))return 0;
+    if(x->hyper){
+        const uint8_t *n=nature_row(p,x);unsigned lv=c3_general_dark_level(x),chance=n&&lv<7?n[0x1F+lv]:0;
+        if(!roll(b,100,&r))return 0;
+        if(r<chance){x->hyper=0;if(x->status==C3_GB_SLEEP)x->status=0;gauge_filter(p,x,2);
+            return say(b,C3_GB_EVENT_MESSAGE,a,a,0,"%s came to its senses!",x->name);}
+        if(!say(b,C3_GB_EVENT_MESSAGE,a,a,0,"%s didn't respond!",x->name))return 0;
+        if(x->status==C3_GB_SLEEP){if(!roll(b,100,&r))return 0;
+            if(r<chance/2){x->status=0;return say(b,C3_GB_EVENT_MESSAGE,a,a,0,"%s woke up!",x->name);}}
+        return 1;
+    }
+    if(x->status==C3_GB_SLEEP){x->status=0;return say(b,C3_GB_EVENT_MESSAGE,a,a,0,"%s woke up!",x->name);}
+    return say(b,C3_GB_EVENT_MESSAGE,a,a,0,x->shadow?"%s stared back coldly.":"%s turned to look at you.",x->name);
+}
+/* Returns 1 to go on with *c (possibly another move), 2 when the action is
+ * spent, 0 on an RNG failure. */
+static int hyper_before_move(C3GeneralBattle *b,const C3BattlePack *p,unsigned a,C3GeneralCommand *c)
+{
+    C3GeneralMon *x=at(b,a);unsigned r;
+    if(!hyper_capable(b,p,a,x))return 1;
+    const uint8_t *n=nature_row(p,x);unsigned lv=c3_general_dark_level(x);
+    uint16_t id=c->slot<4?x->moves[c->slot]:STRUGGLE;
+    if(!x->hyper){
+        if(x->status==C3_GB_SLEEP)return 1;
+        if(!roll(b,100,&r))return 0;
+        if(lv<7&&r<n[0x18+lv]&&id==SHADOW_RUSH){x->hyper=1;
+            unsigned before=b->event_count;
+            if(!say(b,C3_GB_EVENT_MESSAGE,a,a,0,"%s went into Hyper Mode!",x->name))return 0;
+            if(b->event_count>before)b->events[before].hyper=1;}
+        return 1;
+    }
+    if(!roll(b,256,&r))return 0;
+    if(!r){x->hyper=0;if(x->status==C3_GB_SLEEP)x->status=0;
+        if(!say(b,C3_GB_EVENT_MESSAGE,a,a,0,"%s came to its senses!",x->name))return 0;}
+    if(!x->hyper||id==SHADOW_RUSH)return 1;
+    if(!roll(b,100,&r))return 0;
+    unsigned cum=n[0x0B];
+    if(r<cum){
+        uint8_t slots[4];unsigned k=0;
+        for(unsigned i=0;i<4;++i){uint16_t mid=x->moves[i];if(mid&&x->pp[i]&&mid!=0x165&&mid!=0x163)slots[k++]=(uint8_t)i;}
+        if(k){uint16_t v;if(!c3_battle_rng_next16(&b->rng,&v))return 0;
+            c->slot=slots[v%k];
+            return say(b,C3_GB_EVENT_MESSAGE,a,a,0,"%s won't listen! It acted on its own!",x->name)?1:0;}
+        return say(b,C3_GB_EVENT_MESSAGE,a,a,0,"%s is lost in thought...",x->name)?2:0;
+    }
+    if(r<(cum+=n[0x0C])||r<(cum+=n[0x0D]))
+        return say(b,C3_GB_EVENT_MESSAGE,a,a,0,"%s is ignoring your orders!",x->name)?2:0;
+    if(r<(cum+=n[0x0E])){
+        unsigned atk=staged(x->stats[1],x->stages[0]),def=staged(x->stats[2],x->stages[1]);
+        uint32_t v=atk*40u*(2u*x->level/5u+2u)/(def?def:1)/50u;if(!v)v=1;v+=2u;
+        return say(b,C3_GB_EVENT_MESSAGE,a,a,0,"%s hit itself in its rage!",x->name)&&hurt(b,a,v,0)?2:0;
+    }
+    if(r<(cum+=n[0x0F]))return say(b,C3_GB_EVENT_MESSAGE,a,a,0,"%s is lost in thought...",x->name)?2:0;
+    if(r<(cum+=n[0x10]))return say(b,C3_GB_EVENT_MESSAGE,a,a,0,"%s tried to use its item, but couldn't!",x->name)?2:0;
+    if(r<(cum+=n[0x11]))return say(b,C3_GB_EVENT_MESSAGE,a,a,0,"%s wants to return to you!",x->name)?2:0;
+    return 1;
 }
 static int use_move(C3GeneralBattle *b,const C3BattlePack *p,unsigned a,C3GeneralCommand c,const uint8_t acted[4])
 {
@@ -617,6 +751,7 @@ static int use_move(C3GeneralBattle *b,const C3BattlePack *p,unsigned a,C3Genera
         if(!roll(b,4,&r))return 0;
         if(!r)return say(b,C3_GB_EVENT_MESSAGE,a,a,0,"%s is paralyzed! It can't move!",who(b,a));
     }
+    {int h=hyper_before_move(b,p,a,&c);if(!h)return 0;if(h==2)return 1;}
     uint16_t id=c.slot==4?STRUGGLE:x->moves[c.slot];
     const uint8_t *mv=move_row(p,id);
     if(!mv)return 0;
@@ -1083,6 +1218,7 @@ static int command_valid(C3GeneralBattle *b,const C3BattlePack *p,unsigned pos,C
         return 1;
     }
     if(c.kind==2)return snag_allowed(b,p,pos,c.slot,c.target);
+    if(c.kind==3)return c3_general_battle_can_call(b,pos);
     if(c.kind!=0||c.target>=4)return 0;
     uint8_t mask=c3_general_battle_legal_moves(b,p,pos);
     return c.slot==4?!mask:c.slot<4&&(mask>>c.slot&1u);
@@ -1095,7 +1231,7 @@ static int replace_fainted(const C3BattlePack *p,C3GeneralBattle *b)
         if(s==1&&i!=NO_MON&&!b->link&&!b->caught[i])award(p,b,i);
         int n=next_healthy(b,s,a);
         b->active[s][a]=n<0?NO_MON:(uint8_t)n;
-        if(n>=0)announce_send(b,s,a,&b->party[s][n]);
+        if(n>=0){announce_send(b,s,a,&b->party[s][n]);sent_out(b,p,s,(unsigned)n);}
     }
     mark_faced(b);return 1;
 }
@@ -1121,6 +1257,7 @@ static int end_of_turn(C3GeneralBattle *b,const C3BattlePack *p)
         else if(m->status==C3_GB_TOXIC){if(m->toxic_count<15)++m->toxic_count;
             if(!say(b,C3_GB_EVENT_MESSAGE,pos,pos,0,"%s is hurt by poison!",who(b,pos))||
                !hurt(b,pos,(m->max_hp/16u?m->max_hp/16u:1u)*m->toxic_count,0))return 0;}
+        if(m->hp&&m->hyper&&!say(b,C3_GB_EVENT_MESSAGE,pos,pos,0,"%s is in Hyper Mode!",m->name))return 0;
     }
     return c3_battle_rng_next16(&b->rng,&b->quick_claw_roll);
 }
@@ -1198,9 +1335,10 @@ static int turn_core(C3GeneralBattle *out,const C3BattlePack *p,const C3GeneralC
         if(cmd[pos].kind==1){
             say(b,C3_GB_EVENT_SWITCH,pos,255,0,"%s, come back!",who(b,pos));
             C3GeneralMon *old=at(b,pos);if(old){memset(old->stages,0,sizeof old->stages);old->confusion=0;}
-            b->active[pos/2][pos%2]=cmd[pos].slot;mark_faced(b);
+            b->active[pos/2][pos%2]=cmd[pos].slot;mark_faced(b);sent_out(b,p,pos/2,cmd[pos].slot);
             announce_send(b,pos/2,pos%2,&b->party[pos/2][cmd[pos].slot]);
         }else if(cmd[pos].kind==2){if(!throw_ball(b,p,pos,cmd[pos]))goto failed;}
+        else if(cmd[pos].kind==3){if(!call_pokemon(b,p,pos))goto failed;}
         else if(!use_move(b,p,pos,cmd[pos],acted))goto failed;
         acted[pos]=1;
         check_outcome(b);if(b->outcome!=C3_GB_RUNNING)break;
@@ -1343,6 +1481,7 @@ int c3_general_battle_writeback(const C3GeneralBattle *b,const C3BattlePack *p,
         {unsigned id=m->hp?status_to_record(m->status):0;
          if(id!=be16(r+0x64)){memset(r+0x64,0,7);memset(r+0x6c,0,6);put16(r+0x64,id);}}
         for(unsigned j=0;j<6;++j)if(m->ev_gain[j])put16(r+0x98+2*j,be16(r+0x98+2*j)+m->ev_gain[j]);
+        if(m->shadow&&m->dp_max>0)put32(r+0xdc,(uint32_t)m->dp);
         out.exp[slot]=gain;
         if(!gain)continue;
         if(m->shadow){put32(r+0xe0,be32(r+0xe0)+gain);continue;}

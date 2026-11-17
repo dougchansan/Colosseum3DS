@@ -42,6 +42,10 @@ TABLES = {
     # add/sub rows (fightTrainerAiValueAddsubDataBiosGetPtr, lbl_80478F28/2C).
     "ai": (0x9BD14, 0x14A6B0, 40, 261),
     "ai_value": (0x118E4C, 0x14A6C8, 20, 553),
+    # PokemonSeikakuData (pokemonSeikakuDataBiosGetPtr, lbl_80478E60/64) and the
+    # one-byte heart gauge filters right after it (pokemonDpFilterDataBiosGetPtr).
+    "nature": (0x121614, 0x14A6D8, 40, 25),
+    "dp_filter": (0x1219FC, 0x14A6DC, 1, 6),
 }
 # Shadow table (fn_801EEE44 catch rate +0, field08 gauge +8, snag flag +0x12),
 # ids 0..0x60, appended as pack version 2.
@@ -60,7 +64,9 @@ MESSAGE_GROUPS = ((0x58044, 0x647B4), (0x647B4, None))
 SIDE0_ROW = 4 + 52 + 12 + 6 * 80 + 2 * NAME_SIZE
 # Version 3 then holds the trainer AI: u32 count and the 40-byte AI data
 # rows (trainer row +6 picks one), then u32 count and each add/sub row's
-# value (+0, s32), indexed by the scoring code.
+# value (+0, s32), indexed by the scoring code; then u32 count and the 40-byte
+# nature rows (Hyper Mode chances), u32 count and the heart gauge filter
+# bytes, padded with two zero bytes.
 REASONS = {0: "admitted", 1: "player side is not the hero alone",
            2: "more than one opponent trainer", 3: "opponent has no Pokemon",
            4: "unsupported battle type", 5: "encounter index out of range"}
@@ -250,7 +256,9 @@ def make_pack(rel_bytes, dol_bytes, source_commit=None, common_sha1=None, dol_sh
     side0, _ = side0_section(rel, rel_bytes)
     ai_value = rel.table("ai_value")
     side0 += (struct.pack(">I", rel.count("ai")) + rel.table("ai") + struct.pack(">I", rel.count("ai_value"))
-              + b"".join(ai_value[i * 20:i * 20 + 4] for i in range(rel.count("ai_value"))))
+              + b"".join(ai_value[i * 20:i * 20 + 4] for i in range(rel.count("ai_value")))
+              + struct.pack(">I", rel.count("nature")) + rel.table("nature")
+              + struct.pack(">I", rel.count("dp_filter")) + rel.table("dp_filter") + bytes(2))
     body = (moves + species + types + growth + b"".join(entries) + names_section(rel, rel_bytes, entries)
             + shadow + side0)
     header = bytearray(HEADER_SIZE)

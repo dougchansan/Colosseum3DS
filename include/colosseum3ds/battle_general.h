@@ -34,6 +34,8 @@ typedef struct C3BattlePack {
     uint32_t side0_at, side0_count;
     /* version 3: trainer AI data rows (40 bytes) and AI value codes (s32). */
     uint32_t ai_at, ai_count, ai_value_at, ai_value_count;
+    /* version 3: nature rows (40 bytes) and heart gauge filter values (s8). */
+    uint32_t nature_at, nature_count, dp_filter_at, dp_filter_count;
 } C3BattlePack;
 
 typedef struct C3BattleEncounterInfo {
@@ -81,10 +83,16 @@ typedef struct C3GeneralMon {
     uint32_t exp;
     uint16_t ev_gain[6]; /* effort earned this battle (species giveEffort, +0x90) */
     char name[C3_GB_NAME];
+    /* Shadow Pokemon of the hero (PokemonBios +0xDC, status 0xC5: heart
+     * gauge x100) and its Shadow row's full gauge x100 (status 0xC4).
+     * hyper: joutai 0x3E (Hyper Mode); gauge_dropped: flag 0xD1 (the send-out
+     * gauge drop is once per battle). */
+    int32_t dp, dp_max;
+    uint8_t hyper, gauge_dropped;
 } C3GeneralMon;
 
 typedef struct C3GeneralCommand {
-    uint8_t kind;   /* 0 move, 1 switch, 2 throw a ball (snag) */
+    uint8_t kind;   /* 0 move, 1 switch, 2 throw a ball (snag), 3 call (the hero's own Pokemon) */
     uint8_t slot;   /* move slot 0..3, 4 = Struggle; party index to switch in; or ball item 1..12 */
     uint8_t target; /* battle position 0..3 (side*2 + active index) */
 } C3GeneralCommand;
@@ -102,6 +110,7 @@ typedef struct C3GeneralEvent {
     int8_t stat, stat_delta; /* a stage change: stat 0..6 and delta; stat -1 otherwise */
     uint8_t status;     /* a new status condition (C3_GB_SLEEP..), 0 otherwise */
     uint8_t ball;       /* the ball of the Pokemon at `actor` (item id, 0 none) */
+    uint8_t hyper;      /* the Pokemon at `actor` went into Hyper Mode here */
     char text[96];
 } C3GeneralEvent;
 
@@ -182,6 +191,12 @@ typedef struct C3ShadowInfo {
 int c3_battle_pack_shadow(const C3BattlePack *pack, unsigned id, C3ShadowInfo *info);
 /* The ball item's name (1..12), "" otherwise. */
 const char *c3_general_ball_name(unsigned ball);
+/* pokemonGetDarkPokemonLevel: 0 (gauge full) .. 6 (empty), 7 not Shadow. */
+unsigned c3_general_dark_level(const C3GeneralMon *mon);
+/* Whether the hero may Call the Pokemon at `position` (always for the
+ * hero's own side outside link battles; it snaps a Shadow Pokemon out of
+ * Hyper Mode or wakes a sleeper). */
+int c3_general_battle_can_call(const C3GeneralBattle *battle, unsigned position);
 /* Whether the hero at `position` may throw `ball` at `target` now. */
 int c3_general_battle_can_snag(const C3GeneralBattle *battle, const C3BattlePack *pack,
                                unsigned position, unsigned ball, unsigned target);
