@@ -923,7 +923,7 @@ static int run_native(Impl *s,RunTask *t,char *error)
      * lbl_8026F488; then gbaConvCheckIds pushes floor 0x387 (the disc
      * puzzle) and returns its result; 1 when that result is 0. Floor 0x387
      * is not ported here (realgam lane): the puzzle is taken as solved and
-     * recorded, the way battles are skipped as wins. */
+     * recorded (a documented shortcut, realgam lane). */
     case 0xcc:{
         static const uint16_t grid[9]={0xb9,0xc8,0xf4,0x11f,0x9c,0xf3,0x99,0xf5,0x9f};
         int ok=1;
@@ -2017,13 +2017,24 @@ int c3_field_story_battle_result(C3FieldStory *story,uint32_t result,char *error
     if(!s||!result||result>0xffffu)return fail(error,"Invalid fight result");
     for(unsigned i=0;i<C3_STORY_TASKS;++i){RunTask *t=s->tasks+i;
         if(!t->key||t->wait!=W_BATTLE||(t->call.native!=0x98&&t->call.native!=0x66))continue;
-        s->fight_result=result;s->view.blocked[0]=0;s->view.battle_id=0;
+        s->fight_result=result;s->view.blocked[0]=0;s->view.battle_id=0;s->view.battle_refused=0;
         s->fade_from=0;s->fade_to=1;s->fade_elapsed=0;s->fade_duration=.5f;s->view.fade=0;
         log_line(s,"story_battle_result encounter=%lu result=%lu native98_resumed=1",
                  (unsigned long)t->call.args[0],(unsigned long)result);
         return resume(s,t,result,error);
     }
     return fail(error,"No original battle request is waiting for a result");
+}
+int c3_field_story_battle_refuse(C3FieldStory *story,const char *reason,char *error)
+{
+    Impl *s=story?story->impl:NULL;uint32_t encounter;
+    if(!s||!c3_field_story_battle_pending(story,&encounter))return fail(error,"No original battle request is waiting");
+    s->view.battle_refused=encounter;
+    snprintf(s->view.blocked,sizeof s->view.blocked,"Battle %lu cannot be played in this build (%.80s). START: quit.",
+             (unsigned long)encounter,reason&&reason[0]?reason:"no reason given");
+    log_line(s,"story_battle_refused encounter=%lu reason=\"%s\" result_written=0 native98_waiting=1",
+             (unsigned long)encounter,reason?reason:"");
+    return 1;
 }
 /* A floor link (native 5F/7D) to a floor this build cannot load waits with
  * view.blocked set. Refusing it resumes the script as if the link had been
@@ -2078,7 +2089,7 @@ int c3_field_story_battle_whiteout(C3FieldStory *story,char *error)
         log_line(s,"story_battle_whiteout return_point=missing resumed_with=3");
         return c3_field_story_battle_result(story,3,error);
     }
-    s->fight_result=3;s->view.blocked[0]=0;s->view.battle_id=0;
+    s->fight_result=3;s->view.blocked[0]=0;s->view.battle_id=0;s->view.battle_refused=0;
     /* The waiting request ends here: the floor is left, not resumed. */
     for(unsigned i=0;i<C3_STORY_TASKS;++i){RunTask *t=s->tasks+i;
         if(!t->key||t->wait!=W_BATTLE||(t->call.native!=0x98&&t->call.native!=0x66))continue;

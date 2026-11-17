@@ -341,8 +341,9 @@ static int npc_stream_attach(NpcStream *npc,int wait,C3Title *storage,const C3Ti
 /* A story battle other than encounter 10, on the general battle engine:
  * the pack is loaded only for the battle (Phenac's heap is nearly full).
  * autoplay: both sides use the engine's policy (campaign build).
- * Returns 1 played and applied, 0 not playable here (the caller skips it),
- * 2 the application must exit, -1 error (in error). */
+ * Returns 1 played and applied, 0 not playable here (the reason is in
+ * error; the caller reports it, never a result), 2 the application must
+ * exit, -1 error (in error). */
 static void release_field_models(C3Title *storage,uint32_t count);
 static int restore_field_models(C3Title *storage,uint32_t count,char paths[][160],C3FieldStory *story,
                                 float elapsed,char *error,size_t capacity);
@@ -384,11 +385,13 @@ static int play_story_battle(C3FieldStory *story,C3GameState *state,uint32_t enc
     char problem[C3_GB_ERROR_SIZE]="";C3BattleEncounterInfo info;
     if(!c3_battle_pack_load(&pack,C3_BATTLE_PACK_PATH,problem)){
         if(trace){fprintf(trace,"field_battle_engine encounter=%lu status=no_pack reason=%s\n",(unsigned long)encounter,problem);fflush(trace);}
+        snprintf(error,capacity,"battles.c3x: %s",problem);
         return 0;
     }
     if(!c3_battle_pack_info(&pack,encounter,&info)||info.reason){
         if(trace){fprintf(trace,"field_battle_engine encounter=%lu status=refused reason=%s\n",(unsigned long)encounter,
                           c3_battle_pack_reason(info.reason));fflush(trace);}
+        snprintf(error,capacity,"%s",c3_battle_pack_reason(info.reason));
         c3_battle_pack_free(&pack);return 0;
     }
     uint32_t seed=(uint32_t)c3_game_state_random16(state)<<16|c3_game_state_random16(state);
@@ -1449,25 +1452,35 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
 #endif
                     dirty=1;continue;
                 }
-                if(view->blocked[0]&&view->battle_id&&view->battle_id!=10&&(input.pressed&C3_PAD_A)){
-                    /* A story battle always runs on the
-                     * general battle engine. Only an encounter the engine
-                     * refuses is reported as the hero's win (result ID 2),
-                     * with nothing written. */
-                    uint32_t skipped=view->battle_id;
-                    {
-                        FieldBattleHost host={storage,models,actor_models,model_paths,&story,&npc,ingame,
-                                              count,tv_index,skin_actors,view?view->tv_enabled:1,frames,elapsed};
-                        int played=play_story_battle(&story,state,skipped,0,&host,trace,story_error,sizeof story_error);
-                        if(played<0)goto story_failed;
-                        if(played==2){result=1;break;}
-                        /* Battle time must not advance the paused field scripts. */
-                        previous=c3_n3ds_active_time_us();
-                        if(played==1){dirty=1;next_console=0;continue;}
-                    }
+                if(view->blocked[0]&&view->battle_id&&view->battle_id!=10&&view->battle_refused!=view->battle_id&&
+                   (input.pressed&C3_PAD_A)){
+                    /* A story battle always runs on the general battle
+                     * engine: trainer entry, the battle on its original
+                     * stage, then the writeback (results, whiteout,
+                     * snagging) in c3_battle_story_apply. An encounter the
+                     * engine cannot play is never reported as a result:
+                     * native 98 keeps waiting and the reason is shown. */
+                    uint32_t encounter=view->battle_id;
+                    FieldBattleHost host={storage,models,actor_models,model_paths,&story,&npc,ingame,
+                                          count,tv_index,skin_actors,view?view->tv_enabled:1,frames,elapsed};
+                    int played=play_story_battle(&story,state,encounter,0,&host,trace,story_error,sizeof story_error);
+                    if(played<0)goto story_failed;
+                    if(played==2){result=1;break;}
+                    /* Battle time must not advance the paused field scripts. */
+                    previous=c3_n3ds_active_time_us();
+                    if(played==1){dirty=1;next_console=0;continue;}
+#ifdef C3_STORY_BATTLE_SKIP_REFUSED
+                    /* Debug builds only: the old shortcut, a refused
+                     * encounter reported as the hero's win (result ID 2). */
                     if(!c3_field_story_battle_result(&story,2,story_error))goto story_failed;
-                    if(trace){fprintf(trace,"field_battle_skipped encounter=%lu result_reported=2 temporary=1 party_writeback=0\n",
-                        (unsigned long)skipped);fflush(trace);}
+                    if(trace){fprintf(trace,"field_battle_skipped encounter=%lu result_reported=2 debug=1 party_writeback=0\n",
+                        (unsigned long)encounter);fflush(trace);}
+#else
+                    {char reason[160];snprintf(reason,sizeof reason,"%s",story_error);
+                     if(!c3_field_story_battle_refuse(&story,reason,story_error))goto story_failed;
+                     if(trace){fprintf(trace,"field_battle_refused encounter=%lu reason=\"%s\" result_reported=0\n",
+                         (unsigned long)encounter,reason);fflush(trace);}}
+#endif
                     dirty=1;continue;
                 }
                 if(view->blocked[0]&&view->battle_id==10&&(input.pressed&C3_PAD_A)){

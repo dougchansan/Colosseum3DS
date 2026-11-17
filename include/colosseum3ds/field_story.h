@@ -39,6 +39,7 @@ typedef struct C3FieldStoryView {
     uint32_t unported_menu; /* last native whose menu step is not ported (took the decline branch) */
     int relive_pick;        /* native C2 waits for a party choice (c3_field_story_relive_pick) */
     int item_menu;          /* native D0 waits while the scene shows the pause menu's Items */
+    uint32_t battle_refused; /* the waiting encounter the scene could not play (c3_field_story_battle_refuse) */
     float fade, camera_seconds;
     C3TitleCamera camera;
 } C3FieldStoryView;
@@ -57,6 +58,10 @@ int c3_field_story_bind_battle(C3FieldStory *story,const char *path,char *error)
  * once and makes the same ID readable through native 67. */
 int c3_field_story_battle_pending(const C3FieldStory *story,uint32_t *encounter);
 int c3_field_story_battle_result(C3FieldStory *story,uint32_t result,char *error);
+/* The scene cannot play the waiting encounter (no battle pack, or the pack
+ * refuses it). No result is invented: native 98 keeps waiting, view.blocked
+ * names the encounter and the reason, and view.battle_refused holds it. */
+int c3_field_story_battle_refuse(C3FieldStory *story,const char *reason,char *error);
 /* A floor link to a floor the scene cannot load (see floor_supported)
  * waits with view.blocked set. refused reports the requested floor;
  * stay_on_floor resumes the script without linking, so play continues. */
