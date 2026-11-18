@@ -77,6 +77,21 @@ int main(void)
     CHECK(c3_follow_clip(1.6f, C3_FOLLOW_CLIP_WALK) == C3_FOLLOW_CLIP_RUN);
     CHECK(c3_follow_clip(1.48f, C3_FOLLOW_CLIP_RUN) == C3_FOLLOW_CLIP_RUN);
     CHECK(c3_follow_clip(-1, C3_FOLLOW_CLIP_WALK) == C3_FOLLOW_CLIP_IDLE);
+    /* Walk/run needs 0.3 s on a clip before switching (frame-pacing jitter
+     * near 1.5 seen on Azahar); stopping and starting never wait. */
+    {
+        C3Follow g; c3_follow_reset(&g);
+        unsigned c = c3_follow_choose(&g, 1.0f, C3_FOLLOW_CLIP_IDLE, 0.06f);
+        CHECK(c == C3_FOLLOW_CLIP_WALK);
+        CHECK(c3_follow_choose(&g, 1.8f, c, 0.06f) == C3_FOLLOW_CLIP_WALK);
+        unsigned flips = 0, prev = c;
+        for (int i = 0; i < 40; ++i) { /* amount alternating across the run boundary */
+            c = c3_follow_choose(&g, (i & 1) ? 1.3f : 1.9f, c, 0.06f);
+            flips += c != prev; prev = c;
+        }
+        CHECK(flips <= 40 * 0.06f / C3_FOLLOW_GAIT_HOLD + 1);
+        CHECK(c3_follow_choose(&g, 0, c, 0.01f) == C3_FOLLOW_CLIP_IDLE);
+    }
     /* Phase carry: 0.25 of a 1 s walk is 0.25 of a 0.8 s run. */
     CHECK(NEAR(c3_follow_phase(1.25f, 1.0f, 0.8f), 0.2f) && c3_follow_phase(0.3f, 0, 1) == 0);
     /* In-place turn: only outside +-75 degrees, to the range's edge. */

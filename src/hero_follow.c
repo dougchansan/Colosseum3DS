@@ -150,6 +150,17 @@ unsigned c3_follow_clip(float amount, unsigned current)
     return amount >= run ? C3_FOLLOW_CLIP_RUN : C3_FOLLOW_CLIP_WALK;
 }
 
+unsigned c3_follow_choose(C3Follow *f, float amount, unsigned current, float seconds)
+{
+    unsigned next = c3_follow_clip(amount, current);
+    if (!f) return next;
+    if (seconds > 0) f->clip_held += seconds;
+    if (next != current && next != C3_FOLLOW_CLIP_IDLE && current != C3_FOLLOW_CLIP_IDLE &&
+        f->clip_held < C3_FOLLOW_GAIT_HOLD) return current;
+    if (next != current) f->clip_held = 0;
+    return next;
+}
+
 float c3_follow_phase(float seconds, float from_length, float to_length)
 {
     if (!(from_length > 0.0f) || !(to_length > 0.0f) || !isfinite(seconds) || seconds <= 0.0f) return 0.0f;

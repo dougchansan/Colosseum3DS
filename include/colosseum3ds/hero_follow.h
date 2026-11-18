@@ -19,6 +19,7 @@ typedef struct C3Follow {
     float far_seconds;
     float leader[3]; /* the leader at the last record call */
     int has_leader;
+    float clip_held; /* seconds on the current clip (c3_follow_choose) */
 } C3Follow;
 
 typedef struct C3FollowStep {
@@ -65,6 +66,11 @@ float c3_follow_amount(float travel, float walk, float run);
 #define C3_FOLLOW_CLIP_WALK 1u
 #define C3_FOLLOW_CLIP_RUN 2u
 unsigned c3_follow_clip(float amount, unsigned current);
+/* c3_follow_clip plus a 0.3 s minimum between walk and run: the original
+ * crossfades the two, so uneven frame pacing near the boundary never shows;
+ * a single drawn clip would flap. Starting and stopping stay immediate. */
+#define C3_FOLLOW_GAIT_HOLD 0.3f
+unsigned c3_follow_choose(C3Follow *follow, float amount, unsigned current, float seconds);
 /* GSmodelSetAnimFrame after GSmodelSetAnimIndex/SetAnimBlend: the new clip
  * starts at the old clip's phase (time/length, wrapped) times its length. */
 float c3_follow_phase(float seconds, float from_length, float to_length);

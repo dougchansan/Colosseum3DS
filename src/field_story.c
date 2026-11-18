@@ -2393,7 +2393,7 @@ static void follow_partner(Impl *s,float seconds)
         }
         /* fn_8012C660: the dominant clip of the blend, entered at the phase
          * the previous clip had reached (no restart from frame 0). */
-        uint32_t clip=c3_follow_clip(amount,p->public.clip);
+        uint32_t clip=c3_follow_choose(&s->follow,amount,p->public.clip,dt);
         if(clip>=p->public.model->clip_count)clip=0;
         if(clip!=p->public.clip){
             q->animation_seconds=c3_follow_phase(q->animation_seconds,clip_length(p->public.model,p->public.clip),
