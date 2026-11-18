@@ -665,7 +665,7 @@ static int field_renderer_init(C3Title *storage,const C3Title *const *models,uin
 static struct { uint32_t start, start_spawn, floor[64], source[64]; uint8_t interact[64]; unsigned count, next; int loaded;
                 uint32_t film_floor, film_frames, film_stride; unsigned shadow_slot, shadow_id;
                 uint32_t flag_id[16], flag_value[16]; uint32_t ball_id[4], ball_count[4]; unsigned flags, balls, name_mode; int partner, stayed;
-                uint32_t walk_floor, walk_frames, walked, walk_tail; int walk_x, walk_y; int continue_save; uint32_t stop; } probe_route;
+                uint32_t walk_floor, walk_frames, walked, walk_tail, walk_frame; int walk_x, walk_y; int continue_save; uint32_t stop; } probe_route;
 static void probe_route_load(void)
 {
     if(probe_route.loaded)return;
@@ -1046,7 +1046,8 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         /* Probe: the partner every frame of the walk and the 90 after it
          * (her stop), to check a steady clip clock, step and turn. */
         if(trace&&probe_route.walk_frames&&probe_route.walk_floor==map.floor&&probe_route.walked&&
-           probe_route.walked+90u>=probe_route.walk_tail&&probe_route.walk_tail<probe_route.walk_frames+90u){
+           probe_route.walked+90u>=probe_route.walk_tail&&probe_route.walk_tail<probe_route.walk_frames+90u&&
+           (!probe_route.walk_tail||frames==probe_route.walk_frame+1u)){probe_route.walk_frame=frames;
             C3StoryActor *rui=c3_field_story_person(&story,0,101);++probe_route.walk_tail;
             if(rui)fprintf(trace,"probe_partner n=%lu hero=%.3f,%.3f rui=%.3f,%.3f yaw=%.3f clip=%lu clock=%.3f\n",(unsigned long)probe_route.walk_tail,
                            (double)player.position[0],(double)player.position[2],(double)rui->pose.position[0],(double)rui->pose.position[2],

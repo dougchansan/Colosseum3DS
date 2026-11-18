@@ -91,6 +91,15 @@ int main(void)
         }
         CHECK(flips <= 40 * 0.06f / C3_FOLLOW_GAIT_HOLD + 1);
         CHECK(c3_follow_choose(&g, 0, c, 0.01f) == C3_FOLLOW_CLIP_IDLE);
+        /* Easing off a stop with alternating short/long frames (Azahar,
+         * amounts 0.1/0.3): at most one switch per hold, not every frame. */
+        c = C3_FOLLOW_CLIP_IDLE; prev = c; flips = 0;
+        for (int i = 0; i < 20; ++i) {
+            c = c3_follow_choose(&g, (i & 1) ? 0.1f : 0.3f, c, 0.05f);
+            flips += c != prev; prev = c;
+        }
+        CHECK(flips <= 20 * 0.05f / C3_FOLLOW_GAIT_HOLD + 1);
+        CHECK(c3_follow_choose(&g, 0.8f, C3_FOLLOW_CLIP_IDLE, 0.01f) == C3_FOLLOW_CLIP_WALK);
     }
     /* Phase carry: 0.25 of a 1 s walk is 0.25 of a 0.8 s run. */
     CHECK(NEAR(c3_follow_phase(1.25f, 1.0f, 0.8f), 0.2f) && c3_follow_phase(0.3f, 0, 1) == 0);

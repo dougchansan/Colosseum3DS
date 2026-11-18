@@ -66,9 +66,10 @@ float c3_follow_amount(float travel, float walk, float run);
 #define C3_FOLLOW_CLIP_WALK 1u
 #define C3_FOLLOW_CLIP_RUN 2u
 unsigned c3_follow_clip(float amount, unsigned current);
-/* c3_follow_clip plus a 0.3 s minimum between walk and run: the original
- * crossfades the two, so uneven frame pacing near the boundary never shows;
- * a single drawn clip would flap. Starting and stopping stay immediate. */
+/* c3_follow_clip plus a 0.3 s minimum on a clip: the original crossfades
+ * idle, walk and run, so uneven frame pacing near a boundary never shows;
+ * a single drawn clip would flap. A full stop (amount ~0) and a clear start
+ * from idle (amount >= 0.5) switch at once. */
 #define C3_FOLLOW_GAIT_HOLD 0.3f
 unsigned c3_follow_choose(C3Follow *follow, float amount, unsigned current, float seconds);
 /* GSmodelSetAnimFrame after GSmodelSetAnimIndex/SetAnimBlend: the new clip

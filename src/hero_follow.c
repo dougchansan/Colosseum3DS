@@ -155,8 +155,11 @@ unsigned c3_follow_choose(C3Follow *f, float amount, unsigned current, float sec
     unsigned next = c3_follow_clip(amount, current);
     if (!f) return next;
     if (seconds > 0) f->clip_held += seconds;
-    if (next != current && next != C3_FOLLOW_CLIP_IDLE && current != C3_FOLLOW_CLIP_IDLE &&
-        f->clip_held < C3_FOLLOW_GAIT_HOLD) return current;
+    /* A full stop and a clear start switch at once; any other change (jitter
+     * around the idle/walk or walk/run boundary) waits for the hold. */
+    int stop = next == C3_FOLLOW_CLIP_IDLE && fabsf(amount) <= 0.01f;
+    int start = current == C3_FOLLOW_CLIP_IDLE && amount >= 0.5f;
+    if (next != current && !stop && !start && f->clip_held < C3_FOLLOW_GAIT_HOLD) return current;
     if (next != current) f->clip_held = 0;
     return next;
 }
