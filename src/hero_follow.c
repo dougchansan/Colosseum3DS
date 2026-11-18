@@ -19,6 +19,8 @@ void c3_follow_record(C3Follow *f, const float leader[3], float scale)
 {
     float last[3];
     if (!f || !leader) return;
+    memcpy(f->leader, leader, sizeof f->leader);
+    f->has_leader = 1;
     if (c3_follow_record_at(f, 0, last) && hypotf(last[0] - leader[0], last[2] - leader[2]) <= 12.0f * scale) return;
     memcpy(f->history[f->head], leader, sizeof f->history[f->head]);
     if (++f->head >= C3_FOLLOW_HISTORY) f->head = 0;
@@ -93,6 +95,33 @@ void c3_follow_step(const C3Follow *f, const float leader[3], const float pos[3]
     if (hypotf(step->facing[0], step->facing[1]) <= eps) step->facing[0] = step->facing[1] = 0.0f;
 }
 
+void c3_follow_advance(C3Follow *f, const float leader[3], const float position[3], float spacing, float scale,
+                       float seconds, C3FollowStep *total)
+{
+    memset(total, 0, sizeof *total);
+    if (!f || !leader || !position || !(seconds > 0) || !(scale > 0)) return;
+    float from[3], pos[3];
+    memcpy(from, f->has_leader ? f->leader : leader, sizeof from);
+    memcpy(pos, position, sizeof pos);
+    unsigned n = (unsigned)ceilf(seconds * 60.0f - 0.001f);
+    if (n < 1) n = 1;
+    if (n > 60) n = 60;
+    float dt = seconds / (float)n;
+    for (unsigned i = 1; i <= n; ++i) {
+        float k = (float)i / (float)n, at[3];
+        for (unsigned j = 0; j < 3; ++j) at[j] = from[j] + (leader[j] - from[j]) * k;
+        C3FollowStep step;
+        c3_follow_step(f, at, pos, spacing, scale, dt, &step);
+        pos[0] += step.move[0]; pos[2] += step.move[1];
+        total->move[0] += step.move[0]; total->move[1] += step.move[1];
+        if (step.facing[0] != 0 || step.facing[1] != 0) { total->facing[0] = step.facing[0]; total->facing[1] = step.facing[1]; }
+        c3_follow_record(f, at, scale);
+    }
+    float budget = seconds * 60.0f * scale;
+    total->speed = hypotf(total->move[0], total->move[1]) / budget;
+    if (total->speed > 1.0f) total->speed = 1.0f;
+}
+
 int c3_follow_far(C3Follow *f, const float leader[3], const float pos[3], float scale, float seconds)
 {
     if (!f) return 0;
@@ -102,3 +131,61 @@ int c3_follow_far(C3Follow *f, const float leader[3], const float pos[3], float 
 }
 
 void c3_follow_caught_up(C3Follow *f) { if (f) f->far_seconds = 0; }
+
+float c3_follow_amount(float travel, float walk, float run)
+{
+    if (!(travel > 0.0f) || !(walk > 0.0f)) return 0.0f;
+    if (travel > 1.0f) travel = 1.0f;
+    if (run > walk && travel >= run) return 2.0f;
+    if (run > walk && travel >= walk) return 1.0f + (travel - walk) / (run - walk);
+    return travel >= walk ? 1.0f : travel / walk;
+}
+
+unsigned c3_follow_clip(float amount, unsigned current)
+{
+    const float h = 0.05f;
+    float walk = current == C3_FOLLOW_CLIP_IDLE ? 0.2f + h : 0.2f - h;
+    float run = current == C3_FOLLOW_CLIP_RUN ? 1.5f - h : 1.5f + h;
+    if (!(amount >= walk)) return C3_FOLLOW_CLIP_IDLE;
+    return amount >= run ? C3_FOLLOW_CLIP_RUN : C3_FOLLOW_CLIP_WALK;
+}
+
+unsigned c3_follow_choose(C3Follow *f, float amount, unsigned current, float seconds)
+{
+    unsigned next = c3_follow_clip(amount, current);
+    if (!f) return next;
+    if (seconds > 0) f->clip_held += seconds;
+    /* A full stop and a clear start switch at once; any other change (jitter
+     * around the idle/walk or walk/run boundary) waits for the hold. */
+    int stop = next == C3_FOLLOW_CLIP_IDLE && fabsf(amount) <= 0.01f;
+    int start = current == C3_FOLLOW_CLIP_IDLE && amount >= 0.5f;
+    if (next != current && !stop && !start && f->clip_held < C3_FOLLOW_GAIT_HOLD) return current;
+    if (next != current) f->clip_held = 0;
+    return next;
+}
+
+float c3_follow_phase(float seconds, float from_length, float to_length)
+{
+    if (!(from_length > 0.0f) || !(to_length > 0.0f) || !isfinite(seconds) || seconds <= 0.0f) return 0.0f;
+    float phase = fmodf(seconds / from_length, 1.0f);
+    return phase * to_length;
+}
+
+static float wrap_pi(float a)
+{
+    a = fmodf(a, 6.2831855f);
+    if (a < -3.1415927f) a += 6.2831855f;
+    else if (a > 3.1415927f) a -= 6.2831855f;
+    return a;
+}
+
+int c3_follow_idle_turn(float yaw, float to_leader, float limit, float *target)
+{
+    float diff = wrap_pi(to_leader - yaw), goal;
+    if (diff > limit) goal = to_leader - limit;
+    else if (diff < -limit) goal = to_leader + limit;
+    else return 0;
+    if (fabsf(wrap_pi(goal - yaw)) < 0.0017453289f) return 0;
+    if (target) *target = goal;
+    return 1;
+}

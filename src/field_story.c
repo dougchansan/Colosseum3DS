@@ -2351,22 +2351,55 @@ static void partner_place_behind(Impl *s)
     spot[1]=ground;memcpy(p->public.pose.position,spot,sizeof spot);memcpy(p->public.pose.proposed,spot,sizeof spot);
     p->public.pose.yaw=s->hero->yaw;c3_follow_reset(&s->follow);
 }
+static float clip_length(const C3Title *model,uint32_t clip)
+{
+    if(!model||clip>=model->clip_count||model->clips[clip].frame_count<2u||!(model->fps>0))return 0;
+    return (float)(model->clips[clip].frame_count-1u)/model->fps;
+}
+/* fn_8018805C for the follower: a new target each frame keeps the sub-tick
+ * remainder of the turn already running instead of restarting it. */
+static void follow_turn(Impl *s,Person *p,float yaw,float speed)
+{
+    if(!p->turning){start_turn(s,p,yaw,speed);return;}
+    p->turn_target=yaw+6.2831855f*(int32_t)(pose(s,p)->yaw/6.2831855f);p->turn_speed=speed;
+}
 static void follow_partner(Impl *s,float seconds)
 {
     Person *p=&s->partner_actor;float sc=s->map->scale;
     if(!p->public.model||!s->view.control)return;
     if(p->public.visible&&!p->moving&&!p->parent){
         C3FieldPlayer *q=&p->public.pose;C3FollowStep step;float before[3];
-        float dt=fminf(seconds,.25f);
+        float dt=fminf(seconds,.25f),frames=dt*60.0f;
         memcpy(before,q->position,sizeof before);
-        c3_follow_step(&s->follow,s->hero->position,q->position,12.0f*sc,sc,dt,&step);
+        c3_follow_advance(&s->follow,s->hero->position,q->position,12.0f*sc,sc,dt,&step);
         q->position[0]+=step.move[0];q->position[2]+=step.move[1];
         memcpy(q->proposed,q->position,sizeof q->proposed);
         if(!c3_field_resolve_position(s->map,q,before))memcpy(q->position,before,sizeof before);
-        if(step.facing[0]!=0||step.facing[1]!=0)q->yaw=atan2f(step.facing[0],step.facing[1]);
-        uint32_t clip=step.speed<0.05f?0u:(step.speed>0.9f&&s->hero->motion==2?2u:1u);
+        /* fn_8012CA84: the turn rate and animation amount come from the
+         * travel this frame, in original units per 60 Hz frame (at most 1).
+         * Facing turns at the people turn rate, never snaps. */
+        float moved=hypotf(step.move[0],step.move[1]),amount=0;
+        if(moved>0&&frames>0&&sc>0){
+            float speed=fminf(moved/sc/frames,1.0f),dx=q->position[0]-before[0],dz=q->position[2]-before[2];
+            float travel=hypotf(dx,dz)/moved*speed; /* the travel vector scaled to speed */
+            amount=c3_follow_amount(travel,s->map->walk_distance/s->map->walk_frames/sc,
+                                    s->map->run_distance/s->map->run_frames/sc);
+            if(dx*step.facing[0]+dz*step.facing[1]<0)amount=-amount;
+            if(step.facing[0]!=0||step.facing[1]!=0)follow_turn(s,p,atan2f(step.facing[0],step.facing[1]),speed);
+        }else{
+            float target,to_leader=atan2f(s->hero->position[0]-q->position[0],s->hero->position[2]-q->position[2]);
+            if(c3_follow_idle_turn(q->yaw,to_leader,75.0f*.017453292f,&target)){follow_turn(s,p,target,1.0f);amount=1.0f;}
+            else p->turning=0;
+        }
+        /* fn_8012C660: the dominant clip of the blend, entered at the phase
+         * the previous clip had reached (no restart from frame 0). */
+        uint32_t clip=c3_follow_choose(&s->follow,amount,p->public.clip,dt);
         if(clip>=p->public.model->clip_count)clip=0;
-        if(clip!=p->public.clip){p->public.clip=clip;q->animation_seconds=0;}
+        if(clip!=p->public.clip){
+            q->animation_seconds=c3_follow_phase(q->animation_seconds,clip_length(p->public.model,p->public.clip),
+                                                 clip_length(p->public.model,clip));
+            p->public.clip=clip;
+        }
         p->public.loop=1;p->public.playing=1;
         if(c3_follow_far(&s->follow,s->hero->position,q->position,sc,dt)){
             float record[3],ground;
