@@ -12,6 +12,7 @@
 #include "colosseum3ds/battle_story.h"
 #include "pda_preview.h"
 #include "pda_audio.h"
+#include "pda_sound.h"
 #include "movie_player.h"
 #include "battle_preview_scene.h"
 #include "colosseum3ds/battle_preview.h"
@@ -1681,6 +1682,8 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                 }
             }else if(page==PAUSE_MAIN){
                 C3IngamePage old_page=ingame->page;
+                /* Stylus taps become the same button edges (Back = B). */
+                input.pressed|=c3_ingame_touch(ingame,&input);
                 if(pda_preview&&(input.pressed&C3_PAD_B)){
                     if(c3_render_recover(trace,"pda-to-field",frames,C3_RECOVER_DRAIN)==C3_RECOVERY_EXIT){result=1;break;}
                     if(!c3_pda_preview_close(&pda_preview)){snprintf(error,capacity,"PDA renderer still owns its model.");result=-1;break;}
@@ -1699,6 +1702,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                     if(event.kind==C3_INGAME_PREVIEW)event.kind=C3_INGAME_NONE;
                     previous=c3_n3ds_active_time_us();
                 }
+                if(ingame->sound){c3_pda_sound_play(ingame->sound);ingame->sound=0;}
                 if(ingame->dirty)dirty=1;
                 if(trace&&(old_page!=ingame->page||event.kind)){
                     fprintf(trace,"ingame_page page=%u event=%u input=%04x\n",(unsigned)ingame->page,(unsigned)event.kind,input.pressed);fflush(trace);
@@ -1730,7 +1734,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                     c3_pda_audio_trace(trace,"preview");dirty=1;
                 }
                 else if(event.kind==C3_INGAME_STOP_TONE){c3_pda_audio_stop();dirty=1;}
-                else if(event.kind==C3_INGAME_RESUME){c3_pda_audio_close();pda_audio_ready=0;page=PAUSE_CLOSED;dirty=1;}
+                else if(event.kind==C3_INGAME_RESUME){c3_pda_audio_close();c3_pda_sound_close();pda_audio_ready=0;page=PAUSE_CLOSED;dirty=1;}
                 else if(event.kind==C3_INGAME_SAVE){page=PAUSE_SAVE;yes=0;dirty=1;}
                 else if(event.kind==C3_INGAME_LEAVE){page=PAUSE_LEAVE;yes=0;dirty=1;}
                 else if(event.kind==C3_INGAME_OPTIONS){c3_movie_player_set_mono(ingame->option_mono);c3_music_set_mono(ingame->option_mono);dirty=1;}
@@ -1741,7 +1745,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                         ready=0;snprintf(story_error,sizeof story_error,"The mail read changes could not be applied.");
                     }
                     if(!ready)c3_ingame_error(ingame,story_error);
-                    else if(event.mail.script){c3_pda_audio_close();pda_audio_ready=0;page=PAUSE_CLOSED;}
+                    else if(event.mail.script){c3_pda_audio_close();c3_pda_sound_close();pda_audio_ready=0;page=PAUSE_CLOSED;}
                     if(trace){fprintf(trace,"ingame_mail id=%u committed=%d callback=%08lx disk_write=0\n",event.mail.save.id,ready,(unsigned long)event.mail.script);fflush(trace);}
                     dirty=1;
                 }
@@ -2051,7 +2055,7 @@ done:
     if(storage)opened=count;
     c3_area_prefetch_release(); /* anything a failed load did not take */
     free(npc.jobs);npc.jobs=NULL;
-    c3_pda_audio_close();
+    c3_pda_audio_close();c3_pda_sound_close();
     c3_ingame_close(ingame);
     free(ingame);
     free(shop_pda);free(shop_pack);

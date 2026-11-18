@@ -147,6 +147,14 @@ pda-check: build/test_pda
 	./build/test_pda
 test: pda-check
 
+build/test_pda_touch: tests/test_pda_touch.c tests/test_game_state.c $(PDA_SOURCES) src/pc_menu.c src/touch_ring.c $(HEADERS) $(UI_VIEW_HEADERS) build/pda_fixture.c3pd
+	$(CC) $(CPPFLAGS) -Iplatform/3ds -Isrc $(CFLAGS) tests/test_pda_touch.c $(PDA_SOURCES) src/pc_menu.c src/touch_ring.c $(LDFLAGS) -lm -o $@
+all: build/test_pda_touch
+.PHONY: pda-touch-check
+pda-touch-check: build/test_pda_touch
+	./build/test_pda_touch
+test: pda-touch-check
+
 build/test_game_state: tests/test_game_state.c src/game_state.c src/pc_menu.c src/bottom_ui.c src/save.c src/decomp_pokemon.c build/save_codec.c $(HEADERS)
 	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_game_state.c src/game_state.c src/pc_menu.c src/bottom_ui.c src/save.c src/decomp_pokemon.c build/save_codec.c $(LDFLAGS) -lm -o $@
 

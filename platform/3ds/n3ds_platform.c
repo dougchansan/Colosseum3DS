@@ -1,6 +1,7 @@
 #include "n3ds_platform.h"
 #include "stage_renderer.h"
 #include "bottom_screen.h"
+#include "colosseum3ds/touch_ring.h"
 
 #include <3ds.h>
 #include <stdio.h>
@@ -129,8 +130,8 @@ int c3_n3ds_init(char *error, size_t capacity)
     return 0;
 }
 
-static uint16_t previous_touch_x, previous_touch_y, stick_armed_direction;
-static bool previous_touch;
+static uint16_t stick_armed_direction;
+static C3TouchRing touch_ring;
 
 #ifdef C3_CAMPAIGN
 static int autopress_enabled;
@@ -140,6 +141,72 @@ void c3_n3ds_autopress(int enabled, float interval)
     autopress_enabled = enabled;
     autopress_interval_us = (uint64_t)(interval > 0.1f ? interval * 1000000.0f : 1600000.0f);
     autopress_next_us = c3_n3ds_time_us() + autopress_interval_us;
+}
+#endif
+#ifdef C3_PDA_TOUCH_PROBE
+/* Unattended emulator check of the P*DA stylus (no desktop key events):
+ * from the title it continues the saved game, opens the in-game menu with X
+ * and walks every page by tapping rows and the Back button, writing a bottom
+ * screenshot after each step to sdmc:/3ds/Colosseum3DS/pda-touch/. It never
+ * taps SAVE or MAIN MENU and never opens a letter, so no save is written.
+ * kind: 'b' button edge, 't' tap (held 4 polls), 'h' touch down, 'r' lift,
+ * 'c' capture. `after` is seconds since the previous step. */
+typedef struct { float after; char kind; uint16_t button; int16_t x, y; const char *name; } ProbeStep;
+#define TAP(after, x, y) {after, 't', 0, x, y, NULL}
+#define SHOT(name) {2.5f, 'c', 0, 0, 0, name}
+#define BACK_TAP TAP(1.5f, 286, 230)
+static const ProbeStep probe_steps[] = {
+    {8.0f, 'b', C3_PAD_START, 0, 0, NULL}, {3.0f, 'b', C3_PAD_START, 0, 0, NULL},
+    {4.0f, 'b', C3_PAD_DOWN, 0, 0, NULL}, {1.5f, 'b', C3_PAD_A, 0, 0, NULL}, {2.0f, 'b', C3_PAD_A, 0, 0, NULL},
+    {60.0f, 'b', C3_PAD_X, 0, 0, NULL}, SHOT("hub"),
+    TAP(1.0f, 92, 115), SHOT("pda"),
+    {1.0f, 'h', 0, 286, 230, NULL}, SHOT("pda-back-pressed"), {0.5f, 'r', 0, 286, 230, NULL}, SHOT("pda-back-to-hub"),
+    TAP(1.0f, 92, 115), TAP(1.5f, 160, 77), SHOT("snag"),
+    TAP(1.0f, 160, 74), SHOT("snag-entry"),
+    BACK_TAP, SHOT("snag-entry-back"), BACK_TAP, SHOT("snag-back"),
+    TAP(1.0f, 160, 109), SHOT("memo"), BACK_TAP, SHOT("memo-back"),
+    TAP(1.0f, 160, 141), SHOT("mail"),
+    {1.0f, 'b', C3_PAD_Y, 0, 0, NULL}, SHOT("tones"), BACK_TAP, SHOT("tones-back"),
+    BACK_TAP, SHOT("mail-back"), BACK_TAP, SHOT("pda-back"),
+    TAP(1.0f, 92, 79), SHOT("party"), TAP(1.0f, 160, 71), SHOT("pokemon"),
+    TAP(1.0f, 160, 120), SHOT("pokemon-panel-tap"), BACK_TAP, SHOT("pokemon-back"), BACK_TAP,
+    TAP(1.5f, 227, 79), SHOT("items"), TAP(1.0f, 160, 72), SHOT("item"), BACK_TAP, SHOT("item-back"), BACK_TAP,
+    TAP(1.5f, 227, 115), SHOT("trainer"), BACK_TAP,
+    TAP(1.5f, 92, 151), SHOT("options"), BACK_TAP, SHOT("options-back"),
+    BACK_TAP, SHOT("hub-back-closed"),
+};
+static unsigned probe_at, probe_hold, probe_down;
+static uint64_t probe_next_us;
+static int16_t probe_x, probe_y;
+static FILE *probe_log;
+/* Returns the scripted button edge; *held/x/y become the scripted stylus. */
+static uint16_t probe_poll(int *held, uint16_t *x, uint16_t *y)
+{
+    uint16_t button = 0;
+    uint64_t now = c3_n3ds_time_us();
+    if (!probe_next_us) {
+        mkdir("sdmc:/3ds/Colosseum3DS/pda-touch", 0777);
+        probe_log = fopen("sdmc:/3ds/Colosseum3DS/pda-touch/probe.log", "w");
+        probe_next_us = now + (uint64_t)(probe_steps[0].after * 1e6f);
+    }
+    if (probe_hold) --probe_hold;
+    if (probe_at < sizeof probe_steps / sizeof probe_steps[0] && now >= probe_next_us) {
+        const ProbeStep *s = probe_steps + probe_at++;
+        if (s->kind == 'b') button = s->button;
+        else if (s->kind == 't') { probe_x = s->x; probe_y = s->y; probe_hold = 4; }
+        else if (s->kind == 'h') { probe_x = s->x; probe_y = s->y; probe_down = 1; }
+        else if (s->kind == 'r') probe_down = 0;
+        else if (s->kind == 'c') {
+            char path[96]; snprintf(path, sizeof path, "sdmc:/3ds/Colosseum3DS/pda-touch/%02u-%s.bmp", probe_at, s->name);
+            int ok = c3_n3ds_capture_bottom(path) == 0;
+            if (probe_log) { fprintf(probe_log, "shot %s ok=%d t=%.1f\n", path, ok, (double)now / 1e6); fflush(probe_log); }
+        }
+        if (probe_log && s->kind != 'c') { fprintf(probe_log, "step %u %c button=%04x x=%d y=%d t=%.1f\n", probe_at, s->kind, s->button, s->x, s->y, (double)now / 1e6); fflush(probe_log); }
+        if (probe_at < sizeof probe_steps / sizeof probe_steps[0])
+            probe_next_us = now + (uint64_t)(probe_steps[probe_at].after * 1e6f);
+    }
+    if (probe_hold || probe_down) { *held = 1; *x = (uint16_t)probe_x; *y = (uint16_t)probe_y; }
+    return button;
 }
 #endif
 bool c3_n3ds_poll(C3N3dsInput *input)
@@ -177,16 +244,34 @@ bool c3_n3ds_poll(C3N3dsInput *input)
     input->cstick_y = normalize_axis(cstick.dy);
     input->trigger_l = (keys & KEY_L) ? 255 : 0;
     input->trigger_r = (keys & KEY_R) ? 255 : 0;
-    if (keys & KEY_TOUCH) {
-        touchPosition touch;
-        hidTouchRead(&touch);
-        previous_touch_x = touch.px; previous_touch_y = touch.py;
-        input->touch_held = true;
+    {
+        /* touch_ring.h: fold the HID ring so a tap between frames counts. */
+        touchPosition touch = {0};
+        C3TouchSection section;
+        C3TouchEdges edges;
+        vu32 *ring = hidSharedMem ? hidSharedMem + 42 : NULL;
+        if (keys & KEY_TOUCH) hidTouchRead(&touch);
+        if (ring) {
+            section.tick0 = (int64_t)((uint64_t)ring[0] | (uint64_t)ring[1] << 32);
+            section.tick1 = (int64_t)((uint64_t)ring[2] | (uint64_t)ring[3] << 32);
+            section.index = ring[4];
+            for (unsigned i = 0; i < 8; ++i) {
+                section.entry[i][0] = ring[8 + i * 2];
+                section.entry[i][1] = ring[8 + i * 2 + 1];
+            }
+        }
+        int held_now = (keys & KEY_TOUCH) != 0;
+        uint16_t touch_x = touch.px, touch_y = touch.py;
+#ifdef C3_PDA_TOUCH_PROBE
+        input->pressed |= probe_poll(&held_now, &touch_x, &touch_y);
+        if (held_now && !(keys & KEY_TOUCH)) ring = NULL; /* scripted stylus */
+#endif
+        c3_touch_ring_fold(&touch_ring, ring ? &section : NULL, held_now, touch_x, touch_y, &edges);
+        input->touch_x = edges.x; input->touch_y = edges.y;
+        input->touch_held = edges.held;
+        input->touch_pressed = edges.pressed;
+        input->touch_released = edges.released;
     }
-    input->touch_x = previous_touch_x; input->touch_y = previous_touch_y;
-    input->touch_pressed = input->touch_held && !previous_touch;
-    input->touch_released = !input->touch_held && previous_touch;
-    previous_touch = input->touch_held;
     input->exit_requested = (keys & (KEY_START | KEY_SELECT)) == (KEY_START | KEY_SELECT);
 #ifdef C3_CAMPAIGN
     if (autopress_enabled && c3_n3ds_time_us() >= autopress_next_us) {
