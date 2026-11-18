@@ -337,7 +337,8 @@ static int npc_stream_attach(NpcStream *npc,int wait,C3Title *storage,const C3Ti
     if(tv_index!=UINT32_MAX&&!c3_stage_renderer_set_tv(tv_index,1,1,tv_enabled,error,capacity))return 0;
     npc->attached=1;
     if(trace){fprintf(trace,"field_people_stream count=%lu us=%llu\n",(unsigned long)npc->count,
-                      (unsigned long long)(c3_n3ds_time_us()-npc->start_us));fflush(trace);}
+                      (unsigned long long)(c3_n3ds_time_us()-npc->start_us));
+        fprintf(trace,"field_people_visible frame=%u people=%lu streamed=1\n",frames,(unsigned long)npc->count);fflush(trace);}
     return 1;
 }
 /* A story battle other than encounter 10, on the general battle engine:
@@ -741,9 +742,9 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     unsigned wes_index=0,arrival_index=0,tv_index=UINT32_MAX,partner_index=UINT32_MAX,selection=0,frames=0;
     /* Load timing for the trace: area start, each pack, first control. */
     uint64_t load_start_us=c3_n3ds_time_us(),pack_us=0;int load_reported=0;
-    /* People stream in after the room: their packs load on the second core
-     * while the scene runs, and join the renderer when all have arrived. */
-    NpcStream npc={0};uint64_t skin_core=0;
+    /* People load with the room (both cores) and are bound before the first
+     * frame; npc.attached is then set and npc_stream_attach is a no-op. */
+    NpcStream npc={0};
     c3_title_perf_clock(c3_n3ds_time_us);
     int result=-1,yes=0,dirty=1,arrival_end_sampled=0,entered=0,lights_loaded=0;
     FieldPhase phase=FIELD_SETUP;PausePage page=PAUSE_CLOSED;
@@ -854,14 +855,21 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         if(c3_area_prefetch_take(jobs[j].path,jobs[j].title)){jobs[j].ok=1;jobs[j].error[0]=0;jobs[j].microseconds=0;++prefetched;}
     c3_area_prefetch_release();
     {
-        C3PackJob *pending=calloc(load_total?load_total:1u,sizeof *pending);
-        unsigned *slot=calloc(load_total?load_total:1u,sizeof *slot),n=0;
+        /* The floor's people load in the same parallel batch as the room,
+         * so every character is resident before the first frame. They used
+         * to stream in on the second core after the fade-in and popped in
+         * up to seconds after the map (field_people_visible in the trace). */
+        unsigned total=load_total+npc.count;
+        C3PackJob *pending=calloc(total?total:1u,sizeof *pending);
+        unsigned *slot=calloc(total?total:1u,sizeof *slot),n=0;
         if(!pending||!slot){free(pending);free(slot);snprintf(error,capacity,"Not enough memory for the load list.");free(jobs);goto done;}
         for(unsigned j=0;j<load_total;++j)if(!jobs[j].ok){pending[n]=jobs[j];slot[n++]=j;}
+        for(unsigned j=0;j<npc.count;++j){pending[n]=npc.jobs[j];slot[n++]=load_total+j;}
         size_t bad=n?c3_pack_load_all(pending,n,after_journey?NULL:load_progress):0;
-        for(unsigned k=0;k<n;++k){C3PackJob *job=jobs+slot[k];job->ok=pending[k].ok;job->microseconds=pending[k].microseconds;
+        for(unsigned k=0;k<n;++k){C3PackJob *job=slot[k]<load_total?jobs+slot[k]:npc.jobs+(slot[k]-load_total);
+            job->ok=pending[k].ok;job->microseconds=pending[k].microseconds;
             snprintf(job->error,sizeof job->error,"%s",pending[k].error);}
-        if(bad)failed=slot[bad-1]+1u;
+        if(bad&&slot[bad-1]<load_total)failed=slot[bad-1]+1u;
         free(pending);free(slot);
     }
     if(trace){fprintf(trace,"field_prefetch taken=%u of=%u\n",prefetched,load_total);}
@@ -887,6 +895,17 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         }
     }
     free(jobs);
+    /* Bind the people loaded with the room, posed on their idle clip. */
+    for(uint32_t j=0;j<npc.count;++j){
+        C3PackJob *job=npc.jobs+j;uint32_t slot=npc.first+j,i=npc.area_index[j];
+        if(trace)fprintf(trace,"field_pack_load file=%s bytes=%lu us=%llu ok=%d\n",job->path,
+                         (unsigned long)job->title->file_bytes,(unsigned long long)job->microseconds,job->ok);
+        if(!job->ok){snprintf(error,capacity,"%s",job->error);goto done;}
+        snprintf(model_paths[slot],sizeof model_paths[slot],"%s",job->path);
+        models[slot]=storage+slot;actor_models[i]=storage+slot;
+        if(!c3_title_animate(storage+slot,0,0)){snprintf(error,capacity,"Original NPC idle motion is missing.");goto done;}
+    }
+    free(npc.jobs);npc.jobs=NULL;npc.attached=1;
 #ifdef C3_CAMPAIGN
     {static int loading_shot;if(!loading_shot){loading_shot=1;(void)c3_n3ds_capture_top("sdmc:/3ds/Colosseum3DS/campaign/loading.bmp");}}
 #endif
@@ -948,10 +967,9 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     }
     skin_actors=UINT64_C(1)<<wes_index;
     for(uint32_t i=arrival_index+arrival_count;i<count&&i<64u;++i)if(i!=tv_index)skin_actors|=UINT64_C(1)<<i;
-    skin_core=skin_actors&(npc.first>=64u?~UINT64_C(0):(UINT64_C(1)<<npc.first)-1u);
     if(trace){fprintf(trace,"field_load_stage name=%s us=%llu\n","cameras_lights",(unsigned long long)(c3_n3ds_time_us()-load_start_us));}
-    /* The room first; people join the renderer when their packs arrive. */
-    if(field_renderer_init(storage,models,npc.first,skin_core,error,capacity))goto done;
+    /* Room and people together: one renderer start, no mid-scene restart. */
+    if(field_renderer_init(storage,models,count,skin_actors,error,capacity))goto done;
     if(trace){fprintf(trace,"field_load_stage name=%s us=%llu\n","renderer",(unsigned long long)(c3_n3ds_time_us()-load_start_us));}
     if(tv_index!=UINT32_MAX&&!c3_stage_renderer_set_tv(tv_index,1,1,true,error,capacity))goto done;
     snprintf(path,sizeof path,"%s_ready",prefix);
@@ -961,9 +979,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
        !c3_field_story_bind_battle(&story,BOOT_ROOT "willie.c3b",story_error))goto story_failed;
     if(partner_index!=UINT32_MAX&&!c3_field_story_attach_partner(&story,storage+partner_index,story_error))goto story_failed;
     if(trace){fprintf(trace,"field_load_stage name=%s us=%llu\n","story",(unsigned long long)(c3_n3ds_time_us()-load_start_us));}
-    if(npc.count){npc.stream=c3_pack_stream_start(npc.jobs,npc.count);npc.start_us=c3_n3ds_time_us();
-        if(!npc.stream){snprintf(error,capacity,"The people loader could not start.");goto done;}}
-    else npc.attached=1;
+    if(trace){fprintf(trace,"field_people_visible frame=0 people=%lu streamed=0\n",(unsigned long)npc.count);fflush(trace);}
     {   /* Treasure people of the floor (<prefix>.c3r beside the story pack). */
             char treasure[256];size_t n;snprintf(treasure,sizeof treasure,BOOT_ROOT "%s",profile->story);n=strlen(treasure);
             if(n>4&&!strcmp(treasure+n-4,".c3s")){memcpy(treasure+n-4,".c3r",4);

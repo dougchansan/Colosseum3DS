@@ -316,6 +316,42 @@ int main(int argc,char **argv)
          fprintf(trace,"phenac_partner_follow hero_moved=%.3f rui_moved=%.3f gap=%.3f walked=%d clip=%lu\n",
                  (double)hero_moved,(double)moved,(double)gap,walked,(unsigned long)rui->clip);
          CHECK(hero_moved>1.0f&&moved>0.5f&&walked&&gap>0.85f&&gap<1.6f&&rui->clip==0);
+         /* The same at the console's field rate (~17 fps, jittered ticks):
+          * Wes walks, turns a right angle, stops, walks back past his facing
+          * and stops. Every tick Rui moves at most her one-unit-per-60-Hz-
+          * frame budget (no snap), turns at most nine degrees per 60-Hz tick
+          * (no yaw flip), and her clip clock only advances: a clip change
+          * carries the phase instead of restarting at frame 0. */
+         {const float times[3]={1.0f/17.0f,1.0f/18.0f,1.0f/15.5f},sc=s->map.scale,step60=s->map.walk_distance/s->map.walk_frames;
+          float t=0,last_yaw=rui->pose.yaw,last_clock=rui->pose.animation_seconds,heading=s->hero.yaw;
+          unsigned changes=0,last_clip=rui->clip,ticks=0,walk_ticks=0,blocked=0;float max_turn=0,max_move=0,steady_min=1e9f,steady_max=0;
+          while(t<8.0f){float dt=times[ticks%3];float before[3]={rui->pose.position[0],rui->pose.position[1],rui->pose.position[2]};
+              float dir=t<2.0f?heading:t<4.0f?heading+1.5707964f:t<5.0f?-100.0f:t<5.6f?heading+3.1415927f:-100.0f;
+              if(dir>-50.0f){float d=step60*dt*60.0f,g,next[3]={s->hero.position[0]+sinf(dir)*d,s->hero.position[1],s->hero.position[2]+cosf(dir)*d};
+                  if(c3_field_ground(&s->map,next,&g)){s->hero.position[0]=next[0];s->hero.position[2]=next[2];s->hero.position[1]=g;}else ++blocked;
+                  s->hero.yaw=dir;}
+              CHECK(c3_field_story_tick(&s->story,dt,0,error)&&c3_field_story_sample(&s->story,error));
+              float move=hypotf(rui->pose.position[0]-before[0],rui->pose.position[2]-before[2]);
+              float turn=fabsf(remainderf(rui->pose.yaw-last_yaw,6.2831853f));
+              CHECK(move<=dt*60.0f*sc+1e-4f);
+              CHECK(turn<=.15707964f*ceilf(dt*60.0f)+1e-4f);
+              if(rui->clip!=last_clip){++changes;fprintf(trace,"phenac_partner_clip t=%.3f %lu->%lu clock=%.3f->%.3f\n",(double)t,
+                  (unsigned long)last_clip,(unsigned long)rui->clip,(double)last_clock,(double)rui->pose.animation_seconds);}
+              else CHECK(rui->pose.animation_seconds>last_clock);
+              fprintf(trace,"phenac_partner_tick t=%.3f dt=%.4f per_frame=%.4f yaw=%.3f clip=%lu clock=%.3f gap=%.3f\n",(double)t,(double)dt,
+                      (double)(move/(dt*60.0f)),(double)rui->pose.yaw,(unsigned long)rui->clip,(double)rui->pose.animation_seconds,
+                      (double)hypotf(rui->pose.position[0]-s->hero.position[0],rui->pose.position[2]-s->hero.position[2]));
+              walk_ticks+=rui->clip==1;
+              if(move/(dt*60.0f)>max_move)max_move=move/(dt*60.0f);
+              if((t>0.8f&&t<1.9f)||(t>3.2f&&t<3.9f)){steady_min=fminf(steady_min,move/(dt*60.0f));steady_max=fmaxf(steady_max,move/(dt*60.0f));}
+              if(turn>max_turn)max_turn=turn;
+              last_yaw=rui->pose.yaw;last_clock=rui->pose.animation_seconds;last_clip=rui->clip;t+=dt;++ticks;}
+          float gap2=hypotf(rui->pose.position[0]-s->hero.position[0],rui->pose.position[2]-s->hero.position[2]);
+          fprintf(trace,"phenac_partner_follow_17fps ticks=%u clip_changes=%u walk_ticks=%u max_move_per_frame=%.4f steady_walk_per_frame=%.4f..%.4f max_turn=%.4f gap=%.3f blocked=%u clip=%lu\n",
+                  ticks,changes,walk_ticks,(double)max_move,(double)steady_min,(double)steady_max,(double)max_turn,(double)gap2,blocked,(unsigned long)rui->clip);
+          /* Steady walking: her speed stays within 25% of Wes's (one record tick
+           * dips ~19%, as at 60 Hz), no record-to-record lunges. */
+          CHECK(changes<=8&&walk_ticks>40&&rui->clip==0&&gap2>0.85f&&gap2<1.6f&&steady_min>=step60*.75f&&steady_max<=step60*1.25f);}
      }}
     /* The optional trainer, actor 15: main's function 40 tests native A9
      * (hero within 30 units and 15 degrees of the actor's facing), shows the
