@@ -175,10 +175,10 @@ int c3_ingame_preview_identity(const C3IngameMenu *m,const C3GameState *state,
     }
     return 0;
 }
-C3IngameEvent c3_ingame_update(C3IngameMenu *m,C3GameState *state,const C3N3dsInput *input,float dt)
+static C3IngameEvent step(C3IngameMenu *m,C3GameState *state,const C3N3dsInput *input,float dt)
 {
-    C3IngameEvent e={0};if(!m||!m->active||!state||!input)return e;
-    uint16_t pressed=input->pressed,keys=navigation(m,input,dt);if(keys||pressed)m->dirty=1;
+    C3IngameEvent e={0};
+    uint16_t pressed=input->pressed,keys=navigation(m,input,dt)|m->touch_keys;m->touch_keys=0;if(keys||pressed)m->dirty=1;
     int accept=!!(pressed&C3_PAD_A),back=!!(pressed&C3_PAD_B);
     if((pressed&C3_PAD_Y)&&(m->page==C3_GAME_POKEMON||m->page==C3_GAME_MEMO_ENTRY||m->page==C3_GAME_SNAG_ENTRY)){
         e.kind=C3_INGAME_PREVIEW;return e;
@@ -315,6 +315,23 @@ C3IngameEvent c3_ingame_update(C3IngameMenu *m,C3GameState *state,const C3N3dsIn
     }}
     return e;
 }
+/* The original window key handler (pda_range_80037158.c) sounds 0x24 on a
+ * decision, 0x25 on cancel and 0x23 as the cursor moves. */
+C3IngameEvent c3_ingame_update(C3IngameMenu *m,C3GameState *state,const C3N3dsInput *input,float dt)
+{
+    C3IngameEvent e={0};if(!m||!m->active||!state||!input)return e;
+    C3IngamePage before=m->page;unsigned selection=m->selection;
+    unsigned values[8]={m->option_mono,m->option_rumble,m->filter_types[0],m->filter_types[1],m->filter_color,
+                        m->inventory.quantity,m->tab,m->pocket};
+    e=step(m,state,input,dt);
+    unsigned after[8]={m->option_mono,m->option_rumble,m->filter_types[0],m->filter_types[1],m->filter_color,
+                       m->inventory.quantity,m->tab,m->pocket};
+    /* An audition on the tone list is its own sound. */
+    int changed=m->page!=before,event=e.kind!=C3_INGAME_NONE&&!(e.kind==C3_INGAME_PLAY_TONE&&!changed);
+    if(changed||event)m->sound=(input->pressed&C3_PAD_B)?C3_INGAME_SOUND_CANCEL:C3_INGAME_SOUND_DECIDE;
+    else if(m->page!=C3_GAME_TONES&&(m->selection!=selection||memcmp(values,after,sizeof values)))m->sound=C3_INGAME_SOUND_CURSOR;
+    return e;
+}
 
 static void image(C3IngameMenu *m,C3BottomUi *ui,unsigned id,int x,int y,int w,int h)
 {
@@ -337,11 +354,91 @@ static void decoded_name(const uint8_t *p,char *out,size_t cap)
     unsigned i=0;for(;i<10&&i+1<cap;++i){unsigned c=c3_pda_be16(p+i*2);if(!c)break;
     out[i]=(c>=32&&c<=126)?(char)c:'?';}out[i]=0;
 }
+/* Hub buttons are drawn 121x29 at (32+135c, 65+36r); their touch cells
+ * close the gaps between them so no tap between two buttons is lost. */
 int c3_ingame_hub_hit(int x,int y)
 {
-    for(int i=0;i<8;++i){int bx=32+(i%2)*135,by=65+(i/2)*36;
-        if(x>=bx&&x<bx+121&&y>=by&&y<by+29)return i;}
-    return -1;
+    if(x<26||x>=294||y<62||y>=62+4*36)return -1;
+    return (y-62)/36*2+(x>=160);
+}
+/* List rows (c3_ui_row_value: x 31..288 with the 16 px content inset, 19 px
+ * tall at `top + i*pitch`) own the whole pitch, starting 3 px above. */
+static int row_hit(int x,int y,int top,int pitch,unsigned first,unsigned shown,unsigned count)
+{
+    if(x<31||x>=289||y<top-3)return C3_INGAME_HIT_NONE;
+    unsigned row=(unsigned)(y-(top-3))/(unsigned)pitch;
+    if(row>=shown||first+row>=count)return C3_INGAME_HIT_NONE;
+    return (int)(first+row);
+}
+static int back_hit(int x,int y)
+{return x>=C3_INGAME_BACK_X-8&&x<320&&y>=C3_INGAME_BACK_Y-6&&y<240;}
+int c3_ingame_hit(const C3IngameMenu *m,int x,int y)
+{
+    if(!m||x<0||y<0||x>=320||y>=240)return C3_INGAME_HIT_NONE;
+    if(back_hit(x,y))return C3_INGAME_HIT_BACK;
+    unsigned first6=m->selection/6u*6u;
+    switch(m->page){
+    case C3_GAME_HUB:return c3_ingame_hub_hit(x,y);
+    case C3_GAME_PDA:return row_hit(x,y,68,32,0,4,4);
+    case C3_GAME_ITEM_ACTIONS:return row_hit(x,y,65,25,0,5,5);
+    case C3_GAME_PARTY_ACTIONS:return row_hit(x,y,65,25,0,4,4);
+    case C3_GAME_ITEM_TARGET:{
+        unsigned count=m->inventory.action==C3_INVENTORY_REORDER&&m->inventory_origin==C3_GAME_ITEMS?c3_inventory_capacity(m->pocket):6u;
+        return row_hit(x,y,63,24,first6,6,count);
+    }
+    case C3_GAME_ITEM_QUANTITY:return row_hit(x,y,90,24,0,1,1);
+    case C3_GAME_ITEM_CONFIRM:return row_hit(x,y,85,30,0,2,2);
+    case C3_GAME_ITEM_CHOICE:return row_hit(x,y,63,24,first6,6,m->inventory_result.choice_count+1u);
+    case C3_GAME_PARTY:return row_hit(x,y,62,25,0,6,m->count);
+    case C3_GAME_ITEMS:case C3_GAME_MEMO:case C3_GAME_SNAG:
+        return row_hit(x,y,m->page==C3_GAME_ITEMS?63:65,24,first6,6,m->count);
+    /* Letters are 28 px cells at 65 + 29i: start the band 1 px above. */
+    case C3_GAME_MAIL:return row_hit(x,y,67,29,m->selection/5u*5u,5,m->count);
+    case C3_GAME_TONES:return row_hit(x,y,65,24,first6,6,10);
+    case C3_GAME_MEMO_FILTER:return row_hit(x,y,65,29,0,5,5);
+    case C3_GAME_OPTIONS:return row_hit(x,y,72,37,0,3,3);
+    default:
+        /* Detail pages: the message panel / picture, between header and footer. */
+        return x>=16&&x<304&&y>=48&&y<219?C3_INGAME_HIT_PANEL:C3_INGAME_HIT_NONE;
+    }
+}
+/* A tapped row acts as A after the press selected it. Option and search
+ * rows step their value (D-pad Right). On the tone list the first tap
+ * auditions (Y) and a tap on the highlighted tone keeps it (A). A tapped
+ * Pokemon summary pages its text, then turns to the next tab (R). */
+static uint16_t touch_action(C3IngameMenu *m,int hit)
+{
+    if(hit==C3_INGAME_HIT_BACK)return C3_PAD_B;
+    if(hit==C3_INGAME_HIT_PANEL)return m->page==C3_GAME_POKEMON&&!m->pager.more?C3_PAD_R:C3_PAD_A;
+    if(hit<0)return 0;
+    if((m->page==C3_GAME_OPTIONS&&hit<2)||(m->page==C3_GAME_MEMO_FILTER&&hit<3)){m->touch_keys|=C3_PAD_RIGHT;return 0;}
+    if(m->page==C3_GAME_TONES&&!m->touch_was_selected)return C3_PAD_Y;
+    return C3_PAD_A;
+}
+uint16_t c3_ingame_touch(C3IngameMenu *m,const C3N3dsInput *in)
+{
+    uint16_t out=0;
+    if(!m||!m->active||!in)return 0;
+    if(in->touch_pressed){
+        int hit=c3_ingame_hit(m,in->touch_x,in->touch_y);
+        m->touch_item=hit;m->touch_active=hit!=C3_INGAME_HIT_NONE;m->touch_was_selected=hit>=0&&(unsigned)hit==m->selection;
+        if(hit>=0&&(unsigned)hit!=m->selection){
+            m->selection=(unsigned)hit;
+            if(m->page==C3_GAME_HUB)m->hub_selection=m->selection;
+            if(m->page==C3_GAME_PDA)m->pda_selection=m->selection;
+            if(m->page!=C3_GAME_TONES)m->sound=C3_INGAME_SOUND_CURSOR;
+        }
+        if(m->page==C3_GAME_HUB)m->idle=0;
+        m->dirty=1;
+    }else if(m->touch_active&&in->touch_held&&c3_ingame_hit(m,in->touch_x,in->touch_y)!=m->touch_item){
+        m->touch_active=0;m->dirty=1; /* slid off: cancelled, nothing happens */
+    }
+    /* A tap shorter than a frame arrives pressed and released together. */
+    if(m->touch_active&&in->touch_released){
+        m->touch_active=0;m->dirty=1;
+        if(c3_ingame_hit(m,in->touch_x,in->touch_y)==m->touch_item)out=touch_action(m,m->touch_item);
+    }
+    return out;
 }
 /* fn_801D2404 blinks the new-mail envelope (0x0C881200) in the screen's top
  * corner at half its 57x41 size, over whatever is shown; on the 320x240
@@ -353,6 +450,26 @@ int c3_ingame_draw_mail_alert(C3IngameMenu *m,C3BottomUi *ui)
     if(!m||!ui||!m->mail_alert||!m->assets.data)return 0;
     if(c3_pda_entry(&m->assets,6,5,&n))image(m,ui,5,262,18,29,21);else image(m,ui,3,262,18,31,22);
     return 1;
+}
+/* The footer's key hints end left of the Back button, which stands for the
+ * hint's "B: ..." part (dropped here). */
+static void footer(C3BottomUi *ui,const char *hint)
+{
+    char text[96];snprintf(text,sizeof text,"%s",hint);
+    char *b=strncmp(text,"B: ",3)?strstr(text,"   B: "):text;
+    if(b)*b=0;
+    c3_ui_rect(ui,0,220,320,20,0x070f14u);
+    c3_ui_text(ui,26,222,C3_INGAME_BACK_X-34,1,text,C3_UI_MUTED);
+}
+/* Back, in the hub buttons' green P*DA style (dark cell, bright edge bar,
+ * the UI pack's hand cursor while pressed); it does what B does. */
+static void back_button(const C3IngameMenu *m,C3BottomUi *ui)
+{
+    int pressed=m->touch_active&&m->touch_item==C3_INGAME_HIT_BACK,x=C3_INGAME_BACK_X,y=C3_INGAME_BACK_Y;
+    c3_ui_rect(ui,x,y,C3_INGAME_BACK_W,C3_INGAME_BACK_H,pressed?0x2a7a4cu:0x0b3a22u);
+    c3_ui_rect(ui,x,y,2,C3_INGAME_BACK_H,pressed?0x66ff55u:0x3f9a5au);
+    if(pressed)c3_ui_sprite(ui,C3_UI_HAND,x+3,y+3,15,11);
+    c3_ui_text(ui,x+(pressed?19:15),y,C3_INGAME_BACK_W-(pressed?19:15),1,"BACK",pressed?C3_UI_WHITE:0x8dcbaau);
 }
 void c3_ingame_draw_to(C3IngameMenu *m,const C3GameState *state,C3BottomUi *ui)
 {
@@ -371,21 +488,21 @@ void c3_ingame_draw_to(C3IngameMenu *m,const C3GameState *state,C3BottomUi *ui)
             c3_ui_rect(ui,x,y,2,29,i==chosen?0x66ff55u:0x235d35u);
             if(i==chosen)c3_ui_sprite(ui,C3_UI_HAND,x+3,y+5,21,16);
             c3_ui_text(ui,x+(i==chosen?26:10),y+6,i==chosen?89:105,1,labels[i],i==chosen?C3_UI_WHITE:0x8dcbaau);
-        }c3_ui_footer(ui,m->idle?"Tap an item   X / START: menu":"D-pad: choose   A: open   B: resume");
+        }footer(ui,m->idle?"Tap an item   X / START: menu":"D-pad: choose   A: open   B: resume");
         break;
     }
     case C3_GAME_PDA:{
         static const char *const labels[]={"SNAG LIST","STRATEGY MEMO","MAIL","CANCEL"};uint32_t unlocked=0;c3_game_state_get_flag(state,0x3f0,&unlocked);
         for(unsigned i=0;i<4;++i){snprintf(value,sizeof value,"%s",i==1&&!unlocked?"LOCKED":"");
             c3_ui_row_value(ui,68+(int)i*32,labels[i],value,m->selection==i,i==1&&!unlocked);}
-        c3_ui_footer(ui,"A: open   B: in-game menu");break;
+        footer(ui,"A: open   B: in-game menu");break;
     }
     case C3_GAME_ITEM_ACTIONS:case C3_GAME_PARTY_ACTIONS:{
         static const char *const item_actions[]={"USE","GIVE","TOSS","SWITCH","CANCEL"};
         static const char *const party_actions[]={"SUMMARY","TAKE ITEM","SWITCH","CANCEL"};
         int party=m->page==C3_GAME_PARTY_ACTIONS;header(m,ui,party?"POKEMON":"ITEMS","Choose an action.");
         for(unsigned i=0;i<(party?4u:5u);++i)c3_ui_row(ui,65+(int)i*25,party?party_actions[i]:item_actions[i],i==m->selection,0);
-        c3_ui_footer(ui,"A: choose   B: cancel");break;
+        footer(ui,"A: choose   B: cancel");break;
     }
     case C3_GAME_ITEM_TARGET:{
         int bag=m->inventory.action==C3_INVENTORY_REORDER&&m->inventory_origin==C3_GAME_ITEMS;
@@ -404,12 +521,12 @@ void c3_ingame_draw_to(C3IngameMenu *m,const C3GameState *state,C3BottomUi *ui)
                 snprintf(value,sizeof value,"%u/%u HP",c3_pda_be16(p+0x8a),c3_pda_be16(p+0x8c));
             }else snprintf(label,sizeof label,"---");}
             c3_ui_row_value(ui,63+(int)(i-first)*24,label,value,i==m->selection,0);
-        }c3_ui_footer(ui,"A: choose   B: cancel");break;
+        }footer(ui,"A: choose   B: cancel");break;
     }
     case C3_GAME_ITEM_QUANTITY:
-        header(m,ui,"TOSS","How many will you toss?");snprintf(label,sizeof label,"Quantity: %u",m->inventory.quantity);c3_ui_row(ui,90,label,1,0);c3_ui_footer(ui,"Up / Down: quantity   A: next   B: cancel");break;
+        header(m,ui,"TOSS","How many will you toss?");snprintf(label,sizeof label,"Quantity: %u",m->inventory.quantity);c3_ui_row(ui,90,label,1,0);footer(ui,"Up / Down: quantity   A: next   B: cancel");break;
     case C3_GAME_ITEM_CONFIRM:
-        header(m,ui,"TOSS","Is it OK to throw away these items?");c3_ui_row(ui,85,"NO",m->selection==0,0);c3_ui_row(ui,115,"YES",m->selection==1,0);c3_ui_footer(ui,"A: choose   B: cancel");break;
+        header(m,ui,"TOSS","Is it OK to throw away these items?");c3_ui_row(ui,85,"NO",m->selection==0,0);c3_ui_row(ui,115,"YES",m->selection==1,0);footer(ui,"A: choose   B: cancel");break;
     case C3_GAME_ITEM_CHOICE:{
         header(m,ui,m->inventory_choice==C3_INVENTORY_NEED_EVOLUTION?"EVOLUTION":"MOVES",m->inventory_choice==C3_INVENTORY_NEED_REPLACEMENT?"Choose a move to forget.":"Choose an option.");
         unsigned count=m->inventory_result.choice_count,first=m->selection/6u*6u;
@@ -425,9 +542,9 @@ void c3_ingame_draw_to(C3IngameMenu *m,const C3GameState *state,C3BottomUi *ui)
                     if(slot<4&&d&&bytes==56)snprintf(value,sizeof value,"%u/%u PP",p[0x7a+slot*4],d[1]*(5u+p[0x7b+slot*4])/5u);
                     if(m->inventory_result.choices[i]==4)snprintf(label,sizeof label,"Don't learn this move");}}
             c3_ui_row_value(ui,63+(int)(i-first)*24,label,value,i==m->selection,0);
-        }c3_ui_footer(ui,"A: choose   B: cancel");break;
+        }footer(ui,"A: choose   B: cancel");break;
     }
-    case C3_GAME_ITEM_RESULT:header(m,ui,"ITEMS","");body(m,ui,m->error);c3_ui_footer(ui,"A / B: return");break;
+    case C3_GAME_ITEM_RESULT:header(m,ui,"ITEMS","");body(m,ui,m->error);footer(ui,"A / B: return");break;
     case C3_GAME_PARTY:
         header(m,ui,"POKEMON",sub);
         for(unsigned i=0;i<m->count;++i){uint8_t p[312];c3_game_state_pokemon(state,m->order[i],p);
@@ -437,7 +554,7 @@ void c3_ingame_draw_to(C3IngameMenu *m,const C3GameState *state,C3BottomUi *ui)
             uint32_t progress,range;if(c3_pda_experience(&m->assets,p,&progress,&range)){
                 c3_ui_text(ui,61,y+10,32,1,"EXP",C3_UI_GOLD);c3_ui_experience(ui,96,y+17,187,progress,range);
             }
-        }c3_ui_footer(ui,"A: summary   X: actions   B: back");break;
+        }footer(ui,"A: summary   X: actions   B: back");break;
     case C3_GAME_ITEMS:{
         header(m,ui,pockets[m->pocket],"L / R: change pocket");unsigned first=m->selection/6u*6u;
         for(unsigned row=0;row<6&&first+row<m->count;++row){unsigned i=first+row;C3GameItem item;c3_game_state_item(state,m->pocket,m->order[i],&item);
@@ -445,14 +562,14 @@ void c3_ingame_draw_to(C3IngameMenu *m,const C3GameState *state,C3BottomUi *ui)
             if(d)text(m,&s,c3_pda_be32(d+16),"ITEM",label,sizeof label);
             snprintf(value,sizeof value,"x%u",item.quantity);c3_ui_row_value(ui,63+(int)row*24,label,value,i==m->selection,0);}
         if(!m->count)c3_ui_text(ui,40,86,240,2,"There are no items in this pocket.",C3_UI_WHITE);
-        c3_ui_footer(ui,"A: description   X: actions   B: back");break;
+        footer(ui,"A: description   X: actions   B: back");break;
     }
     case C3_GAME_ITEM:{
         C3GameItem item;c3_game_state_item(state,m->pocket,m->detail,&item);const uint8_t *d=c3_pda_entry(&m->assets,7,item.id,&n);
         snprintf(label,sizeof label,"ITEM %u",item.id);if(d)text(m,&s,c3_pda_be32(d+16),"ITEM",label,sizeof label);
         header(m,ui,label,pockets[m->pocket]);
         text(m,&s,d?c3_pda_be32(d+20):0,"Original item description is unavailable.",m->text,sizeof m->text);body(m,ui,m->text);
-        c3_ui_footer(ui,m->pager.more?"A: more   B: back":"A / X: actions   B: item list");break;
+        footer(ui,m->pager.more?"A: more   B: back":"A / X: actions   B: item list");break;
     }
     case C3_GAME_POKEMON:{
         uint8_t p[312];c3_game_state_pokemon(state,m->detail,p);decoded_name(p+0x2e,name,sizeof name);if(!name[0])species_name(m,&s,c3_pda_be16(p),name,sizeof name);
@@ -476,20 +593,20 @@ void c3_ingame_draw_to(C3IngameMenu *m,const C3GameState *state,C3BottomUi *ui)
             unsigned ups=p[0x7b+i*4];if(ups>3)ups=3;
             snprintf(value,sizeof value,"%u/%u PP",p[0x7a+i*4],d?(unsigned)d[1]*(5u+ups)/5u:0);
             c3_ui_row_value(ui,70+(int)i*32,label,id?value:"",0,0);
-        }c3_ui_footer(ui,m->preview?"C-stick: rotate   B/Y: close":m->pager.more?"A: more   Y: model   B: party":"L/R: pages   X: actions   Y: model");break;
+        }footer(ui,m->preview?"C-stick: rotate   B/Y: close":m->pager.more?"A: more   Y: model   B: party":"L/R: pages  X: actions  Y: model");break;
     }
     case C3_GAME_TRAINER:{
         header(m,ui,s.name,"TRAINER");const uint8_t *b=c3_game_state_body(state,NULL);
         snprintf(m->text,sizeof m->text,"TRAINER ID  %05u\nMoney  %lu\nPOKE COUPONS  %lu\nTime  %lu:%02lu\nParty  %u\nPartner  %s",(unsigned)(s.trainer_id&65535u),(unsigned long)s.money,(unsigned long)c3_pda_be32(b+0x70+0xa88),(unsigned long)(s.play_seconds/3600u),(unsigned long)(s.play_seconds/60u%60u),s.party_count,s.partner);
-        body(m,ui,m->text);c3_ui_footer(ui,"B: in-game menu");break;
+        body(m,ui,m->text);footer(ui,"B: in-game menu");break;
     }
     case C3_GAME_OPTIONS:
         header(m,ui,"OPTIONS","Changes apply with END; Save keeps them.");
         snprintf(label,sizeof label,"SOUND  <%s>",m->option_mono?"MONO":"STEREO");c3_ui_row(ui,72,label,m->selection==0,0);
         snprintf(label,sizeof label,"RUMBLE <%s>",m->option_rumble?"OFF":"ON");c3_ui_row(ui,109,label,m->selection==1,0);c3_ui_row(ui,146,"END",m->selection==2,0);
-        c3_ui_text(ui,38,185,244,1,"3DS has no Controller Rumble motor.",C3_UI_MUTED);c3_ui_footer(ui,"D-pad: change   A: END   B: cancel");break;
+        c3_ui_text(ui,38,185,244,1,"3DS has no Controller Rumble motor.",C3_UI_MUTED);footer(ui,"D-pad: change   A: END   B: cancel");break;
     case C3_GAME_MAIL:{
-        unsigned tone,sort;if(!c3_game_state_mail_settings(state,&sort,&tone)){body(m,ui,"The saved mail settings are invalid.");c3_ui_footer(ui,"B: back");break;}
+        unsigned tone,sort;if(!c3_game_state_mail_settings(state,&sort,&tone)){body(m,ui,"The saved mail settings are invalid.");footer(ui,"B: back");break;}
         snprintf(sub,sizeof sub,"%u letters   %s",m->count,sorts[sort]);header(m,ui,"MAIL",sub);
         unsigned first=m->selection/5u*5u;
         for(unsigned row=0;row<5&&first+row<m->count;++row){unsigned i=first+row;C3GameMail mail;c3_game_state_mail(state,m->order[i],&mail);const uint8_t *d=c3_pda_entry(&m->assets,3,mail.id,&n);
@@ -499,24 +616,24 @@ void c3_ingame_draw_to(C3IngameMenu *m,const C3GameState *state,C3BottomUi *ui)
             text(m,&s,d?c3_pda_be32(d+12):0,"Unknown sender",label,sizeof label);c3_ui_text(ui,64,y+13,217,1,label,C3_UI_MUTED);
         }
         if(!m->count)c3_ui_text(ui,40,88,240,2,"No mail has been received.",C3_UI_WHITE);
-        c3_ui_footer(ui,"A: read   X: sort   Y: tone   B: back");break;
+        footer(ui,"A: read   X: sort   Y: tone   B: back");break;
     }
     case C3_GAME_LETTER:{
         const uint8_t *d=c3_pda_entry(&m->assets,3,m->detail,&n);text(m,&s,d?c3_pda_be32(d+16):0,"MAIL",label,sizeof label);
         text(m,&s,d?c3_pda_be32(d+12):0,"",sub,sizeof sub);header(m,ui,label,sub);
         text(m,&s,d?c3_pda_be32(d+20):0,"This original letter could not be decoded.",m->text,sizeof m->text);body(m,ui,m->text);
-        c3_ui_footer(ui,m->pager.more?"A: more   B: inbox":d&&c3_pda_be32(d+24)?"X: picture   L/R: letter   B: inbox":"L/R: letter   B: inbox");break;
+        footer(ui,m->pager.more?"A: more   B: inbox":d&&c3_pda_be32(d+24)?"X: picture   L/R: letter   B: inbox":"L/R: letter   B: inbox");break;
     }
     case C3_GAME_PICTURE:{
         const uint8_t *d=c3_pda_entry(&m->assets,3,m->detail,&n);header(m,ui,"MAIL PICTURE","");
         if(d)image(m,ui,100u+c3_pda_be32(d+24),53,60,214,160);
-        c3_ui_footer(ui,"A / B: return to letter");
+        footer(ui,"A / B: return to letter");
         break;
     }
     case C3_GAME_TONES:{
         unsigned sort,tone;c3_game_state_mail_settings(state,&sort,&tone);header(m,ui,"ALERT TONE","Select the saved mail alert tone.");
         unsigned first=m->selection/6u*6u;for(unsigned r=0;r<6&&first+r<10;++r){unsigned i=first+r;c3_ui_row_value(ui,65+(int)r*24,tones[i],i==tone?"SET":"",i==m->selection,0);}
-        c3_ui_footer(ui,"A: set tone   B: inbox");break;
+        footer(ui,"A: set tone   B: inbox");break;
     }
     case C3_GAME_MEMO:{
         const char *sort_names[]={"No.","Name","Height","Weight"};snprintf(sub,sizeof sub,"%u entries   Sort: %s",m->count,sort_names[m->sort]);header(m,ui,"STRATEGY MEMO",sub);
@@ -525,14 +642,14 @@ void c3_ingame_draw_to(C3IngameMenu *m,const C3GameState *state,C3BottomUi *ui)
             species_name(m,&s,memo.species,name,sizeof name);snprintf(label,sizeof label,"%03u %s",p.dex,name);int caught=0;c3_pda_memo_caught(&m->assets,state,memo.species,&caught);
             c3_ui_row_value(ui,65+(int)row*24,label,(memo.raw&0x8000u)?"NEW":caught?"CAUGHT":"",i==m->selection,0);}
         if(!m->count)c3_ui_text(ui,40,88,240,2,m->filter_types[0]||m->filter_types[1]||m->filter_color||m->sort>=2?"No registered Pokemon match this search.":"No Pokemon are recorded.",C3_UI_WHITE);
-        c3_ui_footer(ui,"A: details   X: sort   Y: search   B: back");break;
+        footer(ui,"A: details   X: sort   Y: search   B: back");break;
     }
     case C3_GAME_MEMO_FILTER:
         header(m,ui,"STRATEGY MEMO","SEARCH - registered entries only");
         for(unsigned i=0;i<2;++i){snprintf(label,sizeof label,"TYPE %u",i+1u);unsigned type=m->filter_types[i];c3_ui_row_value(ui,65+(int)i*29,label,type?types[type-1u]:"ALL",m->selection==i,0);}
         c3_ui_row_value(ui,123,"COLOR",m->filter_color?colors[m->filter_color-1u]:"ALL",m->selection==2,0);
         c3_ui_row(ui,152,"SEARCH",m->selection==3,0);c3_ui_row(ui,181,"RESET",m->selection==4,0);
-        c3_ui_footer(ui,"D-pad: change   A: search   B: cancel");break;
+        footer(ui,"D-pad: change   A: search   B: cancel");break;
     case C3_GAME_MEMO_ENTRY:{
         C3GameMemo memo;C3PdaSpecies p;if(!c3_game_state_memo(state,m->detail,&memo)||!c3_pda_species(&m->assets,memo.species,&p))break;
         species_name(m,&s,memo.species,name,sizeof name);snprintf(sub,sizeof sub,"No. %03u",p.dex);header(m,ui,name,sub);
@@ -554,7 +671,7 @@ void c3_ingame_draw_to(C3IngameMenu *m,const C3GameState *state,C3BottomUi *ui)
             size_t used=strlen(m->text);
             if(p.description&&!c3_pda_text(&m->assets,p.description,s.name,s.partner,m->text+used,sizeof m->text-used))
                 snprintf(m->text+used,sizeof m->text-used,"No further recorded information.");
-        }body(m,ui,m->text);c3_ui_footer(ui,m->preview?"C-stick: rotate   B/Y: close":m->pager.more?"A: more   Y: model   B: memo":"Y: model   B: Strategy Memo");break;
+        }body(m,ui,m->text);footer(ui,m->preview?"C-stick: rotate   B/Y: close":m->pager.more?"A: more   Y: model   B: memo":"Y: model   B: Strategy Memo");break;
     }
     case C3_GAME_SNAG:{
         unsigned seen=0,snagged=0,purified=0;for(unsigned i=0;i<48;++i){C3PdaSnag p;if(c3_pda_snag(&m->assets,state,i,&p)){seen+=p.seen;snagged+=p.snagged;purified+=p.purified;}}
@@ -562,7 +679,7 @@ void c3_ingame_draw_to(C3IngameMenu *m,const C3GameState *state,C3BottomUi *ui)
         for(unsigned row=0;row<6&&first+row<48;++row){unsigned i=first+row;C3PdaSnag p;if(!c3_pda_snag(&m->assets,state,i,&p))continue;
             if(p.seen||p.snagged||p.purified||p.hint)species_name(m,&s,p.species,name,sizeof name);else snprintf(name,sizeof name,"-----");
             snprintf(label,sizeof label,"%02u %s",i+1u,name);c3_ui_row_value(ui,65+(int)row*24,label,p.purified?"PURIFIED":p.snagged?"SNAGGED":p.seen?"SEEN":p.hint?"INFO":"---",i==m->selection,0);
-        }(void)seen;c3_ui_footer(ui,"A: details   L / R: page   B: back");break;
+        }(void)seen;footer(ui,"A: details   L / R: page   B: back");break;
     }
     case C3_GAME_SNAG_ENTRY:{
         C3PdaSnag p;if(!c3_pda_snag(&m->assets,state,m->detail,&p))break;
@@ -574,11 +691,12 @@ void c3_ingame_draw_to(C3IngameMenu *m,const C3GameState *state,C3BottomUi *ui)
             snprintf(m->text,sizeof m->text,"%s\nLevel %u\n%s\n%s\n%s",name,p.level,p.purified?"Purified":p.snagged?"Snagged":"Not yet snagged",p.seen?"Encountered in battle.":"Information received by mail.",label[0]?label:"Trainer unknown.");
             strncat(m->text,"\n\n",sizeof m->text-strlen(m->text)-1u);size_t used=strlen(m->text);
             if(!c3_pda_snag_text(&m->assets,state,&p,m->text+used,sizeof m->text-used))snprintf(m->text+used,sizeof m->text-used,"Recorded location details are unavailable.");
-        }body(m,ui,m->text);c3_ui_footer(ui,m->preview?"C-stick: rotate   B/Y: close":m->pager.more?"A: more   Y: model   B: Snag List":"Y: model   B: Snag List");break;
+        }body(m,ui,m->text);footer(ui,m->preview?"C-stick: rotate   B/Y: close":m->pager.more?"A: more   Y: model   B: Snag List":"Y: model   B: Snag List");break;
     }
     case C3_GAME_NOTICE:
-        header(m,ui,"P*DA","");body(m,ui,m->error);c3_ui_footer(ui,"A / B: back");break;
+        header(m,ui,"P*DA","");body(m,ui,m->error);footer(ui,"A / B: back");break;
     }
+    back_button(m,ui);
     ui->content_inset=previous_inset;
     m->dirty=0;
 }

@@ -28,6 +28,15 @@ typedef struct {
     C3InventoryResult inventory_result;
     unsigned inventory_origin,inventory_selection,inventory_choice,notice_selection;
     uint16_t direction;
+    /* Stylus: the target pressed (C3_INGAME_HIT_*), whether it is still
+     * armed, whether a row was already selected when pressed, and keys the
+     * release adds to the next update (option toggles). */
+    int touch_item;
+    unsigned touch_active,touch_was_selected;
+    uint16_t touch_keys;
+    /* Original UI sound request (0x23 cursor, 0x24 decide, 0x25 cancel)
+     * left for the caller to play; 0 when none. */
+    uint32_t sound;
     float held_seconds,repeat_seconds;
     C3UiPager pager;
     C3PdaAssets assets;
@@ -50,6 +59,26 @@ void c3_ingame_error(C3IngameMenu *menu,const char *message);
 /* Resolve the displayed model from the current live record; no save mutation. */
 /* Hub item (0..7) under a touch on the bottom screen, or -1. */
 int c3_ingame_hub_hit(int x,int y);
+/* Touch targets on the 320x240 bottom screen, matching c3_ingame_draw_to. */
+enum { C3_INGAME_HIT_NONE=-1, C3_INGAME_HIT_BACK=-2, C3_INGAME_HIT_PANEL=-3 };
+#define C3_INGAME_SOUND_CURSOR 0x23u
+#define C3_INGAME_SOUND_DECIDE 0x24u
+#define C3_INGAME_SOUND_CANCEL 0x25u
+/* Back button, bottom right on every page (drawn rectangle). */
+#define C3_INGAME_BACK_X 252
+#define C3_INGAME_BACK_Y 221
+#define C3_INGAME_BACK_W 64
+#define C3_INGAME_BACK_H 18
+/* What lies under (x,y) on the current page: a row/item index (an absolute
+ * list index; the same value m->selection takes), the Back button, the text
+ * panel of a detail page, or nothing. */
+int c3_ingame_hit(const C3IngameMenu *menu,int x,int y);
+/* Stylus pass, run before c3_ingame_update with the same input. A press
+ * highlights the row under it; a release on the same target acts. Returns the
+ * button edges the release stands for (Back is exactly B, a row is A after
+ * selecting it), which the caller ORs into input.pressed so every button
+ * path, including closing an open model on B, is shared. */
+uint16_t c3_ingame_touch(C3IngameMenu *menu,const C3N3dsInput *input);
 int c3_ingame_preview_identity(const C3IngameMenu *menu,const C3GameState *state,
                               uint16_t *species,uint32_t *personality,uint32_t *trainer);
 #endif

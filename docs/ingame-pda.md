@@ -102,7 +102,25 @@ memo flags, registrations and unknown save bytes retain their separate meanings.
 
 ## Controls and verification
 
-D-pad/Circle Pad navigates; A opens/confirms; B returns. L/R pages lists,
+D-pad/Circle Pad navigates; A opens/confirms; B returns.
+
+The stylus works on every page. Pressing a row, hub button or letter
+highlights it (cursor sound); lifting the stylus on the same item does what A
+does there, and sliding off first cancels. Option and search rows step their
+value, the tone list auditions on the first tap and keeps a tone tapped again,
+and a detail page's text panel acts as A (a read Pokémon summary turns to its
+next tab). The **BACK** button in the bottom-right corner, drawn in the hub
+buttons' green style on every page, sends exactly the B edge: one page back, a
+3D model closed first, the menu closed from the hub. The footer's `B:` hint is
+left to it. Hit boxes cover each drawn row's full pitch and the hub's cells
+meet, so no tap between two items is lost. Menu moves, decisions and cancels
+play the original UI sounds 0x23, 0x24 and 0x25 (`pda_range_80037158.c`'s
+window key handler) from the prepared `boot/battle3d/sfx.c3s`; without that
+pack the menu is silent. `c3_n3ds_poll` folds the HID touch ring
+(`touch_ring.h`), so a tap that starts and ends between two ~17 fps field
+frames still arrives. `tests/test_pda_touch.c` checks the hit boxes against
+the drawn layout on every page, Back against B on every page, taps and the
+ring folding. L/R pages lists,
 changes bag pockets, changes Pokémon summary tabs or moves between letters.
 Mail X sorts and Y opens alert tones; Y replays the highlighted tone. Memo X sorts and Y opens
 two-type/color search; source-unregistered records do not appear in those
