@@ -60,7 +60,8 @@ static int receive(void *c,uint32_t item,uint32_t count,char *name,size_t capaci
 {(void)c;(void)item;(void)count;++gifts;snprintf(name,capacity,"ITEM");return 0;}
 static C3GameState *current_game;
 static uint32_t current_floor;
-static int restore(void *c){(void)c;return route_battles_enabled()?route_battles_heal(current_game):6;}
+static unsigned restore_calls;
+static int restore(void *c){(void)c;++restore_calls;return route_battles_enabled()?route_battles_heal(current_game):6;}
 static void path(char out[1024],const char *dir,const char *name)
 {CHECK(snprintf(out,1024,"%s/%s",dir,name)>0&&strlen(out)<1023);}
 static int present(const char *dir,const char *name)
@@ -299,6 +300,18 @@ static const struct { uint16_t floor; uint32_t script; const char *why; } TALK_G
      * again. Select menus are the systems lane's (claims ledger). */
     {0x80,0x01000008,"select menu C7 takes the first row; card menu 0x393 unported"},
 };
+/* The Pokemon Center nurse (PC 1F person 3, talk script 01000008) answers
+ * YES with native 53, fn_801D0BD0, which heals the party in every mode. */
+static void nurse_heals(void)
+{
+    static uint8_t before[FLAGS],after[FLAGS];
+    Event e={.name="nurse",.save=EARLY,.floor=4,.spawn=0,.action=TALK,.arg=0x01000008};
+    C3GameState game={0};restore_calls=0;
+    int ok=play(&e,before,after,&game);c3_game_state_free(&game);
+    if(!ok)fprintf(stderr,"nurse: %s\n",error);
+    CHECK(ok&&restore_calls==1);
+    printf("phenac-events nurse: party restored once\n");
+}
 static void talk_sweep(void)
 {
     static const char *const sweep_saves[]={EARLY,MID_PYRITE,LATE};
@@ -357,6 +370,7 @@ int main(int argc,char **argv)
      * the trace; the original font's glyphs draw them (bottom_ui extended
      * font). An unknown message control fails its script and the row. */
     CHECK(messages>0);
+    nurse_heals();
     talk_sweep();
     {unsigned played=route_battles_played(),missing=route_battles_close(trace);
      if(played)printf("phenac-events real battles: %u played\n",played);

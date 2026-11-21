@@ -903,7 +903,20 @@ static int run_native(Impl *s,RunTask *t,char *error)
         log_line(s,"story_treasure_display index=%lu visible=%lu",(unsigned long)a[0],(unsigned long)a[1]);break;
     /* fn_801D0BD0: the Poke Ball battle-intro animation (mode 0) and its
      * cleanup (modes 1-3). Not rendered. */
-    case 0x53:note_presentation(s,0x53,"battle_intro_balls");break;
+    case 0x53:{
+        /* fn_801D0BD0(group,id,mode), the Pokemon Center service: every
+         * mode heals the whole party first through fn_801D0AFC, which runs
+         * pokemonAllKaihuku on each valid member (HP, PP and condition).
+         * Mode 0 then plays the healing machine with the party's balls
+         * beside person (group,id) (fn_801D0DB0); modes 1-3 fade and play
+         * jingle 0x19 (fn_801D0C30). The switch has no default action. */
+        if(a[2]>3)break;
+        if(!s->restore)return fail(error,"Native 53 mode %lu needs the party service",(unsigned long)a[2]);
+        int restored=s->restore(s->restore_context);
+        if(restored<0)return fail(error,"Native 53 mode %lu party service failed",(unsigned long)a[2]);
+        log_line(s,"story_party_restore native=53 mode=%lu members=%d",(unsigned long)a[2],restored);
+        note_presentation(s,0x53,a[2]?"heal_fade_jingle":"heal_machine_balls");
+        }break;
     /* fn_80188984 (peopleIsHeadTurning): head turns complete at once here. */
     case 0x9b:value=0;break;
     /* fn_801C8DD0 (menuSubOpenSelect): the selection menu returns the
