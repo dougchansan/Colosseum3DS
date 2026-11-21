@@ -396,7 +396,7 @@ void c3_game_menu_draw_to(C3GameMenu *menu,C3BottomUi *ui)
         }
         c3_ui_panel(ui,5,190,310,49);
         c3_ui_text(ui,14,190,290,2,message(menu,ids[menu->selection],fallbacks[menu->selection]),C3_UI_WHITE);
-        c3_ui_text(ui,14,224,290,1,"Touch or D-pad: choose   A: confirm   B: title",C3_UI_MUTED);
+        c3_ui_text(ui,14,224,290,1,"Tap or D-pad: choose   A: confirm   B: title",C3_UI_MUTED);
         break;
     }
     case C3_MENU_NAME_KEYBOARD: {
