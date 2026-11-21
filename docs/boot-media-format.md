@@ -103,12 +103,16 @@ Sizes of the packed reviewed sources (zstd level 19, `--no-check`):
 | `staffroll` | 806,400,064 | 73,352,725 | 0.091 | 31,628 |
 
 The runtime still accepts version 1. Its player
-(`platform/3ds/movie_player.c`) reads and decodes ahead on a feed thread, on
-the New 3DS's second application core when available, into three
-framebuffer-ordered slots. The main thread copies the frame that is due and
-keeps the audio queue and the vblank pace. Video reads are unbuffered whole-frame
-reads. Each movie adds a `movie_timing` trace line: pack version, feed core,
-pre-roll, frames produced and dropped unread, vblanks whose frame was late,
+(`platform/3ds/movie_player.c`) works as a pipeline. A reader thread on the main
+core, below the main thread, fills a ring of four stored frames from SD with
+unbuffered whole-frame reads. A decode thread unpacks them into three
+framebuffer-ordered slots. On a New 3DS that thread runs on the second
+application core. The main thread copies the frame that is due and keeps the
+audio queue and the vblank pace. Frames that are already late are skipped
+without being read or decoded. The clock and the audio start once the first
+frame is on screen. Each movie adds `movie_feed` and `movie_timing` trace lines.
+They record the pack version, the decoder core, the pre-roll, frames produced
+and dropped (before reading and before decoding), vblanks whose frame was late,
 average and maximum read/decode/copy microseconds, and bytes read.
 
 ## Validation boundaries

@@ -46,6 +46,14 @@ int c3_movie_read_frame(C3Movie *movie, uint32_t frame, void *pixels,
 int c3_movie_load_frame(C3Movie *movie, uint32_t frame, char *error, size_t error_capacity);
 int c3_movie_decode_frame(C3Movie *movie, void *pixels, size_t capacity,
                           char *error, size_t error_capacity);
+/* The same two steps with a caller-owned stored buffer (2-byte aligned, at
+ * least stored_capacity bytes), so one thread can read the next frame while
+ * another decodes this one. Load uses only the video stream; decode uses only
+ * the zstd context: each must stay on one thread at a time. */
+int c3_movie_load_into(C3Movie *movie, uint32_t frame, void *stored, size_t capacity,
+                       uint32_t *bytes, char *error, size_t error_capacity);
+int c3_movie_decode_stored(C3Movie *movie, const void *stored, uint32_t bytes,
+                           void *pixels, size_t capacity, char *error, size_t error_capacity);
 
 /* Read up to capacity_frames stereo sample frames, converting little-endian
  * samples to host int16_t representation. Zero frames means clean EOF.

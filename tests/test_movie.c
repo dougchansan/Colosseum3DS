@@ -114,6 +114,19 @@ static void packed_movies(const char *path, unsigned char *pixels)
         assert(c3_movie_decode_frame(&movie, pixels, C3_MOVIE_FRAME_BYTES, error, sizeof(error)) == 0);
         assert(framebuffer_order(pixels, 0));
         assert(c3_movie_decode_frame(&movie, pixels + 1, C3_MOVIE_FRAME_BYTES, error, sizeof(error)) != 0);
+        {   /* Caller-owned stored buffers (reader/decoder pipeline). */
+            unsigned char *stored = malloc(movie.stored_capacity);
+            uint32_t bytes = 0;
+            assert(stored);
+            assert(c3_movie_load_into(&movie, 1, stored, movie.stored_capacity - 1u, &bytes, error, sizeof(error)) != 0 ||
+                   index[2] - index[1] < movie.stored_capacity);
+            assert(c3_movie_load_into(&movie, 1, stored, movie.stored_capacity, &bytes, error, sizeof(error)) == 0);
+            assert(bytes == index[2] - index[1]);
+            assert(c3_movie_decode_stored(&movie, stored, bytes, pixels, C3_MOVIE_FRAME_BYTES, error, sizeof(error)) == 0);
+            assert(framebuffer_order(pixels, 1));
+            assert(c3_movie_load_into(&movie, 2, stored, movie.stored_capacity, &bytes, error, sizeof(error)) != 0);
+            free(stored);
+        }
         assert(c3_movie_read_audio(&movie, samples, 2, &read_frames, error, sizeof(error)) == 0);
         assert(read_frames == 2 && samples[0] == -32768 && samples[3] == 0x1234);
         assert(c3_movie_read_frame(&movie, 2, pixels, C3_MOVIE_FRAME_BYTES, error, sizeof(error)) != 0);

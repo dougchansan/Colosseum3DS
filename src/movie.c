@@ -157,13 +157,13 @@ uint32_t c3_movie_frame_at(const C3Movie *movie, uint64_t elapsed_us)
     return (uint32_t)frame;
 }
 
-int c3_movie_load_frame(C3Movie *movie, uint32_t frame, char *error, size_t error_capacity)
+int c3_movie_load_into(C3Movie *movie, uint32_t frame, void *stored, size_t capacity,
+                       uint32_t *bytes_out, char *error, size_t error_capacity)
 {
     uint64_t offset;
     uint32_t bytes;
-    if (!movie || !movie->video_file || !movie->stored || frame >= movie->frame_count)
+    if (!movie || !movie->video_file || !stored || !bytes_out || frame >= movie->frame_count)
         return fail(error, error_capacity, "Invalid movie frame request.");
-    movie->stored_frame = UINT32_MAX;
     if (movie->version == 1) {
         offset = C3_MOVIE_HEADER_BYTES + (uint64_t)frame * movie->frame_bytes;
         bytes = movie->frame_bytes;
@@ -171,10 +171,20 @@ int c3_movie_load_frame(C3Movie *movie, uint32_t frame, char *error, size_t erro
         offset = movie->frame_offsets[frame];
         bytes = movie->frame_offsets[frame + 1u] - movie->frame_offsets[frame];
     }
+    if (bytes > capacity) return fail(error, error_capacity, "Invalid movie frame request.");
     if (offset > LONG_MAX || fseek(movie->video_file, (long)offset, SEEK_SET) != 0 ||
-        fread(movie->stored, 1, bytes, movie->video_file) != bytes)
+        fread(stored, 1, bytes, movie->video_file) != bytes)
         return fail(error, error_capacity, "Movie frame read failed.");
-    movie->stored_bytes = bytes;
+    *bytes_out = bytes;
+    return 0;
+}
+
+int c3_movie_load_frame(C3Movie *movie, uint32_t frame, char *error, size_t error_capacity)
+{
+    if (!movie || !movie->stored) return fail(error, error_capacity, "Invalid movie frame request.");
+    movie->stored_frame = UINT32_MAX;
+    if (c3_movie_load_into(movie, frame, movie->stored, movie->stored_capacity,
+                           &movie->stored_bytes, error, error_capacity)) return -1;
     movie->stored_frame = frame;
     return 0;
 }
@@ -192,22 +202,30 @@ static void transpose(const uint16_t *source, uint16_t *destination)
             }
 }
 
-int c3_movie_decode_frame(C3Movie *movie, void *pixels, size_t capacity,
-                          char *error, size_t error_capacity)
+int c3_movie_decode_stored(C3Movie *movie, const void *stored, uint32_t bytes,
+                           void *pixels, size_t capacity, char *error, size_t error_capacity)
 {
     size_t size;
-    if (!movie || !pixels || ((uintptr_t)pixels & 1u) || movie->stored_frame == UINT32_MAX ||
-        capacity < C3_MOVIE_FRAME_BYTES)
+    if (!movie || !stored || !pixels || ((uintptr_t)pixels & 1u) || ((uintptr_t)stored & 1u) ||
+        capacity < C3_MOVIE_FRAME_BYTES || (movie->version == 1 && bytes != C3_MOVIE_FRAME_BYTES))
         return fail(error, error_capacity, "Invalid movie frame request.");
     if (movie->version == 1) {
-        transpose((const uint16_t *)(const void *)movie->stored, pixels);
+        transpose((const uint16_t *)stored, pixels);
         return 0;
     }
-    size = ZSTD_decompressDCtx(movie->zstd, pixels, C3_MOVIE_FRAME_BYTES,
-                               movie->stored, movie->stored_bytes);
+    size = ZSTD_decompressDCtx(movie->zstd, pixels, C3_MOVIE_FRAME_BYTES, stored, bytes);
     if (ZSTD_isError(size) || size != C3_MOVIE_FRAME_BYTES)
         return fail(error, error_capacity, "Movie frame data is corrupt.");
     return 0;
+}
+
+int c3_movie_decode_frame(C3Movie *movie, void *pixels, size_t capacity,
+                          char *error, size_t error_capacity)
+{
+    if (!movie || movie->stored_frame == UINT32_MAX)
+        return fail(error, error_capacity, "Invalid movie frame request.");
+    return c3_movie_decode_stored(movie, movie->stored, movie->stored_bytes, pixels, capacity,
+                                  error, error_capacity);
 }
 
 int c3_movie_read_frame(C3Movie *movie, uint32_t frame, void *pixels,
