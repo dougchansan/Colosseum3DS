@@ -1,4 +1,5 @@
 #include "colosseum3ds/bottom_ui.h"
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -460,25 +461,34 @@ static size_t next_char(const char *text,size_t pos,unsigned *code,uint32_t *col
     *code='?';return 1;
 }
 
+/* Visible right edge of a glyph drawn at x=0, its shadow included; 0 when
+ * it draws nothing. */
+static unsigned glyph_extent(const C3BottomUi *ui,unsigned c)
+{
+    unsigned extent=0;
+    if(ui->assets&&ui->assets->data){
+        unsigned step;const unsigned char *p=glyph_pixels(ui,c,&step);
+        if(!p&&c<=126)p=glyph_pixels(ui,'?',&step);
+        if(p)for(unsigned y=0;y<16;++y)for(unsigned x=0;x<16;++x)
+            if(p[y*16+x]&&x+2u>extent)extent=x+2u;
+    }else if(ui->fallback_font){
+        unsigned f=c<32||c>126?'?':c;
+        for(unsigned y=0;y<8;++y)for(unsigned x=0;x<8;++x)
+            if((ui->fallback_font[f*8u+y]&(0x80u>>x))&&x+1u>extent)extent=x+1u;
+    }
+    return extent;
+}
+
 static int text_width(const C3BottomUi *ui,const char *text)
 {
     unsigned cursor=0,width=0;
     if(!ui||!text)return 0;
     for(size_t i=0;i<256u&&text[i];){
-        unsigned c,extent=0;
+        unsigned c,extent;
         i+=next_char(text,i,&c,NULL,0);
         if(c=='\n')return 0;
         if(c==0x1b){if(!text[i])return (int)width;continue;}
-        if(ui->assets&&ui->assets->data){
-            unsigned step;const unsigned char *p=glyph_pixels(ui,c,&step);
-            if(!p&&c<=126)p=glyph_pixels(ui,'?',&step);
-            if(p)for(unsigned y=0;y<16;++y)for(unsigned x=0;x<16;++x)
-                if(p[y*16+x]&&x+2u>extent)extent=x+2u;
-        }else if(ui->fallback_font){
-            unsigned f=c<32||c>126?'?':c;
-            for(unsigned y=0;y<8;++y)for(unsigned x=0;x<8;++x)
-                if((ui->fallback_font[f*8u+y]&(0x80u>>x))&&x+1u>extent)extent=x+1u;
-        }
+        extent=glyph_extent(ui,c);
         if(extent&&cursor+extent>width)width=cursor+extent;
         cursor+=advance(ui,c);
         if(cursor>320u||width>320u)return 0;
@@ -488,7 +498,7 @@ static int text_width(const C3BottomUi *ui,const char *text)
 }
 
 static int text_right_draw(C3BottomUi *ui,int right,int y,int width,const char *text,uint32_t color);
-static size_t text_draw(C3BottomUi *ui,int x,int y,int width,int lines,const char *text,uint32_t color);
+static size_t text_draw(C3BottomUi *ui,int x,int y,int width,int lines,const char *text,uint32_t color,int *rows);
 
 int c3_ui_text_right(C3BottomUi *ui,int right,int y,int width,const char *text,uint32_t color)
 {
@@ -501,7 +511,7 @@ int c3_ui_text_right(C3BottomUi *ui,int right,int y,int width,const char *text,u
 size_t c3_ui_text(C3BottomUi *ui,int x,int y,int width,int lines,const char *text,uint32_t color)
 {
     size_t result;
-    UI_TIMED(text_us, result=text_draw(ui,x,y,width,lines,text,color));
+    UI_TIMED(text_us, result=text_draw(ui,x,y,width,lines,text,color,NULL));
     if(ui&&text&&width>=16&&width<=320&&lines>=1&&lines<=15)touch(ui,x,y,width+2,lines*17+2);
     return result;
 }
@@ -520,16 +530,92 @@ static int text_right_draw(C3BottomUi *ui,int right,int y,int width,const char *
     return measured;
 }
 
-static size_t text_draw(C3BottomUi *ui,int x,int y,int width,int lines,const char *text,uint32_t color)
+/* Spacing a squeezed line gives up. Word spaces give first (two pixels
+ * each), then glyph advances (one pixel each); within each class the cut is
+ * spread evenly (Bresenham). Only spaces and glyphs before the line's last
+ * visible glyph give anything. [0]: spaces, [1]: glyphs. */
+typedef struct { unsigned cut[2], slack[2], acc[2]; } Squeeze;
+
+static void squeeze_start(Squeeze *q,unsigned cut,const unsigned slack[2])
 {
-    size_t pos=0;int cursor=0,line=0;uint32_t current=color;
+    for(int k=0;k<2;++k){q->slack[k]=slack[k];q->acc[k]=slack[k]/2u;}
+    q->cut[0]=cut<slack[0]?cut:slack[0];q->cut[1]=cut-q->cut[0];
+}
+
+static unsigned squeeze(Squeeze *q,int kind,unsigned units)
+{
+    unsigned taken=0;
+    if(!q->cut[kind])return 0;
+    while(units--){q->acc[kind]+=q->cut[kind];if(q->acc[kind]>=q->slack[kind]){q->acc[kind]-=q->slack[kind];++taken;}}
+    return taken;
+}
+
+/* Lays out the hard line at text+pos (to '\n' or the end) from a line start
+ * as text_draw does, giving up cut pixels of spacing. Returns its visible
+ * width, or INT_MAX when it is unbounded; reports the slack of each class
+ * and the position of its last visible glyph (squeezing stops there). */
+static int line_layout(const C3BottomUi *ui,const char *text,size_t pos,unsigned cut,const unsigned slack[2],
+                       unsigned slack_out[2],size_t *last_out)
+{
+    static const unsigned none[2]={0,0};
+    int cursor=0,width=0;unsigned units[2]={0,0},pending[2]={0,0};size_t last=pos;Squeeze q;
+    squeeze_start(&q,cut,slack?slack:none);
+    for(size_t i=pos;i<4096u&&text[i];){
+        unsigned c;size_t n=next_char(text,i,&c,NULL,0);
+        if(c=='\n')break;
+        if(c==0x1b){i+=n;continue;}
+        if(c==' '){
+            if(cursor){cursor+=(int)advance(ui,c)-(int)squeeze(&q,0,2u);pending[0]+=2u;}
+            i+=n;continue;
+        }
+        unsigned extent=glyph_extent(ui,c);
+        if(extent){
+            for(int k=0;k<2;++k){units[k]+=pending[k];pending[k]=0;}
+            last=i;
+            if(cursor+(int)extent>width)width=cursor+(int)extent;
+        }
+        cursor+=(int)advance(ui,c)-(int)squeeze(&q,1,1u);pending[1]+=1u;i+=n;
+        if(cursor>2048)return INT_MAX;
+    }
+    if(slack_out){slack_out[0]=units[0];slack_out[1]=units[1];}
+    if(last_out)*last_out=last;
+    return width;
+}
+
+/* Original message lines carry hard breaks sized for the GameCube window,
+ * whose half-resolution glyphs are about one pixel narrower than these
+ * (advance = half the source width rounded up, plus one pixel of spacing).
+ * A hard line that does not fit is squeezed by up to two pixels per space
+ * and that pixel per glyph rather than wrapped, which would leave an orphan
+ * word below it. 1: draw it on one row, squeezed as *q says. */
+static int line_fit(const C3BottomUi *ui,const char *text,size_t pos,int width,Squeeze *q,size_t *last)
+{
+    unsigned slack[2];
+    int natural=line_layout(ui,text,pos,0,NULL,slack,last);
+    if(natural==INT_MAX)return 0;
+    for(unsigned d=natural>width?(unsigned)(natural-width):0u;d<=slack[0]+slack[1];++d)
+        if((d?line_layout(ui,text,pos,d,slack,NULL,NULL):natural)<=width){squeeze_start(q,d,slack);return 1;}
+    return 0;
+}
+
+static size_t text_draw(C3BottomUi *ui,int x,int y,int width,int lines,const char *text,uint32_t color,int *rows)
+{
+    size_t pos=0,last=0;int cursor=0,line=0,fit=-1;uint32_t current=color;Squeeze q={{0,0},{0,0},{0,0}};
+    if(rows)*rows=0;
     if(!ui||!text||width<16||width>320||lines<1||lines>15||x < -320||x>320||y < -240||y>240)return 0;
     /* All callers own NUL-terminated strings. Bound scanning even for large
      * unbroken words; never draw outside the requested text rectangle. */
     while(pos<4096u&&text[pos]&&line<lines){
+        /* Each hard line is measured where it starts: one that fits (or
+         * fits squeezed) is drawn on one row, any other wraps by words. */
+        if(fit<0)fit=line_fit(ui,text,pos,width,&q,&last);
+        if(rows)*rows=line+1;
         unsigned c;size_t n=next_char(text,pos,&c,&current,color);
-        if(c=='\n'){pos+=n;++line;cursor=0;continue;}
-        if(c==' '){if(cursor)cursor+=(int)advance(ui,c);pos+=n;continue;}
+        if(c=='\n'){pos+=n;++line;cursor=0;fit=-1;continue;}
+        if(c==' '){
+            if(cursor){cursor+=(int)advance(ui,c);if(fit&&pos<last)cursor-=(int)squeeze(&q,0,2u);}
+            pos+=n;continue;
+        }
         if(c==0x1b){pos+=n;continue;}
         size_t end=pos;unsigned word=0;
         while(end<4096u&&text[end]){
@@ -538,18 +624,29 @@ static size_t text_draw(C3BottomUi *ui,int x,int y,int width,int lines,const cha
             if(w!=0x1b)word+=advance(ui,w);
             end+=m;
         }
-        if(cursor&&cursor+(int)word>width){++line;cursor=0;if(line>=lines)break;}
+        if(!fit&&cursor&&cursor+(int)word>width){++line;cursor=0;if(line>=lines)break;if(rows)*rows=line+1;}
         while(pos<end){
             unsigned g;size_t m=next_char(text,pos,&g,&current,color);
             if(g==0x1b){pos+=m;continue;}
             unsigned step=advance(ui,g);
             /* Reserve a glyph cell, even when its advance is narrower. */
-            if(cursor+16>width){++line;cursor=0;if(line>=lines)return pos;}
+            if(!fit&&cursor+16>width){++line;cursor=0;if(line>=lines)return pos;if(rows)*rows=line+1;}
             glyph(ui,x+cursor,y+line*17,g,current);
-            cursor+=(int)step;pos+=m;
+            cursor+=(int)step;
+            if(fit&&pos<last)cursor-=(int)squeeze(&q,1,1u);
+            pos+=m;
         }
     }
     return pos;
+}
+
+int c3_ui_text_rows(const C3BottomUi *ui,int width,const char *text)
+{
+    int rows;
+    if(!ui)return 0;
+    C3BottomUi measure=*ui;measure.pixels=NULL;
+    text_draw(&measure,0,0,width,15,text,0,&rows);
+    return rows;
 }
 
 void c3_ui_header(C3BottomUi *ui,const char *title,const char *subtitle)
@@ -635,11 +732,13 @@ void c3_ui_message(C3BottomUi *ui,C3UiPager *pager,const char *text,int y,int li
     if(!ui||!pager||!text||lines<1||lines>8||y<0||y+lines*17+20>220)return;
     size_t length=strlen(text);
     if(pager->offset>length)pager->offset=0;
-    int inset=ui->content_inset,left=inset?15+inset:7,text_left=inset?26+inset:18;
+    /* The window spans the header's width; text keeps 4 px inside its
+     * border (C3_UI_MESSAGE_WIDTH, measured by the message sweep). */
+    int inset=ui->content_inset,left=inset?15+inset:5,text_left=inset?26+inset:13;
     c3_ui_panel(ui,left,y,320-2*left,lines*17+20);
-    pager->next=pager->offset+c3_ui_text(ui,text_left,y+7,inset?267-2*inset:283,lines,text+pager->offset,C3_UI_WHITE);
+    pager->next=pager->offset+c3_ui_text(ui,text_left,y+7,inset?267-2*inset:C3_UI_MESSAGE_WIDTH,lines,text+pager->offset,C3_UI_WHITE);
     pager->more=pager->next<length;
-    c3_ui_sprite(ui,C3_UI_ARROW,288-inset,y+lines*17+3,11,11);
+    c3_ui_sprite(ui,C3_UI_ARROW,(inset?288:290)-inset,y+lines*17+3,11,11);
 }
 
 void c3_ui_dialogue(C3BottomUi *ui,C3UiPager *pager,const char *text,int choices,int yes)

@@ -79,8 +79,8 @@ build/test_story: tests/test_story.c src/story.c include/colosseum3ds/story.h | 
 	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_story.c src/story.c $(LDFLAGS) -lm -o $@
 
 FIELD_STORY_SOURCES = src/field_story.c src/hero_follow.c src/story.c src/area.c src/area_camera.c src/field.c src/title.c src/game_state.c src/save.c src/decomp_pokemon.c src/battle.c src/relive.c build/save_codec.c
-build/test_message_sweep: tests/test_message_sweep.c $(FIELD_STORY_SOURCES) $(HEADERS)
-	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_message_sweep.c $(FIELD_STORY_SOURCES) $(LDFLAGS) -lm -o $@
+build/test_message_sweep: tests/test_message_sweep.c src/bottom_ui.c $(FIELD_STORY_SOURCES) $(HEADERS)
+	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_message_sweep.c src/bottom_ui.c $(FIELD_STORY_SOURCES) $(LDFLAGS) -lm -o $@
 
 build/test_field_story: tests/test_field_story.c $(FIELD_STORY_SOURCES) $(HEADERS)
 	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_field_story.c $(FIELD_STORY_SOURCES) $(LDFLAGS) -lm -o $@
@@ -191,7 +191,7 @@ test: all
 	./build/test_area_lights
 	./build/test_story
 	./build/test_hero_follow
-	./build/test_message_sweep $(C3_MESSAGE_SWEEP)
+	./build/test_message_sweep $(C3_MESSAGE_SWEEP) $(C3_UI_PACK)
 	./build/test_field_story
 	./build/test_phenac_story
 	./build/test_phenac_events

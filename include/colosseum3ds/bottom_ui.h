@@ -61,6 +61,14 @@ void c3_ui_panel(C3BottomUi *ui,int x,int y,int w,int h);
 /* Returns the number of source bytes displayed. Explicit pagination must use
  * this offset before advancing the underlying story/battle message. */
 size_t c3_ui_text(C3BottomUi *ui,int x,int y,int width,int lines,const char *text,uint32_t color);
+/* Rows c3_ui_text would use for text at this width (up to 15), drawing
+ * nothing. A hard line ('
+' separated) that fits, or fits with its spacing
+ * squeezed by at most one pixel per glyph and two per space, takes one row;
+ * a longer one wraps by words. */
+int c3_ui_text_rows(const C3BottomUi *ui,int width,const char *text);
+/* Text width of c3_ui_message/c3_ui_dialogue without a content inset. */
+#define C3_UI_MESSAGE_WIDTH 294
 /* Single-line numeric fields align by visible glyph bounds, including shadow. */
 int c3_ui_text_right(C3BottomUi *ui,int right,int y,int width,const char *text,uint32_t color);
 void c3_ui_header(C3BottomUi *ui,const char *title,const char *subtitle);

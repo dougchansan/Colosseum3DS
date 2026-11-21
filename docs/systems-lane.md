@@ -53,6 +53,25 @@ The pack holds all 162 message groups on the disc: every FSYS type-0A member plu
 
 Battle messages need the battle text's own values (attacker, defender, trainer and similar), which are listed by control. Without the pack the test runs only its synthetic checks.
 
+### Dialogue width
+
+Original lines carry hard breaks sized for the GameCube window. The UI font's advances are half the source glyph width rounded up plus one pixel of spacing, so a line set at the GameCube's proportions runs about one pixel per glyph wider than half its original width. With the old 283 px text area and a glyph cell reserved at the end of each row, 212 of the 13,871 field lines wrapped with a six-letter speaker (TRUDLY). The wrap left one word, such as "with" or "here.", on a row of its own.
+
+The text box now works like this:
+
+- the message window spans the header's width, and its text is `C3_UI_MESSAGE_WIDTH` (294 px);
+- a hard line fits by its visible ink, not by a reserved 16 px cell;
+- a hard line that is still too wide gives up spacing: two pixels per word space first, then one pixel per glyph, spread evenly;
+- only a line too wide even then wraps by words, as before. No text is dropped.
+
+Pass the UI pack as well to check every field line:
+
+```bash
+./build/test_message_sweep private/sweep/messages.c3ms boot/ui.c3ui
+```
+
+`make test` passes it as `C3_UI_PACK`. The sweep lays out every hard line of every field page at that width, with the speaker control printing FUN OLD LADY (97 px, wider than 95% of the original person names), and requires one row each: 0 of 13,871 lines wrap. With MYSTERY TROOP, the widest original person name (110 px), 21 lines still wrap; the sweep reports them as information. Five original pages have more than five lines. They are system texts, which the pager splits.
+
 ### Original font
 
 `tools/prepare_bottom_ui.py` writes UI pack version 3 (`boot/ui.c3ui`). It appends the main font's 315 non-ASCII glyphs to the ASCII table: accented letters, gender signs, arrows, kana and full-width forms.
