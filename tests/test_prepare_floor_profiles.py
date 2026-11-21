@@ -84,7 +84,7 @@ class FloorProfileTableTests(unittest.TestCase):
         # machine (fn_801D0DB0 battleIntroModels {0x20, 0x00651003}).
         self.assertEqual({name: row["map_objects"] for name, row in profiles.FLOORS.items() if row.get("map_objects")},
                          {"phenac_mayor1f": (0,), "phenac_pc1f": (3,), "under_enter_1f": (6,),
-                          "under_enter_b1": (5,), "auto_06b": (4,), "auto_06f": (1, 2, 3, 4), "auto_07c": (3,)})
+                          "under_enter_b1": (5,), "auto_06b": (4,), "auto_06f": (1, 2, 3, 4, 8), "auto_07c": (3,)})
         self.assertEqual(rows["phenac_mayor2f"]["groups"], (((0, 1, 2), ("static", 0)),))
         # The exterior row keeps its exterior pack format; only its six doors
         # are object packs (checked above), as the door table needs.

@@ -47,16 +47,17 @@ class RealgamProfilesTests(unittest.TestCase):
         # pack (the models below, surveyed from the admitted maps). Each is
         # opened by a door row or is a map object: healing machines (fn_801D0DB0
         # battleIntroModels {0x89, 0x00511004}, {0x94, 0x02371003}) and the
-        # dome 9 key-gate locks the bank animates with native 73.
+        # dome 9 key-gate locks and its one-clip barrier (model 8) that the
+        # bank plays and stops with natives 73-75.
         multi_clip = {0x66: {0}, 0x67: {0, 1, 2}, 0x68: {0}, 0x69: {0, 1}, 0x6b: {0, 4}, 0x6c: {0, 1},
-                      0x6d: {0, 1}, 0x6f: {1, 2, 3, 4, 5, 6, 7}, 0x70: {0, 1}, 0x72: {0, 1, 2},
+                      0x6d: {0, 1}, 0x6f: {1, 2, 3, 4, 5, 6, 7, 8}, 0x70: {0, 1}, 0x72: {0, 1, 2},
                       0x75: {0, 1, 2, 3}, 0x76: {0, 1, 6}, 0x7b: {0, 1}, 0x7c: {3}}
         drawn = {row["floor"]: set(row.get("door_objects", {}).values()) | set(row.get("map_objects", ()))
                  for row in profiles.REALGAM_FLOORS.values()
                  if row.get("door_objects") or row.get("map_objects")}
         self.assertEqual(drawn, multi_clip)
         self.assertEqual({row["floor"]: row["map_objects"] for row in profiles.REALGAM_FLOORS.values()
-                          if row.get("map_objects")}, {0x6b: (4,), 0x6f: (1, 2, 3, 4), 0x7c: (3,)})
+                          if row.get("map_objects")}, {0x6b: (4,), 0x6f: (1, 2, 3, 4, 8), 0x7c: (3,)})
 
     def test_non_field_entries_do_not_invent_walkable_data(self):
         special = {0x7e, 0x387, 0x39f} | set(range(0xdd, 0xe4))

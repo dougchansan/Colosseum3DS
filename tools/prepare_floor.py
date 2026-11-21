@@ -84,16 +84,17 @@ def schedule_frames(kind, end):
 AUTO_SHORT_END = 300
 
 
-def auto_geometry(scene, raw, Model):
+def auto_geometry(scene, raw, Model, forced=()):
     """Default geometry for a surveyed floor without a reviewed profile
     (the warp tour): multi-clip models are object packs (doors, machines)
-    whose clip the scripts choose; every other model shares one group whose
+    whose clip the scripts choose, as are the profile's map_objects (forced:
+    a one-clip model the bank plays and stops); every other model shares one group whose
     clock is the longest first clip. Unsupported texture modes are omitted
     and material colour animation is frozen, as on reviewed interiors. The
     first scene camera is the fixed camera; fog is not rendered."""
     options = {"allow_instances": True, "allow_paths": True, "frozen_material_colors": True}
     models = [Model(model, raw_model, **options) for model, raw_model in zip(scene.models, raw.models)]
-    objects = tuple(i for i, model in enumerate(models) if len(model.ends) > 1)
+    objects = tuple(i for i, model in enumerate(models) if len(model.ends) > 1 or i in forced)
     grouped = tuple(i for i in range(len(models)) if i not in objects)
     end = max([model.ends[0] for i, model in enumerate(models) if i in grouped and model.tracks and model.ends] or [0])
     kind = "static" if not end else "short" if end <= AUTO_SHORT_END else "sky"
@@ -108,7 +109,7 @@ def prepare_floor_geometry(archive, field_common, profile, output):
                                         bake_mesh, sample_sequence)
     data, raw, scene = load_scene(archive, profile["map"])
     if profile.get("auto") and "groups" not in profile:
-        profile = dict(profile, **auto_geometry(scene, raw, Model))
+        profile = dict(profile, **auto_geometry(scene, raw, Model, profile.get("map_objects", ())))
     elif len(scene.models) != profile["models"] or len(scene.cameras) != 1 or scene.fogs:
         raise ValueError("Original floor scene topology changed")
     if not scene.cameras:
