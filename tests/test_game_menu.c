@@ -148,6 +148,59 @@ int main(void)
      touch.touch_x = 300; touch.touch_y = 235;c3_game_menu_update(&menu, &touch, 0.01f);
      CHECK(menu.selection == 1 && menu.page == C3_MENU_MAIN);}
 
+    /* Stylus hit-testing on the New Game naming pages, at drawn cells. */
+    CHECK(c3_game_menu_touch_hit(C3_MENU_NAME_KEYBOARD, 9, 56) == 0);      /* A */
+    CHECK(c3_game_menu_touch_hit(C3_MENU_NAME_KEYBOARD, 312, 56) == 7);    /* H */
+    CHECK(c3_game_menu_touch_hit(C3_MENU_NAME_KEYBOARD, 47, 81) == 9);     /* J */
+    CHECK(c3_game_menu_touch_hit(C3_MENU_NAME_KEYBOARD, 160, 180) == 35);  /* row 5 col 4 */
+    CHECK(c3_game_menu_touch_hit(C3_MENU_NAME_KEYBOARD, 8, 60) == -1);
+    CHECK(c3_game_menu_touch_hit(C3_MENU_NAME_KEYBOARD, 313, 60) == -1);
+    CHECK(c3_game_menu_touch_hit(C3_MENU_NAME_KEYBOARD, 100, 183) == -1);  /* gap above buttons */
+    CHECK(c3_game_menu_touch_hit(C3_MENU_NAME_KEYBOARD, 20, 190) == 40);   /* CASE */
+    CHECK(c3_game_menu_touch_hit(C3_MENU_NAME_KEYBOARD, 120, 200) == 41);  /* SPACE */
+    CHECK(c3_game_menu_touch_hit(C3_MENU_NAME_KEYBOARD, 200, 211) == 42);  /* BACK */
+    CHECK(c3_game_menu_touch_hit(C3_MENU_NAME_KEYBOARD, 300, 186) == 43);  /* DONE */
+    CHECK(c3_game_menu_touch_hit(C3_MENU_NAME_KEYBOARD, 83, 200) == -1);   /* between buttons */
+    CHECK(c3_game_menu_touch_hit(C3_MENU_NAME_KEYBOARD, 120, 212) == -1);
+    CHECK(c3_game_menu_touch_hit(C3_MENU_NAME_CHOICES, 150, 70) == 0);
+    CHECK(c3_game_menu_touch_hit(C3_MENU_NAME_CHOICES, 150, 105) == 1);
+    CHECK(c3_game_menu_touch_hit(C3_MENU_NAME_CHOICES, 150, 135) == 2);
+    CHECK(c3_game_menu_touch_hit(C3_MENU_NAME_CHOICES, 150, 170) == 3);
+    CHECK(c3_game_menu_touch_hit(C3_MENU_NAME_CHOICES, 150, 40) == -1);
+    CHECK(c3_game_menu_touch_hit(C3_MENU_NAME_CHOICES, 150, 200) == -1);
+    CHECK(c3_game_menu_touch_hit(C3_MENU_NAME_CHOICES, 5, 105) == -1);
+    CHECK(c3_game_menu_touch_hit(C3_MENU_NAME_CONFIRM, 200, 170) == 0);
+    CHECK(c3_game_menu_touch_hit(C3_MENU_NAME_CONFIRM, 200, 200) == 1);
+    CHECK(c3_game_menu_touch_hit(C3_MENU_NAME_CONFIRM, 100, 200) == -1);
+    CHECK(c3_game_menu_touch_hit(C3_MENU_OPTIONS, 150, 70) == -1);
+
+    /* The whole New Game naming flow by stylus: a list row is selected by
+     * a tap and confirmed by a second tap; keys are entered at once. */
+    save.present = save.valid = save.can_continue = 0;
+    c3_game_menu_init(&menu, &save, &options);
+    {C3N3dsInput touch = {.touch_held = true, .touch_pressed = true};
+#define TOUCH(px, py) (touch.touch_x = (px), touch.touch_y = (py), c3_game_menu_update(&menu, &touch, 0.01f))
+     TOUCH(60, 120); CHECK(menu.page == C3_MENU_NEW_CONFIRM && menu.confirm_yes);
+     TOUCH(200, 170); CHECK(menu.page == C3_MENU_NAME_CHOICES && menu.name_selection == 0);
+     TOUCH(150, 135); CHECK(menu.page == C3_MENU_NAME_CHOICES && menu.name_selection == 2);
+     TOUCH(150, 70); CHECK(menu.page == C3_MENU_NAME_CHOICES && menu.name_selection == 0);
+     TOUCH(150, 70); CHECK(menu.page == C3_MENU_NAME_KEYBOARD && !menu.name[0]);
+     TOUCH(47, 81); CHECK(!strcmp(menu.name, "J") && menu.keyboard_selection == 9);
+     TOUCH(20, 190); CHECK(menu.lower_case == 1);
+     TOUCH(9, 56); CHECK(!strcmp(menu.name, "Ja"));
+     TOUCH(120, 200); CHECK(!strcmp(menu.name, "Ja "));
+     TOUCH(200, 200); CHECK(!strcmp(menu.name, "Ja"));
+     TOUCH(100, 183); CHECK(!strcmp(menu.name, "Ja") && menu.page == C3_MENU_NAME_KEYBOARD);
+     TOUCH(300, 200); CHECK(menu.page == C3_MENU_NAME_CONFIRM && !strcmp(menu.name, "Ja"));
+     TOUCH(200, 200); CHECK(menu.page == C3_MENU_NAME_CONFIRM && !menu.confirm_yes);
+     TOUCH(200, 200); CHECK(menu.page == C3_MENU_NAME_CHOICES);
+     TOUCH(150, 105); CHECK(menu.name_selection == 1);
+     TOUCH(150, 105); CHECK(menu.page == C3_MENU_NAME_CONFIRM && !strcmp(menu.name, "WES"));
+     event = TOUCH(200, 170);
+     CHECK(event.kind == C3_MENU_EVENT_NEW_GAME && !strcmp(event.name, "WES"));
+#undef TOUCH
+    }
+
     /* A valid private pack is replaced only after complete validation. */
     char path[] = "/tmp/c3-menu-test-XXXXXX", error[128];
     int fd = mkstemp(path);

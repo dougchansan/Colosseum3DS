@@ -78,5 +78,11 @@ void c3_game_menu_set_save(C3GameMenu *menu, const C3GameMenuSave *save);
 void c3_game_menu_set_pending(C3GameMenu *menu, const char *message);
 void c3_game_menu_set_error(C3GameMenu *menu, const char *message);
 const char *c3_game_menu_page_name(C3GameMenuPage page);
+/* The stylus target under (x, y) on a page, or -1: main-menu entry, name
+ * list row (0 NEW NAME, 1-3 presets), keyboard cell (0-39 letters, 40 CASE,
+ * 41 SPACE, 42 BACK, 43 DONE), confirm choice (0 YES, 1 NO), or 0 for a
+ * notice panel. Keys are entered at once; list rows and choices are selected
+ * by a first tap and confirmed by a tap on the selected one (or A). */
+int c3_game_menu_touch_hit(C3GameMenuPage page, unsigned x, unsigned y);
 
 #endif

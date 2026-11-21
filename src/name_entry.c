@@ -238,8 +238,8 @@ void c3_name_entry_draw(const C3NameEntry *e, C3BottomUi *ui)
             c3_ui_panel(ui, 7, 165, 168, 50);
             c3_ui_text(ui, 18, 172, 150, 2, e->prompt, C3_UI_WHITE);
             c3_ui_choices(ui, (int)e->yes);
-            c3_ui_footer(ui, "D-pad: choose   A: confirm   B: back");
-        } else c3_ui_footer(ui, "A: choose   B: enter a new name");
+            c3_ui_footer(ui, "Tap or D-pad + A: confirm   B: back");
+        } else c3_ui_footer(ui, "Tap or A: choose   B: enter a new name");
         return;
     }
     for (unsigned r = 0; r < C3_NAME_ENTRY_ROWS; ++r)

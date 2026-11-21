@@ -1,10 +1,15 @@
 #include "colosseum3ds/movie.h"
 
 #include <limits.h>
+#include <stdlib.h>
 #include <string.h>
+#include <zstd.h>
 
 #define C3_MOVIE_HEADER_BYTES 64u
 #define C3_MOVIE_MAX_BYTES (1024u * 1024u * 1024u) /* 5250-frame staffroll: 806400064 bytes */
+#define C3_MOVIE_RAW_FORMAT 1u    /* version 1: RGB565LE, row-major */
+#define C3_MOVIE_PACKED_FORMAT 2u /* version 2: zstd frames, framebuffer order */
+#define C3_MOVIE_STORED_MAX ZSTD_COMPRESSBOUND(C3_MOVIE_FRAME_BYTES)
 
 static uint32_t le32(const unsigned char *p)
 {
@@ -23,6 +28,9 @@ void c3_movie_close(C3Movie *movie)
     if (!movie) return;
     if (movie->video_file) fclose(movie->video_file);
     if (movie->audio_file) fclose(movie->audio_file);
+    free(movie->frame_offsets);
+    free(movie->stored);
+    ZSTD_freeDCtx(movie->zstd);
     memset(movie, 0, sizeof(*movie));
 }
 
@@ -37,10 +45,15 @@ int c3_movie_open(C3Movie *movie, const char *path, char *error, size_t capacity
         return fail(error, capacity, "Movie open requires a closed movie and a path.");
     opened.video_file = fopen(path, "rb");
     if (!opened.video_file) return fail(error, capacity, "Prepared movie was not found.");
-    if (fread(header, 1, sizeof(header), opened.video_file) != sizeof(header) ||
-        memcmp(header, "C3V1", 4) || le32(header + 4) != 1 ||
+    /* Each frame is one whole read straight into the frame buffer: stdio
+     * buffering would split it into many small SD requests. */
+    setvbuf(opened.video_file, NULL, _IONBF, 0);
+    opened.version = fread(header, 1, sizeof(header), opened.video_file) == sizeof(header) ?
+                     le32(header + 4) : 0;
+    if (memcmp(header, "C3V1", 4) || (opened.version != 1 && opened.version != 2) ||
         le32(header + 12) != C3_MOVIE_WIDTH || le32(header + 16) != C3_MOVIE_HEIGHT ||
-        le32(header + 56) != 1 || le32(header + 60) != 0) {
+        le32(header + 56) != (opened.version == 1 ? C3_MOVIE_RAW_FORMAT : C3_MOVIE_PACKED_FORMAT) ||
+        le32(header + 60) != 0) {
         fail(error, capacity, "Invalid C3V1 movie header or unsupported pixel format.");
         goto rejected;
     }
@@ -54,9 +67,12 @@ int c3_movie_open(C3Movie *movie, const char *path, char *error, size_t capacity
     opened.audio_sample_frames = le32(header + 44);
     opened.sample_rate = le32(header + 48);
     opened.channels = le32(header + 52);
-    expected_audio = C3_MOVIE_HEADER_BYTES +
-                     (uint64_t)opened.frame_count * C3_MOVIE_FRAME_BYTES;
-    expected_total = expected_audio + (uint64_t)opened.audio_sample_frames * 4u;
+    /* Version 2's video section is an offset index and the packed frames;
+     * its end (the audio offset) is checked against the index below. */
+    expected_audio = opened.version == 1 ?
+                     C3_MOVIE_HEADER_BYTES + (uint64_t)opened.frame_count * C3_MOVIE_FRAME_BYTES :
+                     opened.audio_offset;
+    expected_total = (uint64_t)opened.audio_offset + (uint64_t)opened.audio_sample_frames * 4u;
     if (!opened.frame_count || opened.frame_count > 18000u ||
         !opened.fps_num || opened.fps_num > 60000u ||
         !opened.fps_den || opened.fps_den > 1001u ||
@@ -75,12 +91,50 @@ int c3_movie_open(C3Movie *movie, const char *path, char *error, size_t capacity
         fail(error, capacity, "Movie file length does not match its header.");
         goto rejected;
     }
+    opened.stored_frame = UINT32_MAX;
+    if (opened.version == 1) {
+        opened.stored_capacity = C3_MOVIE_FRAME_BYTES;
+    } else {
+        size_t entries = (size_t)opened.frame_count + 1u;
+        uint64_t first = C3_MOVIE_HEADER_BYTES + (uint64_t)entries * 4u;
+        unsigned char *index = malloc(entries * 4u);
+        int valid;
+        opened.frame_offsets = malloc(entries * sizeof(*opened.frame_offsets));
+        opened.zstd = ZSTD_createDCtx();
+        if (!index || !opened.frame_offsets || !opened.zstd) {
+            free(index);
+            fail(error, capacity, "Movie index allocation failed.");
+            goto rejected;
+        }
+        valid = fseek(opened.video_file, C3_MOVIE_HEADER_BYTES, SEEK_SET) == 0 &&
+                fread(index, 4, entries, opened.video_file) == entries;
+        for (size_t i = 0; valid && i < entries; ++i) {
+            uint32_t at = opened.frame_offsets[i] = le32(index + i * 4u);
+            if (!i) valid = at == first;
+            else {
+                uint32_t size = at - opened.frame_offsets[i - 1];
+                valid = at > opened.frame_offsets[i - 1] && size <= C3_MOVIE_STORED_MAX;
+                if (valid && size > opened.stored_capacity) opened.stored_capacity = size;
+            }
+        }
+        free(index);
+        if (!valid || opened.frame_offsets[opened.frame_count] != opened.audio_offset) {
+            fail(error, capacity, "Movie frame index is invalid.");
+            goto rejected;
+        }
+    }
+    opened.stored = malloc(opened.stored_capacity);
+    if (!opened.stored) {
+        fail(error, capacity, "Movie frame buffer allocation failed.");
+        goto rejected;
+    }
     if (opened.audio_sample_frames) {
         opened.audio_file = fopen(path, "rb");
         if (!opened.audio_file) {
             fail(error, capacity, "Could not open the movie audio stream.");
             goto rejected;
         }
+        setvbuf(opened.audio_file, NULL, _IONBF, 0);
     }
     *movie = opened;
     if (error && capacity) error[0] = '\0';
@@ -103,18 +157,66 @@ uint32_t c3_movie_frame_at(const C3Movie *movie, uint64_t elapsed_us)
     return (uint32_t)frame;
 }
 
+int c3_movie_load_frame(C3Movie *movie, uint32_t frame, char *error, size_t error_capacity)
+{
+    uint64_t offset;
+    uint32_t bytes;
+    if (!movie || !movie->video_file || !movie->stored || frame >= movie->frame_count)
+        return fail(error, error_capacity, "Invalid movie frame request.");
+    movie->stored_frame = UINT32_MAX;
+    if (movie->version == 1) {
+        offset = C3_MOVIE_HEADER_BYTES + (uint64_t)frame * movie->frame_bytes;
+        bytes = movie->frame_bytes;
+    } else {
+        offset = movie->frame_offsets[frame];
+        bytes = movie->frame_offsets[frame + 1u] - movie->frame_offsets[frame];
+    }
+    if (offset > LONG_MAX || fseek(movie->video_file, (long)offset, SEEK_SET) != 0 ||
+        fread(movie->stored, 1, bytes, movie->video_file) != bytes)
+        return fail(error, error_capacity, "Movie frame read failed.");
+    movie->stored_bytes = bytes;
+    movie->stored_frame = frame;
+    return 0;
+}
+
+/* Row-major to framebuffer order (see movie.h) in 16x16 tiles, so both the
+ * source rows and the destination columns stay within a few cache lines. */
+static void transpose(const uint16_t *source, uint16_t *destination)
+{
+    for (unsigned y0 = 0; y0 < C3_MOVIE_HEIGHT; y0 += 16u)
+        for (unsigned x0 = 0; x0 < C3_MOVIE_WIDTH; x0 += 16u)
+            for (unsigned x = x0; x < x0 + 16u; ++x) {
+                uint16_t *column = destination + (size_t)x * C3_MOVIE_HEIGHT + (C3_MOVIE_HEIGHT - 1u);
+                for (unsigned y = y0; y < y0 + 16u; ++y)
+                    column[-(ptrdiff_t)y] = source[(size_t)y * C3_MOVIE_WIDTH + x];
+            }
+}
+
+int c3_movie_decode_frame(C3Movie *movie, void *pixels, size_t capacity,
+                          char *error, size_t error_capacity)
+{
+    size_t size;
+    if (!movie || !pixels || ((uintptr_t)pixels & 1u) || movie->stored_frame == UINT32_MAX ||
+        capacity < C3_MOVIE_FRAME_BYTES)
+        return fail(error, error_capacity, "Invalid movie frame request.");
+    if (movie->version == 1) {
+        transpose((const uint16_t *)(const void *)movie->stored, pixels);
+        return 0;
+    }
+    size = ZSTD_decompressDCtx(movie->zstd, pixels, C3_MOVIE_FRAME_BYTES,
+                               movie->stored, movie->stored_bytes);
+    if (ZSTD_isError(size) || size != C3_MOVIE_FRAME_BYTES)
+        return fail(error, error_capacity, "Movie frame data is corrupt.");
+    return 0;
+}
+
 int c3_movie_read_frame(C3Movie *movie, uint32_t frame, void *pixels,
                         size_t capacity, char *error, size_t error_capacity)
 {
-    uint64_t offset;
-    if (!movie || !movie->video_file || !pixels || frame >= movie->frame_count ||
-        capacity < movie->frame_bytes)
+    if (!movie || !pixels || capacity < C3_MOVIE_FRAME_BYTES)
         return fail(error, error_capacity, "Invalid movie frame request.");
-    offset = C3_MOVIE_HEADER_BYTES + (uint64_t)frame * movie->frame_bytes;
-    if (offset > LONG_MAX || fseek(movie->video_file, (long)offset, SEEK_SET) != 0 ||
-        fread(pixels, 1, movie->frame_bytes, movie->video_file) != movie->frame_bytes)
-        return fail(error, error_capacity, "Movie frame read failed.");
-    return 0;
+    if (c3_movie_load_frame(movie, frame, error, error_capacity)) return -1;
+    return c3_movie_decode_frame(movie, pixels, capacity, error, error_capacity);
 }
 
 int c3_movie_read_audio(C3Movie *movie, int16_t *samples, size_t capacity_frames,

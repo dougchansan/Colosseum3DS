@@ -200,6 +200,57 @@ static int main_touch(unsigned x, unsigned y)
     return -1;
 }
 
+/* Stylus cells of the other pages, in their drawn rectangles (see
+ * c3_game_menu_draw_to and c3_ui_choices). */
+int c3_game_menu_touch_hit(C3GameMenuPage page, unsigned x, unsigned y)
+{
+    switch (page) {
+    case C3_MENU_MAIN:
+        return main_touch(x, y);
+    case C3_MENU_NAME_CHOICES: {
+        static const unsigned tops[4] = {68, 99, 131, 163}; /* NEW NAME, presets */
+        if (x < 10 || x >= 310) return -1;
+        for (int i = 0; i < 4; ++i)
+            if (y + 6u >= tops[i] && y < tops[i] + 25u) return i;
+        return -1;
+    }
+    case C3_MENU_NAME_KEYBOARD:
+        /* Five rows of eight letters (38x25 cells from 9,56), then the
+         * CASE / SPACE / BACK / DONE buttons (72x26 every 77 px at y 186). */
+        if (x >= 9 && x < 9 + 8 * 38 && y >= 56 && y < 56 + 5 * 25)
+            return (int)((y - 56) / 25 * 8 + (x - 9) / 38);
+        if (x >= 9 && x < 9 + 4 * 77 && (x - 9) % 77 < 72 && y >= 186 && y < 212)
+            return 40 + (int)((x - 9) / 77);
+        return -1;
+    case C3_MENU_NEW_CONFIRM:
+    case C3_MENU_NAME_CONFIRM:
+    case C3_MENU_CONTINUE_CONFIRM:
+        /* 0: YES, 1: NO. */
+        if (x >= 180 && x < 310 && y >= 165 && y < 215) return y < 187 ? 0 : 1;
+        return -1;
+    case C3_MENU_NOTICE:
+    case C3_MENU_ERROR:
+        return x >= 10 && x < 310 && y >= 56 && y < 211 ? 0 : -1;
+    default:
+        return -1;
+    }
+}
+
+/* A tap selects a row; a tap on the row already selected confirms it, as A. */
+static void touch_select(C3GameMenu *menu, int hit, unsigned *selection, int *accept)
+{
+    if (hit < 0) return;
+    if (*selection == (unsigned)hit) *accept = 1;
+    else { *selection = (unsigned)hit; menu->dirty = 1; }
+}
+
+static void touch_confirm(C3GameMenu *menu, int hit, int *accept)
+{
+    unsigned choice = menu->confirm_yes ? 0u : 1u;
+    touch_select(menu, hit, &choice, accept);
+    menu->confirm_yes = choice == 0u;
+}
+
 static void choose(C3GameMenu *menu, uint16_t move, unsigned *selection, unsigned count)
 {
     unsigned before = *selection;
@@ -239,13 +290,11 @@ C3GameMenuEvent c3_game_menu_update(C3GameMenu *menu, const C3N3dsInput *input, 
     if (!menu || !input) return event;
     uint16_t move = directions(menu, input, delta);
     int accept = !!(input->pressed & C3_PAD_A), back = !!(input->pressed & C3_PAD_B);
+    int hit = input->touch_pressed ? c3_game_menu_touch_hit(menu->page, input->touch_x, input->touch_y) : -1;
     switch (menu->page) {
     case C3_MENU_MAIN:
         choose_main(menu, move);
-        if (input->touch_pressed) {
-            int touched = main_touch(input->touch_x, input->touch_y);
-            if (touched >= 0) { menu->selection = (unsigned)touched; menu->dirty = 1; accept = 1; }
-        }
+        if (hit >= 0) { menu->selection = (unsigned)hit; menu->dirty = 1; accept = 1; }
         if (back || (accept && menu->selection == 5)) {
             event.kind = C3_MENU_EVENT_RETURN_TITLE;
             c3_game_menu_set_pending(menu, "Returning to the title...");
@@ -271,6 +320,7 @@ C3GameMenuEvent c3_game_menu_update(C3GameMenu *menu, const C3N3dsInput *input, 
         break;
     case C3_MENU_NEW_CONFIRM:
         confirm_move(menu, move);
+        touch_confirm(menu, hit, &accept);
         if (back || (accept && !menu->confirm_yes)) page(menu, C3_MENU_MAIN);
         else if (accept) {
             menu->replace_authorized = !!menu->save.present;
@@ -280,6 +330,7 @@ C3GameMenuEvent c3_game_menu_update(C3GameMenu *menu, const C3N3dsInput *input, 
         break;
     case C3_MENU_NAME_CHOICES:
         choose(menu, move, &menu->name_selection, 4);
+        touch_select(menu, hit, &menu->name_selection, &accept);
         if (back) { menu->replace_authorized = 0; page(menu, C3_MENU_MAIN); }
         else if (accept && menu->name_selection == 0) {
             menu->name[0] = 0;
@@ -301,6 +352,8 @@ C3GameMenuEvent c3_game_menu_update(C3GameMenu *menu, const C3N3dsInput *input, 
         else if (move & C3_PAD_RIGHT) col = col + 1u == columns ? 0u : col + 1u;
         menu->keyboard_selection = row * 8u + col;
         if (move) menu->dirty = 1;
+        /* A tapped key or button is entered or run at once. */
+        if (hit >= 0) { menu->keyboard_selection = (unsigned)hit; menu->dirty = 1; accept = 1; }
         if (input->pressed & (C3_PAD_R | C3_PAD_X)) { menu->lower_case ^= 1u; menu->dirty = 1; }
         if (back || (accept && menu->keyboard_selection == 42u)) {
             size_t length = strlen(menu->name);
@@ -321,6 +374,7 @@ C3GameMenuEvent c3_game_menu_update(C3GameMenu *menu, const C3N3dsInput *input, 
     }
     case C3_MENU_NAME_CONFIRM:
         confirm_move(menu, move);
+        touch_confirm(menu, hit, &accept);
         if (back || (accept && !menu->confirm_yes)) page(menu, C3_MENU_NAME_CHOICES);
         else if (accept) {
             event.kind = C3_MENU_EVENT_NEW_GAME;
@@ -332,6 +386,7 @@ C3GameMenuEvent c3_game_menu_update(C3GameMenu *menu, const C3N3dsInput *input, 
         break;
     case C3_MENU_CONTINUE_CONFIRM:
         confirm_move(menu, move);
+        touch_confirm(menu, hit, &accept);
         if (back || (accept && !menu->confirm_yes)) page(menu, C3_MENU_MAIN);
         else if (accept && menu->save.valid && menu->save.can_continue) {
             event.kind = C3_MENU_EVENT_CONTINUE;
@@ -359,7 +414,7 @@ C3GameMenuEvent c3_game_menu_update(C3GameMenu *menu, const C3N3dsInput *input, 
         break;
     case C3_MENU_NOTICE:
     case C3_MENU_ERROR:
-        if (accept || back) page(menu, C3_MENU_MAIN);
+        if (accept || back || hit >= 0) page(menu, C3_MENU_MAIN);
         break;
     case C3_MENU_PENDING:
         break;
@@ -413,7 +468,7 @@ void c3_game_menu_draw_to(C3GameMenu *menu,C3BottomUi *ui)
             if(menu->keyboard_selection==40+i)c3_ui_panel(ui,x,186,72,26);
             c3_ui_text(ui,x+8,190,60,1,commands[i],menu->keyboard_selection==40+i?C3_UI_GOLD:C3_UI_WHITE);
         }
-        c3_ui_footer(ui,"A: enter   B: erase   X: case   START: done");
+        c3_ui_footer(ui,"Tap/A: enter  B: erase  X: case  START: done");
         break;
     }
     case C3_MENU_NAME_CHOICES:
@@ -421,7 +476,7 @@ void c3_game_menu_draw_to(C3GameMenu *menu,C3BottomUi *ui)
         c3_ui_panel(ui,10,56,300,153);
         c3_ui_row(ui,68,message(menu,0x2EFD,"NEW NAME"),menu->name_selection==0,0);
         for(unsigned i=0;i<3;++i)c3_ui_row(ui,99+(int)i*32,message(menu,0x2EFEu+i,preset_names[i]),menu->name_selection==i+1,0);
-        c3_ui_footer(ui,"D-pad: choose   A: confirm   B: back");break;
+        c3_ui_footer(ui,"Tap/D-pad: choose  Tap again/A: OK  B: back");break;
     case C3_MENU_OPTIONS:
         c3_ui_header(ui,"OPTIONS","Sound / Controller Rumble");
         c3_ui_panel(ui,10,56,300,98);
@@ -440,7 +495,7 @@ void c3_game_menu_draw_to(C3GameMenu *menu,C3BottomUi *ui)
             (unsigned long)(menu->save.play_seconds/3600u),(unsigned long)(menu->save.play_seconds/60u%60u));
         c3_ui_text(ui,21,63,275,3,text,C3_UI_WHITE);
         c3_ui_text(ui,21,119,275,2,message(menu,0x3C22,"Is it okay to continue from here?"),C3_UI_WHITE);
-        c3_ui_choices(ui,menu->confirm_yes);c3_ui_footer(ui,"A: confirm   B: back");break;
+        c3_ui_choices(ui,menu->confirm_yes);c3_ui_footer(ui,"Tap/D-pad: choose  Tap again/A: OK  B: back");break;
     case C3_MENU_NEW_CONFIRM:
     case C3_MENU_NAME_CONFIRM:
         c3_ui_header(ui,menu->page==C3_MENU_NEW_CONFIRM?"NEW GAME":"YOUR NAME","");
@@ -450,12 +505,12 @@ void c3_game_menu_draw_to(C3GameMenu *menu,C3BottomUi *ui)
             "A card file already exists. Starting a new Story permits your next Save to replace that file. Continue?":
             message(menu,0x3C3A,"Is it okay to start a new Story?"));
         c3_ui_text(ui,21,66,275,5,text,C3_UI_WHITE);
-        c3_ui_choices(ui,menu->confirm_yes);c3_ui_footer(ui,"D-pad: choose   A: confirm   B: back");break;
+        c3_ui_choices(ui,menu->confirm_yes);c3_ui_footer(ui,"Tap/D-pad: choose  Tap again/A: OK  B: back");break;
     default:
         c3_ui_header(ui,menu->page==C3_MENU_ERROR?"Unable to continue":"POKEMON COLOSSEUM","");
         c3_ui_panel(ui,10,56,300,155);
         c3_ui_text(ui,21,64,275,8,menu->notice,C3_UI_WHITE);
-        c3_ui_footer(ui,menu->page==C3_MENU_PENDING?"Please wait...":"A / B: return to menu");break;
+        c3_ui_footer(ui,menu->page==C3_MENU_PENDING?"Please wait...":"Tap / A / B: return to menu");break;
     }
 }
 
