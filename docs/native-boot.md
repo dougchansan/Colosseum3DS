@@ -69,7 +69,10 @@ under `/3ds/Colosseum3DS/boot/` on the SD card:
 
 The opening pack alone is 304,066,812 bytes. It is streamed through one
 153,600-byte video buffer and bounded PCM buffers. It is never read whole into
-3DS RAM. Logo/title packs add about 48 MiB. Geometry packs are bounded separately
+3DS RAM. Repack every `.c3v` movie with `tools/pack_movie.py` before copying it
+(the opening becomes 120,015,696 bytes). Version 2 packs play every frame
+without the SD and transpose costs of raw frames
+(`docs/boot-media-format.md`). Logo/title packs add about 48 MiB. Geometry packs are bounded separately
 and a single shared GPU arena renders the multiple field models.
 
 A user's existing save may be copied, with a backup kept, to

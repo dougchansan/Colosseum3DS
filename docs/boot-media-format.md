@@ -23,7 +23,7 @@ The header is exactly 64 bytes (`<4s15I`). There are no alignment gaps.
 | Offset | Field | Required value |
 |---:|---|---|
 | 0 | Magic | `C3V1` |
-| 4 | Version | 1 |
+| 4 | Version | 1 (2: packed frames, below) |
 | 8 | Total file bytes | End of PCM data, or end of video when absent |
 | 12 | Width | 320 |
 | 16 | Height | 240 |
@@ -59,6 +59,61 @@ stereo THP ADPCM stream, decoded to PCM; `gs_logo` has no audio stream. The
 manifest records source and output hashes, dimensions, exact frame count, and
 sample count. The two movies require about 32 MB on SD, with only one 153600-byte
 video frame and bounded PCM buffers needed at a time.
+
+## Version 2: packed frames (what the SD card should carry)
+
+Version 1 streams 153,600 bytes per frame, 4.6 MB/s at 29.97 fps, and the 3DS
+then transposed every pixel into its column-major framebuffer. On a New 3DS
+the opening showed only 1,258 of 1,926 frames (`movie_end ... displayed=1258
+skipped=668`). `tools/pack_movie.py` repacks a version 1 file losslessly:
+
+```sh
+python3 tools/pack_movie.py private/intro/openingdemo.c3v private/packed/openingdemo.c3v
+```
+
+The 64-byte header keeps the version 1 field order with these differences:
+
+| Offset | Field | Version 2 value |
+|---:|---|---|
+| 4 | Version | 2 |
+| 32 | Video offset | 64: the frame index |
+| 36 | Bytes per frame | 153600 once decoded |
+| 40 | Audio offset | End of the last packed frame |
+| 56 | Pixel format | 2 = RGB565LE in framebuffer order, one zstd frame per video frame |
+
+The index at offset 64 holds frame count + 1 little-endian u32 file offsets.
+The first is 64 + 4 × (frame count + 1). Offsets strictly increase, so frame
+*i* occupies `[index[i], index[i+1])`. Each packed frame is at most
+`ZSTD_COMPRESSBOUND(153600)`, and the last offset equals the audio offset. Each
+packed frame decodes to exactly 153,600 bytes in the top-screen framebuffer
+order: 320 columns of 240 pixels, with image row *y* stored at 239 − *y*. That
+is one contiguous copy into the 400×240 framebuffer at column 40. The
+PCM section is unchanged. The tool decompresses every packed frame again and
+compares it with the transposed source before renaming the output into place,
+so the packed pixels are bit-identical to version 1 and there is no visible
+loss.
+
+Sizes of the packed reviewed sources (zstd level 19, `--no-check`):
+
+| Movie | Version 1 bytes | Version 2 bytes | Video ratio | Largest frame |
+|---|---:|---:|---:|---:|
+| `tpc` | 11,840,672 | 1,269,762 | 0.082 | 45,049 |
+| `gs_logo` | 19,968,064 | 1,370,370 | 0.069 | 30,635 |
+| `openingdemo` | 304,066,812 | 120,015,696 | 0.378 | 99,212 |
+| `staffroll` | 806,400,064 | 73,352,725 | 0.091 | 31,628 |
+
+The runtime still accepts version 1. Its player
+(`platform/3ds/movie_player.c`) works as a pipeline. A reader thread on the main
+core, below the main thread, fills a ring of four stored frames from SD with
+unbuffered whole-frame reads. A decode thread unpacks them into three
+framebuffer-ordered slots. On a New 3DS that thread runs on the second
+application core. The main thread copies the frame that is due and keeps the
+audio queue and the vblank pace. Frames that are already late are skipped
+without being read or decoded. The clock and the audio start once the first
+frame is on screen. Each movie adds `movie_feed` and `movie_timing` trace lines.
+They record the pack version, the decoder core, the pre-roll, frames produced
+and dropped (before reading and before decoding), vblanks whose frame was late,
+average and maximum read/decode/copy microseconds, and bytes read.
 
 ## Validation boundaries
 

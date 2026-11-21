@@ -71,6 +71,14 @@ class FloorProfileTableTests(unittest.TestCase):
         self.assertEqual({name: row["material_colors"] for name, row in rows.items() if row.get("material_colors")},
                          {"phenac_pc1f": "frozen", "phenac_pregym1f": "frozen", "phenac_stadium1f": "constant",
                           "phenac_shop1f": "frozen", "phenac_shop2f": "frozen", "phenac_pcb1": "frozen"})
+        # Object packs drawn by the original door/elevator table (floor_event.c
+        # FloorDoorEntry row -> resource 0x<map group>10<model>). The Pre Gym
+        # elevators are rows 136 and 137; unmapped, their packs never drew and
+        # the shaft under each showed as an opaque black disc.
+        self.assertEqual({name: row["door_objects"] for name, row in rows.items() if row.get("door_objects")
+                          and name not in profiles.REALGAM_FLOORS},
+                         {"phenac": {0: 0, 1: 1, 2: 2, 3: 3, 4: 4, 5: 5}, "phenac_pregym1f": {136: 0},
+                          "phenac_stadium1f": {6: 0, 7: 1}, "phenac_pregymb1": {137: 0}})
         self.assertEqual(rows["phenac_mayor2f"]["groups"], (((0, 1, 2), ("static", 0)),))
         # The exterior row keeps its exterior pack format; only its six doors
         # are object packs (checked above), as the door table needs.

@@ -117,6 +117,10 @@ int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
 /* An opt-in immutable single-frame pack; disable before changing any sampled
  * vertices/materials/lights. Camera-dependent shading still invalidates. */
 int c3_stage_renderer_set_static(size_t model_index, bool enabled);
+/* colosseum3ds/stage_order.h: leading > 0 draws models [0, leading) as one
+ * group, then each later model with its own opaque and translucent passes
+ * (GSmodel order). 0, the default reset by init, keeps one group. */
+int c3_stage_renderer_set_draw_groups(size_t leading);
 /* Source GSmaterial RGB modulation is 2*color*previous, not an opaque overlay.
  * NULL disables. Render-side only, no asset/animation mutation. */
 int c3_stage_renderer_set_modulation(size_t model_index, const uint8_t rgb[3]);
