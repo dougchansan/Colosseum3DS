@@ -144,10 +144,21 @@ int main(void)
         fclose(trace);
     }
     trace = reset(96000); a_us = 16000; x_us = 32000;
+    unsigned generation = c3_render_recovery_bottom_generation();
     CHECK(c3_render_recover(trace, "transition", 7, C3_RECOVER_DRAIN) == C3_RECOVERY_DRAINED);
     CHECK(now_us >= ready_us && frees == 1 && shutdown_calls > 1);
     CHECK(deferred == 0);
+    /* An ordinary scene change never replaces the bottom screen. */
+    CHECK(clears == 0 && flushes == 0);
+    CHECK(c3_render_recovery_bottom_generation() == generation);
     has_event(trace, "event=snapshot");
+    fclose(trace);
+    /* A drain that stalls past the notice delay shows the page and reports it. */
+    trace = reset(2000000);
+    generation = c3_render_recovery_bottom_generation();
+    CHECK(c3_render_recover(trace, "slow transition", 7, C3_RECOVER_DRAIN) == C3_RECOVERY_DRAINED);
+    CHECK(clears > 0 && flushes > 0 && frees == 1);
+    CHECK(c3_render_recovery_bottom_generation() != generation);
     fclose(trace);
     for (unsigned mode = 0; mode < 2; ++mode) {
         trace = reset(3400000);

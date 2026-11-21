@@ -18,6 +18,10 @@ uint32_t C3D_FrameCounter(int screen);
 
 #define WATCHDOG_US UINT64_C(3000000)
 #define HEARTBEAT_US UINT64_C(1000000)
+/* A scene change normally drains the GPU in a few milliseconds. The
+ * diagnostic page replaces the bottom screen, so it is shown only when a
+ * drain really stalls, never on every ordinary transition. */
+#define DRAIN_NOTICE_US UINT64_C(1500000)
 /* An ordinary busy queue is retried every two milliseconds, so a frame that
  * is a little late costs that much and not a whole display refresh. */
 #define POLL_NS INT64_C(2000000)
@@ -78,9 +82,17 @@ static void record(FILE *trace, const char *scene, const char *event,
     fflush(trace);
 }
 
+static unsigned bottom_generation;
+
+unsigned c3_render_recovery_bottom_generation(void)
+{
+    return bottom_generation;
+}
+
 static void display(const char *scene, uint64_t elapsed, bool ready,
                     bool draining, bool exiting, bool retry, uint16_t pressed)
 {
+    ++bottom_generation;
     consoleClear();
     printf("Colosseum3DS | render recovery\nBuild %.12s | %s\n\n", C3_BUILD_ID, scene);
     printf("Rendering paused: GPU %s\nWait %.1f seconds | PAD %04X\n\n",
@@ -164,7 +176,8 @@ C3RenderRecoveryResult c3_render_recover(FILE *trace, const char *scene,
                 next_display = 0;
             }
         }
-        if ((paused || draining || pending_exit) && now >= next_display) {
+        bool notice = paused || pending_exit || (draining && elapsed >= DRAIN_NOTICE_US);
+        if (notice && now >= next_display) {
             display(scene, elapsed, ready, draining, pending_exit, retry, last_pressed);
             next_display = now + UINT64_C(250000);
         }

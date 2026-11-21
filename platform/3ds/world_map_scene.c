@@ -770,6 +770,7 @@ int c3_world_map_scene_run(C3GameState *state, FILE *trace, char *error, size_t 
     C3N3dsInput input = {0};
     const char *note = NULL;
     int dirty = 1, released = 0, armed = -1, stick_ready = 1;
+    unsigned bottom_seen = c3_render_recovery_bottom_generation();
     MapPack pack; int native = pack_load(&pack);
     preview = calloc(1, sizeof *preview);
     uint64_t preview_clock = c3_n3ds_time_us();
@@ -906,6 +907,12 @@ int c3_world_map_scene_run(C3GameState *state, FILE *trace, char *error, size_t 
                 scene_close(&pack, trace, presented >= 0);
                 return presented < 0 ? 1 : 2; /* 1: exit requested during the ride */
             }
+        }
+        /* A preview swap drains the GPU; if that stalled long enough to show
+         * the recovery page, the map must be drawn again over it. */
+        if (bottom_seen != c3_render_recovery_bottom_generation()) {
+            bottom_seen = c3_render_recovery_bottom_generation();
+            dirty = 1;
         }
         if (dirty) {
             if (native) draw_native(&pack, &map, note); else draw(&map, note);

@@ -28,6 +28,10 @@ void c3_render_recovery_set_pause_callback(void (*callback)(int));
  * EXIT additionally means a latched application-exit request. DRAIN is for
  * scene transitions and promotes a fresh exit request to EXIT.
  * A true GPU/system wedge can still require physical recovery. */
+/* Increments whenever the diagnostic page overwrote the bottom screen, so a
+ * scene that draws its bottom screen only on change knows to redraw it. */
+unsigned c3_render_recovery_bottom_generation(void);
+
 C3RenderRecoveryResult c3_render_recover(FILE *trace, const char *scene,
                                         unsigned submitted_frames, C3RenderRecoveryMode mode);
 
