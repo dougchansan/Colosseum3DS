@@ -911,6 +911,12 @@ int main(int argc,char **argv)
     fprintf(trace,"integration_approach_scene_complete frames=%u flag03da=1 collision10=disabled passengers_hidden=1\n",approach_frame);
     door(scene,4,2,0);close_scene(scene);
     load_scene(scene,&game,argv[1],2,1,0);until_control(scene,0x426e);
+    /* The shop's init script calls cameraSetFloorDefault(68.32, 73.12, -1.0):
+     * -1 is the follow camera's Y rotation in radians, not "keep". */
+    CHECK(fabsf(scene->map.camera_yaw+1.0f)<1e-6f);
+    CHECK(fabsf(scene->map.camera_height-6.832f)<1e-3f&&fabsf(scene->map.camera_distance-7.312f)<1e-3f);
+    fprintf(trace,"integration_shop_camera rot_y=%.3f height=%.3f distance=%.3f\n",(double)scene->map.camera_yaw,
+            (double)scene->map.camera_height,(double)scene->map.camera_distance);
     shop_walls_hold(scene);
     CHECK(flag(&game,0x3db)==1&&flag(&game,0x3dc)==0&&flag(&game,0x3de)==0);
     C3StoryActor *willie=c3_field_story_actor(&scene->story,4);CHECK(willie&&willie->visible);

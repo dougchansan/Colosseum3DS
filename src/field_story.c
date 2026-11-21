@@ -1213,9 +1213,14 @@ static int run_native(Impl *s,RunTask *t,char *error)
     case 0x76:
         value=c3_field_set_object_enabled(s->map,a[0],!!a[1])?0:2;break;
     case 0x7f:
-        if(as_float(a[0])>=0)s->map->camera_height=as_float(a[0])*s->map->scale;
-        if(as_float(a[1])>=0)s->map->camera_distance=as_float(a[1])*s->map->scale;
-        if(as_float(a[2])>=0)s->map->camera_yaw=as_float(a[2]);
+        /* cameraSetFloorDefault(height, distance, rotY) (camera.c) stores all
+         * three as given: there is no "keep" value. The shop passes rotY -1.0,
+         * a real rotation of -1 radian that turns its follow camera to the
+         * front-left three-quarter view; reading it as "unchanged" left the
+         * camera square to the car's black cut-away front wall. */
+        s->map->camera_height=as_float(a[0])*s->map->scale;
+        s->map->camera_distance=as_float(a[1])*s->map->scale;
+        s->map->camera_yaw=as_float(a[2]);
         break;
     case 0x88:
         /* Original disables field-camera auto tracking. The explicit scene
