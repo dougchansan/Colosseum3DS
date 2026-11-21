@@ -312,6 +312,77 @@ static void nurse_heals(void)
     CHECK(ok&&restore_calls==1);
     printf("phenac-events nurse: party restored once\n");
 }
+/* Rui's event, main function 6 of 013E0E00. No chapter save sits before it,
+ * so the row starts a fresh game with the eleven flags the Outskirt scripts
+ * have written by the world-map link (as tests/test_phenac_story.c does),
+ * plays the arrival (function 5, battle 14 reported as a win) and attaches
+ * Rui's pack at load as the console does. The hero talks to the sack
+ * (actor 0, talk script 01000021). Native 3B places Wes at (0, 323.75),
+ * the boy (actor 7) at (-8.1, 317), the woman (actor 5) at (9, 312) and
+ * Rui (0,101) on the sack, (0, 313): original tenths, times the map scale.
+ * No one stands inside another's cylinder (PeopleInfo radii). Wes then
+ * runs straight at Rui at console tick lengths, one stalled 0.25 s tick
+ * first: she is a human cylinder too (hero_move.c registers (0,101) with
+ * fn_8018CB5C; PeopleInfo row 2 is collision type 1, radius 4), and the
+ * step is swept in hero-radius slices as GScolsys2HumanCollision does,
+ * so he never passes through her or the boy. */
+static float gap(const C3FieldPlayer *a,const C3FieldPlayer *b)
+{return hypotf(a->position[0]-b->position[0],a->position[2]-b->position[2]);}
+static void partner_event(void)
+{
+    if(!present(root,"phenac_partner.c3t")){printf("phenac-events partner: skipped (no phenac_partner.c3t)\n");return;}
+    static const uint16_t outskirt[]={0x8d0,0xaf8,0x3da,0x3db,0xa05,0xace,0x3dc,0x3dd,0x3de,0xa5a,0x3df};
+    Scene *s=calloc(1,sizeof *s);C3GameState game={0};static C3Title rui_model;char file[1024];uint32_t v=0;
+    CHECK(s);error[0]=0;link_floor=0;battle_count=0;current_game=&game;current_floor=3;
+    path(file,newgame,"newgame.c3g");CHECK(c3_game_state_new(&game,"WES",0x12345678,file,error));
+    for(size_t i=0;i<sizeof outskirt/sizeof outskirt[0];++i)CHECK(c3_game_state_set_flag(&game,outskirt[i],1));
+    CHECK(c3_game_state_set_floor(&game,3,C3_FLOOR_WORLD_MAP_ID,0));
+    CHECK(open_floor(s,&game,3,0));
+    path(file,root,"phenac_partner.c3t");CHECK(c3_title_load(&rui_model,file,error,sizeof error));
+    CHECK(c3_field_story_attach_partner(&s->story,&rui_model,error));
+    CHECK(run(s,60000)&&!link_floor&&battle_count==1&&battle_log[0]==14);
+    CHECK(c3_game_state_get_flag(&game,0x3e1,&v)&&v&&!c3_game_state_partner(&game));battle_count=0;
+    C3StoryActor *sack=c3_field_story_actor(&s->story,0),*rui=c3_field_story_person(&s->story,0,101);
+    C3StoryActor *boy=c3_field_story_actor(&s->story,7),*woman=c3_field_story_actor(&s->story,5);
+    CHECK(sack&&sack->visible&&rui&&!rui->visible&&boy&&boy->visible&&woman&&woman->visible);
+    /* Talk to the sack from just north of it, facing it. */
+    s->hero.position[0]=sack->pose.position[0];s->hero.position[2]=sack->pose.position[2]+1.0f;s->hero.yaw=3.1415927f;
+    memcpy(s->hero.proposed,s->hero.position,sizeof s->hero.position);
+    CHECK(c3_field_story_interact(&s->story,error));
+    CHECK(run(s,30000)&&!link_floor&&battle_count==0);
+    CHECK(c3_game_state_get_flag(&game,0x3e5,&v)&&v&&c3_game_state_partner(&game)&&rui->visible);
+    const float sc=s->map.scale,r=s->map.radius;
+    const struct { const C3FieldPlayer *pose; float x, z, radius; const char *name; } at[]={
+        {&s->hero,0.0f,323.75f,r,"wes"},{&rui->pose,0.0f,313.0f,r,"rui"},
+        {&boy->pose,-8.1f,317.0f,s->area.actors[7].radius,"boy"},{&woman->pose,9.0f,312.0f,s->area.actors[5].radius,"woman"}};
+    for(unsigned i=0;i<4;++i){
+        fprintf(trace,"phenac_partner_event %s x=%.3f z=%.3f expected=%.3f,%.3f\n",at[i].name,(double)at[i].pose->position[0],
+                (double)at[i].pose->position[2],(double)(at[i].x*sc),(double)(at[i].z*sc));
+        CHECK(fabsf(at[i].pose->position[0]-at[i].x*sc)<1e-3f&&fabsf(at[i].pose->position[2]-at[i].z*sc)<1e-3f);
+        for(unsigned j=0;j<i;++j)CHECK(gap(at[i].pose,at[j].pose)>=at[i].radius+at[j].radius);
+    }
+    CHECK(fabsf(s->hero.yaw-3.1415927f)<1e-3f); /* native 3C: Wes faces the sack */
+    /* Wes runs south (yaw pi) into Rui; she stays a cylinder ahead of him. */
+    const float dts[]={.25f,1.0f/17.0f,1.0f/18.0f,1.0f/15.5f};float closest=1e9f,wes_start=s->hero.position[2];unsigned blocked=0;
+    for(unsigned tick=0;tick<40;++tick){
+        float dt=tick?dts[1+tick%3]:dts[0],before[3];memcpy(before,s->hero.position,sizeof before);
+        unsigned count=s->hero.collision_count;
+        CHECK(c3_field_story_view(&s->story)->control);
+        CHECK(c3_field_move(&s->map,&s->hero,0,127,0,0.0f,dt));
+        c3_field_story_collide(&s->story,before);
+        blocked+=s->hero.collision_count!=count;
+        float d=gap(&s->hero,&rui->pose);closest=fminf(closest,d);
+        fprintf(trace,"phenac_partner_push tick=%u dt=%.4f wes_z=%.3f rui=%.3f,%.3f gap=%.3f boy_gap=%.3f\n",tick,(double)dt,
+                (double)s->hero.position[2],(double)rui->pose.position[0],(double)rui->pose.position[2],(double)d,(double)gap(&s->hero,&boy->pose));
+        CHECK(d>=2*r-1e-4f&&s->hero.position[2]>rui->pose.position[2]);
+        CHECK(gap(&s->hero,&boy->pose)>=r+s->area.actors[7].radius-1e-4f);
+        CHECK(c3_field_story_tick(&s->story,dt,0,error)&&c3_field_story_sample(&s->story,error));
+    }
+    fprintf(trace,"phenac_partner_push_end wes_moved=%.3f closest=%.3f blocked_ticks=%u\n",(double)(wes_start-s->hero.position[2]),(double)closest,blocked);
+    CHECK(blocked>0&&wes_start-s->hero.position[2]>0.5f);
+    close_floor(s);free(s);c3_title_close(&rui_model);c3_game_state_free(&game);
+    printf("phenac-events partner: script positions held, Wes stays outside Rui's cylinder (closest %.3f)\n",(double)closest);
+}
 static void talk_sweep(void)
 {
     static const char *const sweep_saves[]={EARLY,MID_PYRITE,LATE};
@@ -371,6 +442,7 @@ int main(int argc,char **argv)
      * font). An unknown message control fails its script and the row. */
     CHECK(messages>0);
     nurse_heals();
+    partner_event();
     talk_sweep();
     {unsigned played=route_battles_played(),missing=route_battles_close(trace);
      if(played)printf("phenac-events real battles: %u played\n",played);

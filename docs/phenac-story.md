@@ -31,6 +31,13 @@ private packs. 7,230 checks pass.
   group does not match, so `(0, index)` reaches a floor actor.
 - Script calls put their arguments below the return frame: the second count
   of opcode 4 is the number of values the caller pushed for the callee.
+- Rui is a human cylinder like any collision-type-1 person: `hero_move.c`
+  registers (0,101) with `fn_8018CB5C`, PeopleInfo row 2 has collision type
+  1 and radius 4, and her visibility enables it. `GScolsys2HumanCollision`
+  sweeps the hero's step in hero-radius slices. The port tested only the
+  end of each step and skipped the partner, so after the sack event (Wes
+  at (0, 323.75) facing Rui at (0, 313), both placed by native 3B) Wes ran
+  straight through her (`test_phenac_events` partner row).
 - Event kind 1 is a crossed surface (`fn_801101B4`), kind 2 a touched one
   (`GScolsys2ThruGetEventID`, sphere of the person's radius), kind 3 the
   A-button query; `hero_move.c` dispatches 3, 2, 1 in that order. Phenac has

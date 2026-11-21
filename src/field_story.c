@@ -2708,21 +2708,55 @@ void c3_field_story_cancel_menu_event(C3FieldStory *story)
     Impl *s=story?story->impl:NULL;if(!s||!s->event_key)return;
     c3_story_stop(&s->vm,s->event_key);s->event_key=0;
 }
+/* fn_8010FAF4 for the hero at pos: up to ten passes, each pushing pos out of
+ * the first enabled human cylinder it is inside (checkCollisionHeadToHead:
+ * height 17, radius sum, 0.0001 margin, +X when the centres coincide).
+ * The enabled humans are the visible people of collision type 1 and the
+ * partner: hero_move.c registers (0,101) with fn_8018CB5C, PeopleInfo row 2
+ * is collision type 1 (radius 4), and native 32 / 23 enable it with her
+ * visibility (fn_8018C1E8 -> fn_8018FB2C). 1 when pos was pushed. */
+static int push_out_of_humans(Impl *s,float pos[3])
+{
+    const float height=17.0f*s->map->scale;int pushed=0;
+    for(unsigned pass=0;pass<10;++pass){
+        const float *at=NULL;float dx=0,dz=0,distance=0,radius=0;
+        for(uint32_t i=0;i<=s->area->actor_count&&!at;++i){
+            Person *p=i<s->area->actor_count?s->actors+i:&s->partner_actor;
+            if(!p->public.visible||!p->public.model||!p->source)continue;
+            if(p!=&s->partner_actor&&p->source->collision_type!=1)continue;
+            const float *o=p->public.pose.position;
+            if(o[1]>=pos[1]+height||o[1]+height<=pos[1])continue;
+            dx=pos[0]-o[0];dz=pos[2]-o[2];distance=sqrtf(dx*dx+dz*dz);radius=p->source->radius+s->map->radius;
+            if(distance<radius)at=o;
+        }
+        if(!at)break;
+        if(distance<=0)distance=dx=1.0f;
+        float k=(.0001f+radius)/distance;
+        pos[0]=dx*k+at[0];pos[2]=dz*k+at[2];pushed=1;
+    }
+    return pushed;
+}
+/* GScolsys2HumanCollision for the hero's step: the step from before is
+ * tested in slices of the hero's radius, and the first slice end inside a
+ * human is pushed out and ends the step there. Testing only the end of a
+ * console-rate step (often longer than a cylinder) let Wes pass through
+ * people, and the partner was never an obstacle. */
 void c3_field_story_collide(C3FieldStory *story,const float before[3])
 {
     Impl *s=story?story->impl:NULL;if(!s||!before)return;
-    float moved_from[3];memcpy(moved_from,s->hero->position,sizeof moved_from);
-    for(uint32_t i=0;i<s->area->actor_count;++i){Person *p=s->actors+i;
-        if(!p->public.visible||!p->public.model||p->source->collision_type!=1)continue;
-        float dy=fabsf(s->hero->position[1]-p->public.pose.position[1]);if(dy>1.7f)continue;
-        float dx=s->hero->position[0]-p->public.pose.position[0],dz=s->hero->position[2]-p->public.pose.position[2];
-        float distance=hypotf(dx,dz),radius=s->map->radius+p->source->radius;
-        if(distance>=radius)continue;
-        if(distance<.00001f){memcpy(s->hero->position,before,3*sizeof(float));continue;}
-        float next[3]={p->public.pose.position[0]+dx/distance*(radius+.0001f),s->hero->position[1],p->public.pose.position[2]+dz/distance*(radius+.0001f)},height;
-        if(c3_field_ground(s->map,next,&height)){next[1]=height;memcpy(s->hero->position,next,sizeof next);}
-        else memcpy(s->hero->position,before,3*sizeof(float));
-        ++s->hero->collision_count;
+    float moved_from[3],delta[3];memcpy(moved_from,s->hero->position,sizeof moved_from);
+    for(unsigned i=0;i<3;++i)delta[i]=s->hero->position[i]-before[i];
+    float distance=sqrtf(delta[0]*delta[0]+delta[1]*delta[1]+delta[2]*delta[2]);
+    float step=distance>0?fminf(1.0f,s->map->radius/distance):0;
+    for(float t=0;t<1.0f;t+=step){
+        float next=fminf(1.0f,t+step),pos[3],height;
+        for(unsigned i=0;i<3;++i)pos[i]=before[i]+delta[i]*next;
+        if(push_out_of_humans(s,pos)){
+            if(c3_field_ground(s->map,pos,&height)){pos[1]=height;memcpy(s->hero->position,pos,sizeof pos);}
+            else memcpy(s->hero->position,before,3*sizeof(float));
+            ++s->hero->collision_count;break;
+        }
+        if(step<=0)break;
     }
     if(memcmp(moved_from,s->hero->position,sizeof moved_from))
         (void)c3_field_resolve_position(s->map,s->hero,before);
