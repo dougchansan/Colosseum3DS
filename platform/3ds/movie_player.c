@@ -91,6 +91,7 @@ static int audio_fill(MovieAudio *audio, C3Movie *movie, ndspWaveBuf *wave, char
 #define FEED_BATCH (768u * 1024u)
 #define FEED_STACK (32u * 1024u)
 #define FEED_DECODERS 2u
+#define FEED_LOW_WATER 4u /* stored frames left before the reader tops up anyway */
 
 enum { ENTRY_FREE, ENTRY_LOADED, ENTRY_CLAIMED };
 enum { SLOT_FREE, SLOT_READY, SLOT_DECODING };
@@ -189,6 +190,12 @@ static int read_step(Feed *feed)
         ++count;
     }
     if (!count) return 0;
+    /* Top up in batches: while enough frames wait for the decoders, read
+     * only once half the ring (or the rest of the movie) is free, so each
+     * request carries several frames instead of the one just released. */
+    if (count < FEED_STORED / 2u && feed->read_next + count < movie->frame_count && bytes < FEED_BATCH / 2u &&
+        feed->read_count - __atomic_load_n(&feed->decode_next, __ATOMIC_ACQUIRE) >= FEED_LOW_WATER)
+        return 0;
     start = svcGetSystemTick();
     if (c3_movie_load_range(movie, feed->read_next, count, feed->batch, FEED_BATCH, &got,
                             feed->read_error, sizeof(feed->read_error))) return -1;

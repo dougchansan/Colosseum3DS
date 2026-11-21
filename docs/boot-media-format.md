@@ -115,7 +115,9 @@ The runtime accepts version 1 and both version 2 formats. Its player
 
 - A reader thread on core 0, below the main thread, reads runs of consecutive
   frames in one SD request of up to 768 KiB. It then hands the frames out
-  through a ring of 16 stored-frame entries.
+  through a ring of 16 stored-frame entries. While at least four frames are
+  waiting, it reads again only once half the ring is free, so each request
+  carries several frames.
 - The same reader refills the audio, in four 256 ms buffers read 32 KiB at a
   time. The main thread no longer touches the SD during playback. Each 3DS FS
   request costs several milliseconds, so per-frame reads and 4 KiB audio reads
