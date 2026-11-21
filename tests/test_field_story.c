@@ -1,6 +1,7 @@
 #define _POSIX_C_SOURCE 200809L
 #include "colosseum3ds/field_story.h"
 #include "colosseum3ds/save.h"
+#include "route_battles.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -139,6 +140,23 @@ static int probe_item(void *context,uint32_t item,int32_t count)
     return probe->result;
 }
 static int accept_world_map(uint32_t floor){return floor==1||floor==2||floor==0x38e;}
+/* After a played general-engine battle: the same Pokemon, with the
+ * writeback's experience and the prize money (c3_battle_story_apply). */
+static void battle_writeback(C3GameState *game,const C3GameSummary *original)
+{
+    C3GameSummary now;CHECK(c3_game_state_summary(game,&now));
+    CHECK(now.party_count==original->party_count);
+    unsigned long before=0,after=0;
+    for(unsigned i=0;i<now.party_count;++i){
+        CHECK(now.party[i].species==original->party[i].species&&now.party[i].personality==original->party[i].personality);
+        CHECK(now.party[i].level>=original->party[i].level&&now.party[i].experience>=original->party[i].experience);
+        CHECK(now.party[i].hp<=now.party[i].max_hp);
+        before+=original->party[i].experience;after+=now.party[i].experience;
+    }
+    CHECK(after>before&&now.money>original->money);
+    fprintf(trace,"integration_battle_writeback exp_gained=%lu money=%lu prize=%lu\n",after-before,
+            (unsigned long)now.money,(unsigned long)(now.money-original->money));
+}
 static void unchanged_party(C3GameState *game,const C3GameSummary *original)
 {
     C3GameSummary now;CHECK(c3_game_state_summary(game,&now));
@@ -969,7 +987,7 @@ int main(int argc,char **argv)
     /* The battle scene reports the original fight result. Only then does the
      * original script continue: it reads native 67, shows Willie's message
      * and writes its own flags, including Phenac's world-map unlock 03DF. */
-    {uint32_t encounter=0;
+    {uint32_t encounter=0;int general;
      CHECK(c3_field_story_battle_pending(&scene->story,&encounter)&&encounter==10);
      CHECK(!c3_field_story_battle_result(&scene->story,0,error));
      CHECK(c3_field_story_battle_pending(&scene->story,NULL)&&flag(&game,0x3de)==0);
@@ -981,7 +999,20 @@ int main(int argc,char **argv)
      for(frame=0;frame<120;++frame)CHECK(c3_field_story_tick(&scene->story,1.0f/60.0f,0x100,error));
      CHECK(c3_field_story_battle_pending(&scene->story,NULL)&&flag(&game,0x3de)==0);unchanged_party(&game,&original);
      CHECK(logged("story_battle_refused encounter=10 reason=\"test refusal\" result_written=0 native98_waiting=1"));
-     CHECK(c3_field_story_battle_result(&scene->story,2,error));
+     /* The field plays encounter 10 on the general battle engine like every
+      * story battle (field_scene.c play_story_battle; tests/route_battles.c
+      * headless). With C3_ROUTE_BATTLES=<battles.c3x> the battle is played
+      * and c3_battle_story_apply writes EXP, prize money and HP/PP back and
+      * resumes native 98 with the real result; without a pack the result
+      * ID 2 is reported instead and the party stays unchanged. */
+     char problem[256]="";
+     CHECK(route_battles_open(problem,sizeof problem));
+     general=route_battles_enabled();
+     CHECK(route_battle_play(&scene->story,&game,1,2,trace,"integration_general_battle",problem,sizeof problem));
+     if(general){
+         CHECK(route_battles_was_played(10));
+         CHECK(logged("integration_general_battle floor=001 encounter=10 played=1 trainer=\"RIDER WILLIE\""));
+     }
      CHECK(!c3_field_story_view(&scene->story)->battle_refused);
      CHECK(!c3_field_story_battle_pending(&scene->story,NULL));
      CHECK(!c3_field_story_battle_result(&scene->story,2,error));
@@ -990,11 +1021,12 @@ int main(int argc,char **argv)
      CHECK(logged("story_battle_result encounter=10 result=2 native98_resumed=1"));
      CHECK(logged("id=67 argc=0"));
      CHECK(flag(&game,0x3dd)==1&&flag(&game,0x3de)==1&&flag(&game,0xa5a)==1&&flag(&game,0x3df)==1);
-     unchanged_party(&game,&original);
+     if(general)battle_writeback(&game,&original);else unchanged_party(&game,&original);
      for(frame=0;frame<600;++frame)tick(scene,frame);
      CHECK(c3_field_story_view(&scene->story)->control&&!c3_field_story_view(&scene->story)->battle_id);
      CHECK(!c3_field_story_battle_pending(&scene->story,NULL));
-     fprintf(trace,"integration_post_battle result=2 flags03DE_0A5A_03DF=1 control=1 challenge_repeated=0\n");}
+     fprintf(trace,"integration_post_battle result=2 flags03DE_0A5A_03DF=1 control=1 challenge_repeated=0 general_engine=%d\n",general);
+     CHECK(route_battles_close(trace)==0);}
     /* Leaving by the original exit surface 0 runs common script 05960004
      * with floor 0x38E (the world map). It is refused without a floor
      * predicate and requested with entrance 0 once the scene accepts it. */

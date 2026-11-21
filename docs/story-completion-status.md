@@ -7,8 +7,9 @@ Outskirt Stand exterior/shop, the first battle's result and the
 [world-map destination choice](world-map.md). GSVM native 98 now resumes from
 the outcome the battle scene reports (a hero win is the original result ID 2),
 so the original Outskirt script sets its own flags, including Phenac's unlock
-`0x3DF`. Encounter 10 still uses the preview engine. Every other story
-battle plays on the general engine in 3D and writes its result back: HP, PP,
+`0x3DF`. Every story battle, Willie's encounter 10 included, plays on the
+general engine in 3D as soon as native 98 asks for it (no port-made prompt)
+and writes its result back: HP, PP,
 condition, experience, levels and level-up moves, effort, prize money,
 snagged Shadow Pokemon, thrown balls, and the original whiteout on a lost
 wipeout battle ([story-battles.md](story-battles.md)). The turn rules are

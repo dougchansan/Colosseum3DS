@@ -1,6 +1,6 @@
 # Story battles on their 3D stage
 
-A story battle other than encounter 10 runs on the general engine
+Every story battle, Willie's encounter 10 included, runs on the general engine
 (`src/battle_general.c`). When the private 3D assets cover it, it plays on its
 original battle floor in 3D on the top screen, with the command UI on the
 bottom screen; otherwise it falls back to the bottom-screen battle.

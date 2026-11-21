@@ -41,10 +41,12 @@ void c3_field_ui_draw_to(C3BottomUi *ui,const C3GameSummary *summary,FieldPhase 
     if(phase==FIELD_SETUP||phase==FIELD_ARRIVAL||phase==FIELD_ARRIVAL_OUT){
         c3_ui_panel(ui,7,64,306,90);
         c3_ui_text(ui,20,80,280,3,phase==FIELD_SETUP?"Loading the original area...":"Arriving...",C3_UI_WHITE);
-    }else if(page==PAUSE_CLOSED&&story&&story->blocked[0]){
+    }else if(page==PAUSE_CLOSED&&story&&story->blocked[0]&&
+             (!story->battle_id||story->battle_refused==story->battle_id)){
+        /* A waiting story battle starts at once, as the original's does;
+         * only a battle this build cannot play stays here with its reason. */
         c3_ui_dialogue(ui,pager,story->blocked,0,0);
-        if(!pager->more)c3_ui_footer(ui,story->battle_id==10?"A: battle   X / START: menu":
-            story->battle_id?"A: battle   X: menu":"X / START: main menu");
+        if(!pager->more)c3_ui_footer(ui,"X / START: main menu");
     }else if(page==PAUSE_CLOSED&&story&&story->dialogue){
         c3_ui_dialogue(ui,pager,story->message,story->choice,!story->choice_no);
     }else if(page==PAUSE_CLOSED){

@@ -10,7 +10,12 @@ original, where it comes from, and what is still approximate.
 
 ## Flow
 
-1. The field (`platform/3ds/field_scene.c`, `play_story_battle`) loads
+1. As soon as native 98/66 waits on an encounter, the field starts the
+   battle: the original goes straight from the trainer's last line into the
+   battle transition, so there is no prompt (encounter 10, Willie at the
+   Outskirt Stand, included; it no longer runs on the developer preview of
+   [native-battle-preview.md](native-battle-preview.md)).
+   The field (`platform/3ds/field_scene.c`, `play_story_battle`) loads
    `battles.c3x`, builds the battle from the save's party, fills the Snag
    Machine's balls from the bag (`c3_battle_story_prepare`) and runs the 3D
    scene (the bottom-screen scene if the 3D stage fails).

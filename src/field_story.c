@@ -1146,7 +1146,9 @@ static int run_native(Impl *s,RunTask *t,char *error)
             log_line(s,"story_battle_snapshot encounter=%lu player_party=%u status=waiting_backend save_unchanged=1",
                      (unsigned long)a[0],s->battle_request.player_party_count);
         }
-        snprintf(s->view.blocked,sizeof s->view.blocked,"A trainer battle is about to begin.");
+        /* Marks the waiting request only: the field starts the battle at
+         * once (no prompt in the original) and never shows this text. */
+        snprintf(s->view.blocked,sizeof s->view.blocked,"Battle %lu is starting.",(unsigned long)a[0]);
         log_line(s,"story_battle encounter=%lu status=waiting_backend result_written=0",(unsigned long)a[0]);
         t->wait=W_BATTLE;return 1;
     case 0x67:

@@ -67,7 +67,7 @@ physical poses, a 600-frame benchmark and tracked memory use.
 | Main menu | Native bottom-screen New Game/name selection, Continue, options and title return, following original menu semantics; battle choices report unavailable |
 | Game state and saves | Original initial body layout, starters, items, flags and other subsystems; original slot codec and verified `.tmp`/`.bak` storage; explicit area-entrance checkpoint and reload |
 | First-visit scripts | Original GSVM banks and messages, exterior/shop lifecycle, NPC interaction, choices, door events, and the original animated TV scene |
-| First battle boundary | Original encounter-10 records and current-party snapshot; GSVM remains pending because the combat backend is not ported |
+| First battle | Willie's encounter 10 plays on the general story battle engine like every story battle: result written back and native 98 resumed ([story battles](docs/story-battles.md)) |
 | Data | Streaming, bounded FSYS reader and LZSS decoder with explicit big-endian fields and caller-owned output buffers |
 | Input provenance | Pinned private build reference, canonical hash verifier and local extracted-disc preparation tool |
 | Validation | Host regression tests, malformed-data tests, sanitizer job, and a devkitARM cross-build workflow |

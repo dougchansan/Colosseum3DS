@@ -14,8 +14,6 @@
 #include "pda_audio.h"
 #include "pda_sound.h"
 #include "movie_player.h"
-#include "battle_preview_scene.h"
-#include "colosseum3ds/battle_preview.h"
 #include "n3ds_platform.h"
 #include "render_recovery.h"
 #include "stage_renderer.h"
@@ -342,8 +340,9 @@ static int npc_stream_attach(NpcStream *npc,int wait,C3Title *storage,const C3Ti
         fprintf(trace,"field_people_visible frame=%u people=%lu streamed=1\n",frames,(unsigned long)npc->count);fflush(trace);}
     return 1;
 }
-/* A story battle other than encounter 10, on the general battle engine:
- * the pack is loaded only for the battle (Phenac's heap is nearly full).
+/* A story battle (every encounter, Willie's 10 included) on the general
+ * battle engine: the pack is loaded only for the battle (Phenac's heap is
+ * nearly full).
  * autoplay: both sides use the engine's policy (campaign build).
  * Returns 1 played and applied, 0 not playable here (the reason is in
  * error; the caller reports it, never a result), 2 the application must
@@ -352,7 +351,7 @@ static void release_field_models(C3Title *storage,uint32_t count);
 static int restore_field_models(C3Title *storage,uint32_t count,char paths[][160],C3FieldStory *story,
                                 float elapsed,char *error,size_t capacity);
 /* What a 3D story battle needs from the field to free its models first and
- * restore them afterwards (the encounter-10 path does the same inline). */
+ * restore them afterwards. */
 typedef struct {
     C3Title *storage; const C3Title **models; C3Title **actor_models; char (*paths)[160];
     C3FieldStory *story; NpcStream *npc; C3IngameMenu *ingame;
@@ -362,7 +361,7 @@ static int field_battle_release(FieldBattleHost *h,FILE *trace,char *error,size_
 {
     c3_n3ds_log_memory(trace,"field_battle_before_drain");
     if(c3_render_recover(trace,"field-to-battle",h->frames,C3_RECOVER_DRAIN)==C3_RECOVERY_EXIT)return -1;
-    /* A battle start waits for the streamed people, as encounter 10 does. */
+    /* A battle start waits for the streamed people. */
     if(!h->npc->attached&&!npc_stream_attach(h->npc,1,h->storage,h->models,h->actor_models,h->paths,h->story,h->count,
                                              h->skin,h->tv_index,h->tv_enabled,h->frames,trace,error,capacity))return 0;
     release_field_models(h->storage,h->count);
@@ -467,7 +466,7 @@ int c3_field_scene_available(void)
     static const char *const required[]={"outskirt.c3f","outskirt.c3a","outskirt.c3s",
         "outskirt_wes.c3t","outskirt_npc0.c3t","outskirt_npc1.c3t","outskirt_npc2.c3t","outskirt_npc3.c3t",
         "shop.c3f","shop.c3a","outskirt_shop.c3s","shop_wes.c3t",
-        "shop_camera.c3c","shop.c3l","shop_tv.c3t","willie.c3b"};
+        "shop_camera.c3c","shop.c3l","shop_tv.c3t"};
     char path[160];
     for(unsigned i=0;i<sizeof required/sizeof required[0];++i){
         snprintf(path,sizeof path,BOOT_ROOT "%s",required[i]);if(!exists(path))return 0;
@@ -491,8 +490,8 @@ static C3OrbitCamera orbit={.zoom=1.0f};
  * at the current story-flag state (NPC talks first, then touch events, then
  * doors; when all were tried, the least used door). Dialogue is advanced,
  * choices take their default, name entry keeps a default name, shops close,
- * encounter 10 is played in the battle scene with automatic A presses and
- * other encounters are reported as wins until their battles are ported.
+ * every story battle is played on the general engine with both sides on
+ * its policy (an encounter it cannot play is reported as a win).
  * Every step is logged to campaign/campaign-log.txt; the first arrival on a
  * floor is captured and saved to the campaign's own save. */
 #define CAMPAIGN_HOURS 9.0
@@ -976,8 +975,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     snprintf(path,sizeof path,"%s_ready",prefix);
     c3_n3ds_log_memory(trace,path);
     snprintf(path,sizeof path,BOOT_ROOT "%s",profile->story);
-    if(!c3_field_story_load(&story,path,state,&map,&area,&player,wes,actor_models,&room_camera,trace,story_error)||
-       !c3_field_story_bind_battle(&story,BOOT_ROOT "willie.c3b",story_error))goto story_failed;
+    if(!c3_field_story_load(&story,path,state,&map,&area,&player,wes,actor_models,&room_camera,trace,story_error))goto story_failed;
     if(partner_index!=UINT32_MAX&&!c3_field_story_attach_partner(&story,storage+partner_index,story_error))goto story_failed;
     if(trace){fprintf(trace,"field_load_stage name=%s us=%llu\n","story",(unsigned long long)(c3_n3ds_time_us()-load_start_us));}
     if(trace){fprintf(trace,"field_people_visible frame=0 people=%lu streamed=0\n",(unsigned long)npc.count);fflush(trace);}
@@ -1054,8 +1052,6 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                            (double)player.position[0],(double)player.position[2],(double)rui->pose.position[0],(double)rui->pose.position[2],
                            (double)rui->pose.yaw,(unsigned long)rui->clip,(double)rui->pose.animation_seconds);
         }
-        /* Probe: accept a waiting story battle (it then plays unattended). */
-        if(view&&view->blocked[0]&&view->battle_id&&view->battle_id!=10&&frames%60u==30u)input.pressed|=C3_PAD_A;
 #endif
         if(!npc.attached&&!npc_stream_attach(&npc,0,storage,models,actor_models,model_paths,&story,count,skin_actors,
                                              tv_index,view?view->tv_enabled:1,frames,trace,error,capacity)){result=-1;break;}
@@ -1094,13 +1090,11 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
             if(page==PAUSE_CLOSED){
                 if((view->dialogue||view->choice)&&frames%20==0)input.pressed|=C3_PAD_A;
                 if(view->shop&&!shopping&&!c3_field_story_shop_done(&story,story_error))goto story_failed;
-                if(view->blocked[0]&&view->battle_id==10&&phase==FIELD_CONTROL){
-                    campaign_line("floor=%03lx battle=10 mode=scene",(unsigned long)map.floor);
-                    c3_n3ds_autopress(1,1.6f);input.pressed|=C3_PAD_A;
-                }else if(view->blocked[0]&&view->battle_id){
-                    int played=play_story_battle(&story,state,view->battle_id,1,NULL,trace,story_error,sizeof story_error);
+                if(view->blocked[0]&&view->battle_id){
+                    uint32_t encounter=view->battle_id;
+                    int played=play_story_battle(&story,state,encounter,1,NULL,trace,story_error,sizeof story_error);
                     if(played<0)goto story_failed;
-                    campaign_line("floor=%03lx battle=%lu mode=%s",(unsigned long)map.floor,(unsigned long)view->battle_id,
+                    campaign_line("floor=%03lx battle=%lu mode=%s",(unsigned long)map.floor,(unsigned long)encounter,
                                   played==1?"engine_autoplay":"reported_win");
                     if(played!=1&&!c3_field_story_battle_result(&story,2,story_error))goto story_failed;
                 }else if(view->blocked[0]){
@@ -1531,24 +1525,19 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         }
         if(phase==FIELD_CONTROL){
             if(page==PAUSE_CLOSED){
-                if(view->blocked[0]&&(input.pressed&(C3_PAD_START|C3_PAD_X))){result=0;break;}
-                /* A doorway into a floor whose packs are not on the SD card:
-                 * A stays on this floor and play continues. */
-                if(view->blocked[0]&&!view->battle_id&&(input.pressed&C3_PAD_A)&&c3_field_story_floor_refused(&story,NULL)){
-                    if(!c3_field_story_stay_on_floor(&story,story_error))goto story_failed;
-#ifdef C3_ROUNDTRIP_PROBE
-                    probe_route.stayed=1;
-#endif
-                    dirty=1;continue;
-                }
-                if(view->blocked[0]&&view->battle_id&&view->battle_id!=10&&view->battle_refused!=view->battle_id&&
-                   (input.pressed&C3_PAD_A)){
-                    /* A story battle always runs on the general battle
-                     * engine: trainer entry, the battle on its original
-                     * stage, then the writeback (results, whiteout,
-                     * snagging) in c3_battle_story_apply. An encounter the
-                     * engine cannot play is never reported as a result:
-                     * native 98 keeps waiting and the reason is shown. */
+#if !defined(C3_CAMPAIGN) && !defined(C3_WARP_TOUR)
+                /* (The campaign and warp-tour builds settle battles above.) */
+                if(view->blocked[0]&&view->battle_id&&view->battle_refused!=view->battle_id){
+                    /* Every story battle, encounter 10 (Willie) included,
+                     * runs on the general battle engine as soon as native
+                     * 98/66 asks for it: the original goes straight from the
+                     * trainer's last line into the battle transition, with
+                     * no prompt. Trainer entry, the battle on its original
+                     * stage, then the writeback (EXP, prize, HP/PP, whiteout,
+                     * snagging) in c3_battle_story_apply resumes native 98
+                     * with the real result. An encounter the engine cannot
+                     * play is never reported as a result: native 98 keeps
+                     * waiting and the reason is shown (START quits). */
                     uint32_t encounter=view->battle_id;
                     FieldBattleHost host={storage,models,actor_models,model_paths,&story,&npc,ingame,
                                           count,tv_index,skin_actors,view?view->tv_enabled:1,frames,elapsed};
@@ -1572,47 +1561,16 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
 #endif
                     dirty=1;continue;
                 }
-                if(view->blocked[0]&&view->battle_id==10&&(input.pressed&C3_PAD_A)){
-                    c3_n3ds_log_memory(trace,"field_battle_before_drain");
-                    if(c3_render_recover(trace,"field-to-battle",frames,C3_RECOVER_DRAIN)==C3_RECOVERY_EXIT){result=1;break;}
-                    if(!npc.attached&&!npc_stream_attach(&npc,1,storage,models,actor_models,model_paths,&story,count,skin_actors,
-                                                         tv_index,view?view->tv_enabled:1,frames,trace,error,capacity)){result=-1;break;}
-                    release_field_models(storage,count);
-                    /* The bottom-screen hub keeps the P*DA art loaded; free it
-                     * for the battle (it reloads on the next field frame). */
-                    if(ingame->active)c3_ingame_close(ingame);
-                    c3_pack_cache_clear(); /* the battle needs the linear memory */
-                    c3_n3ds_log_memory(trace,"field_battle_payloads_released");
-                    int battle_outcome=0;
-                    int preview_result=c3_battle_preview_from_game_state(state,trace,&battle_outcome);
-                    /* Defensively drain even a failed/partial battle initialization.
-                     * Never reload CPU packs while battle GPU storage is live. */
-                    if(c3_render_recover(trace,"battle-to-field",0,
-                        preview_result>0?C3_RECOVER_EXIT:C3_RECOVER_DRAIN)==C3_RECOVERY_EXIT){result=1;break;}
-                    c3_n3ds_log_memory(trace,"field_battle_before_restore");
-                    if(!restore_field_models(storage,count,model_paths,&story,
-                        elapsed,error,capacity)){result=-1;break;}
-                    if(field_renderer_init(storage,models,count,skin_actors,error,capacity)){result=-1;break;}
-                    if(tv_index!=UINT32_MAX&&!c3_stage_renderer_set_tv(tv_index,1,1,
-                        view->tv_enabled,error,capacity)){result=-1;break;}
-                    c3_n3ds_log_memory(trace,"field_battle_restored");
-                    /* A hero win is reported as the original result ID 2, the
-                     * value the field script compares native 67 against. Any
-                     * other outcome leaves native 98 waiting (retry). */
-                    int reported=0;
-                    if(preview_result==0&&battle_outcome==C3_PREVIEW_PLAYER_WON){
-                        if(!c3_field_story_battle_result(&story,2,story_error))goto story_failed;
-                        reported=1;
-                    }
-#ifdef C3_CAMPAIGN
-                    c3_n3ds_autopress(0,0);
-                    campaign_line("floor=%03lx battle=10 returned preview=%d outcome=%d reported=%d",(unsigned long)map.floor,preview_result,battle_outcome,reported);
 #endif
-                    if(trace){fprintf(trace,"field_battle_return preview=%d outcome=%d result_reported=%d pending=%lu vm_preserved=1 models=%lu\n",
-                        preview_result,battle_outcome,reported,(unsigned long)view->battle_id,(unsigned long)count);fflush(trace);}
-                    /* Modal preview time must not advance paused field scripts. */
-                    previous=c3_n3ds_active_time_us();dirty=1;next_console=0;
-                    continue;
+                if(view->blocked[0]&&(input.pressed&(C3_PAD_START|C3_PAD_X))){result=0;break;}
+                /* A doorway into a floor whose packs are not on the SD card:
+                 * A stays on this floor and play continues. */
+                if(view->blocked[0]&&!view->battle_id&&(input.pressed&C3_PAD_A)&&c3_field_story_floor_refused(&story,NULL)){
+                    if(!c3_field_story_stay_on_floor(&story,story_error))goto story_failed;
+#ifdef C3_ROUNDTRIP_PROBE
+                    probe_route.stayed=1;
+#endif
+                    dirty=1;continue;
                 }
                 if(view->control&&!story_consumed_input){
                     if(c3_first_person_chord(input.held,input.pressed)){

@@ -82,12 +82,12 @@ FIELD_STORY_SOURCES = src/field_story.c src/hero_follow.c src/story.c src/area.c
 build/test_message_sweep: tests/test_message_sweep.c src/bottom_ui.c $(FIELD_STORY_SOURCES) $(HEADERS)
 	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_message_sweep.c src/bottom_ui.c $(FIELD_STORY_SOURCES) $(LDFLAGS) -lm -o $@
 
-build/test_field_story: tests/test_field_story.c $(FIELD_STORY_SOURCES) $(HEADERS)
-	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_field_story.c $(FIELD_STORY_SOURCES) $(LDFLAGS) -lm -o $@
-
 build/test_phenac_story: tests/test_phenac_story.c src/floor_profile.c $(FIELD_STORY_SOURCES) $(HEADERS)
 	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_phenac_story.c src/floor_profile.c $(FIELD_STORY_SOURCES) $(LDFLAGS) -lm -o $@
 WORLD_BATTLE_SOURCES = src/inventory.c src/pda.c src/battle_general.c src/battle_story.c src/battle_rng.c src/decomp_rng.c
+# C3_ROUTE_BATTLES=<battles.c3x> plays Willie's encounter 10 on the general engine.
+build/test_field_story: tests/test_field_story.c tests/route_battles.c tests/route_battles.h $(FIELD_STORY_SOURCES) $(WORLD_BATTLE_SOURCES) build/battle_rng_source.h $(HEADERS) $(UPSTREAM)
+	$(CC) $(CPPFLAGS) -Ibuild -Isrc $(CFLAGS) tests/test_field_story.c tests/route_battles.c $(FIELD_STORY_SOURCES) $(WORLD_BATTLE_SOURCES) $(LDFLAGS) -lm -o $@
 build/test_phenac_events: tests/test_phenac_events.c tests/route_battles.c tests/route_battles.h src/floor_profile.c $(FIELD_STORY_SOURCES) $(WORLD_BATTLE_SOURCES) build/battle_rng_source.h $(HEADERS) $(UPSTREAM)
 	$(CC) $(CPPFLAGS) -Ibuild -Isrc $(CFLAGS) tests/test_phenac_events.c tests/route_battles.c src/floor_profile.c $(FIELD_STORY_SOURCES) $(WORLD_BATTLE_SOURCES) $(LDFLAGS) -lm -o $@
 
