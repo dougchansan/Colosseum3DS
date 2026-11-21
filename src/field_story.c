@@ -20,7 +20,7 @@
 
 typedef enum { W_NONE, W_SECONDS, W_TASK, W_MOTION, W_MOVE, W_CAMERA,
                W_CAMERA_MOVE, W_FADE, W_MESSAGE, W_CHOICE, W_TV, W_BATTLE, W_NAME, W_ITEM, W_DOOR, W_SHOP, W_MENU_FLOOR, W_JINGLE, W_DIALOG,
-               W_RELIVE, W_FALL, W_ITEM_MENU } Wait;
+               W_RELIVE, W_FALL, W_ITEM_MENU, W_OBJECT } Wait;
 typedef struct {
     uint16_t key, child;
     C3StoryCall call;
@@ -287,6 +287,13 @@ static Person *person(Impl *s,uint32_t group,uint32_t id)
         if(s->actors[i].source->aux3==SCENE_MODEL_MARKER&&s->actors[i].source->resource==id)return s->actors+i;
     return NULL;
 }
+/* The bound door or map object row whose model is this map resource. */
+static C3StoryDoor *map_object(Impl *s,uint32_t resource,uint32_t *position)
+{
+    for(uint32_t i=0;i<s->door_count;++i)
+        if(s->door_rows[i].resource==resource&&s->doors[i].model){if(position)*position=i;return s->doors+i;}
+    return NULL;
+}
 static void partner_place_behind(Impl *s);
 /* Every person the scene draws: the floor's people, Wes, then the partner. */
 static Person *person_at(Impl *s,uint32_t i)
@@ -503,6 +510,7 @@ static int tv_setup(Impl *s,char *error)
 static int run_native(Impl *s,RunTask *t,char *error)
 {
     C3StoryCall *c=&t->call;uint32_t *a=c->args,value=0;Person *p;
+    C3StoryDoor *object=NULL;uint32_t object_row=0;
     if(c->kind==C3_STORY_WAIT_FRAMES){t->wait=W_SECONDS;t->remaining=(float)a[0]/60.0f;return 1;}
     /* Opcode 23 is fn_800F16C0 (gs_vm.c): it formats a debug string into
      * the developer log and returns no value. Retail shows nothing, so the
@@ -1115,7 +1123,7 @@ static int run_native(Impl *s,RunTask *t,char *error)
         /* floorEventCtrlDoor(floor,index,mode): 0 open animated, 1 open
          * instant, 2 close animated, 3 close instant. */
         uint32_t position,mode=a[2]&0xffu,open=0,gate=0;const C3AreaDoor *row=NULL;C3StoryDoor *door=NULL;
-        for(position=0;position<s->door_count;++position)if(s->door_rows[position].index==a[1]){row=s->door_rows+position;door=s->doors+position;break;}
+        for(position=0;position<s->door_count;++position)if(s->door_rows[position].index==a[1]&&!(a[1]&C3_AREA_MAP_OBJECT_ROW)){row=s->door_rows+position;door=s->doors+position;break;}
         if(!row||mode>3){value=UINT32_MAX;break;}
         if(row->open_flag&&!flag(s,row->open_flag,&open,error))return 0;
         if(row->close_flag&&!flag(s,row->close_flag,&gate,error))return 0;
@@ -1284,22 +1292,35 @@ static int run_native(Impl *s,RunTask *t,char *error)
         p=c->native==0x9a?person(s,a[0],a[1]):person(s,s->area->group,a[0]);
         if((int32_t)a[shift+1]<0)break;
         if(p){if(!set_motion(s,p,a[shift+1],a[shift+2],a[shift+3],error))return 0;}
+        else if(c->native==0x73&&(object=map_object(s,a[0],NULL))&&a[1]<object->model->clip_count){
+            /* GSmodelSetAnimIndex/Frame, rate 0.5 (30 source frames a
+             * second), loop or one-shot; the pack's clip is both tracks. */
+            float end=(float)(object->model->clips[a[1]].frame_count-1u)/object->model->fps;
+            object->clip=a[1];object->loop=a[3]!=0;object->playing=1;
+            object->seconds=fminf(end,fmaxf(0,(float)(int32_t)a[2]/30.0f));
+            log_line(s,"story_object_motion resource=%08lx clip=%lu loop=%lu",(unsigned long)a[0],(unsigned long)a[1],(unsigned long)a[3]);}
         else if(c->native==0x73)note_presentation(s,c->native,"map_object_animation_unrendered");
         }break;
     case 0x74:
         /* fn_801CB7C4: stop a person's resource animation, else the raw
-         * floor model. Map-object clocks are not bound to this adapter yet. */
+         * floor model: a bound map object holds its current pose. */
         p=person(s,s->area->group,a[0]);
         if(p){p->public.playing=0;p->pending_motion=0;}
+        else if((object=map_object(s,a[0],NULL)))object->playing=0;
         else note_presentation(s,c->native,"map_object_animation_stop_unrendered");
         break;
     case 0x75:
         /* scriptWaitSyncMotion(resource,wait): a person waits like native 35;
-         * a model resource that is not a person reports finished. */
+         * a bound map object waits for its clip to end; any other model
+         * resource reports finished. */
         p=person(s,s->area->group,a[0]);
         if(p&&p->public.playing&&pose(s,p)->animation_seconds<clip_seconds(&p->public)){
             if(!a[1])value=1;
             else if(!p->public.loop){t->call.args[1]=a[0];t->call.args[0]=s->area->group;t->wait=W_MOTION;return 1;}
+        }else if(!p&&(object=map_object(s,a[0],&object_row))&&object->playing){
+            /* GSmodelHasAnimationEnded: a looping clip never ends. */
+            if(!a[1])value=1;
+            else{t->stage=object_row;t->wait=W_OBJECT;return 1;}
         }break;
     case 0x8d:
         /* cameraMoveRotationXYZ: linear interpolation of the camera rotation. */
@@ -1752,6 +1773,9 @@ static int wait_task(Impl *s,RunTask *t,float seconds,uint16_t *pressed,char *er
         if(t->stage<s->door_count&&s->doors[t->stage].playing)return 1;
         if(s->event_depth)--s->event_depth;
         return resume(s,t,0,error);
+    case W_OBJECT:
+        if(t->stage<s->door_count&&s->doors[t->stage].playing)return 1;
+        return resume(s,t,0,error);
     case W_ITEM:{
         /* Wait for the shared window before adding the item, so a retry
          * never adds it twice. */
@@ -2056,6 +2080,8 @@ int c3_field_story_bind_doors(C3FieldStory *story,const C3AreaDoor *rows,uint32_
         door->clip=rows[i].open_anim>=0?(uint32_t)rows[i].open_anim:0;
         door->seconds=open&&rows[i].open_anim>=0?
             (float)(door->model->clips[door->clip].frame_count-1u)/door->model->fps:0;
+        /* floorOpenObject starts every map model on clip 0, looping. */
+        if(rows[i].index&C3_AREA_MAP_OBJECT_ROW)door->playing=door->loop=1;
 
     }
     return 1;
@@ -2468,7 +2494,8 @@ int c3_field_story_tick(C3FieldStory *story,float seconds,uint16_t pressed,char 
         if(!door->playing||!door->model)continue;
         float end=(float)(door->model->clips[door->clip].frame_count-1u)/door->model->fps;
         door->seconds+=seconds;
-        if(door->seconds>=end){door->seconds=end;door->playing=0;}
+        if(door->seconds>=end&&door->loop)door->seconds=end>0?fmodf(door->seconds,end):0;
+        else if(door->seconds>=end){door->seconds=end;door->playing=0;}
     }
     if(s->camera_playing&&s->view.camera_active)s->view.camera_seconds+=seconds*s->camera_rate;
     int rotating=s->rotation_time<s->rotation_duration;

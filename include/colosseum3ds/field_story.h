@@ -171,8 +171,11 @@ void c3_field_story_set_audio_service(C3FieldStory *story,C3FieldStoryAudio audi
  * models are borrowed; models[i] may be NULL (the native then returns -1
  * after its flag and collision changes, as for a missing model). A door
  * model's clips are the source animation numbers. The scene reads each
- * door's current clip and time to sample its model. */
-typedef struct C3StoryDoor { C3Title *model; uint32_t clip; float seconds; int playing; } C3StoryDoor;
+ * door's current clip and time to sample its model. Map object rows
+ * (C3_AREA_MAP_OBJECT_ROW) loop clip 0 from binding, as floorOpenObject
+ * starts them; natives 73-75 play, stop and wait on any row's model by its
+ * resource (fn_801CB834, fn_801CB7C4, scriptWaitSyncMotion). */
+typedef struct C3StoryDoor { C3Title *model; uint32_t clip; float seconds; int playing, loop; } C3StoryDoor;
 int c3_field_story_bind_doors(C3FieldStory *story,const C3AreaDoor *rows,uint32_t count,
                               C3Title *const *models,char *error);
 const C3StoryDoor *c3_field_story_door(const C3FieldStory *story,uint32_t position);

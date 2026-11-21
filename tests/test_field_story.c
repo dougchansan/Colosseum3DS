@@ -655,6 +655,41 @@ static void synthetic_regressions(void)
       elevator[0].alternate_b=2;CHECK(!c3_field_story_bind_doors(&s->story,elevator,2,elevator_models,error)&&strstr(error,"lacks animation 2"));
       close_scene(s);door_model.clip_count=clips;
      }
+     /* A map object row (Mayor's house 1F model 0, the armchair) loops clip 0
+      * from binding, as floorOpenObject starts it. Native 73 plays clip 1
+      * one-shot from frame 0 at rate 0.5 and native 75 waits for its end;
+      * the script then hides actor 3. */
+     {C3AreaDoor object={.index=C3_AREA_MAP_OBJECT_ROW,.resource=0x00691000,.open_anim=-1,.close_anim=-1,
+                         .open_end_anim=-1,.close_end_anim=-1,.alternate_a=-1,.alternate_b=-1,.collision_id=-1};
+      C3Title *object_models[1]={&door_model};
+      memset(code,0,sizeof code);args[0]=0x691000;args[1]=1;args[2]=0;args[3]=0;native(code+3,0x73,4,args,1);
+      args[1]=1;native(code+3,0x75,2,args,1);args[0]=3;args[1]=0;native(code+3,0x64,2,args,1);
+      synthetic_load(s,&game,file,code,0,0,0x1000003);
+      CHECK(c3_field_story_bind_doors(&s->story,&object,1,object_models,error));
+      door=c3_field_story_door(&s->story,0);CHECK(door->clip==0&&door->playing&&door->loop&&door->seconds==0);
+      CHECK(c3_field_story_enter(&s->story,error));CHECK(c3_field_story_tick(&s->story,0,0,error));
+      CHECK(door->clip==1&&door->playing&&!door->loop&&door->seconds==0&&c3_field_story_actor(&s->story,3)->visible);
+      for(unsigned i=0;i<5;++i)CHECK(c3_field_story_tick(&s->story,.1f,0,error));
+      CHECK(door->playing&&fabsf(door->seconds-.5f)<1e-4f&&c3_field_story_actor(&s->story,3)->visible);
+      for(unsigned i=0;i<7;++i)CHECK(c3_field_story_tick(&s->story,.1f,0,error));
+      CHECK(!door->playing&&door->clip==1&&door->seconds==1.0f&&!c3_field_story_actor(&s->story,3)->visible);
+      close_scene(s);
+      /* Looping from frame 15 (half a second at 30 source frames a second),
+       * then native 74 holds that pose. */
+      memset(code,0,sizeof code);args[0]=0x691000;args[1]=2;args[2]=15;args[3]=1;native(code+3,0x73,4,args,1);
+      native(code+3,0x74,1,args,1);
+      synthetic_load(s,&game,file,code,0,0,0x1000003);
+      CHECK(c3_field_story_bind_doors(&s->story,&object,1,object_models,error));
+      CHECK(c3_field_story_enter(&s->story,error));CHECK(c3_field_story_tick(&s->story,0,0,error));
+      door=c3_field_story_door(&s->story,0);CHECK(door->clip==2&&door->loop&&!door->playing&&fabsf(door->seconds-.5f)<1e-6f);
+      close_scene(s);
+      /* At rest clip 0 wraps rather than stopping at its end. */
+      memset(code,0,sizeof code);synthetic_load(s,&game,file,code,0,0,0x1000003);
+      CHECK(c3_field_story_bind_doors(&s->story,&object,1,object_models,error));
+      CHECK(c3_field_story_enter(&s->story,error));CHECK(c3_field_story_tick(&s->story,.75f,0,error));
+      door=c3_field_story_door(&s->story,0);CHECK(door->playing&&fabsf(door->seconds-.75f)<1e-5f);
+      CHECK(c3_field_story_tick(&s->story,.5f,0,error));CHECK(door->playing&&door->clip==0&&fabsf(door->seconds-.25f)<1e-5f);
+      close_scene(s);}
      CHECK(!c3_field_story_bind_doors(NULL,rows,2,door_models,error));
      free(door_model.file_data);free(door_model.vertices);free(door_model.draw_vertices);free(door_model.batches);}
     /* Native 23 writes the partner-present byte; 4C/4D without arguments,

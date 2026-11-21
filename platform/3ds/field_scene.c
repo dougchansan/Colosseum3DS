@@ -808,7 +808,9 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     /* The floor's door table (native 60) and the object pack of each door
      * that has one; those rest on their first frame until a script plays a
      * clip. A door without a pack changes only its open flag and collision,
-     * as the original does for a door without a model. */
+     * as the original does for a door without a model. The pack's map object
+     * rows (object models no door row names) loop clip 0 like every map
+     * model until natives 73-75 play them. */
     snprintf(path,sizeof path,BOOT_ROOT "%s.c3d",prefix);
     if(exists(path)&&!c3_area_doors_load(&doors,path,error,capacity))goto done;
     for(uint32_t i=0;i<doors.count;++i)if(doors.rows[i].file[0])++count;
