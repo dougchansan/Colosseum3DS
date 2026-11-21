@@ -217,9 +217,16 @@ int main(void)
      * wrapped: fixture glyphs advance 8 and show ink up to 9 (shadow
      * included), so "AAAA AAAA" is 73 wide and may give up two pixels at its
      * space and one at each of the seven glyphs before the last. */
-    assert(c3_ui_text_rows(&ui,73,"AAAA AAAA")==1&&c3_ui_text_rows(&ui,64,"AAAA AAAA")==1);
-    assert(c3_ui_text_rows(&ui,63,"AAAA AAAA")==2&&c3_ui_text_rows(&ui,64,"AAAA AAAA\nAA")==2);
-    assert(c3_ui_text_rows(&ui,64,"")==0&&c3_ui_text_rows(&ui,40,"one two three")==4);
+    assert(c3_ui_text_rows(&ui,73,"AAAA AAAA",NULL)==1&&c3_ui_text_rows(&ui,64,"AAAA AAAA",NULL)==1);
+    assert(c3_ui_text_rows(&ui,63,"AAAA AAAA",NULL)==2&&c3_ui_text_rows(&ui,64,"AAAA AAAA\nAA",NULL)==2);
+    /* Soft wrapping is by words; only a word wider than the row splits. */
+    int split=-1;
+    assert(c3_ui_text_rows(&ui,64,"",&split)==0&&!split);
+    assert(c3_ui_text_rows(&ui,40,"one two three",&split)==4&&split==1); /* "three" is 41 wide */
+    assert(c3_ui_text_rows(&ui,41,"one two three",&split)==3&&!split);
+    assert(c3_ui_text_rows(&ui,57,"one two",&split)==1&&!split&&c3_ui_text_rows(&ui,49,"one two",&split)==2&&!split);
+    assert(c3_ui_text_rows(&ui,C3_UI_MESSAGE_WIDTH,
+        "Save your game here? Continue resumes at this area's entrance. Your party and progress will be kept.",&split)<=5&&!split);
     c3_ui_rect(&ui,0,0,320,240,0);
     assert(c3_ui_text(&ui,10,100,64,1,"AAAA AAAA",0xffffff)==9);
     {
