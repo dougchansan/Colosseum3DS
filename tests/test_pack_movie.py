@@ -46,13 +46,40 @@ class PackMovieTests(unittest.TestCase):
             with self.subTest(offset=offset), self.assertRaises(ValueError):
                 pack.read_header(bytes(bad))
 
+    def test_lz4_literal_block_and_overlapping_match_decode(self):
+        for size in (1, 14, 15, 16, 269, 270, 1000):
+            data = bytes((i * 7) & 0xFF for i in range(size))
+            self.assertEqual(pack.lz4_decode(pack.lz4_literal_block(data), size), data)
+        # 2 literals, an offset-2 match of 4 + 15 + 3, then a 1-byte literal run.
+        block = bytes([(2 << 4) | 15, 0x34, 0x12, 2, 0, 3, 1 << 4, 0x56])
+        self.assertEqual(pack.lz4_decode(block, 25), b"4" * 12 + b"V")
+        with self.assertRaises(ValueError):
+            pack.lz4_decode(bytes([(1 << 4) | 0, 0x11, 5, 0, 0x10, 0x22]), 7)
+
+    @unittest.skipUnless(shutil.which("lz4"), "needs the lz4 command")
+    def test_lz4_packed_movie_round_trips_with_index_and_pcm(self):
+        pcm = bytes(range(16))
+        with tempfile.TemporaryDirectory() as temporary:
+            source, output = Path(temporary) / "in.c3v", Path(temporary) / "out.c3v"
+            source.write_bytes(v1_movie(2, pcm))
+            pack.pack_movie(source, output, level=9, jobs=2)
+            data = output.read_bytes()
+            words = struct.unpack_from("<4s15I", data)
+            self.assertEqual((words[1], words[14]), (2, 3))
+            offsets = struct.unpack_from("<3I", data, 64)
+            self.assertEqual(offsets[2], words[10])
+            self.assertEqual(data[words[10]:], pcm)
+            for frame in range(2):
+                self.assertEqual(pack.lz4_decode(data[offsets[frame]:offsets[frame + 1]], pack.FRAME_BYTES),
+                                 pack.to_framebuffer(raw_frame(frame)))
+
     @unittest.skipUnless(shutil.which("zstd"), "needs the zstd command")
     def test_packed_movie_round_trips_with_index_and_pcm(self):
         pcm = bytes(range(16))
         with tempfile.TemporaryDirectory() as temporary:
             source, output = Path(temporary) / "in.c3v", Path(temporary) / "out" / "out.c3v"
             source.write_bytes(v1_movie(2, pcm))
-            record = pack.pack_movie(source, output, level=3, jobs=2)
+            record = pack.pack_movie(source, output, level=3, jobs=2, codec="zstd")
             data = output.read_bytes()
             words = struct.unpack_from("<4s15I", data)
             self.assertEqual(words[:2], (b"C3V1", 2))
@@ -69,7 +96,7 @@ class PackMovieTests(unittest.TestCase):
                 self.assertEqual(decoded, pack.to_framebuffer(raw_frame(frame)))
             self.assertEqual(record["frame_count"], 2)
             with self.assertRaisesRegex(ValueError, "never overwritten"):
-                pack.pack_movie(source, output, level=3)
+                pack.pack_movie(source, output, level=3, codec="zstd")
 
 
 if __name__ == "__main__":

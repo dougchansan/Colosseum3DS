@@ -79,41 +79,67 @@ The 64-byte header keeps the version 1 field order with these differences:
 | 32 | Video offset | 64: the frame index |
 | 36 | Bytes per frame | 153600 once decoded |
 | 40 | Audio offset | End of the last packed frame |
-| 56 | Pixel format | 2 = RGB565LE in framebuffer order, one zstd frame per video frame |
+| 56 | Pixel format | RGB565LE in framebuffer order, one packed block per video frame: 3 = LZ4 block (the default), 2 = zstd frame |
 
 The index at offset 64 holds frame count + 1 little-endian u32 file offsets.
 The first is 64 + 4 × (frame count + 1). Offsets strictly increase, so frame
-*i* occupies `[index[i], index[i+1])`. Each packed frame is at most
-`ZSTD_COMPRESSBOUND(153600)`, and the last offset equals the audio offset. Each
-packed frame decodes to exactly 153,600 bytes in the top-screen framebuffer
-order: 320 columns of 240 pixels, with image row *y* stored at 239 − *y*. That
-is one contiguous copy into the 400×240 framebuffer at column 40. The
-PCM section is unchanged. The tool decompresses every packed frame again and
-compares it with the transposed source before renaming the output into place,
-so the packed pixels are bit-identical to version 1 and there is no visible
-loss.
+*i* occupies `[index[i], index[i+1])` and consecutive frames are contiguous.
+Each packed frame is at most the larger of `ZSTD_COMPRESSBOUND(153600)` and the
+LZ4 bound, and the last offset equals the audio offset. Each packed frame
+decodes to exactly 153,600 bytes in the top-screen framebuffer order: 320
+columns of 240 pixels, with image row *y* stored at 239 − *y*. That is one
+contiguous copy into the 400×240 framebuffer at column 40. The PCM section is
+unchanged. The tool decodes every packed frame again (LZ4 with its reference
+decoder, zstd with the `zstd` command) and compares it with the transposed
+source before renaming the output into place. The packed pixels are therefore
+bit-identical to version 1, with no visible loss.
 
-Sizes of the packed reviewed sources (zstd level 19, `--no-check`):
+LZ4 is the default because hardware ruled zstd out. With zstd packs (dd42400),
+a New 3DS decoded one opening frame in 59 ms on average, and up to 97 ms. It
+decoded small logo frames in 10–14 ms. Each per-frame SD read cost 7–24 ms.
+The opening showed only 995 of 1,926 frames. Raw zstd literals
+(`--no-compress-literals`) cost 1.5% in size but did not reduce the measured
+decode time. LZ4 has no entropy stage, and its block decoder is
+`src/movie.c`'s bounds-checked `lz4_block`. LZ4 HC level 12 is 17–28% larger
+than zstd level 19:
 
-| Movie | Version 1 bytes | Version 2 bytes | Video ratio | Largest frame |
-|---|---:|---:|---:|---:|
-| `tpc` | 11,840,672 | 1,269,762 | 0.082 | 45,049 |
-| `gs_logo` | 19,968,064 | 1,370,370 | 0.069 | 30,635 |
-| `openingdemo` | 304,066,812 | 120,015,696 | 0.378 | 99,212 |
-| `staffroll` | 806,400,064 | 73,352,725 | 0.091 | 31,628 |
+| Movie | Version 1 bytes | LZ4 (format 3) bytes | Video ratio | Largest frame | zstd (format 2) bytes |
+|---|---:|---:|---:|---:|---:|
+| `tpc` | 11,840,672 | 1,485,268 | 0.101 | 55,137 | 1,269,762 |
+| `gs_logo` | 19,968,064 | 1,684,490 | 0.084 | 37,464 | 1,370,370 |
+| `openingdemo` | 304,066,812 | 150,412,018 | 0.481 | 121,082 | 120,015,696 |
+| `staffroll` | 806,400,064 | 85,366,145 | 0.106 | 36,900 | 73,352,725 |
 
-The runtime still accepts version 1. Its player
-(`platform/3ds/movie_player.c`) works as a pipeline. A reader thread on the main
-core, below the main thread, fills a ring of four stored frames from SD with
-unbuffered whole-frame reads. A decode thread unpacks them into three
-framebuffer-ordered slots. On a New 3DS that thread runs on the second
-application core. The main thread copies the frame that is due and keeps the
-audio queue and the vblank pace. Frames that are already late are skipped
-without being read or decoded. The clock and the audio start once the first
-frame is on screen. Each movie adds `movie_feed` and `movie_timing` trace lines.
-They record the pack version, the decoder core, the pre-roll, frames produced
-and dropped (before reading and before decoding), vblanks whose frame was late,
-average and maximum read/decode/copy microseconds, and bytes read.
+The runtime accepts version 1 and both version 2 formats. Its player
+(`platform/3ds/movie_player.c`) is a pipeline:
+
+- A reader thread on core 0, below the main thread, reads runs of consecutive
+  frames in one SD request of up to 768 KiB. It then hands the frames out
+  through a ring of 16 stored-frame entries.
+- The same reader refills the audio, in four 256 ms buffers read 32 KiB at a
+  time. The main thread no longer touches the SD during playback. Each 3DS FS
+  request costs several milliseconds, so per-frame reads and 4 KiB audio reads
+  were mostly overhead.
+- Two decoder threads, one on core 2 (New 3DS) at the main thread's priority
+  and one on core 0 below it, each claim the oldest stored frame. They unpack
+  it into one of four framebuffer-ordered slots. If one core is slow, the
+  other takes more of the frames.
+- The main thread copies the latest due frame that has not been shown and
+  keeps the vblank pace.
+
+Frames that are already late are skipped before reading or before decoding.
+The clock and the audio start once the first frame is on screen. Each movie
+adds these trace lines:
+
+- `movie_feed`: main core and priority, reader mode, decoder count, buffer
+  sizes.
+- `movie_timing`: codec, pre-roll, frames produced and dropped, late vblanks,
+  copy microseconds.
+- `movie_read`: reader core, batches, frames, bytes, microseconds per batch,
+  KiB/s while reading, audio reads and their microseconds.
+- `movie_decode`, one per decoder: requested core and the core reported by
+  `svcGetProcessorID`, priority, frames, decode microseconds average and
+  maximum.
 
 ## Validation boundaries
 
