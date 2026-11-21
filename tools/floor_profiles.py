@@ -231,6 +231,9 @@ FLOORS = {
         "models": 3,
         "groups": (((1, 2), ("short", 299)),),
         "objects": (0,),
+        # Original elevator row 136 (door type 2, resource 0x01C91000) is map
+        # model 0; without the row the elevator pack is never drawn.
+        "door_objects": {136: 0},
         "material_colors": "frozen",
     },
     "phenac_stadium1f": {
@@ -395,6 +398,8 @@ FLOORS = {
         "models": 3,
         "groups": (((1, 2), ("short", 299)),),
         "objects": (0,),
+        # Original elevator row 137 (door type 2, resource 0x01CB1000) is map model 0.
+        "door_objects": {137: 0},
         "path_joints": True,
     },
     "phenac_pcb1": {
