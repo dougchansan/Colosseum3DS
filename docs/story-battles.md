@@ -86,7 +86,15 @@ Each encounter's fight kind row (`fight.c` FightKindData, pack entry
 `okanePoolFlag` (+10, the colosseum kinds, floor status 0x26) is read by
 the prize opcode 0x5D (`fn_8021E754`): with it the battle's amount (x4) goes
 to `scriptAddPremium` instead of the hero's money and no prize line is
-shown. The port has no Premium store, so such battles pay nothing.
+shown. The Premium pool is the 32-bit save flag `0x0A9E`
+(`scriptAdd/Set/GetPremium`, natives B7, BC, BB; `C3_PREMIUM_FLAG`).
+`c3_battle_story_apply` adds each won pool battle's share (`rw.premium`,
+kept even without backSaveDataFlag, since the flag is not part of the hero
+copy). The colosseum entrance scripts clear it at registration with BC(0)
+and, after the last battle, pay it out with BB, scriptAddPokedoru (85) and
+message 0x5BA6 / 0x5B9E "...cash prize of ${4b}!". The Pyrite Colosseum
+(encounters 169-172) collects 992 + 1,200 + 1,024 + 1,632 = 4,848 on the
+2026-11-21 route run, paid as `story_money delta=4848`.
 
 The prize (opcode 0x5D, run by the post-win script 0x80378801 from
 `fightActionFlowSyuuryou`) is mult x the opponent trainer kind's

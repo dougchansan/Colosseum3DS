@@ -123,7 +123,7 @@ static void synthetic(void)
     CHECK(c3_general_battle_writeback(&b, &pack, copy, &rw));
     /* fn_8021E754: mult 2 (two Pokemon a side) x base 5 x best level 5 x
      * OkaneBai 1. */
-    CHECK(b.okane_bai == 1 && rw.result_code == 2 && !rw.wipeout && rw.prize == 2u * 5u * 5u);
+    CHECK(b.okane_bai == 1 && rw.result_code == 2 && !rw.wipeout && rw.prize == 2u * 5u * 5u && !rw.premium);
     /* The won trainer battle ends with the prize line; without a hero name
      * (c3_battle_story_prepare sets it) the fight text's "Player" is used. */
     CHECK(prize_line(&b) && !strcmp(prize_line(&b), "Player got $50 for winning!"));
@@ -179,13 +179,24 @@ static void synthetic(void)
             CHECK(play(&nb, &k, &t) == C3_GB_WON && nb.okane_bai == 1);
             CHECK(prize_line(&nb) && !strcmp(prize_line(&nb), "Player got $25 for winning!"));
             k.bytes[k.entries_at + 122] = 2;
-            /* okanePool (the colosseum kinds): the amount goes to the
-             * Premium pool, so no money and no prize line. */
+            /* okanePool (the colosseum kinds): mult 4 x base 5 x level 5 goes
+             * to the Premium pool, with no money and no prize line; the
+             * Amulet Coin doubles it too. */
             k.bytes[k.entries_at + 98] = 1;
             CHECK(c3_general_battle_begin(&nb, &k, 0, party, 7, error) && play(&nb, &k, &t) == C3_GB_WON);
             memcpy(coin, party, sizeof coin);
             CHECK(c3_general_battle_writeback(&nb, &k, coin, &rw) && rw.written && !rw.prize && !prize_line(&nb));
-            k.bytes[k.entries_at + 98] = 0;
+            CHECK(rw.premium == 4u * 5u * 5u);
+            memcpy(coin, party, sizeof coin); p16(coin[1] + 0x88, 189);
+            CHECK(c3_general_battle_begin(&nb, &k, 0, coin, 7, error) && play(&nb, &k, &t) == C3_GB_WON);
+            CHECK(c3_general_battle_writeback(&nb, &k, coin, &rw) && rw.premium == 200u && !rw.prize);
+            /* scriptAddPremium writes the save flag, not the fight hero copy:
+             * backSaveDataFlag clear keeps the pool's share. */
+            k.bytes[k.entries_at + 88] = 0;
+            CHECK(c3_general_battle_begin(&nb, &k, 0, party, 7, error) && play(&nb, &k, &t) == C3_GB_WON);
+            memcpy(coin, party, sizeof coin);
+            CHECK(c3_general_battle_writeback(&nb, &k, coin, &rw) && !rw.written && rw.premium == 100u);
+            k.bytes[k.entries_at + 88] = 1; k.bytes[k.entries_at + 98] = 0;
         }
         k.bytes[k.entries_at + 97] = 0;
         /* doCriticalAttackFlag clear: no critical hit in many battles. */
@@ -291,7 +302,7 @@ static void synthetic(void)
     CHECK(!prize_line(&b)); /* a loss has no prize line */
     memcpy(copy, party, sizeof copy);
     CHECK(c3_general_battle_writeback(&b, &pack, copy, &rw));
-    CHECK(rw.result_code == 3 && rw.wipeout && rw.prize == 0 && g16(copy[0] + 0x8a) == 0);
+    CHECK(rw.result_code == 3 && rw.wipeout && rw.prize == 0 && !rw.premium && g16(copy[0] + 0x8a) == 0);
     /* A finished battle refuses further turns; a mismatched party is refused. */
     C3GeneralCommand c[2] = {{0}};
     CHECK(!c3_general_battle_turn(&b, &pack, c, error));
@@ -371,7 +382,7 @@ static void side0_cpu(void)
  * untouched party: nothing changes without backSaveDataFlag; otherwise
  * species and identity stay, HP/PP/levels/effort stay legal, experience
  * never drops and matches the level, and the result follows the outcome. */
-static unsigned checked_writebacks;
+static unsigned checked_writebacks, checked_premiums;
 static void check_writeback(const C3BattlePack *pack, const C3GeneralBattle *b, const C3BattleEncounterInfo *info,
                             uint8_t before[6][0x138], uint8_t after[6][0x138], const C3GeneralRewards *rw)
 {
@@ -387,6 +398,10 @@ static void check_writeback(const C3BattlePack *pack, const C3GeneralBattle *b, 
         unsigned long expected = (info->active_per_side > 1 ? 2ul : 1ul) * info->prize_base * best * b->okane_bai;
         if (b->outcome == C3_GB_WON && info->get_money && !info->money_pool && info->back_save && !info->cpu_side0)
             CHECK(rw->prize == expected);
+        /* okanePool: mult 4 into the Premium pool, whatever backSave says. */
+        if (b->outcome == C3_GB_WON && info->get_money && info->money_pool && !info->cpu_side0) {
+            CHECK(rw->premium == 4ul * info->prize_base * best * b->okane_bai && !rw->prize); ++checked_premiums;
+        } else CHECK(!rw->premium);
         const char *line = prize_line(b);
         if (b->outcome != C3_GB_WON || !info->get_money || info->money_pool || info->cpu_side0) CHECK(!line);
         else if (b->event_count < C3_GB_EVENT_LIMIT) {
@@ -449,10 +464,10 @@ static void private_sweep(const char *pack_path, const char *newgame_dir, const 
         check_writeback(&pack, &b, &info, party, copy, &rw);
         unsigned levels = 0, learned = 0, skipped = 0; unsigned long exp = 0;
         for (unsigned i = 0; i < 6; ++i) { levels += rw.levels_gained[i]; learned += rw.learned_count[i]; skipped += rw.skipped_count[i]; exp += rw.exp[i]; }
-        printf("battle encounter=%lu trainer=%s/%s kind=%u party=%u active=%u turns=%u outcome=%s result=%lu prize=%lu written=%d exp=%lu levels=%u learned=%u skipped=%u wipeout=%d\n",
+        printf("battle encounter=%lu trainer=%s/%s kind=%u party=%u active=%u turns=%u outcome=%s result=%lu prize=%lu premium=%lu written=%d exp=%lu levels=%u learned=%u skipped=%u wipeout=%d\n",
                (unsigned long)e, info.title, info.trainer, info.kind, info.party_count, info.active_per_side, turns,
                o == C3_GB_WON ? "won" : o == C3_GB_LOST ? "lost" : "draw",
-               (unsigned long)rw.result_code, (unsigned long)rw.prize, rw.written, exp, levels, learned, skipped, rw.wipeout);
+               (unsigned long)rw.result_code, (unsigned long)rw.prize, (unsigned long)rw.premium, rw.written, exp, levels, learned, skipped, rw.wipeout);
         ++checked_writebacks;
         won += o == C3_GB_WON; lost += o == C3_GB_LOST; draw += o == C3_GB_DRAW;
     }
@@ -500,8 +515,8 @@ static void private_sweep(const char *pack_path, const char *newgame_dir, const 
     printf("battle-general: snag sweep %u Shadow battles (%u Shadow Pokemon): %u snagged, %u to the party, %u to boxes, %u with no room\n",
            shadow_battles, shadow_total, snagged, stored_party, stored_box, full);
     printf("battle-general: view send_outs=%u hits_with_attacker=%u\n", send_outs, hits_with_actor);
-    printf("battle-general: private sweep %u admitted (%u refused): %u won, %u lost, %u draw, %lu turns, %u writebacks checked\n",
-           admitted, refused, won, lost, draw, total_turns, checked_writebacks);
+    printf("battle-general: private sweep %u admitted (%u refused): %u won, %u lost, %u draw, %lu turns, %u writebacks checked (%u Premium pool shares)\n",
+           admitted, refused, won, lost, draw, total_turns, checked_writebacks, checked_premiums);
     c3_game_state_free(&game); c3_battle_pack_free(&pack);
 }
 

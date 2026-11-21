@@ -1311,9 +1311,10 @@ static int order_actors(C3GeneralBattle *b,const C3BattlePack *p,const C3General
 }
 /* The prize opcode 0x5D (fn_8021E754): mult x SyoukinBairitu (the
  * opponent trainer kind's prize base) x best x the hero's OkaneBai, where
- * - mult is 2 when the fight type sends out more than one Pokemon a side
- *   (floor status 0x18, fightoutPokemonNum), else 1 (4 with okanePool,
- *   but that amount goes to scriptAddPremium, not money: no prize here);
+ * - mult is 4 with okanePool (floor status 0x26; that amount goes to
+ *   scriptAddPremium, the Premium pool, instead of money and no line is
+ *   shown), else 2 when the fight type sends out more than one Pokemon a
+ *   side (floor status 0x18, fightoutPokemonNum), else 1;
  * - best is the highest level among the opponent trainer's valid Pokemon
  *   (fainted ones included) and the hero's Pokemon with CatchEntryFlag
  *   (status 0xCF: snagged this battle, fn_80213A78), which are opponent
@@ -1321,10 +1322,12 @@ static int order_actors(C3GeneralBattle *b,const C3BattlePack *p,const C3General
  * - OkaneBai is okane_bai (1, or 2 with the Amulet Coin). */
 static int pays_prize(const C3GeneralBattle *b)
 {return b->outcome==C3_GB_WON&&b->info.get_money&&!b->info.money_pool;}
+static int pays_premium(const C3GeneralBattle *b)
+{return b->outcome==C3_GB_WON&&b->info.get_money&&b->info.money_pool;}
 static uint32_t prize_money(const C3GeneralBattle *b)
 {
     unsigned best=0;for(unsigned i=0;i<b->party_count[1];++i)if(b->party[1][i].level>best)best=b->party[1][i].level;
-    uint32_t mult=b->info.active_per_side>1?2u:1u,bai=b->okane_bai?b->okane_bai:1u;
+    uint32_t mult=b->info.money_pool?4u:b->info.active_per_side>1?2u:1u,bai=b->okane_bai?b->okane_bai:1u;
     return mult*((uint32_t)b->info.prize_base*(best*bai));
 }
 /* The won trainer battle's prize line, fight_common.fsys message 0x7546
@@ -1503,6 +1506,9 @@ int c3_general_battle_writeback(const C3GeneralBattle *b,const C3BattlePack *p,
     /* A CPU trainer fought on the hero's side: the hero copy is untouched
      * and the result says which side won (2 side 0, 3 side 1). */
     if(b->info.cpu_side0){out.wipeout=0;*rw=out;return 1;}
+    /* scriptAddPremium writes the save's flag 0A9E, not the fight hero
+     * copy, so backSaveDataFlag does not discard it. */
+    if(pays_premium(b))out.premium=prize_money(b);
     for(unsigned i=0;i<b->party_count[0];++i)
         if(be16(party[b->party[0][i].party_slot])!=b->party[0][i].species)return 0;
     /* backSaveDataFlag clear: the hero copy (party, money) is discarded. */

@@ -96,6 +96,14 @@ int c3_battle_story_apply(C3FieldStory *story, C3GameState *state,
         uint32_t room = summary.money < 9999999u ? 9999999u - summary.money : 0;
         if (!c3_game_state_add_money(state, rw.prize < room ? rw.prize : room)) return fail(error, "Prize money rejected.");
     }
+    /* scriptAddPremium (fn_8021E754 with okanePool): the colosseum
+     * challenge's pool, flag 0A9E, paid out by its script (native BB, then
+     * scriptAddPokedoru) and cleared with native BC. */
+    if (rw.premium) {
+        uint32_t pool;
+        if (!c3_game_state_get_flag(state, C3_PREMIUM_FLAG, &pool) ||
+            !c3_game_state_set_flag(state, C3_PREMIUM_FLAG, pool + rw.premium)) return fail(error, "Premium pool rejected.");
+    }
     if (rw.wipeout) {
         if (!c3_game_state_add_money(state, -(int64_t)(summary.money / 2u))) return fail(error, "Money loss rejected.");
         if (restore_party && restore_party(state) < 0) return fail(error, "Party restore failed.");

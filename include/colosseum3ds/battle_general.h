@@ -154,6 +154,9 @@ typedef struct C3GeneralBattle {
 typedef struct C3GeneralRewards {
     uint32_t result_code; /* fightFloorSetFightResultId: 2 hero won, 3 lost */
     uint32_t prize;       /* added on a win */
+    /* okanePool kinds (the colosseum challenges): the prize opcode's x4
+     * amount, for scriptAddPremium (flag 0A9E) instead of money. */
+    uint32_t premium;
     uint32_t exp[C3_GB_PARTY];
     uint8_t levels_gained[C3_GB_PARTY];
     int wipeout;          /* a loss with the encounter's zenmetu flag set */

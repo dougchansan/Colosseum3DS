@@ -210,7 +210,7 @@ static int validate_native(const Impl *s,const C3StoryCall *c,char *error)
         {0x62,1,0}, /* fn_800FF730 menu floor (systems lane) */
         {0x78,1,0},{0x7c,0,0},{0xf1,0,0},{0xf2,0,0},{0xa8,2,0},{0xd6,2,0},{0x53,3,0},{0x9b,3,0},{0xc7,5,0},
         {0xc4,0,0},{0xdc,0,0},{0xc8,2,0},{0x80,3,0},{0xbd,0,0},{0x9e,1,0},{0x54,0,0},{0x55,0,0},{0x56,0,0},{0x57,0,0},
-        {0xdb,2,0},{0x86,0,0},{0xbb,0,0},{0xbc,1,0},{0xca,0,0},{0xeb,0,0},{0x85,1,0},
+        {0xdb,2,0},{0x86,0,0},{0xb7,1,0},{0xbb,0,0},{0xbc,1,0},{0xca,0,0},{0xeb,0,0},{0x85,1,0},
         {0xd0,0,0},{0x11,2,0},{0xcc,3,0},{0xcd,1,0},{0xcf,0,0},{0xbe,2,0},{0xbf,4,0},{0xc1,2,0},{0xf3,2,0}
     };
     for(unsigned i=0;i<sizeof signature/sizeof signature[0];++i){
@@ -944,9 +944,14 @@ static int run_native(Impl *s,RunTask *t,char *error)
         int64_t money=(int64_t)hero.money+(int32_t)a[0];if(money<0)money=0;if(money>9999999)money=9999999;
         if(!c3_game_state_add_money(s->game,money-(int64_t)hero.money))return fail(error,"Money cannot be changed");
         log_line(s,"story_money delta=%ld total=%ld",(long)(int32_t)a[0],(long)money);value=(uint32_t)money;}break;
-    /* scriptSetPremium: flag 0A9E. */
-    case 0xbb:if(!flag(s,0xa9e,&value,error))return 0;break; /* scriptGetPremium */
-    case 0xbc:if(!set_flag(s,0xa9e,a[0],error))return 0;break;
+    /* The Premium pool, flag 0A9E (field_range_801CA7EC.c): B7
+     * scriptAddPremium (adds, returns the new value), BB scriptGetPremium,
+     * BC scriptSetPremium. The colosseum scripts pay it out with BB then 85
+     * and clear it with BC(0); okanePool battles add to it. */
+    case 0xb7:if(!flag(s,C3_PREMIUM_FLAG,&value,error)||!set_flag(s,C3_PREMIUM_FLAG,value+a[0],error))return 0;
+        value+=a[0];break;
+    case 0xbb:if(!flag(s,C3_PREMIUM_FLAG,&value,error))return 0;break;
+    case 0xbc:if(!set_flag(s,C3_PREMIUM_FLAG,a[0],error))return 0;break;
     /* fn_80035D70 pushes menu floor 0x393 and yields until it returns.
      * That menu floor is not ported; it returns at once. */
     case 0xca:s->view.unported_menu=0xca;
