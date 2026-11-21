@@ -1,5 +1,11 @@
 # Nonpersistent encounter-10 combat preview
 
+> **Story route:** the field no longer runs this preview. Encounter 10
+> (Willie) plays on the general story battle engine like every other story
+> battle, with its writeback (EXP, prize money, HP/PP) and the real result
+> for native 98 ([story-battles.md](story-battles.md)). The preview remains
+> for its host suites and the `C3_BATTLE_PREVIEW_PROBE` console build only.
+
 This is an **interactive development preview**, not the complete original
 Colosseum battle engine. It lets a player select the two starters' moves and
 opponent targets, execute turns, and reach a computed win or loss. It does not

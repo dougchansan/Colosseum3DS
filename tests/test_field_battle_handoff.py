@@ -14,21 +14,41 @@ SOURCE = ROOT / 'platform/3ds/field_scene.c'
 class FieldBattleHandoffTests(unittest.TestCase):
     def test_handoff_drains_before_release_and_restores_without_story_entry(self):
         source = SOURCE.read_text()
-        handoff_start = source.index('if(view->blocked[0]&&view->battle_id==10&&(input.pressed&C3_PAD_A))')
-        handoff = source[handoff_start:
-                         source.index('/* Modal preview time')]
-        ordered = ['C3_RECOVER_DRAIN', 'npc_stream_attach(&npc,1,',
-                   'release_field_models(storage,count)',
-                   'c3_battle_preview_from_game_state', '"battle-to-field"',
-                   'restore_field_models(', 'field_renderer_init(',
-                   'c3_stage_renderer_set_tv(']
-        positions = [handoff.index(token) for token in ordered]
-        self.assertEqual(positions, sorted(positions))
-        for forbidden in ('c3_field_story_load(', 'c3_field_story_prepare(',
-                          'c3_field_story_enter(', 'c3_field_story_tick(',
-                          'c3_game_state_load('):
-            self.assertNotIn(forbidden, handoff)
-        self.assertIn('preview_result>0?C3_RECOVER_EXIT:C3_RECOVER_DRAIN', handoff)
+        release = source[source.index('static int field_battle_release(FieldBattleHost *h'):
+                         source.index('static int field_battle_restore(FieldBattleHost *h')]
+        restore = source[source.index('static int field_battle_restore(FieldBattleHost *h'):
+                         source.index('static int play_story_battle(')]
+        play = source[source.index('static int play_story_battle('):
+                      source.index('static int floor_reachable(')]
+        for part, ordered in (
+                (release, ['C3_RECOVER_DRAIN', 'npc_stream_attach(h->npc,1,',
+                           'release_field_models(h->storage,h->count)', 'c3_pack_cache_clear()']),
+                (restore, ['"battle-to-field"', 'restore_field_models(', 'field_renderer_init(',
+                           'c3_stage_renderer_set_tv(']),
+                (play, ['c3_general_battle_begin(', 'field_battle_release(host,',
+                        'c3_battle_general_3d_run(', 'field_battle_restore(host,',
+                        'c3_battle_story_apply('])):
+            positions = [part.index(token) for token in ordered]
+            self.assertEqual(positions, sorted(positions))
+        for part in (release, restore, play):
+            for forbidden in ('c3_field_story_load(', 'c3_field_story_prepare(',
+                              'c3_field_story_enter(', 'c3_field_story_tick(',
+                              'c3_game_state_load('):
+                self.assertNotIn(forbidden, part)
+        self.assertIn('exiting?C3_RECOVER_EXIT:C3_RECOVER_DRAIN', restore)
+
+    def test_every_story_battle_starts_on_the_general_engine_without_a_prompt(self):
+        source = SOURCE.read_text()
+        # Encounter 10 (Willie) is no longer special-cased onto the preview.
+        for forbidden in ('c3_battle_preview_from_game_state', 'battle_id==10',
+                          'battle_id!=10', 'willie.c3b'):
+            self.assertNotIn(forbidden, source)
+        start = source.index('if(view->blocked[0]&&view->battle_id&&view->battle_refused!=view->battle_id){')
+        block = source[start:source.index('dirty=1;continue;', start)]
+        self.assertIn('play_story_battle(&story,state,encounter,0,&host,', block)
+        self.assertNotIn('input.pressed', block)
+        # The battle starts before X / START can leave the field.
+        self.assertLess(start, source.index('if(view->blocked[0]&&(input.pressed&(C3_PAD_START|C3_PAD_X))){result=0;break;}'))
 
     def test_payload_reload_keeps_story_model_addresses_and_cleans_partial_failure(self):
         compiler = shlex.split(os.environ.get('CC', 'cc'))
