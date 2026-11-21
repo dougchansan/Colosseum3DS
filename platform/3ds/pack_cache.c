@@ -1,6 +1,7 @@
 #include "pack_cache.h"
 #include <3ds.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 
 #define CACHE_ENTRIES 160u
@@ -114,7 +115,18 @@ int c3_pack_cache_load(C3Title *title, const char *path, char *error, size_t cap
     void *data = slot && linearSpaceFree() >= (size_t)size + CACHE_ADD_MARGIN ? linearAlloc((size_t)size) : NULL;
     if (data) { snprintf(slot->path, sizeof slot->path, "%s", path); slot->bytes = (size_t)size; slot->busy = 1; }
     leave();
-    if (!data) { fclose(file); return c3_title_load(title, path, error, capacity); }
+    if (!data) {
+        /* No linear room to keep it: read it into the heap for this load
+         * only. Reopening by path cost a second SD directory lookup. */
+        unsigned char *heap = malloc((size_t)size);
+        if (!heap) { fclose(file); return c3_title_load(title, path, error, capacity); }
+        int read = fseek(file, 0, SEEK_SET) == 0 && fread(heap, 1, (size_t)size, file) == (size_t)size;
+        fclose(file);
+        int loaded = read && c3_title_load_memory(title, heap, (size_t)size, error, capacity);
+        free(heap);
+        if (!read) return c3_title_load(title, path, error, capacity);
+        return loaded;
+    }
     int read = fseek(file, 0, SEEK_SET) == 0 && fread(data, 1, (size_t)size, file) == (size_t)size;
     fclose(file);
     int loaded = read && c3_title_load_memory(title, data, (size_t)size, error, capacity);
