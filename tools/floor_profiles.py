@@ -27,7 +27,20 @@ Interior rows ("scene": "interior") add:
   objects                                map models with several source clips;
                                          each becomes <prefix>_obj<model>.c3t
                                          holding every clip, one-shot
-  path_joints                            admit HSD path tracks (cardinal spline)
+  door_objects                           common door-table row -> object model
+                                         it opens (native 60)
+  map_objects                            object models without a door row:
+                                         floorInitMap opens them like every map
+                                         model (floorOpenObject: clip 0 looping
+                                         at rate 0.5) and natives 73-75 play
+                                         their clips by resource. Each object
+                                         is in door_objects or here, never
+                                         neither: an unnamed pack is never drawn
+  healing_machine                        the map object native 53 mode 0 plays
+                                         (fn_801D0DB0 battleIntroModels); its
+                                         pack retains source parts 9-14, the
+                                         ball slots, as its last six bones
+  path_joints                           admit HSD path tracks (cardinal spline)
   material_colors                        "constant": fold constant material RGB
                                          tracks; "frozen": also keep animated
                                          RGB at its first value (a recorded
@@ -148,6 +161,13 @@ FLOORS = {
         "models": 4,
         "groups": (((1, 2, 3), ("short", 299)),),
         "objects": (0,),
+        # Model 0 is the mayor's armchair (seat mesh and floor shadow quad) at
+        # his desk. No door row names it; clip 0 (4 frames) is its rest pose.
+        # Bank 014E0E00 function 10 plays clip 1 (40 frames, one-shot) with
+        # native 73(0x00691000, 1, 0, 0) and waits with native 75: function 16
+        # runs it in the welcome (fn 4) and the ambush (fn 7) as the chair
+        # rolls back from the desk.
+        "map_objects": (0,),
     },
     "phenac_mayor2f": {
         # Mayor's house 2F: three unanimated models; model 2 is the television screen quad.
@@ -200,6 +220,13 @@ FLOORS = {
         "models": 4,
         "groups": (((0, 1), ("short", 299)), ((2,), ("short", 149))),
         "objects": (3,),
+        # Model 3 is the healing machine on the nurse's counter. No door row
+        # names it: it loops clip 0 (59 frames, material tracks only) from
+        # floorOpenObject. Clips 1-6 are the machine taking 1-6 balls; native
+        # 53 mode 0 (fn_801D0DB0, battleIntroModels {0x20, 0x00651003}) plays
+        # clip <party size> once at rate 1.0.
+        "map_objects": (3,),
+        "healing_machine": 3,
         "path_joints": True,
         "material_colors": "frozen",
         # Three meshes of model 2 use HSD colour map mode 2.
@@ -523,6 +550,9 @@ def validate(profiles=None):
             doors = row.get("door_objects", {})
             if any(not isinstance(r, int) or r < 0 or model not in objects for r, model in doors.items()):
                 raise ValueError("Door objects must name object packs of the floor: " + name)
+            # Every object pack is drawn through a door row or as a map object.
+            if set(doors.values()) | set(row.get("map_objects", ())) != set(objects):
+                raise ValueError("Object pack without a door row or map object entry is never drawn: " + name)
             if any(kind not in ("short", "sky", "static") for _, (kind, _end) in row["groups"]):
                 raise ValueError("Unknown floor group clock: " + name)
             if row.get("pack_format", 2) not in (2, 3):
@@ -531,6 +561,13 @@ def validate(profiles=None):
                 raise ValueError("Unknown floor material colour mode: " + name)
             if row.get("scene", "exterior") not in ("exterior", "interior"):
                 raise ValueError("Unknown floor scene kind: " + name)
+        mapped = row.get("map_objects", ())
+        if (not isinstance(mapped, tuple) or len(set(mapped)) != len(mapped) or
+                any(isinstance(m, bool) or not isinstance(m, int) or not 0 <= m < 4096 for m in mapped) or
+                set(mapped) & set(row.get("door_objects", {}).values())):
+            raise ValueError("Map objects must be distinct object models without a door row: " + name)
+        if "healing_machine" in row and row["healing_machine"] not in mapped:
+            raise ValueError("The healing machine must be a map object: " + name)
         if row["floor"] in floors or prefix in prefixes:
             raise ValueError("Duplicate floor or prefix in profiles: " + name)
         floors.add(row["floor"])

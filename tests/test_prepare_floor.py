@@ -22,6 +22,31 @@ def joint(address, flags=0, child=None, next=None):
 
 
 class FloorProfileTests(unittest.TestCase):
+    def test_automatic_geometry_keeps_forced_map_objects_out_of_the_map_group(self):
+        # Realgam dome 9 model 8 has one clip that the bank plays and stops
+        # (natives 73/74/75): a map object, not part of the looping group.
+        models = [Obj(ends=[19.0, 19.0], tracks=[1]), Obj(ends=[9.0], tracks=[1]), Obj(ends=[30.0], tracks=[1])]
+        scene, raw = Obj(models=models), Obj(models=[None] * 3)
+        model = lambda source, _raw, **_options: source
+        plain = floor.auto_geometry(scene, raw, model)
+        self.assertEqual((plain["objects"], plain["groups"]), ((0,), (((1, 2), ("short", 30.0)),)))
+        forced = floor.auto_geometry(scene, raw, model, (1,))
+        self.assertEqual((forced["objects"], forced["groups"]), ((0, 1), (((2,), ("short", 30.0)),)))
+        self.assertEqual(floor.FLOORS["auto_06f"]["map_objects"], (1, 2, 3, 4, 8))
+
+    def test_healing_machines_keep_their_ball_slots_and_ball_packs(self):
+        # fn_801D0DB0: battleIntroPartIds 9-14 and battleIntroObjectIds.
+        self.assertEqual(floor.HEAL_PARTS, (9, 10, 11, 12, 13, 14))
+        self.assertEqual(len(floor.HEAL_BALLS), 13)
+        self.assertEqual(len(set(floor.HEAL_BALLS)), 12)
+        self.assertEqual(floor.heal_ball_file("phenac_pc1f", 0x03360400), "phenac_pc1f_ball_0336.c3t")
+        machines = {name: row["healing_machine"] for name, row in floor.FLOORS.items() if "healing_machine" in row}
+        self.assertEqual(machines, {"phenac_pc1f": 3, "under_enter_1f": 6, "under_enter_b1": 5,
+                                    "auto_06b": 4, "auto_07c": 3})
+        for name, model in machines.items():
+            self.assertIn(model, floor.FLOORS[name]["map_objects"])
+            self.assertLess(len(floor.heal_ball_file(floor.FLOORS[name]["prefix"], 0x03630400)), 40)
+
     def test_phenac_profile_matches_lifecycle_row_and_rel_layout(self):
         profile = floor.FLOORS["phenac"]
         self.assertEqual((profile["floor"], profile["resource_group"], profile["lifecycle_row"]), (3, 0x1F, 2))

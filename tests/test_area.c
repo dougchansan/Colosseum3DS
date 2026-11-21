@@ -175,6 +175,22 @@ static void doors(void)
     memcpy(c,d,DOORS);memset(c+32+64+24,'a',39);c[32+64+24+39]=0;w16(c+32+18,C3_TITLE_MAX_BONES);
     c[32+4]=(uint8_t)(C3_TITLE_MAX_CLIPS-1);w32(c+12,65535);
     CHECK(c3_area_doors_parse(&table,c,DOORS,NULL,0));CHECK(strlen(table.rows[1].file)==39&&table.floor==65535);
+    /* A map object row (no door-table row) follows the door rows: door type
+     * 0, no animations, collision or flags, a resource and a pack name. */
+    {uint8_t *r=c+32+64;memcpy(c,d,DOORS);
+     w32(r,C3_AREA_MAP_OBJECT_ROW|3u);memset(r+4,0xff,6);r[10]=0;r[11]=0;w16(r+12,0xffff);w16(r+14,0);w16(r+16,0);w16(r+18,0);
+     w32(r+20,0x00651003u);memset(r+24,0,40);memcpy(r+24,"phenac_pc1f_obj3.c3t",20);
+     CHECK(c3_area_doors_parse(&table,c,DOORS,NULL,0));
+     CHECK(table.rows[1].index==(C3_AREA_MAP_OBJECT_ROW|3u)&&table.rows[1].resource==0x00651003u&&table.rows[1].open_anim==-1);
+     uint8_t m[DOORS];
+     for(unsigned at=4;at<10;++at){memcpy(m,c,DOORS);m[32+64+at]=0;door_rejected(&table,m,DOORS);}
+     memcpy(m,c,DOORS);m[32+64+10]=1;door_rejected(&table,m,DOORS);           /* door type */
+     memcpy(m,c,DOORS);w16(m+32+64+12,0);door_rejected(&table,m,DOORS);       /* collision */
+     memcpy(m,c,DOORS);w16(m+32+64+14,1);door_rejected(&table,m,DOORS);       /* open flag */
+     memcpy(m,c,DOORS);w16(m+32+64+16,1);door_rejected(&table,m,DOORS);       /* close flag */
+     memcpy(m,c,DOORS);w32(m+32+64+20,0);door_rejected(&table,m,DOORS);       /* no resource */
+     memcpy(m,c,DOORS);memset(m+32+64+24,0,40);door_rejected(&table,m,DOORS); /* no pack */
+     memcpy(m,c,DOORS);w32(m+32,C3_AREA_MAP_OBJECT_ROW|4u);door_rejected(&table,m,DOORS);} /* after the doors */
     /* An empty table is valid; loads fail cleanly. */
     memcpy(c,d,32);w32(c+8,32);w32(c+16,0);CHECK(c3_area_doors_parse(&table,c,32,NULL,0)&&!table.count);
     C3AreaDoors prior=table;

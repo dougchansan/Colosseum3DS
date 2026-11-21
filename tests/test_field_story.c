@@ -257,6 +257,23 @@ static void synthetic_model(C3Title *model)
         le32(frame+140+4*9,bits(100));le32(frame+140+4*10,bits(1));
     }
 }
+/* A healing machine: seven bones, the last six its ball slot parts 9-14 at
+ * x = 1..6, y = 0.5; four one-second clips. */
+static void synthetic_machine(C3Title *model)
+{
+    synthetic_model(model);free(model->file_data);
+    model->bone_count=7;model->frame_bytes=48*7+92+44;model->file_bytes=model->frame_bytes*31;
+    model->file_data=calloc(1,model->file_bytes);CHECK(model->file_data);
+    for(unsigned i=0;i<31;++i){uint8_t *frame=model->file_data+i*model->frame_bytes,*material=frame+48*7;
+        for(unsigned b=0;b<7;++b){for(unsigned j=0;j<3;++j)le32(frame+b*48+(j*4+j)*4,bits(1));
+            if(b){le32(frame+b*48+3*4,bits((float)b));le32(frame+b*48+7*4,bits(.5f));}}
+        for(unsigned j=0;j<3;++j)le32(material+(20+j)*4,bits((float)(j+1)));
+        le32(material+20,bits(1));le32(material+92+4*7,bits(45));le32(material+92+4*8,bits(.1f));
+        le32(material+92+4*9,bits(100));le32(material+92+4*10,bits(1));
+    }
+}
+static int heal_restores;
+static int heal_restore(void *context){(void)context;++heal_restores;return 1;}
 static void synthetic_load_at(Scene *scene,C3GameState *game,const char *file,const Program programs[8],
                            uint32_t init,uint32_t pre,uint32_t main_script,uint32_t floor)
 {
@@ -655,6 +672,95 @@ static void synthetic_regressions(void)
       elevator[0].alternate_b=2;CHECK(!c3_field_story_bind_doors(&s->story,elevator,2,elevator_models,error)&&strstr(error,"lacks animation 2"));
       close_scene(s);door_model.clip_count=clips;
      }
+     /* A map object row (Mayor's house 1F model 0, the armchair) loops clip 0
+      * from binding, as floorOpenObject starts it. Native 73 plays clip 1
+      * one-shot from frame 0 at rate 0.5 and native 75 waits for its end;
+      * the script then hides actor 3. */
+     {C3AreaDoor object={.index=C3_AREA_MAP_OBJECT_ROW,.resource=0x00691000,.open_anim=-1,.close_anim=-1,
+                         .open_end_anim=-1,.close_end_anim=-1,.alternate_a=-1,.alternate_b=-1,.collision_id=-1};
+      C3Title *object_models[1]={&door_model};
+      memset(code,0,sizeof code);args[0]=0x691000;args[1]=1;args[2]=0;args[3]=0;native(code+3,0x73,4,args,1);
+      args[1]=1;native(code+3,0x75,2,args,1);args[0]=3;args[1]=0;native(code+3,0x64,2,args,1);
+      synthetic_load(s,&game,file,code,0,0,0x1000003);
+      CHECK(c3_field_story_bind_doors(&s->story,&object,1,object_models,error));
+      door=c3_field_story_door(&s->story,0);CHECK(door->clip==0&&door->playing&&door->loop&&door->seconds==0);
+      CHECK(c3_field_story_enter(&s->story,error));CHECK(c3_field_story_tick(&s->story,0,0,error));
+      CHECK(door->clip==1&&door->playing&&!door->loop&&door->seconds==0&&c3_field_story_actor(&s->story,3)->visible);
+      for(unsigned i=0;i<5;++i)CHECK(c3_field_story_tick(&s->story,.1f,0,error));
+      CHECK(door->playing&&fabsf(door->seconds-.5f)<1e-4f&&c3_field_story_actor(&s->story,3)->visible);
+      for(unsigned i=0;i<7;++i)CHECK(c3_field_story_tick(&s->story,.1f,0,error));
+      CHECK(!door->playing&&door->clip==1&&door->seconds==1.0f&&!c3_field_story_actor(&s->story,3)->visible);
+      close_scene(s);
+      /* Looping from frame 15 (half a second at 30 source frames a second),
+       * then native 74 holds that pose. */
+      memset(code,0,sizeof code);args[0]=0x691000;args[1]=2;args[2]=15;args[3]=1;native(code+3,0x73,4,args,1);
+      native(code+3,0x74,1,args,1);
+      synthetic_load(s,&game,file,code,0,0,0x1000003);
+      CHECK(c3_field_story_bind_doors(&s->story,&object,1,object_models,error));
+      CHECK(c3_field_story_enter(&s->story,error));CHECK(c3_field_story_tick(&s->story,0,0,error));
+      door=c3_field_story_door(&s->story,0);CHECK(door->clip==2&&door->loop&&!door->playing&&fabsf(door->seconds-.5f)<1e-6f);
+      close_scene(s);
+      /* At rest clip 0 wraps rather than stopping at its end. */
+      memset(code,0,sizeof code);synthetic_load(s,&game,file,code,0,0,0x1000003);
+      CHECK(c3_field_story_bind_doors(&s->story,&object,1,object_models,error));
+      CHECK(c3_field_story_enter(&s->story,error));CHECK(c3_field_story_tick(&s->story,.75f,0,error));
+      door=c3_field_story_door(&s->story,0);CHECK(door->playing&&fabsf(door->seconds-.75f)<1e-5f);
+      CHECK(c3_field_story_tick(&s->story,.5f,0,error));CHECK(door->playing&&door->clip==0&&fabsf(door->seconds-.25f)<1e-5f);
+      close_scene(s);}
+     /* Native 53 mode 0 (fn_801D0DB0) at the Phenac Pokemon Center (group
+      * 0x20, machine 0x00651003): the party is restored, the nurse (actor 3)
+      * turns to part 14, one Poke Ball (catch ball 4) shows at part 9 at
+      * scale 1.5, after half a second the machine plays clip 1 (one ball)
+      * at rate 1.0, 0.7 s after its end the ball goes, 0.7 s later the nurse
+      * turns back, and only then does the script go on (it hides actor 3).
+      * The machine keeps clip 1's last frame. */
+     {C3Title machine={0},ball={0};synthetic_machine(&machine);synthetic_model(&ball);
+      CHECK(c3_title_animate(&machine,0,0));
+      C3AreaDoor object={.index=C3_AREA_MAP_OBJECT_ROW|3u,.resource=0x00651003,.open_anim=-1,.close_anim=-1,
+                         .open_end_anim=-1,.close_end_anim=-1,.alternate_a=-1,.alternate_b=-1,.collision_id=-1};
+      C3Title *machine_models[1]={&machine},*balls[1]={&ball};uint8_t ball_ids[1]={4},record[0x138];
+      char file_name[48];
+      CHECK(c3_field_heal_machine(0x20)==0x00651003u&&c3_field_heal_machine(0x5e)==0x02e41006u&&!c3_field_heal_machine(0x1d));
+      CHECK(c3_field_heal_ball("phenac_pc1f",4,file_name,sizeof file_name)&&!strcmp(file_name,"phenac_pc1f_ball_0336.c3t"));
+      CHECK(c3_field_heal_ball("f079",0,file_name,sizeof file_name)&&!strcmp(file_name,"f079_ball_0364.c3t"));
+      CHECK(!c3_field_heal_ball("f079",13,file_name,sizeof file_name));
+      CHECK(c3_game_state_pokemon(&game,0,record));record[0x0f]=4;CHECK(c3_game_state_set_pokemon(&game,0,record));
+      memset(code,0,sizeof code);args[0]=0x20;args[1]=3;args[2]=0;native(code+3,0x53,3,args,1);
+      args[0]=3;args[1]=0;native(code+3,0x64,2,args,1);
+      synthetic_load(s,&game,file,code,0,0,0x1000003);s->area.group=0x20;heal_restores=0;
+      c3_field_story_set_party_service(&s->story,heal_restore,NULL);
+      CHECK(c3_field_story_bind_doors(&s->story,&object,1,machine_models,error));
+      CHECK(!c3_field_story_bind_heal_balls(&s->story,balls,ball_ids,7,error));
+      CHECK(c3_field_story_bind_heal_balls(&s->story,balls,ball_ids,1,error));
+      door=c3_field_story_door(&s->story,0);const C3StoryActor *nurse=c3_field_story_actor(&s->story,3);
+      CHECK(c3_field_story_enter(&s->story,error));
+      unsigned frame=0,shown=0,clip=0,removed=0,ended=0;
+      for(;frame<600&&nurse->visible;++frame){
+          CHECK(c3_field_story_tick(&s->story,1.f/60,0,error));CHECK(c3_field_story_sample(&s->story,error));
+          if(!shown&&!ball.hidden){shown=frame;
+              CHECK(ball.placement.enabled&&ball.placement.matrix[0]==1.5f&&ball.placement.matrix[5]==1.5f);
+              CHECK(ball.placement.matrix[3]==1.0f&&ball.placement.matrix[7]==.5f&&ball.placement.matrix[11]==0);
+              CHECK(fabsf(nurse->pose.yaw-1.5707964f)<1e-4f);}
+          if(!clip&&door->clip==1){clip=frame;CHECK(door->playing&&!door->loop&&door->rate==2);}
+          if(clip&&!ended&&!door->playing)ended=frame;
+          if(shown&&!removed&&ball.hidden)removed=frame;
+      }
+      CHECK(heal_restores==1&&!nurse->visible);
+      CHECK(shown&&shown<10);                              /* the turn: five ticks at speed 2 */
+      CHECK(clip>=shown+29&&clip<=shown+31);               /* half a second per ball */
+      CHECK(ended>=clip+29&&ended<=clip+31);               /* one second of clip at rate 1.0 */
+      CHECK(removed>=ended+41&&removed<=ended+43);         /* 0.7 s */
+      CHECK(frame>=removed+42&&frame<=removed+56);         /* 0.7 s, then the turn back */
+      CHECK(door->clip==1&&!door->playing&&door->seconds==1.0f&&fabsf(nurse->pose.yaw)<1e-4f);
+      close_scene(s);
+      /* Without a machine pack bound (or on another floor) the native only
+       * restores the party and the script continues at once. */
+      synthetic_load(s,&game,file,code,0,0,0x1000003);heal_restores=0;
+      c3_field_story_set_party_service(&s->story,heal_restore,NULL);
+      CHECK(c3_field_story_enter(&s->story,error));CHECK(c3_field_story_tick(&s->story,0,0,error));
+      CHECK(heal_restores==1&&!c3_field_story_actor(&s->story,3)->visible);close_scene(s);
+      free(machine.file_data);free(machine.vertices);free(machine.draw_vertices);free(machine.batches);
+      free(ball.file_data);free(ball.vertices);free(ball.draw_vertices);free(ball.batches);}
      CHECK(!c3_field_story_bind_doors(NULL,rows,2,door_models,error));
      free(door_model.file_data);free(door_model.vertices);free(door_model.draw_vertices);free(door_model.batches);}
     /* Native 23 writes the partner-present byte; 4C/4D without arguments,

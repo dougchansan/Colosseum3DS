@@ -319,6 +319,31 @@ class DoorPackTests(unittest.TestCase):
         self.assertEqual(struct.unpack_from("<I6b2BhHHHI", second), (1, 0, 1, -1, -1, -1, -1, 1, 0, -1, 3, 0x987, 0, 0x00621001))
         self.assertEqual(first[24:] + second[24:], bytes(80))  # no prepared door model names yet
 
+    def test_map_object_rows_follow_the_door_rows(self):
+        # Mayor's house 1F: no door row, model 0 (the armchair) is a map object
+        # registered as resource 0x00691000 (map 0x00690200).
+        import floor_profiles
+        objects = story.map_object_rows(floor_profiles.FLOORS["phenac_mayor1f"])
+        self.assertEqual([(row["index"], row["resource_id"]) for row in objects], [(0x80000000, "00691000")])
+        pack = story.encode_door_pack(5, objects, {0x80000000: "phenac_mayor1f_obj0.c3t"})
+        self.assertEqual(struct.unpack_from("<4s5I", pack), (b"C3D1", 1, 96, 5, 1, 64))
+        self.assertEqual(struct.unpack_from("<I6b2BhHHHI", pack, 32),
+                         (0x80000000, -1, -1, -1, -1, -1, -1, 0, 0, -1, 0, 0, 0, 0x00691000))
+        self.assertEqual(pack[56:96].rstrip(b"\0"), b"phenac_mayor1f_obj0.c3t")
+        # Under entrance 1F: door rows first, then the healing machine.
+        row = {**self.row(77, floor=0x79), "resource_id": "02e41000"}
+        machine = story.map_object_rows(floor_profiles.FLOORS["under_enter_1f"])
+        pack = story.encode_door_pack(0x79, machine + [row], {0x80000006: "f079_obj6.c3t"})
+        self.assertEqual([struct.unpack_from("<I", pack, 32 + 64 * i)[0] for i in range(2)], [77, 0x80000006])
+        self.assertEqual(struct.unpack_from("<I", pack, 96 + 20)[0], 0x02E41006)
+        # A map object row never carries door fields and always names a pack.
+        with self.assertRaises(ValueError):
+            story.encode_door_pack(5, objects)
+        with self.assertRaises(ValueError):
+            story.encode_door_pack(5, [{**objects[0], "open_anim": 0}], {0x80000000: "a.c3t"})
+        with self.assertRaises(ValueError):
+            story.encode_door_pack(5, [{**objects[0], "collision_id": 0}], {0x80000000: "a.c3t"})
+
     def test_rejects_rows_the_runtime_cannot_hold(self):
         with self.assertRaises(ValueError):
             story.encode_door_pack(3, [])

@@ -79,11 +79,37 @@ class FloorProfileTableTests(unittest.TestCase):
                           and name not in profiles.REALGAM_FLOORS},
                          {"phenac": {0: 0, 1: 1, 2: 2, 3: 3, 4: 4, 5: 5}, "phenac_pregym1f": {136: 0},
                           "phenac_stadium1f": {6: 0, 7: 1}, "phenac_pregymb1": {137: 0}})
+        # Objects no door row names are map objects (floorInitMap opens every
+        # map model): the mayor's armchair and the Pokemon Center healing
+        # machine (fn_801D0DB0 battleIntroModels {0x20, 0x00651003}).
+        self.assertEqual({name: row["map_objects"] for name, row in profiles.FLOORS.items() if row.get("map_objects")},
+                         {"phenac_mayor1f": (0,), "phenac_pc1f": (3,), "under_enter_1f": (6,),
+                          "under_enter_b1": (5,), "auto_06b": (4,), "auto_06f": (1, 2, 3, 4, 8), "auto_07c": (3,)})
         self.assertEqual(rows["phenac_mayor2f"]["groups"], (((0, 1, 2), ("static", 0)),))
         # The exterior row keeps its exterior pack format; only its six doors
         # are object packs (checked above), as the door table needs.
         for key in ("scene", "pack_format", "path_joints", "material_colors"):
             self.assertNotIn(key, rows["phenac"])
+
+    def test_every_object_pack_is_drawn_by_a_door_row_or_as_a_map_object(self):
+        # The Pre Gym elevators (c6589eb) and the Mayor's house armchair and
+        # Pokemon Center machine (#20) had object packs no row named, so the
+        # field never loaded them. A floor like that must fail validation.
+        for name, row in profiles.geometry_floors().items():
+            with self.subTest(floor=name):
+                self.assertEqual(set(row.get("door_objects", {}).values()) | set(row.get("map_objects", ())),
+                                 set(row.get("objects", ())))
+        for name, change in (("phenac_mayor1f", {"map_objects": ()}), ("phenac_pc1f", {"map_objects": ()}),
+                             ("phenac_pregym1f", {"door_objects": {}}),
+                             ("under_enter_1f", {"map_objects": ()})):
+            with self.subTest(floor=name, change=change):
+                with self.assertRaisesRegex(ValueError, "never drawn"):
+                    profiles.validate({name: {**profiles.FLOORS[name], **change}})
+        for change in ({"map_objects": [0]}, {"map_objects": (0, 0)}, {"map_objects": (-1,)},
+                       {"map_objects": (True,)}, {"door_objects": {136: 0}, "map_objects": (0,)}):
+            with self.subTest(change=change):
+                with self.assertRaises(ValueError):
+                    profiles.validate({"phenac_mayor1f": {**profiles.FLOORS["phenac_mayor1f"], **change}})
 
     def test_partner_profile_matches_the_wes_clip_convention(self):
         partner = profiles.PARTNER

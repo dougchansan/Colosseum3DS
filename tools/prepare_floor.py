@@ -84,16 +84,17 @@ def schedule_frames(kind, end):
 AUTO_SHORT_END = 300
 
 
-def auto_geometry(scene, raw, Model):
+def auto_geometry(scene, raw, Model, forced=()):
     """Default geometry for a surveyed floor without a reviewed profile
     (the warp tour): multi-clip models are object packs (doors, machines)
-    whose clip the scripts choose; every other model shares one group whose
+    whose clip the scripts choose, as are the profile's map_objects (forced:
+    a one-clip model the bank plays and stops); every other model shares one group whose
     clock is the longest first clip. Unsupported texture modes are omitted
     and material colour animation is frozen, as on reviewed interiors. The
     first scene camera is the fixed camera; fog is not rendered."""
     options = {"allow_instances": True, "allow_paths": True, "frozen_material_colors": True}
     models = [Model(model, raw_model, **options) for model, raw_model in zip(scene.models, raw.models)]
-    objects = tuple(i for i, model in enumerate(models) if len(model.ends) > 1)
+    objects = tuple(i for i, model in enumerate(models) if len(model.ends) > 1 or i in forced)
     grouped = tuple(i for i in range(len(models)) if i not in objects)
     end = max([model.ends[0] for i, model in enumerate(models) if i in grouped and model.tracks and model.ends] or [0])
     kind = "static" if not end else "short" if end <= AUTO_SHORT_END else "sky"
@@ -108,7 +109,7 @@ def prepare_floor_geometry(archive, field_common, profile, output):
                                         bake_mesh, sample_sequence)
     data, raw, scene = load_scene(archive, profile["map"])
     if profile.get("auto") and "groups" not in profile:
-        profile = dict(profile, **auto_geometry(scene, raw, Model))
+        profile = dict(profile, **auto_geometry(scene, raw, Model, profile.get("map_objects", ())))
     elif len(scene.models) != profile["models"] or len(scene.cameras) != 1 or scene.fogs:
         raise ValueError("Original floor scene topology changed")
     if not scene.cameras:
@@ -196,11 +197,24 @@ def prepare_floor_geometry(archive, field_common, profile, output):
                 schedules = [(clip, sequence[::step] + ([sequence[-1]] if (len(sequence) - 1) % step else []), loop)
                              for clip, sequence, loop in schedules]
                 samples = sum(len(sequence) for _, sequence, _ in schedules)
+        # fn_801D0DB0 places the balls at the machine's parts 9-14 (joints
+        # in HSD order, none with a mesh): kept as the pack's last six bones.
+        retained = ()
+        if index == profile.get("healing_machine"):
+            if len(model.joints) <= HEAL_PARTS[-1]:
+                raise ValueError("Healing machine lacks its ball slot parts")
+            retained = tuple((model, part, part) for part in HEAL_PARTS)
         group = prepare_pack_set(own, schedules, 60, [fixed] * samples, lights, profile["sha256"], output,
                                  "%s_obj%d" % (profile["prefix"], index), expected_count=1,
-                                 format_version=version, gpu_textures=True, crop_textures=True)
+                                 format_version=version, gpu_textures=True, crop_textures=True,
+                                 retained_parts=retained)
         group[0].update(source_models=[index], sampling="object", source_clip_ends=list(model.ends))
+        if retained and [part["sampled_bone"] for part in group[0]["retained_parts"]] != list(
+                range(group[0]["sampled_bones"] - len(HEAL_PARTS), group[0]["sampled_bones"])):
+            raise ValueError("Healing machine ball slots are not the pack's last bones")
         object_reports += group
+    ball_reports = (prepare_heal_balls(archive, output, profile["prefix"], fixed, lights, profile["sha256"], version)
+                    if "healing_machine" in profile else [])
     wes_reports, actor_vertices = prepare_wes(field_common, output, profile["prefix"] + "_wes", fixed, lights,
                                               **({"format_version": version} if version != 2 else {}))
     instances = {str(i): [list(pair) for pair in model.instances]
@@ -210,8 +224,48 @@ def prepare_floor_geometry(archive, field_common, profile, output):
     paths = {str(i): sorted({joint for clip in model.paths for joint in clip})
              for i, model in enumerate(models) if any(model.paths)}
     extras = {"objects": object_reports, "frozen_material_tracks": frozen, "path_joints": paths,
-              "omitted_meshes": omitted}
-    return reports + object_reports + wes_reports, fixed[:11], actor_vertices, packs, instances, extras
+              "omitted_meshes": omitted, "heal_balls": [report["file"] for report in ball_reports]}
+    return reports + object_reports + ball_reports + wes_reports, fixed[:11], actor_vertices, packs, instances, extras
+
+
+# battleIntroPartIds and battleIntroObjectIds (fn_801D0DB0, 0x8036E030):
+# the machine's ball slot parts and the Poke Ball model of each catch ball id.
+HEAL_PARTS = (9, 10, 11, 12, 13, 14)
+HEAL_BALLS = (0x03640400, 0x03650400, 0x03640400, 0x036B0400, 0x03360400, 0x036A0400, 0x03660400,
+              0x03400400, 0x03670400, 0x03690400, 0x036C0400, 0x03630400, 0x03680400)
+
+
+def heal_ball_file(prefix, resource):
+    """<prefix>_ball_<resource group>.c3t: one pack per distinct ball model
+    (src/field_story.c c3_field_heal_ball). Each floor's archive holds the
+    same models, but a pack carries that floor's lights."""
+    return "%s_ball_%04x.c3t" % (prefix, resource >> 16)
+
+
+def prepare_heal_balls(archive, output, prefix, fixed, lights, archive_hash, version):
+    """The Poke Ball models fn_801D0DB0 opens with floorOpenObject (static,
+    one mesh; placed and scaled 1.5 at run time)."""
+    from prepare_field_geometry import load_scene, Model, build_mesh, prepare_pack_set
+    reports = []
+    for resource in sorted(set(HEAL_BALLS)):
+        _data, raw, scene = load_scene(archive, resource)
+        if len(scene.models) != 1:
+            raise ValueError("A Poke Ball resource must hold one model")
+        model = Model(scene.models[0], raw.models[0])
+        meshes = [build_mesh(model, i) for i in range(len(model.meshes))]
+        schedules = [(clip, sample_sequence_or_rest(end), False) for clip, end in enumerate(model.ends or [0.])]
+        samples = sum(len(sequence) for _, sequence, _ in schedules)
+        stem = heal_ball_file(prefix, resource)[:-len(".c3t")]
+        group = prepare_pack_set(meshes, schedules, 60, [fixed] * samples, lights, archive_hash, output, stem,
+                                 expected_count=1, format_version=version, gpu_textures=True)
+        group[0].update(source_resource="%08x" % resource, sampling="heal_ball")
+        reports += group
+    return reports
+
+
+def sample_sequence_or_rest(end):
+    from prepare_field_geometry import sample_sequence
+    return sample_sequence(end) if end else [0.]
 
 
 def common_rel(archive):

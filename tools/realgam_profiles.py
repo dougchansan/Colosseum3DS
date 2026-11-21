@@ -141,7 +141,10 @@ REALGAM_FLOORS = {'auto_066': {'floor': 102,
               'extra_messages': [],
               'event_cameras': (),
               'auto': True,
-              'door_objects': {123: 0}},
+              'door_objects': {123: 0},
+              # Model 4: the healing machine (battleIntroModels {0x89, 0x00511004}).
+              'map_objects': (4,),
+              'healing_machine': 4},
  'auto_06c': {'floor': 108,
               'lifecycle_row': 80,
               'resource_group': 138,
@@ -228,7 +231,15 @@ REALGAM_FLOORS = {'auto_066': {'floor': 102,
               'extra_messages': [],
               'event_cameras': (),
               'auto': True,
-              'door_objects': {128: 6, 129: 5, 130: 7}},
+              'door_objects': {128: 6, 129: 5, 130: 7},
+              # Models 1-4: the four key-gate locks. The bank loops clip 0
+              # (locked) or clip 2 (open) by flag with native 73, and plays
+              # clip 1 (17 frames) once when a key is used. Model 8 is the
+              # barrier, one 9-frame clip: function 1 holds it at frame 0
+              # (73 then 74) while flag 0xACC is set, else plays it to its end
+              # (73, 75); function 7 plays it and clears 0xACC. Automatic
+              # geometry would loop it with the map group.
+              'map_objects': (1, 2, 3, 4, 8)},
  'auto_070': {'floor': 112,
               'lifecycle_row': 84,
               'resource_group': 142,
@@ -449,7 +460,10 @@ REALGAM_FLOORS = {'auto_066': {'floor': 102,
               'story_pack': 'f07c.c3s',
               'extra_messages': [],
               'event_cameras': (),
-              'auto': True},
+              'auto': True,
+              # Model 3: the healing machine (battleIntroModels {0x94, 0x02371003}).
+              'map_objects': (3,),
+              'healing_machine': 3},
  'auto_07e': {'floor': 126,
               'lifecycle_row': 124,
               'resource_group': 150,

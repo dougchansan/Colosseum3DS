@@ -35,7 +35,14 @@ typedef struct C3AreaDoor {
     uint16_t part_bone_plus_one;     /* sampled bone of model part part_index; 0 = none */
     char file[40];                   /* prepared object pack; empty = not prepared */
 } C3AreaDoor;
-/* C3D1: the door-table rows of one floor with their object pack names. */
+/* A row whose index has this bit is a map object with no door-table row
+ * (low bits: its map model). floor.c floorInitMap opens every map model with
+ * floorOpenObject, which loops clip 0 at rate 0.5; natives 73-75 play its
+ * clips by resource. It has door type 0, no animations, collision or flags,
+ * and always an object pack; native 60 never names it. */
+#define C3_AREA_MAP_OBJECT_ROW 0x80000000u
+/* C3D1: the door-table rows of one floor with their object pack names, then
+ * its map object rows. */
 typedef struct C3AreaDoors {
     uint32_t floor, count;
     C3AreaDoor rows[C3_AREA_MAX_DOORS];

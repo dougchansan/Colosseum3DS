@@ -355,12 +355,32 @@ def extract_doors(rel, floors):
     return doors
 
 
+# C3D row index of a map object without a door-table row (src/area.h
+# C3_AREA_MAP_OBJECT_ROW | model): after every door row, never a native 60 index.
+MAP_OBJECT_ROW = 0x80000000
+
+
+def map_object_rows(profile):
+    """C3D rows of the profile's map_objects: object models no door row names.
+
+    floor.c floorInitMap registers map model n as resource modelBase | n
+    (floorReadMakeModelResID: the map member's group, type 0x10) and opens it
+    with floorOpenObject, which loops clip 0 at rate 0.5; natives 73-75 then
+    play its clips by that resource. The row has no door fields."""
+    base = (profile["map"] & 0xFFFF0000) | 0x1000
+    return [{"index": MAP_OBJECT_ROW | model, "floor": profile["floor"], "open_anim": -1, "close_anim": -1,
+             "open_end_anim": -1, "close_end_anim": -1, "alternate_anim_a": -1, "alternate_anim_b": -1,
+             "door_type": 0, "part_index": 0, "collision_id": -1, "open_flag": 0, "close_flag": 0,
+             "resource_id": "%08x" % (base | model)} for model in profile.get("map_objects", ())]
+
+
 def encode_door_pack(floor, rows, files=None):
     """C3D1, read by c3_area_doors_parse (src/area.c): a 32-byte header and one
-    64-byte little-endian row per door of the floor, in table order. files maps
-    a row index to its prepared object pack (prepare_floor.py <prefix>_obj<n>);
-    a row without one keeps an empty name, and native 60 then changes only the
-    flags and collision, as for a missing model."""
+    64-byte little-endian row per door of the floor, in table order, then one
+    per map object (map_object_rows). files maps a row index to its prepared
+    object pack (prepare_floor.py <prefix>_obj<n>); a door row without one
+    keeps an empty name, and native 60 then changes only the flags and
+    collision, as for a missing model. A map object row always names one."""
     files = files or {}
     rows = sorted(rows, key=lambda row: row["index"])
     if not rows or len(rows) > 16 or any(row["floor"] != floor for row in rows):
@@ -371,6 +391,11 @@ def encode_door_pack(floor, rows, files=None):
                                       "alternate_anim_a", "alternate_anim_b")]
         if any(not -1 <= value < 64 for value in anims) or row["collision_id"] < -1:
             raise ValueError("Door row %d exceeds the runtime pack" % row["index"])
+        if row["index"] & MAP_OBJECT_ROW and (
+                row["door_type"] or any(value != -1 for value in anims) or row["collision_id"] != -1 or
+                row["open_flag"] or row["close_flag"] or not files.get(row["index"]) or
+                not int(row["resource_id"], 16)):
+            raise ValueError("Map object row %#x carries door fields or no object pack" % row["index"])
         name = files.get(row["index"], "").encode("ascii")
         if len(name) >= 40 or not all(c in b"abcdefghijklmnopqrstuvwxyz0123456789_." for c in name):
             raise ValueError("Door object pack name is not a runtime file name")
@@ -445,11 +470,13 @@ def main():
             packs = {}
             rows_by_floor = {story_floors()[n]["floor"]: story_floors()[n] for n in names}
             for floor, (_archive, _script, _messages, story_pack) in areas.items():
-                own = [row for row in doors if row["floor"] == floor]
+                profile = rows_by_floor[floor]
+                own = [row for row in doors if row["floor"] == floor] + map_object_rows(profile)
                 if own:
                     prefix = story_pack[:-len(".c3s")]
                     name = prefix + ".c3d"
-                    objects = rows_by_floor[floor].get("door_objects", {})
+                    objects = {**profile.get("door_objects", {}),
+                               **{MAP_OBJECT_ROW | model: model for model in profile.get("map_objects", ())}}
                     pack = encode_door_pack(floor, own, {row: "%s_obj%d.c3t" % (prefix, model)
                                                          for row, model in objects.items()})
                     (output / name).write_bytes(pack)

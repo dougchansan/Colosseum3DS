@@ -279,6 +279,10 @@ int c3_area_doors_parse(C3AreaDoors *doors,const void *data,size_t bytes,char *e
                 return door_fail(error,capacity,"Invalid door pack file name.");
         }
         if(!terminated||d->file[0]=='.'||strstr(d->file,".."))return door_fail(error,capacity,"Invalid door pack file name.");
+        if((d->index&C3_AREA_MAP_OBJECT_ROW)&&(d->door_type||d->open_anim!=-1||d->close_anim!=-1||d->open_end_anim!=-1||
+           d->close_end_anim!=-1||d->alternate_a!=-1||d->alternate_b!=-1||d->collision_id!=-1||d->open_flag||
+           d->close_flag||!d->resource||!d->file[0]))
+            return door_fail(error,capacity,"Invalid map object row.");
     }
     *doors=next;if(error&&capacity)error[0]=0;return 1;
 }
