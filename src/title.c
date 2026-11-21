@@ -451,7 +451,8 @@ static size_t feed_memory(void *context, const uint8_t **chunk)
 }
 
 static uint64_t (*perf_clock)(void);
-static uint64_t last_unpack_us, last_decode_us;
+/* Per thread: the New 3DS loads packs on two cores at once (pack_loader). */
+static _Thread_local uint64_t last_unpack_us, last_decode_us;
 static uint64_t load_now(void) { return perf_clock ? perf_clock() : 0; }
 void c3_title_last_load(uint64_t *unpack_us, uint64_t *decode_us)
 {
@@ -471,6 +472,7 @@ static int adopt(C3Title *title, C3Title *temporary, char *error, size_t capacit
 int c3_title_load_memory(C3Title *title, const void *data, size_t bytes, char *error, size_t capacity)
 {
     size_t raw=bytes; int packed;
+    last_unpack_us=last_decode_us=0;
     if (!title || !data) return fail(error,capacity,"Invalid title load arguments");
     packed=c3_title_is_compressed(data,bytes,&raw);
     if (raw<HEADER_BYTES || raw>C3_TITLE_MAX_FILE_BYTES) return fail(error,capacity,"Invalid title file size");
@@ -495,6 +497,7 @@ int c3_title_load(C3Title *title, const char *path, char *error, size_t capacity
     C3Title *temporary;
     FILE *file;
     long bytes;
+    last_unpack_us=last_decode_us=0;
     if (!title || !path) return fail(error,capacity,"Invalid title load arguments");
     file=fopen(path,"rb");
     if (!file) return fail(error,capacity,"Cannot open title.c3t");

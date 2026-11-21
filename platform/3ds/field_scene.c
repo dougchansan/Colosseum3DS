@@ -3,6 +3,7 @@
 #include "game_ui_views.h"
 #include "ingame_menu.h"
 #include "pack_cache.h"
+#include "boot_index.h"
 #include "area_prefetch.h"
 #include "colosseum3ds/world_map.h"
 #include "debug_overlay.h"
@@ -296,6 +297,17 @@ static int field_species_name(void *context,unsigned species,char *out,size_t ca
     C3IngameMenu *menu=context;C3PdaSpecies entry;
     if(!menu||!menu->active||!menu->assets.data||!c3_pda_species(&menu->assets,species,&entry))return 0;
     return c3_pda_text(&menu->assets,entry.name,"","",out,capacity);
+}
+/* One area-load stage: time since the load started and the boot/ lookups
+ * that reached the SD card meanwhile (boot_index.h); frames<0 omits frames. */
+static void trace_stage(FILE *trace,const char *name,int frames,uint64_t start_us,const C3BootFsStats *base)
+{
+    if(!trace)return;
+    C3BootFsStats now;c3_boot_fs_stats(&now);
+    fprintf(trace,"field_load_stage name=%s",name);
+    if(frames>=0)fprintf(trace," frames=%d",frames);
+    fprintf(trace," us=%llu fs_lookups=%u fs_us=%llu fs_answered=%u\n",(unsigned long long)(c3_n3ds_time_us()-start_us),
+            now.lookups-base->lookups,(unsigned long long)(now.lookup_us-base->lookup_us),now.answered-base->answered);
 }
 /* Top-screen progress while the pack jobs run (main thread). */
 static void load_progress(size_t done,size_t total)
@@ -747,6 +759,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     unsigned wes_index=0,arrival_index=0,tv_index=UINT32_MAX,partner_index=UINT32_MAX,selection=0,frames=0;
     /* Load timing for the trace: area start, each pack, first control. */
     uint64_t load_start_us=c3_n3ds_time_us(),pack_us=0;int load_reported=0;
+    C3BootFsStats fs_base;c3_boot_fs_stats(&fs_base);c3_boot_index_trace(trace);
     /* People load with the room (both cores) and are bound before the first
      * frame; npc.attached is then set and npc_stream_attach is a no-op. */
     NpcStream npc={0};
@@ -781,7 +794,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     if(!c3_field_load(&map,path,error,capacity))goto done;
     snprintf(path,sizeof path,BOOT_ROOT "%s.c3a",prefix);
     if(!c3_area_load(&area,path,error,capacity))goto done;
-    if(trace){fprintf(trace,"field_load_stage name=%s us=%llu\n","field_area_files",(unsigned long long)(c3_n3ds_time_us()-load_start_us));}
+    trace_stage(trace,"field_area_files",-1,load_start_us,&fs_base);
     {   /* Event surfaces may sit on CCD objects past the walk/wall rows
          * (the mayor's-house exit is on object 3 of three): cover them. */
         uint32_t objects=0;
@@ -874,6 +887,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         size_t bad=n?c3_pack_load_all(pending,n,after_journey?NULL:load_progress):0;
         for(unsigned k=0;k<n;++k){C3PackJob *job=slot[k]<load_total?jobs+slot[k]:npc.jobs+(slot[k]-load_total);
             job->ok=pending[k].ok;job->microseconds=pending[k].microseconds;
+            job->unpack_us=pending[k].unpack_us;job->decode_us=pending[k].decode_us;job->core=pending[k].core;
             snprintf(job->error,sizeof job->error,"%s",pending[k].error);}
         if(bad&&slot[bad-1]<load_total)failed=slot[bad-1]+1u;
         free(pending);free(slot);
@@ -881,8 +895,9 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     if(trace){fprintf(trace,"field_prefetch taken=%u of=%u\n",prefetched,load_total);}
     if(trace){fprintf(trace,"field_pack_jobs count=%u us=%llu\n",load_total,(unsigned long long)(c3_n3ds_time_us()-pack_us));}
     for(unsigned j=0;j<load_total;++j){
-        if(trace)fprintf(trace,"field_pack_load file=%s bytes=%lu us=%llu ok=%d\n",jobs[j].path,
-                         (unsigned long)jobs[j].title->file_bytes,(unsigned long long)jobs[j].microseconds,jobs[j].ok);
+        if(trace)fprintf(trace,"field_pack_load file=%s bytes=%lu us=%llu ok=%d unpack_us=%llu decode_us=%llu core=%d\n",jobs[j].path,
+                         (unsigned long)jobs[j].title->file_bytes,(unsigned long long)jobs[j].microseconds,jobs[j].ok,
+                         (unsigned long long)jobs[j].unpack_us,(unsigned long long)jobs[j].decode_us,jobs[j].core);
     }
     opened=load_total; /* every room slot; `done` closes them, loaded or not */
     if(failed){snprintf(error,capacity,"%s",jobs[failed-1].error);free(jobs);goto done;}
@@ -904,8 +919,9 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     /* Bind the people loaded with the room, posed on their idle clip. */
     for(uint32_t j=0;j<npc.count;++j){
         C3PackJob *job=npc.jobs+j;uint32_t slot=npc.first+j,i=npc.area_index[j];
-        if(trace)fprintf(trace,"field_pack_load file=%s bytes=%lu us=%llu ok=%d\n",job->path,
-                         (unsigned long)job->title->file_bytes,(unsigned long long)job->microseconds,job->ok);
+        if(trace)fprintf(trace,"field_pack_load file=%s bytes=%lu us=%llu ok=%d unpack_us=%llu decode_us=%llu core=%d\n",job->path,
+                         (unsigned long)job->title->file_bytes,(unsigned long long)job->microseconds,job->ok,
+                         (unsigned long long)job->unpack_us,(unsigned long long)job->decode_us,job->core);
         if(!job->ok){snprintf(error,capacity,"%s",job->error);goto done;}
         snprintf(model_paths[slot],sizeof model_paths[slot],"%s",job->path);
         models[slot]=storage+slot;actor_models[i]=storage+slot;
@@ -946,7 +962,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     }
     /* Reviewed floors name their event camera; a surveyed floor loads one
      * when tools/prepare_tour.py prepared it. */
-    if(trace){fprintf(trace,"field_load_stage name=%s us=%llu\n","packs",(unsigned long long)(c3_n3ds_time_us()-load_start_us));}
+    trace_stage(trace,"packs",-1,load_start_us,&fs_base);
     snprintf(path,sizeof path,BOOT_ROOT "%s_camera.c3c",prefix);
     if((profile->features&C3_FLOOR_ROOM_CAMERA)||exists(path)){
         if(!c3_area_camera_load(&room_camera,path,error,capacity))goto done;
@@ -973,17 +989,17 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     }
     skin_actors=UINT64_C(1)<<wes_index;
     for(uint32_t i=arrival_index+arrival_count;i<count&&i<64u;++i)if(i!=tv_index)skin_actors|=UINT64_C(1)<<i;
-    if(trace){fprintf(trace,"field_load_stage name=%s us=%llu\n","cameras_lights",(unsigned long long)(c3_n3ds_time_us()-load_start_us));}
+    trace_stage(trace,"cameras_lights",-1,load_start_us,&fs_base);
     /* Room and people together: one renderer start, no mid-scene restart. */
     if(field_renderer_init(storage,models,count,skin_actors,error,capacity))goto done;
-    if(trace){fprintf(trace,"field_load_stage name=%s us=%llu\n","renderer",(unsigned long long)(c3_n3ds_time_us()-load_start_us));}
+    trace_stage(trace,"renderer",-1,load_start_us,&fs_base);
     if(tv_index!=UINT32_MAX&&!c3_stage_renderer_set_tv(tv_index,1,1,true,error,capacity))goto done;
     snprintf(path,sizeof path,"%s_ready",prefix);
     c3_n3ds_log_memory(trace,path);
     snprintf(path,sizeof path,BOOT_ROOT "%s",profile->story);
     if(!c3_field_story_load(&story,path,state,&map,&area,&player,wes,actor_models,&room_camera,trace,story_error))goto story_failed;
     if(partner_index!=UINT32_MAX&&!c3_field_story_attach_partner(&story,storage+partner_index,story_error))goto story_failed;
-    if(trace){fprintf(trace,"field_load_stage name=%s us=%llu\n","story",(unsigned long long)(c3_n3ds_time_us()-load_start_us));}
+    trace_stage(trace,"story",-1,load_start_us,&fs_base);
     if(trace){fprintf(trace,"field_people_visible frame=0 people=%lu streamed=0\n",(unsigned long)npc.count);fflush(trace);}
     {   /* Treasure people of the floor (<prefix>.c3r beside the story pack). */
             char treasure[256];size_t n;snprintf(treasure,sizeof treasure,BOOT_ROOT "%s",profile->story);n=strlen(treasure);
@@ -1509,7 +1525,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         }
         float fade=view->fade;
         if(phase==FIELD_SETUP&&view->prepared){phase=arrival?FIELD_ARRIVAL:FIELD_FADE_IN;phase_seconds=0;dirty=1;
-            if(trace){fprintf(trace,"field_load_stage name=prepared frames=%u us=%llu\n",frames,(unsigned long long)(c3_n3ds_time_us()-load_start_us));}}
+            trace_stage(trace,"prepared",(int)frames,load_start_us,&fs_base);}
         if(phase==FIELD_ARRIVAL&&phase_seconds>=arrival_seconds){
             phase=FIELD_ARRIVAL_OUT;phase_seconds=0;dirty=1;
             if(trace){fprintf(trace,"field_arrival camera_end=1 actors_closed=1\n");fflush(trace);}
@@ -1526,6 +1542,10 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         if(phase==FIELD_FADE_IN&&phase_seconds>=(arrival?1.0f:.5f)){
             phase=FIELD_CONTROL;phase_seconds=0;dirty=1;
             if(!load_reported&&trace){c3_pack_cache_trace(trace,"control");load_reported=1;
+                C3BootFsStats fs;c3_boot_fs_stats(&fs);
+                fprintf(trace,"field_fs lookups=%u us=%llu answered=%u session_max_us=%llu session_max=%s\n",fs.lookups-fs_base.lookups,
+                        (unsigned long long)(fs.lookup_us-fs_base.lookup_us),fs.answered-fs_base.answered,
+                        (unsigned long long)fs.max_us,fs.max_name);
                 fprintf(trace,"field_load_to_control floor=%lu us=%llu\n",(unsigned long)map.floor,
                         (unsigned long long)(c3_n3ds_time_us()-load_start_us));fflush(trace);}
         }

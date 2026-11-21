@@ -10,11 +10,17 @@ typedef struct {
     C3Title *title;
     int ok;
     uint64_t microseconds;
+    /* Of microseconds: decompression and parsing (the rest is the SD card
+     * and allocation), and the core that ran the job. */
+    uint64_t unpack_us, decode_us;
+    int core;
     char error[192];
 } C3PackJob;
 
 /* Load every job, on the main core and (on New 3DS) the second application
- * core in parallel; jobs are taken in order from a shared counter. progress
+ * core in parallel. The main core takes the largest packs first and the
+ * second core (several times slower per pack on the console) the smallest,
+ * by compressed size from the boot index; with no sizes, list order. progress
  * (may be NULL) is called on the main thread with the number of finished
  * jobs. Returns the number of the first failed job + 1, or 0 when all
  * loaded. Uses c3_pack_cache_load, which is safe across the two threads. */
