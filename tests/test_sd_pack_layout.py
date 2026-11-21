@@ -29,11 +29,11 @@ class SdPackLayoutTest(unittest.TestCase):
             for name in names:
                 (boot / name).write_bytes(name.encode())
             self.assertEqual(layout.main(["--local", root, "--apply"]), 0)
-            self.assertEqual(sorted(p.name for p in boot.iterdir()), ["tpc.c3v", "ui.c3ui"])
-            self.assertEqual(Path(root, "packs/phenac_pc1f/phenac_pc1f_npc0.c3t").read_bytes(), b"phenac_pc1f_npc0.c3t")
-            self.assertTrue(Path(root, "packs/f02f/f02f.c3s").is_file())
+            self.assertEqual(sorted(p.name for p in boot.iterdir() if p.is_file()), ["tpc.c3v", "ui.c3ui"])
+            self.assertEqual(Path(root, "boot/packs/phenac_pc1f/phenac_pc1f_npc0.c3t").read_bytes(), b"phenac_pc1f_npc0.c3t")
+            self.assertTrue(Path(root, "boot/packs/f02f/f02f.c3s").is_file())
             self.assertEqual(layout.main(["--local", root, "--undo", "--apply"]), 0)
-            self.assertEqual(sorted(p.name for p in boot.iterdir()), sorted(names))
+            self.assertEqual(sorted(p.name for p in boot.iterdir() if p.is_file()), sorted(names))
             for name in names:
                 self.assertEqual((boot / name).read_bytes(), name.encode())
 

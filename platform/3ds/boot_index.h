@@ -4,7 +4,7 @@
 #include <stdio.h>
 
 /* Name index of sdmc:/3ds/Colosseum3DS/boot/ (and of the optional grouped
- * tree sdmc:/3ds/Colosseum3DS/packs/<group>/, tools/sd_pack_layout.py).
+ * tree sdmc:/3ds/Colosseum3DS/boot/packs/<group>/, tools/sd_pack_layout.py).
  *
  * On the console every path lookup in boot/ scans that FAT directory from
  * its start (about 1900 entries): a file late in it costs ~0.4 s to open and

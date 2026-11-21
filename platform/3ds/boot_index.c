@@ -7,8 +7,8 @@
 
 #define BOOT_PREFIX "sdmc:/3ds/Colosseum3DS/boot/"
 #define BOOT_DIR "/3ds/Colosseum3DS/boot"
-#define PACKS_DIR "/3ds/Colosseum3DS/packs"
-#define PACKS_PREFIX "sdmc:/3ds/Colosseum3DS/packs/"
+#define PACKS_DIR "/3ds/Colosseum3DS/boot/packs"
+#define PACKS_PREFIX "sdmc:/3ds/Colosseum3DS/boot/packs/"
 #define READ_BATCH 64u
 
 FILE *__real_fopen(const char *path, const char *mode);
@@ -16,7 +16,7 @@ int __real_stat(const char *path, struct stat *st);
 
 typedef struct {
     uint32_t name;   /* offset into names */
-    uint32_t group;  /* 0: boot/ itself, n: packs/<group n-1>/ */
+    uint32_t group;  /* 0: boot/ itself, n: boot/packs/<group n-1>/ */
     uint64_t size;
     uint8_t directory;
 } Entry;

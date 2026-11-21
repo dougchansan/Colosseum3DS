@@ -5,7 +5,7 @@ On the console every path lookup in sdmc:/3ds/Colosseum3DS/boot/ scans that
 FAT directory from the start (about 1900 entries): opening a file late in it
 costs ~0.4 s and a missing file ~0.85 s (hardware traces, 2026-11-20). The
 game resolves every boot/<name> lookup through an index of boot/ and of the
-grouped tree /3ds/Colosseum3DS/packs/<group>/ (platform/3ds/boot_index.c), so
+grouped tree /3ds/Colosseum3DS/boot/packs/<group>/ (platform/3ds/boot_index.c), so
 the same files can live in small per-floor directories instead, where a
 lookup scans a few dozen entries. A file still in boot/ wins over a grouped
 copy; builds before the index need everything back in boot/ (--undo).
@@ -29,7 +29,7 @@ from pathlib import Path
 
 ROOT = "/3ds/Colosseum3DS"
 BOOT = ROOT + "/boot"
-PACKS = ROOT + "/packs"
+GROUPS = "boot/packs"  # relative to ROOT: inside boot/, whose freed early slots keep this entry near the top
 PROFILES = Path(__file__).resolve().parent.parent / "src" / "floor_profile.c"
 SURVEYED = re.compile(r"^f[0-9a-f]{3}(?=[_.])")
 
@@ -62,13 +62,13 @@ def plan(boot_files, grouped, prefixes, undo):
         for group, names in sorted(grouped.items()):
             for name in sorted(names):
                 if name.lower() not in present:
-                    moves.append((f"packs/{group}/{name}", f"boot/{name}"))
+                    moves.append((f"{GROUPS}/{group}/{name}", f"boot/{name}"))
         return moves
     taken = {(g, n.lower()) for g, names in grouped.items() for n in names}
     for name in sorted(boot_files):
         group = group_of(name, prefixes)
         if group and (group, name.lower()) not in taken:
-            moves.append((f"boot/{name}", f"packs/{group}/{name}"))
+            moves.append((f"boot/{name}", f"{GROUPS}/{group}/{name}"))
     return moves
 
 
@@ -134,8 +134,8 @@ def main(argv=None):
     card = Local(args.local) if args.local else Remote(args.ftp)
     prefixes = floor_prefixes()
     boot_files, _ = card.files("boot")
-    _, groups = card.files("packs")
-    grouped = {group: card.files(f"packs/{group}")[0] for group in groups}
+    _, groups = card.files(GROUPS)
+    grouped = {group: card.files(f"{GROUPS}/{group}")[0] for group in groups}
     moves = plan(boot_files, grouped, prefixes, args.undo)
     kept = len(boot_files) - (0 if args.undo else len(moves))
     print(f"boot files={len(boot_files)} grouped={sum(map(len, grouped.values()))} "
@@ -145,9 +145,9 @@ def main(argv=None):
     if not args.apply:
         return 0
     if moves and not args.undo:
-        card.mkdir("packs")
-        for group in sorted({destination.split("/")[1] for _, destination in moves}):
-            card.mkdir(f"packs/{group}")
+        card.mkdir(GROUPS)
+        for group in sorted({destination[len(GROUPS) + 1:].split("/")[0] for _, destination in moves}):
+            card.mkdir(f"{GROUPS}/{group}")
     for index, (source, destination) in enumerate(moves, 1):
         card.rename(source, destination)
         if index % 100 == 0:
