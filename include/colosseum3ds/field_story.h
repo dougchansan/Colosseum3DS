@@ -174,8 +174,22 @@ void c3_field_story_set_audio_service(C3FieldStory *story,C3FieldStoryAudio audi
  * door's current clip and time to sample its model. Map object rows
  * (C3_AREA_MAP_OBJECT_ROW) loop clip 0 from binding, as floorOpenObject
  * starts them; natives 73-75 play, stop and wait on any row's model by its
- * resource (fn_801CB834, fn_801CB7C4, scriptWaitSyncMotion). */
-typedef struct C3StoryDoor { C3Title *model; uint32_t clip; float seconds; int playing, loop; } C3StoryDoor;
+ * resource (fn_801CB834, fn_801CB7C4, scriptWaitSyncMotion). rate scales
+ * the pack's clock: 1 is the original rate 0.5, 2 its rate 1.0. */
+typedef struct C3StoryDoor { C3Title *model; uint32_t clip; float seconds; int playing, loop; float rate; } C3StoryDoor;
+/* Native 53 mode 0 (fn_801D0DB0): the floor's healing machine is the map
+ * object whose resource battleIntroModels gives for the area group (0 when
+ * none). Its pack keeps source parts 9-14, the ball slots, as its last six
+ * bones. c3_field_heal_ball names the Poke Ball pack of a catch ball id
+ * (battleIntroObjectIds; NULL above 12): <prefix>_ball_<group>.c3t. */
+#define C3_HEAL_BALL_SLOTS 6u
+uint32_t c3_field_heal_machine(uint32_t group);
+int c3_field_heal_ball(const char *prefix,uint32_t catch_ball,char *out,size_t capacity);
+/* The ball models the scene loaded for party slots 0..count-1, and the catch
+ * ball id each one shows. Borrowed; the story places, scales (1.5) and
+ * shows them during the heal and keeps them hidden otherwise. */
+int c3_field_story_bind_heal_balls(C3FieldStory *story,C3Title *const *models,const uint8_t *balls,
+                                   uint32_t count,char *error);
 int c3_field_story_bind_doors(C3FieldStory *story,const C3AreaDoor *rows,uint32_t count,
                               C3Title *const *models,char *error);
 const C3StoryDoor *c3_field_story_door(const C3FieldStory *story,uint32_t position);

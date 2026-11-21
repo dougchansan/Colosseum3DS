@@ -20,7 +20,7 @@
 
 typedef enum { W_NONE, W_SECONDS, W_TASK, W_MOTION, W_MOVE, W_CAMERA,
                W_CAMERA_MOVE, W_FADE, W_MESSAGE, W_CHOICE, W_TV, W_BATTLE, W_NAME, W_ITEM, W_DOOR, W_SHOP, W_MENU_FLOOR, W_JINGLE, W_DIALOG,
-               W_RELIVE, W_FALL, W_ITEM_MENU, W_OBJECT } Wait;
+               W_RELIVE, W_FALL, W_ITEM_MENU, W_OBJECT, W_HEAL } Wait;
 typedef struct {
     uint16_t key, child;
     C3StoryCall call;
@@ -97,6 +97,11 @@ typedef struct {
     C3FieldStoryTake take;void *take_context;
     C3FieldStoryAudio audio;void *audio_context;
     const C3AreaDoor *door_rows;C3StoryDoor doors[C3_AREA_MAX_DOORS];uint32_t door_count;
+    /* Native 53 mode 0 (fn_801D0DB0): the ball models the scene loaded and
+     * the catch ball each shows, then the running sequence's state. */
+    C3Title *heal_models[C3_HEAL_BALL_SLOTS];uint8_t heal_bound[C3_HEAL_BALL_SLOTS];uint32_t heal_model_count;
+    struct { uint32_t stage,count,ball,machine,group,id;float timer,yaw;int person;
+             uint8_t shown[C3_HEAL_BALL_SLOTS];float at[C3_HEAL_BALL_SLOTS][3]; } heal;
     C3FieldStoryRestore restore;void *restore_context;
     C3FieldStoryRestore clear_poison;void *poison_context;
     C3FieldStoryPurify purify;void *purify_context;
@@ -294,6 +299,39 @@ static C3StoryDoor *map_object(Impl *s,uint32_t resource,uint32_t *position)
         if(s->door_rows[i].resource==resource&&s->doors[i].model){if(position)*position=i;return s->doors+i;}
     return NULL;
 }
+/* fn_801D0DB0's tables (0x8036E030): battleIntroModels (area group ->
+ * healing machine resource) and battleIntroObjectIds (catch ball id -> Poke
+ * Ball model; ids 0 and 2 share one). */
+static const struct { uint32_t group,resource; } heal_machines[]={
+    {0x20,0x00651003},{0x37,0x00A31009},{0x6E,0x002B1004},{0x89,0x00511004},{0x94,0x02371003},{0x41,0x00C21005},
+    {0x49,0x01DC1003},{0x5E,0x02E41006},{0x5F,0x02E51005},{0x3B,0x00931003},{0x633,0x10BB1005}};
+static const uint32_t heal_ball_models[13]={0x03640400,0x03650400,0x03640400,0x036B0400,0x03360400,0x036A0400,
+    0x03660400,0x03400400,0x03670400,0x03690400,0x036C0400,0x03630400,0x03680400};
+uint32_t c3_field_heal_machine(uint32_t group)
+{
+    for(size_t i=0;i<sizeof heal_machines/sizeof heal_machines[0];++i)if(heal_machines[i].group==group)return heal_machines[i].resource;
+    return 0;
+}
+int c3_field_heal_ball(const char *prefix,uint32_t catch_ball,char *out,size_t capacity)
+{
+    if(!prefix||!out||catch_ball>=13)return 0;
+    int n=snprintf(out,capacity,"%s_ball_%04lx.c3t",prefix,(unsigned long)(heal_ball_models[catch_ball]>>16));
+    return n>0&&(size_t)n<capacity;
+}
+/* GSpartGetTransform position: the world translation of machine part 9-14,
+ * kept as the pack's last six sampled bones. */
+static void heal_part(const C3Title *machine,uint32_t part,float out[3])
+{
+    const float *m=machine->pose.matrices[machine->bone_count-C3_HEAL_BALL_SLOTS+(part-9u)];
+    out[0]=m[3];out[1]=m[7];out[2]=m[11];
+}
+/* fn_801D0AA0: the catch ball of party slot i, 0 for an empty slot. */
+static uint32_t party_ball(Impl *s,uint32_t slot)
+{
+    uint8_t record[0x138];
+    return c3_game_state_pokemon(s->game,slot,record)&&(record[0]|record[1])?record[0x0f]:0u;
+}
+static void start_turn(Impl *s,Person *p,float yaw,float speed);
 static void partner_place_behind(Impl *s);
 /* Every person the scene draws: the floor's people, Wes, then the partner. */
 static Person *person_at(Impl *s,uint32_t i)
@@ -923,7 +961,28 @@ static int run_native(Impl *s,RunTask *t,char *error)
         int restored=s->restore(s->restore_context);
         if(restored<0)return fail(error,"Native 53 mode %lu party service failed",(unsigned long)a[2]);
         log_line(s,"story_party_restore native=53 mode=%lu members=%d",(unsigned long)a[2],restored);
-        note_presentation(s,0x53,a[2]?"heal_fade_jingle":"heal_machine_balls");
+        if(a[2]){note_presentation(s,0x53,"heal_fade_jingle");break;}
+        /* Mode 0: the machine sequence holds the script until it ends. */
+        uint32_t count=0;uint8_t record[0x138];
+        for(uint32_t i=0;i<6;++i)if(c3_game_state_pokemon(s->game,i,record)&&(record[0]|record[1]))++count;
+        object=map_object(s,c3_field_heal_machine(s->area->group),&object_row);
+        if(!object||!count||count>=object->model->clip_count||object->model->bone_count<=C3_HEAL_BALL_SLOTS){
+            note_presentation(s,0x53,"heal_machine_balls");break;}
+        memset(&s->heal,0,sizeof s->heal);
+        s->heal.count=count;s->heal.machine=object_row;s->heal.group=a[0];s->heal.id=a[1];
+        for(uint32_t i=0;i<count;++i)if(i>=s->heal_model_count||s->heal_bound[i]!=party_ball(s,i)){
+            note_presentation(s,0x53,"heal_ball_model_stale");break;}
+        p=person(s,a[0],a[1]);
+        if(p){
+            /* Face machine part 14 at turn speed 2, remembering the yaw. */
+            float at[3];heal_part(object->model,14,at);
+            s->heal.person=1;s->heal.yaw=pose(s,p)->yaw;
+            start_turn(s,p,atan2f(at[0]-pose(s,p)->position[0],at[2]-pose(s,p)->position[2]),2.0f);
+        }else s->heal.stage=1;
+        log_line(s,"story_heal_start resource=%08lx balls=%lu person=%d",
+                 (unsigned long)s->door_rows[object_row].resource,(unsigned long)count,s->heal.person);
+        note_presentation(s,0x53,"heal_sound_effects_silent");
+        t->wait=W_HEAL;return 1;
         }break;
     /* fn_80188984 (peopleIsHeadTurning): head turns complete at once here. */
     case 0x9b:value=0;break;
@@ -1296,7 +1355,7 @@ static int run_native(Impl *s,RunTask *t,char *error)
             /* GSmodelSetAnimIndex/Frame, rate 0.5 (30 source frames a
              * second), loop or one-shot; the pack's clip is both tracks. */
             float end=(float)(object->model->clips[a[1]].frame_count-1u)/object->model->fps;
-            object->clip=a[1];object->loop=a[3]!=0;object->playing=1;
+            object->clip=a[1];object->loop=a[3]!=0;object->playing=1;object->rate=1;
             object->seconds=fminf(end,fmaxf(0,(float)(int32_t)a[2]/30.0f));
             log_line(s,"story_object_motion resource=%08lx clip=%lu loop=%lu",(unsigned long)a[0],(unsigned long)a[1],(unsigned long)a[3]);}
         else if(c->native==0x73)note_presentation(s,c->native,"map_object_animation_unrendered");
@@ -1776,6 +1835,41 @@ static int wait_task(Impl *s,RunTask *t,float seconds,uint16_t *pressed,char *er
     case W_OBJECT:
         if(t->stage<s->door_count&&s->doors[t->stage].playing)return 1;
         return resume(s,t,0,error);
+    case W_HEAL:{
+        /* fn_801D0DB0: turn to the machine, one ball every half second into
+         * parts 9.., clip <balls> at rate 1.0 with jingle 0x19 played to its
+         * end (fn_801653CC), the clip's end, 0.7 s, the balls removed, 0.7 s,
+         * then turn back. The machine keeps the clip's last frame. */
+        C3StoryDoor *machine=s->doors+s->heal.machine;
+        Person *nurse=s->heal.person?person(s,s->heal.group,s->heal.id):NULL;
+        switch(s->heal.stage){
+        case 0:if(nurse&&nurse->turning)return 1;s->heal.stage=1;/* fall through */
+        case 1:{uint32_t i=s->heal.ball;
+            heal_part(machine->model,9u+i,s->heal.at[i]);s->heal.shown[i]=1;s->heal.timer=0;s->heal.stage=2;
+            log_line(s,"story_heal_ball slot=%lu ball=%lu",(unsigned long)i,(unsigned long)party_ball(s,i));
+            return 1;}
+        case 2:
+            s->heal.timer+=seconds;if(s->heal.timer<.5f)return 1;
+            if(++s->heal.ball<s->heal.count){s->heal.stage=1;return 1;}
+            machine->clip=s->heal.count;machine->seconds=0;machine->loop=0;machine->playing=1;machine->rate=2;
+            log_line(s,"story_heal_machine clip=%lu",(unsigned long)s->heal.count);
+            if(s->audio&&s->audio(s->audio_context,C3_STORY_AUDIO_JINGLE,0x19,0,0xff)>0){
+                t->jingle=0x19;t->jingle_seconds=0;log_line(s,"story_jingle sound=019 status=playing");s->heal.stage=3;return 1;}
+            note_presentation(s,0x53,"heal_jingle_stream_missing");s->heal.stage=4;return 1;
+        case 3:if(jingle_playing(s,t,seconds))return 1;s->heal.stage=4;/* fall through */
+        case 4:if(machine->playing)return 1;s->heal.timer=0;s->heal.stage=5;return 1;
+        case 5:
+            s->heal.timer+=seconds;if(s->heal.timer<.7f)return 1;
+            memset(s->heal.shown,0,sizeof s->heal.shown);s->heal.timer=0;s->heal.stage=6;
+            log_line(s,"story_heal_balls_removed");return 1;
+        case 6:
+            s->heal.timer+=seconds;if(s->heal.timer<.7f)return 1;
+            s->heal.stage=7;if(nurse)start_turn(s,nurse,s->heal.yaw,2.0f);return 1;
+        default:
+            if(nurse&&nurse->turning)return 1;
+            log_line(s,"story_heal_done balls=%lu",(unsigned long)s->heal.count);
+            return resume(s,t,0,error);
+        }}
     case W_ITEM:{
         /* Wait for the shared window before adding the item, so a retry
          * never adds it twice. */
@@ -2061,7 +2155,7 @@ int c3_field_story_bind_doors(C3FieldStory *story,const C3AreaDoor *rows,uint32_
     if(!s||s->entered||count>C3_AREA_MAX_DOORS||(count&&(!rows||!models)))return fail(error,"Invalid door binding");
     memset(s->doors,0,sizeof s->doors);s->door_rows=rows;s->door_count=count;
     for(uint32_t i=0;i<count;++i){
-        C3StoryDoor *door=s->doors+i;uint32_t open=0;door->model=models[i];
+        C3StoryDoor *door=s->doors+i;uint32_t open=0;door->model=models[i];door->rate=1;
         /* A door whose open flag is already set stands open, with or without
          * a model: its collision is off; a model shows the end of its open
          * animation, otherwise its first frame. */
@@ -2085,6 +2179,16 @@ int c3_field_story_bind_doors(C3FieldStory *story,const C3AreaDoor *rows,uint32_
 
     }
     return 1;
+}
+int c3_field_story_bind_heal_balls(C3FieldStory *story,C3Title *const *models,const uint8_t *balls,
+                                   uint32_t count,char *error)
+{
+    Impl *s=story?story->impl:NULL;
+    if(!s||count>C3_HEAL_BALL_SLOTS||(count&&(!models||!balls)))return fail(error,"Invalid heal ball binding");
+    for(uint32_t i=0;i<count;++i)if(!models[i]||balls[i]>=13)return fail(error,"Invalid heal ball binding");
+    memset(s->heal_models,0,sizeof s->heal_models);
+    for(uint32_t i=0;i<count;++i){s->heal_models[i]=models[i];s->heal_bound[i]=balls[i];}
+    s->heal_model_count=count;return 1;
 }
 const C3StoryDoor *c3_field_story_door(const C3FieldStory *story,uint32_t position)
 {
@@ -2493,7 +2597,7 @@ int c3_field_story_tick(C3FieldStory *story,float seconds,uint16_t pressed,char 
     for(uint32_t i=0;i<s->door_count;++i){C3StoryDoor *door=s->doors+i;
         if(!door->playing||!door->model)continue;
         float end=(float)(door->model->clips[door->clip].frame_count-1u)/door->model->fps;
-        door->seconds+=seconds;
+        door->seconds+=seconds*door->rate;
         if(door->seconds>=end&&door->loop)door->seconds=end>0?fmodf(door->seconds,end):0;
         else if(door->seconds>=end){door->seconds=end;door->playing=0;}
     }
@@ -2838,6 +2942,12 @@ int c3_field_story_sample(C3FieldStory *story,char *error)
     }
     /* All parent samples are current before resolving a passenger. Original
      * actor-table order places passengers before the vehicle. */
+    /* Poke Balls of the heal: GSmodelSetPosition at their part, scale 1.5. */
+    for(uint32_t i=0;i<s->heal_model_count;++i){C3Title *ball=s->heal_models[i];
+        c3_title_place_yaw(ball,s->heal.at[i],1.0f,0.0f,1.5f,1);
+        ball->retained=1;ball->hidden=(uint8_t)!s->heal.shown[i];
+        if(!c3_title_animate(ball,0,0))return fail(error,"Original Poke Ball sample failed");
+    }
     for(uint32_t i=0;i<=s->area->actor_count+1u;++i)
         if(!attachment_pose(s,person_at(s,i),error))return 0;
     for(uint32_t i=0;i<=s->area->actor_count+1u;++i){Person *p=person_at(s,i);

@@ -36,6 +36,10 @@ Interior rows ("scene": "interior") add:
                                          their clips by resource. Each object
                                          is in door_objects or here, never
                                          neither: an unnamed pack is never drawn
+  healing_machine                        the map object native 53 mode 0 plays
+                                         (fn_801D0DB0 battleIntroModels); its
+                                         pack retains source parts 9-14, the
+                                         ball slots, as its last six bones
   path_joints                           admit HSD path tracks (cardinal spline)
   material_colors                        "constant": fold constant material RGB
                                          tracks; "frozen": also keep animated
@@ -222,6 +226,7 @@ FLOORS = {
         # 53 mode 0 (fn_801D0DB0, battleIntroModels {0x20, 0x00651003}) plays
         # clip <party size> once at rate 1.0.
         "map_objects": (3,),
+        "healing_machine": 3,
         "path_joints": True,
         "material_colors": "frozen",
         # Three meshes of model 2 use HSD colour map mode 2.
@@ -561,6 +566,8 @@ def validate(profiles=None):
                 any(isinstance(m, bool) or not isinstance(m, int) or not 0 <= m < 4096 for m in mapped) or
                 set(mapped) & set(row.get("door_objects", {}).values())):
             raise ValueError("Map objects must be distinct object models without a door row: " + name)
+        if "healing_machine" in row and row["healing_machine"] not in mapped:
+            raise ValueError("The healing machine must be a map object: " + name)
         if row["floor"] in floors or prefix in prefixes:
             raise ValueError("Duplicate floor or prefix in profiles: " + name)
         floors.add(row["floor"])

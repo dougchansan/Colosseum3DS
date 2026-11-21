@@ -741,6 +741,8 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     C3Title *storage=NULL;const C3Title *models[C3_STAGE_MAX_MODELS]={0};
     C3Title *actor_models[C3_AREA_MAX_ACTORS]={0};
     C3AreaDoors doors={0};C3Title *door_models[C3_AREA_MAX_DOORS]={0};
+    C3Title *heal_models[C3_HEAL_BALL_SLOTS]={0};uint8_t heal_balls[C3_HEAL_BALL_SLOTS]={0};
+    char heal_files[C3_HEAL_BALL_SLOTS][48];uint32_t heal_count=0;
     char model_paths[C3_STAGE_MAX_MODELS][160]={{0}};
     C3TitleCamera camera;C3TitleRenderStats stats={0};C3N3dsInput input={0};
     uint32_t opened=0,count=0,arrival_done=0,opening_done=0,arrival_count=0;
@@ -814,6 +816,17 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     snprintf(path,sizeof path,BOOT_ROOT "%s.c3d",prefix);
     if(exists(path)&&!c3_area_doors_load(&doors,path,error,capacity))goto done;
     for(uint32_t i=0;i<doors.count;++i)if(doors.rows[i].file[0])++count;
+    {   /* Native 53 mode 0 (fn_801D0DB0) opens one Poke Ball per party member
+         * (party slots 0.., fn_801D0AA0) beside the floor's healing machine:
+         * those models load with the room, hidden until the heal. */
+        uint32_t machine=c3_field_heal_machine(area.group);int found=0;
+        for(uint32_t i=0;i<doors.count;++i)found|=machine&&doors.rows[i].resource==machine&&doors.rows[i].file[0];
+        for(uint32_t i=0;found&&i<C3_HEAL_BALL_SLOTS;++i){uint8_t record[0x138];
+            if(!c3_game_state_pokemon(state,i,record)||!(record[0]|record[1]))break;
+            if(!c3_field_heal_ball(prefix,record[0x0f],heal_files[heal_count],sizeof heal_files[0]))break;
+            heal_balls[heal_count++]=record[0x0f];}
+        count+=heal_count;
+    }
     if(profile->features&C3_FLOOR_TV)tv_index=count++;
     /* The partner's pack (person 0,101), loaded with the room. */
     snprintf(path,sizeof path,BOOT_ROOT "%s_partner.c3t",prefix);
@@ -829,6 +842,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     if(!from_world_map)c3_bottom_screen_notice(profile->label,"Loading the area...","Please wait...");
     unsigned load_total=map.map_pack_count+1u+arrival_count;
     for(uint32_t i=0;i<doors.count;++i)load_total+=doors.rows[i].file[0]!=0;
+    load_total+=heal_count;
     int after_journey=from_world_map&&c3_world_map_scene_take_journey_shown();
     if(!after_journey)c3_n3ds_top_loading(0.0f);
     /* Every pack is a job with a fixed slot (the same order as before):
@@ -846,6 +860,8 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         }
         for(uint32_t i=0;i<doors.count;++i)if(doors.rows[i].file[0]){
             snprintf(jobs[job].path,sizeof jobs[job].path,BOOT_ROOT "%s",doors.rows[i].file);jobs[job++].title=storage+slot++;}
+        for(uint32_t i=0;i<heal_count;++i){
+            snprintf(jobs[job].path,sizeof jobs[job].path,BOOT_ROOT "%.47s",heal_files[i]);jobs[job++].title=storage+slot++;}
     }
     if(npc.count){
         npc.jobs=calloc(npc.count,sizeof *npc.jobs);
@@ -900,6 +916,11 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
             models[slot++]=model;door_models[i]=model;
             int rest=doors.rows[i].open_anim>=0?doors.rows[i].open_anim:0;
             if(!c3_title_animate(model,(uint32_t)rest,0)){snprintf(error,capacity,"Original door clip is missing.");free(jobs);goto done;}
+        }
+        for(uint32_t i=0;i<heal_count;++i){
+            C3Title *model=storage+slot;snprintf(model_paths[slot],sizeof model_paths[slot],"%s",jobs[job++].path);
+            models[slot++]=model;heal_models[i]=model;model->hidden=1;
+            if(!c3_title_animate(model,0,0)){snprintf(error,capacity,"Original Poke Ball pack is invalid.");free(jobs);goto done;}
         }
     }
     free(jobs);
@@ -997,6 +1018,13 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         uint32_t with_model=0;for(uint32_t i=0;i<doors.count;++i)with_model+=door_models[i]!=NULL;
         if(!c3_field_story_bind_doors(&story,doors.rows,doors.count,door_models,story_error))goto story_failed;
         if(trace){fprintf(trace,"field_doors floor=%lu rows=%lu models=%lu\n",(unsigned long)map.floor,(unsigned long)doors.count,(unsigned long)with_model);fflush(trace);}
+    }
+    /* GSmodelEnableModulation(128,128,128) on each ball is the renderer's
+     * neutral modulation, so the slots keep the default. */
+    if(heal_count){
+        if(!c3_field_story_bind_heal_balls(&story,heal_models,heal_balls,heal_count,story_error))goto story_failed;
+        if(trace){fprintf(trace,"field_heal_balls floor=%lu balls=%lu first=%s\n",(unsigned long)map.floor,
+                          (unsigned long)heal_count,heal_files[0]);fflush(trace);}
     }
     c3_field_story_set_floor_support(&story,floor_reachable);
     c3_field_story_bind_cameras(&story,event_cameras,event_camera_count);
