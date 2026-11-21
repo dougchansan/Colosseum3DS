@@ -7,8 +7,8 @@
 
 /* Streaming C3V1 adapter for original THP movies (docs/boot-media-format.md).
  * Version 1 stores raw RGB565LE frames, row-major; version 2 stores each
- * frame as one zstd frame already in top-screen framebuffer order, with a
- * frame offset index. Both carry optional PCM16LE stereo after the video.
+ * frame as one LZ4 block (pixel format 3) or zstd frame (pixel format 2)
+ * already in top-screen framebuffer order, behind a frame offset index. Both carry optional PCM16LE stereo after the video.
  * There is no full movie allocation or runtime THP decoder. */
 #define C3_MOVIE_WIDTH 320u
 #define C3_MOVIE_HEIGHT 240u
@@ -16,7 +16,7 @@
 
 typedef struct C3Movie {
     FILE *video_file, *audio_file;
-    uint32_t version;
+    uint32_t version, pixel_format;
     uint32_t frame_count, fps_num, fps_den;
     uint32_t frame_bytes, audio_offset;
     uint32_t audio_sample_frames, sample_rate, channels;
@@ -24,7 +24,7 @@ typedef struct C3Movie {
     uint32_t *frame_offsets;   /* version 2: frame_count + 1 file offsets */
     unsigned char *stored;     /* one frame as stored in the file */
     uint32_t stored_capacity, stored_bytes, stored_frame;
-    void *zstd;                /* version 2: ZSTD_DCtx */
+    void *zstd;                /* pixel format 2: ZSTD_DCtx */
 } C3Movie;
 
 /* Pass a zero-initialized/closed movie. Validate every offset and the exact
@@ -54,6 +54,11 @@ int c3_movie_load_into(C3Movie *movie, uint32_t frame, void *stored, size_t capa
                        uint32_t *bytes, char *error, size_t error_capacity);
 int c3_movie_decode_stored(C3Movie *movie, const void *stored, uint32_t bytes,
                            void *pixels, size_t capacity, char *error, size_t error_capacity);
+/* Stored bytes of one frame, and one read of `count` consecutive frames
+ * (they are contiguous in the file), so a reader can batch SD requests. */
+uint32_t c3_movie_stored_size(const C3Movie *movie, uint32_t frame);
+int c3_movie_load_range(C3Movie *movie, uint32_t first, uint32_t count, void *stored, size_t capacity,
+                        uint32_t *bytes, char *error, size_t error_capacity);
 
 /* Read up to capacity_frames stereo sample frames, converting little-endian
  * samples to host int16_t representation. Zero frames means clean EOF.

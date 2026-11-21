@@ -165,6 +165,98 @@ static void packed_movies(const char *path, unsigned char *pixels)
     c3_movie_close(&movie);
 }
 
+/* LZ4 block helpers: a run length's extension bytes after a 15 nibble. */
+static size_t lz4_extend(unsigned char *out, size_t extra)
+{
+    size_t n = 0;
+    while (extra >= 255u) { out[n++] = 255u; extra -= 255u; }
+    out[n++] = (unsigned char)extra;
+    return n;
+}
+
+/* Pixel format 3: frame 0 is one literal run of the pattern (framebuffer
+ * order), frame 1 a solid colour from a 2-byte literal and an overlapping
+ * offset-2 match, then a 2-byte literal-only last sequence. */
+static void make_lz4_movie(const char *path, uint32_t *index_out)
+{
+    unsigned char *block0 = malloc(C3_MOVIE_FRAME_BYTES + 1024u), block1[1024], header[64] = {0}, word[4];
+    uint16_t *frame = malloc(C3_MOVIE_FRAME_BYTES);
+    size_t size0 = 0, size1 = 0;
+    uint32_t index[3];
+    FILE *file = fopen(path, "wb");
+    assert(file && block0 && frame);
+    for (unsigned y = 0; y < C3_MOVIE_HEIGHT; ++y)
+        for (unsigned x = 0; x < C3_MOVIE_WIDTH; ++x)
+            frame[x * C3_MOVIE_HEIGHT + (C3_MOVIE_HEIGHT - 1u - y)] = pattern(0, x, y);
+    block0[size0++] = 0xF0;
+    size0 += lz4_extend(block0 + size0, C3_MOVIE_FRAME_BYTES - 15u);
+    memcpy(block0 + size0, frame, C3_MOVIE_FRAME_BYTES);
+    size0 += C3_MOVIE_FRAME_BYTES;
+    block1[size1++] = (2u << 4) | 15u;
+    block1[size1++] = 0x34; block1[size1++] = 0x12;
+    block1[size1++] = 2; block1[size1++] = 0;
+    size1 += lz4_extend(block1 + size1, C3_MOVIE_FRAME_BYTES - 4u - 4u - 15u);
+    block1[size1++] = 2u << 4;
+    block1[size1++] = 0x34; block1[size1++] = 0x12;
+    index[0] = 64u + 3u * 4u;
+    index[1] = index[0] + (uint32_t)size0;
+    index[2] = index[1] + (uint32_t)size1;
+    memcpy(header, "C3V1", 4);
+    const uint32_t fields[15] = {2, index[2], 320, 240, 2, 30000, 1001, 64,
+        C3_MOVIE_FRAME_BYTES, index[2], 0, 0, 0, 3, 0};
+    for (unsigned i = 0; i < 15; ++i) put32(header + 4 + i * 4, fields[i]);
+    assert(fwrite(header, 1, 64, file) == 64);
+    for (unsigned i = 0; i < 3; ++i) { put32(word, index[i]); assert(fwrite(word, 1, 4, file) == 4); }
+    assert(fwrite(block0, 1, size0, file) == size0 && fwrite(block1, 1, size1, file) == size1);
+    assert(fclose(file) == 0);
+    memcpy(index_out, index, sizeof(index));
+    free(block0); free(frame);
+}
+
+static void lz4_movies(const char *path, unsigned char *pixels)
+{
+    C3Movie movie = {0};
+    char error[160];
+    uint32_t index[3], bytes = 0;
+    const uint16_t *p = (const uint16_t *)(const void *)pixels;
+    unsigned char *batch;
+    make_lz4_movie(path, index);
+    assert(c3_movie_open(&movie, path, error, sizeof(error)) == 0 && movie.pixel_format == 3u && !movie.zstd);
+    assert(c3_movie_read_frame(&movie, 0, pixels, C3_MOVIE_FRAME_BYTES, error, sizeof(error)) == 0);
+    assert(framebuffer_order(pixels, 0));
+    assert(c3_movie_read_frame(&movie, 1, pixels, C3_MOVIE_FRAME_BYTES, error, sizeof(error)) == 0);
+    for (unsigned i = 0; i < C3_MOVIE_WIDTH * C3_MOVIE_HEIGHT; ++i) assert(p[i] == 0x1234);
+    /* One request for both frames; sizes come from the index. */
+    batch = malloc(index[2] - index[0]);
+    assert(batch);
+    assert(c3_movie_stored_size(&movie, 0) == index[1] - index[0]);
+    assert(c3_movie_stored_size(&movie, 1) == index[2] - index[1] && c3_movie_stored_size(&movie, 2) == 0);
+    assert(c3_movie_load_range(&movie, 0, 2, batch, index[2] - index[0] - 1u, &bytes, error, sizeof(error)) != 0);
+    assert(c3_movie_load_range(&movie, 1, 2, batch, index[2] - index[0], &bytes, error, sizeof(error)) != 0);
+    assert(c3_movie_load_range(&movie, 0, 2, batch, index[2] - index[0], &bytes, error, sizeof(error)) == 0);
+    assert(bytes == index[2] - index[0]);
+    memset(pixels, 0, C3_MOVIE_FRAME_BYTES);
+    assert(c3_movie_decode_stored(&movie, batch + (index[1] - index[0]), index[2] - index[1], pixels,
+                                  C3_MOVIE_FRAME_BYTES, error, sizeof(error)) == 0 && p[12345] == 0x1234);
+    /* Faults: truncated block, match offset 0 or before the output start,
+     * a block that decodes short of the frame. */
+    unsigned char *second = batch + (index[1] - index[0]);
+    assert(c3_movie_decode_stored(&movie, second, index[2] - index[1] - 1u, pixels,
+                                  C3_MOVIE_FRAME_BYTES, error, sizeof(error)) != 0);
+    second[3] = 0;
+    assert(c3_movie_decode_stored(&movie, second, index[2] - index[1], pixels,
+                                  C3_MOVIE_FRAME_BYTES, error, sizeof(error)) != 0);
+    second[3] = 3;
+    assert(c3_movie_decode_stored(&movie, second, index[2] - index[1], pixels,
+                                  C3_MOVIE_FRAME_BYTES, error, sizeof(error)) != 0);
+    second[3] = 2;
+    assert(c3_movie_decode_stored(&movie, second, 3, pixels, C3_MOVIE_FRAME_BYTES, error, sizeof(error)) != 0);
+    assert(c3_movie_decode_stored(&movie, batch, index[1] - index[0] - 2u, pixels,
+                                  C3_MOVIE_FRAME_BYTES, error, sizeof(error)) != 0);
+    free(batch);
+    c3_movie_close(&movie);
+}
+
 int main(void)
 {
     char path[] = "/tmp/c3-movie-XXXXXX", error[160];
@@ -241,9 +333,10 @@ int main(void)
     assert(c3_movie_read_frame(&movie,5249,pixels,C3_MOVIE_FRAME_BYTES,error,sizeof error)==0);
     c3_movie_close(&movie);
     packed_movies(path, pixels);
+    lz4_movies(path, pixels);
     unlink(path);
     free(pixels);
     puts("movie: frame timing, independent streams, PCM endian/mono, bounds and truncation, "
-         "framebuffer order, packed v2 frames and index faults passed");
+         "framebuffer order, packed v2 zstd/LZ4 frames, batched reads and index/block faults passed");
     return 0;
 }

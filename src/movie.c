@@ -8,8 +8,11 @@
 #define C3_MOVIE_HEADER_BYTES 64u
 #define C3_MOVIE_MAX_BYTES (1024u * 1024u * 1024u) /* 5250-frame staffroll: 806400064 bytes */
 #define C3_MOVIE_RAW_FORMAT 1u    /* version 1: RGB565LE, row-major */
-#define C3_MOVIE_PACKED_FORMAT 2u /* version 2: zstd frames, framebuffer order */
-#define C3_MOVIE_STORED_MAX ZSTD_COMPRESSBOUND(C3_MOVIE_FRAME_BYTES)
+#define C3_MOVIE_ZSTD_FORMAT 2u /* version 2: zstd frames, framebuffer order */
+#define C3_MOVIE_LZ4_FORMAT 3u  /* version 2: LZ4 blocks, framebuffer order */
+#define C3_MOVIE_LZ4_BOUND (C3_MOVIE_FRAME_BYTES + C3_MOVIE_FRAME_BYTES / 255u + 16u)
+#define C3_MOVIE_STORED_MAX (ZSTD_COMPRESSBOUND(C3_MOVIE_FRAME_BYTES) > C3_MOVIE_LZ4_BOUND ? \
+                             ZSTD_COMPRESSBOUND(C3_MOVIE_FRAME_BYTES) : C3_MOVIE_LZ4_BOUND)
 
 static uint32_t le32(const unsigned char *p)
 {
@@ -52,11 +55,13 @@ int c3_movie_open(C3Movie *movie, const char *path, char *error, size_t capacity
                      le32(header + 4) : 0;
     if (memcmp(header, "C3V1", 4) || (opened.version != 1 && opened.version != 2) ||
         le32(header + 12) != C3_MOVIE_WIDTH || le32(header + 16) != C3_MOVIE_HEIGHT ||
-        le32(header + 56) != (opened.version == 1 ? C3_MOVIE_RAW_FORMAT : C3_MOVIE_PACKED_FORMAT) ||
+        (opened.version == 1 ? le32(header + 56) != C3_MOVIE_RAW_FORMAT :
+         le32(header + 56) != C3_MOVIE_ZSTD_FORMAT && le32(header + 56) != C3_MOVIE_LZ4_FORMAT) ||
         le32(header + 60) != 0) {
         fail(error, capacity, "Invalid C3V1 movie header or unsupported pixel format.");
         goto rejected;
     }
+    opened.pixel_format = le32(header + 56);
     total = le32(header + 8);
     opened.frame_count = le32(header + 20);
     opened.fps_num = le32(header + 24);
@@ -100,8 +105,8 @@ int c3_movie_open(C3Movie *movie, const char *path, char *error, size_t capacity
         unsigned char *index = malloc(entries * 4u);
         int valid;
         opened.frame_offsets = malloc(entries * sizeof(*opened.frame_offsets));
-        opened.zstd = ZSTD_createDCtx();
-        if (!index || !opened.frame_offsets || !opened.zstd) {
+        if (opened.pixel_format == C3_MOVIE_ZSTD_FORMAT) opened.zstd = ZSTD_createDCtx();
+        if (!index || !opened.frame_offsets || (opened.pixel_format == C3_MOVIE_ZSTD_FORMAT && !opened.zstd)) {
             free(index);
             fail(error, capacity, "Movie index allocation failed.");
             goto rejected;
@@ -179,6 +184,35 @@ int c3_movie_load_into(C3Movie *movie, uint32_t frame, void *stored, size_t capa
     return 0;
 }
 
+uint32_t c3_movie_stored_size(const C3Movie *movie, uint32_t frame)
+{
+    if (!movie || frame >= movie->frame_count) return 0;
+    if (movie->version == 1) return movie->frame_bytes;
+    return movie->frame_offsets[frame + 1u] - movie->frame_offsets[frame];
+}
+
+int c3_movie_load_range(C3Movie *movie, uint32_t first, uint32_t count, void *stored, size_t capacity,
+                        uint32_t *bytes_out, char *error, size_t error_capacity)
+{
+    uint64_t offset, end;
+    if (!movie || !movie->video_file || !stored || !bytes_out || !count ||
+        first >= movie->frame_count || count > movie->frame_count - first)
+        return fail(error, error_capacity, "Invalid movie frame request.");
+    if (movie->version == 1) {
+        offset = C3_MOVIE_HEADER_BYTES + (uint64_t)first * movie->frame_bytes;
+        end = offset + (uint64_t)count * movie->frame_bytes;
+    } else {
+        offset = movie->frame_offsets[first];
+        end = movie->frame_offsets[first + count];
+    }
+    if (end - offset > capacity) return fail(error, error_capacity, "Invalid movie frame request.");
+    if (offset > LONG_MAX || fseek(movie->video_file, (long)offset, SEEK_SET) != 0 ||
+        fread(stored, 1, (size_t)(end - offset), movie->video_file) != (size_t)(end - offset))
+        return fail(error, error_capacity, "Movie frame read failed.");
+    *bytes_out = (uint32_t)(end - offset);
+    return 0;
+}
+
 int c3_movie_load_frame(C3Movie *movie, uint32_t frame, char *error, size_t error_capacity)
 {
     if (!movie || !movie->stored) return fail(error, error_capacity, "Invalid movie frame request.");
@@ -202,6 +236,59 @@ static void transpose(const uint16_t *source, uint16_t *destination)
             }
 }
 
+/* One LZ4 block (lz4 format "block" layout) decoding to exactly
+ * destination_size bytes; every length and offset is bounds checked. Long
+ * overlapping matches are copied in doubling chunks. */
+static size_t lz4_length(const unsigned char **ip, const unsigned char *end, size_t length, int *ok)
+{
+    unsigned byte;
+    if (length != 15u) return length;
+    do {
+        if (*ip >= end) { *ok = 0; return 0; }
+        byte = *(*ip)++;
+        length += byte;
+    } while (byte == 255u);
+    return length;
+}
+
+static int lz4_block(const unsigned char *source, size_t source_size,
+                     unsigned char *destination, size_t destination_size)
+{
+    const unsigned char *ip = source, *end = source + source_size;
+    unsigned char *op = destination, *limit = destination + destination_size;
+    int ok = 1;
+    for (;;) {
+        unsigned token;
+        size_t literals, offset, match;
+        if (ip >= end) return -1;
+        token = *ip++;
+        literals = lz4_length(&ip, end, token >> 4, &ok);
+        if (!ok || literals > (size_t)(end - ip) || literals > (size_t)(limit - op)) return -1;
+        memcpy(op, ip, literals);
+        op += literals; ip += literals;
+        if (ip == end) break; /* the last sequence has literals only */
+        if (end - ip < 2) return -1;
+        offset = (size_t)ip[0] | (size_t)ip[1] << 8;
+        ip += 2;
+        if (!offset || offset > (size_t)(op - destination)) return -1;
+        match = lz4_length(&ip, end, token & 15u, &ok) + 4u;
+        if (!ok || match > (size_t)(limit - op)) return -1;
+        if (offset >= match) {
+            memcpy(op, op - offset, match);
+            op += match;
+        } else {
+            const unsigned char *from = op - offset;
+            while (match) {
+                size_t chunk = (size_t)(op - from);
+                if (chunk > match) chunk = match;
+                memcpy(op, from, chunk);
+                op += chunk; match -= chunk;
+            }
+        }
+    }
+    return op == limit ? 0 : -1;
+}
+
 int c3_movie_decode_stored(C3Movie *movie, const void *stored, uint32_t bytes,
                            void *pixels, size_t capacity, char *error, size_t error_capacity)
 {
@@ -211,6 +298,11 @@ int c3_movie_decode_stored(C3Movie *movie, const void *stored, uint32_t bytes,
         return fail(error, error_capacity, "Invalid movie frame request.");
     if (movie->version == 1) {
         transpose((const uint16_t *)stored, pixels);
+        return 0;
+    }
+    if (movie->pixel_format == C3_MOVIE_LZ4_FORMAT) {
+        if (lz4_block(stored, bytes, pixels, C3_MOVIE_FRAME_BYTES))
+            return fail(error, error_capacity, "Movie frame data is corrupt.");
         return 0;
     }
     size = ZSTD_decompressDCtx(movie->zstd, pixels, C3_MOVIE_FRAME_BYTES, stored, bytes);
