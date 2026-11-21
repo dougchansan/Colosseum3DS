@@ -12,6 +12,12 @@ int c3_battle_story_prepare(const C3GameState *state, C3GeneralBattle *battle)
     if (!state || !battle) return 0;
     /* No Snag Machine when a CPU trainer fights on side 0 (encounter 525). */
     battle->snag = battle->info.cpu_side0 ? 0 : 1;
+    /* The hero's name for the fight text's control 0x13 (the prize line). */
+    {
+        C3GameSummary summary;
+        if (!battle->link && !battle->info.cpu_side0 && c3_game_state_summary(state, &summary))
+            snprintf(battle->side_name[0], sizeof battle->side_name[0], "%.15s", summary.name);
+    }
     memset(battle->balls, 0, sizeof battle->balls);
     for (unsigned slot = 0; slot < 16; ++slot) {
         C3GameItem item;
@@ -89,6 +95,14 @@ int c3_battle_story_apply(C3FieldStory *story, C3GameState *state,
     if (rw.result_code == 2 && rw.prize) {
         uint32_t room = summary.money < 9999999u ? 9999999u - summary.money : 0;
         if (!c3_game_state_add_money(state, rw.prize < room ? rw.prize : room)) return fail(error, "Prize money rejected.");
+    }
+    /* scriptAddPremium (fn_8021E754 with okanePool): the colosseum
+     * challenge's pool, flag 0A9E, paid out by its script (native BB, then
+     * scriptAddPokedoru) and cleared with native BC. */
+    if (rw.premium) {
+        uint32_t pool;
+        if (!c3_game_state_get_flag(state, C3_PREMIUM_FLAG, &pool) ||
+            !c3_game_state_set_flag(state, C3_PREMIUM_FLAG, pool + rw.premium)) return fail(error, "Premium pool rejected.");
     }
     if (rw.wipeout) {
         if (!c3_game_state_add_money(state, -(int64_t)(summary.money / 2u))) return fail(error, "Money loss rejected.");

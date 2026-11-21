@@ -124,9 +124,20 @@ int route_battle_play(C3FieldStory *story, C3GameState *game, uint32_t floor, ui
     C3GeneralRewards rw;
     memset(&rw, 0, sizeof rw);
     heal_target = game;
+    uint32_t pool_before = 0, pool_after = 0;
+    if (!c3_game_state_get_flag(game, C3_PREMIUM_FLAG, &pool_before)) { snprintf(error, capacity, "Premium pool unreadable"); goto fail; }
     if (!c3_battle_story_apply(story, game, b, &pack, heal, &rw, problem)) {
         snprintf(error, capacity, "apply: %s", problem); goto fail;
     }
+    /* okanePool battles (the colosseum kinds) add their share to the
+     * Premium pool, flag 0A9E, which the colosseum script pays out. */
+    if (!c3_game_state_get_flag(game, C3_PREMIUM_FLAG, &pool_after) || pool_after - pool_before != rw.premium) {
+        snprintf(error, capacity, "battle %lu: Premium pool %lu -> %lu, share %lu", (unsigned long)encounter,
+                 (unsigned long)pool_before, (unsigned long)pool_after, (unsigned long)rw.premium); goto fail;
+    }
+    if (rw.premium)
+        fprintf(report, "%s_premium encounter=%lu share=%lu pool=%lu\n", tag, (unsigned long)encounter,
+                (unsigned long)rw.premium, (unsigned long)pool_after);
     unsigned long exp = 0;
     for (unsigned i = 0; i < C3_GB_PARTY; ++i) exp += rw.exp[i];
     fprintf(report, "%s floor=%03lx encounter=%lu played=1 trainer=\"%s %s\" kind=%u party=%u attempts=%u turns=%u "
@@ -134,6 +145,16 @@ int route_battle_play(C3FieldStory *story, C3GameState *game, uint32_t floor, ui
             (unsigned long)floor, (unsigned long)encounter, info.title, info.trainer, info.kind, info.party_count,
             attempt + 1, turns, (unsigned long)rw.result_code, (unsigned long)rw.prize, exp, (unsigned)rw.caught_count,
             rw.wipeout, rw.written);
+    /* A won hero battle with getOkane (not okanePool) ends with the prize line (fight
+     * message 0x7546) unless the turn's event log saturated. */
+    if (b->outcome == C3_GB_WON && info.get_money && !info.money_pool && !info.cpu_side0) {
+        const char *line = b->event_count ? b->events[b->event_count - 1].text : "";
+        if (!strstr(line, " for winning!") && b->event_count < C3_GB_EVENT_LIMIT) {
+            snprintf(error, capacity, "battle %lu: no prize line", (unsigned long)encounter); goto fail;
+        }
+        fprintf(report, "%s_prize encounter=%lu prize=%lu text=\"%s\"\n", tag, (unsigned long)encounter,
+                (unsigned long)rw.prize, line);
+    }
     if (played_count < MAX_PLAYED) played[played_count++] = encounter;
     free(b);
     return 1;

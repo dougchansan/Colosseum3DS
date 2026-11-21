@@ -143,6 +143,10 @@ typedef struct C3GeneralBattle {
     /* Floor status 0x5B: the turn's shared Quick Claw roll, drawn at the
      * start of the battle and again at the end of every turn. */
     uint16_t quick_claw_roll;
+    /* The hero trainer's OkaneBai (fightTrainer status 0x48, the prize
+     * multiplier): 1 at fightTrainerInit, 2 once a hero Pokemon holding the
+     * Amulet Coin (item 189, soubi data 0x20) comes out (fn_8022D084). */
+    uint8_t okane_bai;
     uint32_t event_count;
     C3GeneralEvent events[C3_GB_EVENT_LIMIT];
 } C3GeneralBattle;
@@ -150,6 +154,9 @@ typedef struct C3GeneralBattle {
 typedef struct C3GeneralRewards {
     uint32_t result_code; /* fightFloorSetFightResultId: 2 hero won, 3 lost */
     uint32_t prize;       /* added on a win */
+    /* okanePool kinds (the colosseum challenges): the prize opcode's x4
+     * amount, for scriptAddPremium (flag 0A9E) instead of money. */
+    uint32_t premium;
     uint32_t exp[C3_GB_PARTY];
     uint8_t levels_gained[C3_GB_PARTY];
     int wipeout;          /* a loss with the encounter's zenmetu flag set */

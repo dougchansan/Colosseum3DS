@@ -330,7 +330,7 @@ int c3_general_battle_begin(C3GeneralBattle *out,const C3BattlePack *p,uint32_t 
     for(unsigned s=0;s<2;++s)for(unsigned a=0;a<b->active_count;++a){int n=next_healthy(b,s,a);if(n>=0)b->active[s][a]=(uint8_t)n;}
     if(b->active[0][0]==NO_MON){free(b);return fail(e,"The hero has no Pokemon able to battle.");}
     if(b->active[1][0]==NO_MON){free(b);return fail(e,"The opponent has no Pokemon.");}
-    mark_faced(b);
+    mark_faced(b);b->okane_bai=1;
     for(unsigned a=0;a<b->active_count;++a)if(b->active[0][a]!=NO_MON)sent_out(b,p,0,b->active[0][a]);
     if(!c3_battle_rng_next16(&b->rng,&b->quick_claw_roll)){free(b);return fail(e,"Battle random-number failure.");}
     if(info.cpu_side0)say(b,C3_GB_EVENT_MESSAGE,255,255,0,"%s %s and %s %s are battling!",
@@ -437,6 +437,8 @@ static unsigned staged(unsigned v,int s)
  * data 0x18 Macho Brace, 0x1A Quick Claw with buff 20). */
 #define ITEM_MACHO_BRACE 181u
 #define ITEM_QUICK_CLAW 183u
+/* Item 189 (Amulet Coin): soubi data 0x20, the prize doubler (fn_8022D084). */
+#define ITEM_AMULET_COIN 189u
 #define QUICK_CLAW_BUFF 20u
 /* fightOutPokemonGetNowNimbleness (fight_out_pokemon.c:455): Speed, the
  * stage multiplier, Macho Brace >>1, paralysis >>2, and Quick Claw wins
@@ -657,6 +659,8 @@ static void gauge_filter(const C3BattlePack *p,C3GeneralMon *m,unsigned filter)
 static void sent_out(C3GeneralBattle *b,const C3BattlePack *p,unsigned side,unsigned index)
 {
     C3GeneralMon *m=&b->party[side][index];
+    /* fn_8022D084 on every appearance: soubi 0x20 sets the trainer's OkaneBai to 2. */
+    if(!side&&m->held_item==ITEM_AMULET_COIN)b->okane_bai=2;
     if(m->gauge_dropped||!hyper_capable(b,p,side*2,m))return;
     m->gauge_dropped=1;gauge_filter(p,m,0);
 }
@@ -1305,6 +1309,44 @@ static int order_actors(C3GeneralBattle *b,const C3BattlePack *p,const C3General
     }
     return 1;
 }
+/* The prize opcode 0x5D (fn_8021E754): mult x SyoukinBairitu (the
+ * opponent trainer kind's prize base) x best x the hero's OkaneBai, where
+ * - mult is 4 with okanePool (floor status 0x26; that amount goes to
+ *   scriptAddPremium, the Premium pool, instead of money and no line is
+ *   shown), else 2 when the fight type sends out more than one Pokemon a
+ *   side (floor status 0x18, fightoutPokemonNum), else 1;
+ * - best is the highest level among the opponent trainer's valid Pokemon
+ *   (fainted ones included) and the hero's Pokemon with CatchEntryFlag
+ *   (status 0xCF: snagged this battle, fn_80213A78), which are opponent
+ *   Pokemon too, so every opponent party member counts once;
+ * - OkaneBai is okane_bai (1, or 2 with the Amulet Coin). */
+static int pays_prize(const C3GeneralBattle *b)
+{return b->outcome==C3_GB_WON&&b->info.get_money&&!b->info.money_pool;}
+static int pays_premium(const C3GeneralBattle *b)
+{return b->outcome==C3_GB_WON&&b->info.get_money&&b->info.money_pool;}
+static uint32_t prize_money(const C3GeneralBattle *b)
+{
+    unsigned best=0;for(unsigned i=0;i<b->party_count[1];++i)if(b->party[1][i].level>best)best=b->party[1][i].level;
+    uint32_t mult=b->info.money_pool?4u:b->info.active_per_side>1?2u:1u,bai=b->okane_bai?b->okane_bai:1u;
+    return mult*((uint32_t)b->info.prize_base*(best*bai));
+}
+/* The won trainer battle's prize line, fight_common.fsys message 0x7546
+ * "{13} got ${4b} for winning!". fightActionFlowSyuuryou runs the post-win
+ * script 0x80378801 after the defeat line (0x766C) and the trainer's lose
+ * speech; its prize opcode pays the fight hero, sets 0x13 to the hero's name
+ * and 0x4B (msgctrlMoney: thousands commas) to the amount, then prints it.
+ * The opcode skips the line when getOkane is clear, with okanePool (the
+ * amount goes to the Premium pool) or when side 0 has no hero (a CPU
+ * trainer; link battles). Without a hero name (side_name[0], from
+ * c3_battle_story_prepare) the fight text's own "Player" stands in. */
+static void say_prize(C3GeneralBattle *b)
+{
+    char digits[16],money[24];unsigned n=0,k=0;uint32_t v=prize_money(b);
+    do{digits[n++]=(char)('0'+v%10u);v/=10u;}while(v);
+    while(n){money[k++]=digits[--n];if(n&&n%3==0)money[k++]=',';}
+    money[k]=0;
+    say(b,C3_GB_EVENT_MESSAGE,255,255,0,"%s got $%s for winning!",b->side_name[0][0]?b->side_name[0]:"Player",money);
+}
 /* link: player holds all four positions' commands and nothing is drawn
  * for the opponent; otherwise player[0..1] is the hero and the opponent
  * policy picks side 1's commands from the battle RNG. */
@@ -1353,9 +1395,11 @@ static int turn_core(C3GeneralBattle *out,const C3BattlePack *p,const C3GeneralC
     }else if(b->outcome!=C3_GB_RUNNING&&b->info.cpu_side0)
         say(b,C3_GB_EVENT_OUTCOME,255,255,0,b->outcome==C3_GB_DRAW?"The battle ended in a draw.":"%s %s won the battle!",
             b->outcome==C3_GB_WON?b->info.side0_title:b->info.title,b->outcome==C3_GB_WON?b->info.side0_trainer:b->info.trainer);
-    else if(b->outcome!=C3_GB_RUNNING)
+    else if(b->outcome!=C3_GB_RUNNING){
         say(b,C3_GB_EVENT_OUTCOME,255,255,0,b->outcome==C3_GB_WON?"You defeated %s %s!":
             b->outcome==C3_GB_LOST?"You lost to %s %s...":"The battle with %s %s ended in a draw.",b->info.title,b->info.trainer);
+        if(pays_prize(b))say_prize(b);
+    }
     *out=*b;ok=1;if(e)e[0]=0;
     goto done;
 failed:fail(e,"Battle turn failed: random-number or table bounds.");
@@ -1462,17 +1506,15 @@ int c3_general_battle_writeback(const C3GeneralBattle *b,const C3BattlePack *p,
     /* A CPU trainer fought on the hero's side: the hero copy is untouched
      * and the result says which side won (2 side 0, 3 side 1). */
     if(b->info.cpu_side0){out.wipeout=0;*rw=out;return 1;}
+    /* scriptAddPremium writes the save's flag 0A9E, not the fight hero
+     * copy, so backSaveDataFlag does not discard it. */
+    if(pays_premium(b))out.premium=prize_money(b);
     for(unsigned i=0;i<b->party_count[0];++i)
         if(be16(party[b->party[0][i].party_slot])!=b->party[0][i].species)return 0;
     /* backSaveDataFlag clear: the hero copy (party, money) is discarded. */
     if(!b->info.back_save){*rw=out;return 1;}
     out.written=1;
-    if(b->outcome==C3_GB_WON&&b->info.get_money){
-        /* Prize: trainer-kind base x highest opponent level (the original
-         * prize opcode's shape with its side multipliers taken as 1). */
-        unsigned top=0;for(unsigned i=0;i<b->party_count[1];++i)if(b->party[1][i].level>top)top=b->party[1][i].level;
-        out.prize=(uint32_t)b->info.prize_base*top;
-    }
+    if(pays_prize(b))out.prize=prize_money(b);
     for(unsigned i=0;i<b->party_count[0];++i){
         const C3GeneralMon *m=&b->party[0][i];uint8_t *r=party[m->party_slot];unsigned slot=m->party_slot;
         uint32_t before=be32(r+0x5c),gain=m->exp>before?m->exp-before:0;

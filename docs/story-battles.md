@@ -83,8 +83,29 @@ Each encounter's fight kind row (`fight.c` FightKindData, pack entry
 | `getOkaneFlag` (+9) | prize money | no prize without it (Mt. Battle kinds 8 and 9) |
 | `doCriticalAttackFlag` (+14) | critical hits | none without it (colosseum kinds 3, 5, 6, 7, Mt. Battle 8, 9) |
 
-`okanePoolFlag` (+10, the colosseum kinds) has no reader in the decompiled
-fight code; the prize is paid per battle.
+`okanePoolFlag` (+10, the colosseum kinds, floor status 0x26) is read by
+the prize opcode 0x5D (`fn_8021E754`): with it the battle's amount (x4) goes
+to `scriptAddPremium` instead of the hero's money and no prize line is
+shown. The Premium pool is the 32-bit save flag `0x0A9E`
+(`scriptAdd/Set/GetPremium`, natives B7, BC, BB; `C3_PREMIUM_FLAG`).
+`c3_battle_story_apply` adds each won pool battle's share (`rw.premium`,
+kept even without backSaveDataFlag, since the flag is not part of the hero
+copy). The colosseum entrance scripts clear it at registration with BC(0)
+and, after the last battle, pay it out with BB, scriptAddPokedoru (85) and
+the cash prize message (0x5B9E Phenac stadium, 0x5BA6 Pyrite, 0x5BAE and
+0x5BB6 the M4 entrances). The Pyrite Colosseum
+(encounters 169-172) collects 992 + 1,200 + 1,024 + 1,632 = 4,848 on the
+2026-11-21 route run, paid as `story_money delta=4848`.
+
+The prize (opcode 0x5D, run by the post-win script 0x80378801 from
+`fightActionFlowSyuuryou`) is mult x the opponent trainer kind's
+SyoukinBairitu x best x OkaneBai: mult 2 when the fight type sends out two
+Pokemon a side (floor status 0x18), else 1; best the highest level in the
+opponent's party (the hero's snagged Pokemon, status 0xCF, are opponent
+Pokemon too); OkaneBai the hero trainer's status 0x48, 1 unless a hero
+Pokemon holding the Amulet Coin (item 189, soubi data 0x20) came out
+(`fn_8022D084`). It prints fight message 0x7546 "{13} got ${4b} for
+winning!" with the hero's name and the amount.
 
 ## Party writeback
 
@@ -102,7 +123,7 @@ fight code; the prize is paid per battle.
   callers without a prompt report it in `forget_prompt_skipped`);
 - effort: each fainted foe's species giveEffort (+0x90) to every
   non-Shadow Pokemon that faced it, capped at 255 a stat and 510 in all;
-- prize money on a win (trainer kind base x the highest foe level).
+- prize money on a win (the prize opcode's amount, see Fight kind rules).
 
 The private sweep checks these invariants on every admitted encounter.
 

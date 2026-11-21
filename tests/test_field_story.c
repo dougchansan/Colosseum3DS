@@ -789,6 +789,19 @@ static void premium_regressions(const char *prepared)
         CHECK(c3_field_story_tick(&s->story,0,0,error));
         CHECK(flag(&game,0xa9e)==premium&&c3_field_story_actor(&s->story,3)->visible==(int)premium);close_scene(s);
     }
+    {   /* B7 scriptAddPremium adds to the pool and returns the new total:
+         * BC(1200), then actorSetVisible(3, B7(-1200)) reads 0 with the pool
+         * emptied; a second run adds 345 to a 32-bit pool of 70000. */
+        static const struct {uint32_t start,delta,total;} runs[]={{1200,(uint32_t)-1200,0},{70000,345,70345}};
+        for(unsigned r=0;r<2;++r){
+            Program code[8]={0};uint32_t args[1]={runs[r].start};native(code+3,0xbc,1,args,1);
+            push(code+3,0);push(code+3,0x64);push(code+3,3);
+            args[0]=runs[r].delta;native(code+3,0xb7,1,args,0);call_end(code+3,2,1);
+            synthetic_load(s,&game,file,code,0,0,0x1000003);CHECK(c3_field_story_enter(&s->story,error));
+            CHECK(c3_field_story_tick(&s->story,0,0,error));
+            CHECK(flag(&game,0xa9e)==runs[r].total&&(c3_field_story_actor(&s->story,3)->visible!=0)==(runs[r].total!=0));close_scene(s);
+        }
+    }
     free(s);c3_game_state_free(&game);CHECK(!unlink(file));CHECK(!rmdir(directory));
     puts("premium native BC/BB original flag roundtrip passed");
 }

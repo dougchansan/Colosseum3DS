@@ -21,8 +21,9 @@ int c3_battle_story_apply(C3FieldStory *story, C3GameState *state,
                           int (*restore_party)(void *context),
                           C3GeneralRewards *rewards, char *error);
 
-/* Before the first turn: the Snag Machine is ready and the bag's ball
- * pocket (pocket 2) supplies the throwable balls. */
+/* Before the first turn: the Snag Machine is ready, the bag's ball
+ * pocket (pocket 2) supplies the throwable balls and side_name[0] takes the
+ * hero's name (the prize line, fight message 0x7546). */
 int c3_battle_story_prepare(const C3GameState *state, C3GeneralBattle *battle);
 
 /* Unattended battle (both sides use the opponent policy), then apply. For
