@@ -213,6 +213,23 @@ int main(void)
     c3_ui_experience(&ui,10,150,102,1,0);
     assert(ui.pixels[(151u*320u+11u)*3u]==0x15);
     size_t consumed=c3_ui_text(&ui,2,2,40,1,"one two three",0xffffff);assert(consumed>0&&consumed<13);
+    /* A hard line that does not fit is squeezed onto one row rather than
+     * wrapped: fixture glyphs advance 8 and show ink up to 9 (shadow
+     * included), so "AAAA AAAA" is 73 wide and may give up two pixels at its
+     * space and one at each of the seven glyphs before the last. */
+    assert(c3_ui_text_rows(&ui,73,"AAAA AAAA")==1&&c3_ui_text_rows(&ui,64,"AAAA AAAA")==1);
+    assert(c3_ui_text_rows(&ui,63,"AAAA AAAA")==2&&c3_ui_text_rows(&ui,64,"AAAA AAAA\nAA")==2);
+    assert(c3_ui_text_rows(&ui,64,"")==0&&c3_ui_text_rows(&ui,40,"one two three")==4);
+    c3_ui_rect(&ui,0,0,320,240,0);
+    assert(c3_ui_text(&ui,10,100,64,1,"AAAA AAAA",0xffffff)==9);
+    {
+        unsigned left=320,right=0;
+        for(unsigned y=95;y<125;++y)for(unsigned x=0;x<320;++x){
+            size_t at=(y*320u+x)*3u;
+            if(ui.pixels[at]||ui.pixels[at+1]||ui.pixels[at+2]){if(x<left)left=x;if(x>right)right=x;}
+        }
+        assert(left==10&&right==72); /* ink; the black shadow at 73 ends the width */
+    }
     /* A shorter value must end at the same visible right edge. Measure ink,
      * not padded character counts: this font has proportional advances. */
     const char *values[]={"9 PP","19/20 PP","100/100 PP","1","89/89","100/100"};

@@ -4,6 +4,10 @@
  * division-free fast paths (one software division per pixel channel and per
  * scaled coordinate cost 34 ms per redraw on a New 3DS). Any optimisation must
  * reproduce every pixel in all three framebuffer layouts.
+ * Scenes 2 and 7 were re-recorded when the message window took the header's
+ * width (text width C3_UI_MESSAGE_WIDTH) and a single line that overflows
+ * started to be squeezed instead of clipped (scene 2's footer); the wrapped
+ * dialogue text itself was checked byte-identical before re-recording.
  * Run with an argument to print the hashes instead of checking them. */
 #include "colosseum3ds/bottom_ui.h"
 #include <assert.h>
@@ -76,12 +80,12 @@ int main(int argc,char **argv)
     size_t size;unsigned char *data=fixture(&size);C3UiAssets assets={0};
     assert(c3_ui_assets_open(&assets,data,size));
     static const uint64_t expected[3][8]={
-        {0xc8cf0e41cea44dbaull,0x4633e9d6897b0b22ull,0x6b09407930bb89ceull,0x796eca83f867b5c1ull,
-         0xf22ec3f5392215bcull,0xfb8b8fa6499d8e99ull,0xb0320a5e867a703cull,0x4e704d9245d77e25ull},
-        {0x80e32f421452f518ull,0x66a91e8684ed1e9eull,0xd47a36d490e1122cull,0xa6b409bbb6c7f41dull,
-         0x261c1b3311fcb6e4ull,0xfe573c092a240a35ull,0x62cdd5ae2488caaaull,0x854d94d201928e93ull},
-        {0xdd65b6d0181a90e6ull,0xdb0b8a6fe5880bdbull,0x59b4f2ff98ee88b8ull,0x2227a3562f81995dull,
-         0x33ae10cced60a531ull,0xb5e3a6a22a2b2b9cull,0x9f73455fd42bd9f9ull,0xebc6d220e9ce3f93ull}};
+        {0xc8cf0e41cea44dbaull,0x4633e9d6897b0b22ull,0x884816b118b26d07ull,0x796eca83f867b5c1ull,
+         0xf22ec3f5392215bcull,0xfb8b8fa6499d8e99ull,0xb0320a5e867a703cull,0xa2ebae433cf9a889ull},
+        {0x80e32f421452f518ull,0x66a91e8684ed1e9eull,0x70cd667a8570b791ull,0xa6b409bbb6c7f41dull,
+         0x261c1b3311fcb6e4ull,0xfe573c092a240a35ull,0x62cdd5ae2488caaaull,0xb77c275f268f1333ull},
+        {0xdd65b6d0181a90e6ull,0xdb0b8a6fe5880bdbull,0x5a79daa43295df1cull,0x2227a3562f81995dull,
+         0x33ae10cced60a531ull,0xb5e3a6a22a2b2b9cull,0x9f73455fd42bd9f9ull,0x4d7a6ad997346543ull}};
     static const int layouts[3]={0,1,C3_UI_ROTATED_RGB565};
     unsigned char *frame=malloc(320u*240u*3u+64u);assert(frame);
     int print=argc>1,failures=0;

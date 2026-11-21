@@ -2,7 +2,7 @@
  * (tools/prepare_message_sweep.py builds the private C3MS pack) and reports
  * control codes the decoder cannot interpret.
  *
- *   build/test_message_sweep <messages.c3ms>
+ *   build/test_message_sweep <messages.c3ms> [ui.c3ui]
  *
  * Every message is rendered twice:
  *   1. with a source that answers every value control, so any failure is a
@@ -12,8 +12,17 @@
  *      common_rel), with exactly the value controls the field message source
  *      answers (c3_field_story_message_control). This count must be zero too.
  * Menu and battle groups are reported by owner and control as information:
- * their own scenes supply those values. Without the private pack the sweep
- * runs only its synthetic checks. */
+ * their own scenes supply those values.
+ *
+ * With the private UI pack (tools/prepare_bottom_ui.py) every hard line of
+ * every field message page is also laid out in the original font at the
+ * bottom-screen message window's text width (C3_UI_MESSAGE_WIDTH): each must
+ * take one row, so no original line wraps and leaves an orphan word. The
+ * speaker control (59) prints SPEAKER_BUDGET, the other names their default
+ * (WES, RUI) and every other value "<XX>"; widths with the widest original
+ * person name are reported as information.
+ * Without the private packs the sweep runs only its synthetic checks. */
+#include "colosseum3ds/bottom_ui.h"
 #include "colosseum3ds/field_story.h"
 #include "colosseum3ds/story.h"
 
@@ -22,6 +31,10 @@
 #include <string.h>
 
 static unsigned checks, failures;
+#ifndef SPEAKER_BUDGET
+#define SPEAKER_BUDGET "FUN OLD LADY"
+#endif
+#define SPEAKER_WIDEST "MYSTERY TROOP"
 #define CHECK(x) do { ++checks; if (!(x)) { ++failures; fprintf(stderr, "%s:%d: %s\n", __FILE__, __LINE__, #x); } } while (0)
 
 static uint32_t le32(const unsigned char *p) { return (uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24; }
@@ -54,6 +67,38 @@ static int answer(void *context, uint8_t control, C3StoryValue *value)
     snprintf(text, sizeof text, "<%02X>", control);
     value->text = text;
     return 1;
+}
+
+/* Field text as the window shows it, for the width check. */
+static const char *speaker_name;
+static int field_values(void *context, uint8_t control, C3StoryValue *value)
+{
+    (void)context;
+    value->text = control == 0x59 ? speaker_name : control == 0x2b ? "WES" : control == 0x2c ? "RUI" : "<XX>";
+    return 1;
+}
+
+/* Hard lines of every page (split at '\n' and '\f') that need more than one
+ * row; prints up to `report` of them. *pages_over counts pages of more than
+ * five rows (the dialogue window's height). */
+static unsigned long wrapped_lines(const C3BottomUi *ui, const char *text, int report, unsigned long *pages_over, unsigned long *lines)
+{
+    unsigned long wrapped = 0;
+    int page_rows = 0;
+    char line[C3_STORY_MESSAGE];
+    for (const char *p = text;;) {
+        size_t n = strcspn(p, "\n\f");
+        if (n >= sizeof line) n = sizeof line - 1;
+        memcpy(line, p, n); line[n] = 0;
+        int rows = c3_ui_text_rows(ui, C3_UI_MESSAGE_WIDTH, line);
+        ++*lines;
+        page_rows += rows ? rows : 1;
+        if (rows > 1) { if (report > 0 && wrapped < (unsigned long)report) fprintf(stderr, "  wraps: %s\n", line); ++wrapped; }
+        if (!p[n] || p[n] == '\f') { if (page_rows > 5) ++*pages_over; page_rows = 0; }
+        if (!p[n]) break;
+        p += n + 1;
+    }
+    return wrapped;
 }
 
 static int values(void *context, uint8_t control, C3StoryValue *value)
@@ -111,17 +156,26 @@ static void synthetic(void)
 int main(int argc, char **argv)
 {
     synthetic();
-    if (argc < 2) {
+    /* Arguments in either order: the C3MS message pack and the C3UI pack. */
+    unsigned char *pack = NULL, *ui_pack = NULL;
+    long size = 0, ui_size = 0;
+    for (int a = 1; a < argc; ++a) {
+        FILE *file = fopen(argv[a], "rb");
+        if (!file) { fprintf(stderr, "cannot open %s\n", argv[a]); return 1; }
+        fseek(file, 0, SEEK_END); long n = ftell(file); fseek(file, 0, SEEK_SET);
+        unsigned char *data = malloc((size_t)n);
+        if (!data || n < 4 || fread(data, 1, (size_t)n, file) != (size_t)n) { fprintf(stderr, "read failed\n"); return 1; }
+        fclose(file);
+        if (!memcmp(data, "C3UI", 4)) { ui_pack = data; ui_size = n; } else { pack = data; size = n; }
+    }
+    C3UiAssets assets;
+    C3BottomUi ui = {0};
+    if (ui_pack) { CHECK(c3_ui_assets_open(&assets, ui_pack, (size_t)ui_size)); ui.assets = &assets; }
+    if (!pack) {
         printf("message sweep: %u synthetic checks, %u failures; private pack not supplied (tools/prepare_message_sweep.py)\n",
                checks, failures);
         return failures != 0;
     }
-    FILE *file = fopen(argv[1], "rb");
-    if (!file) { fprintf(stderr, "cannot open %s\n", argv[1]); return 1; }
-    fseek(file, 0, SEEK_END); long size = ftell(file); fseek(file, 0, SEEK_SET);
-    unsigned char *pack = malloc((size_t)size);
-    if (!pack || fread(pack, 1, (size_t)size, file) != (size_t)size) { fprintf(stderr, "read failed\n"); return 1; }
-    fclose(file);
     if (size < 16 || memcmp(pack, "C3MS", 4) || le32(pack + 4) != 1 || le32(pack + 8) != (uint32_t)size) { fprintf(stderr, "bad C3MS\n"); return 1; }
     uint32_t count = le32(pack + 12), at = 16;
     Group *groups = calloc(count, sizeof *groups);
@@ -139,6 +193,7 @@ int main(int argc, char **argv)
         if (!strcmp(groups[i].name, "common_rel.rel:messages")) common[1] = &groups[i];
     }
     unsigned long messages = 0, unknown = 0, missing[OWNERS] = {0}, non_ascii = 0;
+    unsigned long field_lines = 0, wrapped = 0, wrapped_widest = 0, pages_over = 0, pages_over_widest = 0, unused = 0;
     unsigned pending[OWNERS][256] = {{0}};
     static char out[C3_STORY_MESSAGE * 4];
     char error[C3_STORY_ERROR];
@@ -160,6 +215,15 @@ int main(int argc, char **argv)
                 ++unknown; continue;
             }
             if (who == OWNER_FIELD) for (const char *p = out; *p; ++p) if ((unsigned char)*p >= 0x80) ++non_ascii;
+            if (who == OWNER_FIELD && ui.assets) {
+                char shown[C3_STORY_MESSAGE * 4];
+                speaker_name = SPEAKER_BUDGET;
+                if (c3_story_render(&story, id, field_values, NULL, C3_STORY_TEXT_MARKUP, shown, sizeof shown, error))
+                    wrapped += wrapped_lines(&ui, shown, 20, &pages_over, &field_lines);
+                speaker_name = SPEAKER_WIDEST;
+                if (c3_story_render(&story, id, field_values, NULL, C3_STORY_TEXT_MARKUP, shown, sizeof shown, error))
+                    wrapped_widest += wrapped_lines(&ui, shown, 0, &pages_over_widest, &unused);
+            }
             Source *owner_source = who == OWNER_FIELD ? &field : &all;
             if (who != OWNER_FIELD) { owner_source->field_only = 1; }
             if (!c3_story_render(&story, id, answer, owner_source, C3_STORY_TEXT_MARKUP, out, sizeof out, error)) {
@@ -178,6 +242,15 @@ int main(int argc, char **argv)
         printf("\n");
     }
     printf("  field text bytes outside ASCII (font coverage): %lu\n", non_ascii);
+    if (ui.assets) {
+        printf("  dialogue width %d: %lu field lines, %lu wrap with speaker \"%s\"; %lu pages exceed five rows\n",
+               C3_UI_MESSAGE_WIDTH, field_lines, wrapped, SPEAKER_BUDGET, pages_over);
+        printf("  with speaker \"%s\" (widest original person name): %lu lines wrap, %lu pages exceed five rows\n",
+               SPEAKER_WIDEST, wrapped_widest, pages_over_widest);
+        CHECK(field_lines > 10000 && wrapped == 0);
+    } else {
+        printf("  dialogue widths not checked: UI pack not supplied (tools/prepare_bottom_ui.py)\n");
+    }
     CHECK(unknown == 0);
     CHECK(missing[OWNER_FIELD] == 0);
     printf("message sweep: %u checks, %u failures\n", checks, failures);
