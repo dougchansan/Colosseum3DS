@@ -1,6 +1,7 @@
 #include "title_renderer.h"
 #include "stage_renderer.h"
 #include "stage_cache.h"
+#include "colosseum3ds/stage_order.h"
 
 #include <3ds.h>
 #include <citro3d.h>
@@ -24,6 +25,7 @@ static SceneBinding scenes[C3_STAGE_MAX_MODELS];
 static size_t scene_count;
 static C3StageVertexCache vertex_cache[C3_STAGE_MAX_MODELS];
 static uint8_t model_modulation[C3_STAGE_MAX_MODELS][4];
+static size_t draw_leading; /* stage_order.h; 0: one draw group */
 
 static bool c3d_started, program_started;
 static C3D_RenderTarget *target;
@@ -291,6 +293,7 @@ int c3_stage_renderer_init(const C3Title *const *models, size_t count,
     memset(&battle_hud, 0, sizeof battle_hud);
     memset(vertex_cache, 0, sizeof vertex_cache);
     memset(model_modulation, 0, sizeof model_modulation);
+    draw_leading = 0;
     effect_pass_reset();
     hud_texture = UINT32_MAX;
     overlay_texture = UINT32_MAX; overlay_alpha = 0.0f; overlay_scale = 1.0f;
@@ -452,6 +455,12 @@ int c3_stage_renderer_set_static(size_t model, bool enabled)
     if(enabled&&(t->clip_count!=1||t->clips[0].frame_count!=1))return 0;
     C3StageVertexCache *c=&vertex_cache[model];
     c->enabled=enabled;c3_stage_cache_reset(c);
+    return 1;
+}
+int c3_stage_renderer_set_draw_groups(size_t leading)
+{
+    if(leading>scene_count)return 0;
+    draw_leading=leading;
     return 1;
 }
 int c3_stage_renderer_set_modulation(size_t model, const uint8_t rgb[3])
@@ -1261,8 +1270,14 @@ int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
          * cannot disappear behind a late opaque pack. Within each class, source
          * model/batch order is retained; dynamic depth sorting is not invented. */
         unsigned passes = !capture && !offscreen && count > 1 ? 2u : 1u;
+        /* stage_order.h: with draw_leading set (the field), the map group and
+         * then each later model draw opaque-then-translucent in turn, as
+         * GSmodel submits them; otherwise every model shares one group. */
+        size_t lead = capture || offscreen ? 0u : draw_leading;
+        for (size_t group = 0, group_end; group < count; group = group_end) {
+        group_end = c3_stage_draw_group_end(group, count, lead);
         for (unsigned pass = 0; pass < passes; ++pass) {
-            for (size_t model = 0; model < count; ++model) {
+            for (size_t model = group; model < group_end; ++model) {
                 if (!capture && tv.configured && (offscreen ? model != tv.model : model == tv.model)) continue;
                 const C3Title *title = models[model];
                 const SceneBinding *binding = &scenes[model];
@@ -1359,6 +1374,7 @@ int c3_stage_renderer_draw(const C3Title *const *models, size_t count,
                 } /* per-model capture material classes */
             }
         }
+        } /* draw groups */
     } /* The texture-backed pass precedes the main camera in one GPU queue. */
     /* Composites, particles, HUD and fade assume the title program. */
     skin_restore(&scenes[0], &mvp);

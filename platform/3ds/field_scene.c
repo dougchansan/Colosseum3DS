@@ -306,6 +306,7 @@ static void load_progress(size_t done,size_t total)
 }
 static int field_renderer_init(C3Title *storage,const C3Title *const *models,uint32_t count,
                                uint64_t actors,char *error,size_t capacity);
+static uint32_t field_map_packs; /* the leading map packs of the current floor */
 typedef struct {
     C3PackJob *jobs; C3PackStream *stream;
     uint32_t first,count,area_index[C3_AREA_MAX_ACTORS];
@@ -646,6 +647,10 @@ static int field_renderer_init(C3Title *storage,const C3Title *const *models,uin
         if(c3_stage_renderer_init(models,count,error,capacity))return 1;
     }
     c3_pack_cache_trim(6u*1024u*1024u);
+    /* GSmodel order (stage_order.h): the map's packs, then each person with
+     * its own opaque and translucent passes, so a map light shaft without
+     * depth writes no longer washes over a character standing in front. */
+    (void)c3_stage_renderer_set_draw_groups(field_map_packs<count?field_map_packs:count);
 #ifndef C3_NO_GPU_SKIN
     for(uint32_t i=0;i<count;++i)storage[i].gpu_batches=c3_stage_renderer_gpu_skin_mask(i);
 #else
@@ -800,6 +805,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     }
     arrival_count=(profile->features&C3_FLOOR_ARRIVAL)&&opening_done&&!arrival_done?map.arrival_pack_count:0;
     count=map.map_pack_count+1u+arrival_count;wes_index=map.map_pack_count;arrival_index=wes_index+1u;
+    field_map_packs=map.map_pack_count;
     /* The floor's door table (native 60) and the object pack of each door
      * that has one; those rest on their first frame until a script plays a
      * clip. A door without a pack changes only its open flag and collision,
