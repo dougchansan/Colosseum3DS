@@ -143,6 +143,10 @@ typedef struct C3GeneralBattle {
     /* Floor status 0x5B: the turn's shared Quick Claw roll, drawn at the
      * start of the battle and again at the end of every turn. */
     uint16_t quick_claw_roll;
+    /* The hero trainer's OkaneBai (fightTrainer status 0x48, the prize
+     * multiplier): 1 at fightTrainerInit, 2 once a hero Pokemon holding the
+     * Amulet Coin (item 189, soubi data 0x20) comes out (fn_8022D084). */
+    uint8_t okane_bai;
     uint32_t event_count;
     C3GeneralEvent events[C3_GB_EVENT_LIMIT];
 } C3GeneralBattle;

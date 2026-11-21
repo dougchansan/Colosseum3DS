@@ -83,8 +83,20 @@ Each encounter's fight kind row (`fight.c` FightKindData, pack entry
 | `getOkaneFlag` (+9) | prize money | no prize without it (Mt. Battle kinds 8 and 9) |
 | `doCriticalAttackFlag` (+14) | critical hits | none without it (colosseum kinds 3, 5, 6, 7, Mt. Battle 8, 9) |
 
-`okanePoolFlag` (+10, the colosseum kinds) has no reader in the decompiled
-fight code; the prize is paid per battle.
+`okanePoolFlag` (+10, the colosseum kinds, floor status 0x26) is read by
+the prize opcode 0x5D (`fn_8021E754`): with it the battle's amount (x4) goes
+to `scriptAddPremium` instead of the hero's money and no prize line is
+shown. The port has no Premium store, so such battles pay nothing.
+
+The prize (opcode 0x5D, run by the post-win script 0x80378801 from
+`fightActionFlowSyuuryou`) is mult x the opponent trainer kind's
+SyoukinBairitu x best x OkaneBai: mult 2 when the fight type sends out two
+Pokemon a side (floor status 0x18), else 1; best the highest level in the
+opponent's party (the hero's snagged Pokemon, status 0xCF, are opponent
+Pokemon too); OkaneBai the hero trainer's status 0x48, 1 unless a hero
+Pokemon holding the Amulet Coin (item 189, soubi data 0x20) came out
+(`fn_8022D084`). It prints fight message 0x7546 "{13} got ${4b} for
+winning!" with the hero's name and the amount.
 
 ## Party writeback
 
@@ -102,7 +114,7 @@ fight code; the prize is paid per battle.
   callers without a prompt report it in `forget_prompt_skipped`);
 - effort: each fainted foe's species giveEffort (+0x90) to every
   non-Shadow Pokemon that faced it, capped at 255 a stat and 510 in all;
-- prize money on a win (trainer kind base x the highest foe level).
+- prize money on a win (the prize opcode's amount, see Fight kind rules).
 
 The private sweep checks these invariants on every admitted encounter.
 

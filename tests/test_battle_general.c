@@ -121,10 +121,12 @@ static void synthetic(void)
     C3GeneralRewards rw;
     memcpy(copy, party, sizeof copy);
     CHECK(c3_general_battle_writeback(&b, &pack, copy, &rw));
-    CHECK(rw.result_code == 2 && !rw.wipeout && rw.prize == 5u * 5u);
+    /* fn_8021E754: mult 2 (two Pokemon a side) x base 5 x best level 5 x
+     * OkaneBai 1. */
+    CHECK(b.okane_bai == 1 && rw.result_code == 2 && !rw.wipeout && rw.prize == 2u * 5u * 5u);
     /* The won trainer battle ends with the prize line; without a hero name
      * (c3_battle_story_prepare sets it) the fight text's "Player" is used. */
-    CHECK(prize_line(&b) && !strcmp(prize_line(&b), "Player got $25 for winning!"));
+    CHECK(prize_line(&b) && !strcmp(prize_line(&b), "Player got $50 for winning!"));
     /* Each foe: 50 * 5 / 7 * 3 / 2 = 52 split over the heroes that faced it. */
     CHECK(rw.exp[0] + rw.exp[1] > 0 && rw.exp[0] <= 104 && rw.exp[1] <= 104);
     CHECK(g32(copy[0] + 0x5c) == 125000u + rw.exp[0]);
@@ -143,7 +145,7 @@ static void synthetic(void)
         CHECK(!memcmp(copy, party, sizeof copy));
         /* The prize opcode pays the fight hero copy and prints its line
          * whatever backSaveDataFlag says (only heroBiosCopy depends on it). */
-        CHECK(prize_line(&nb) && !strcmp(prize_line(&nb), "Player got $25 for winning!"));
+        CHECK(prize_line(&nb) && !strcmp(prize_line(&nb), "Player got $50 for winning!"));
         /* getOkane clear: no prize; getExp clear: no experience or effort. */
         k.bytes[k.entries_at + 88] = 1; k.bytes[k.entries_at + 97] = 0; k.bytes[k.entries_at + 96] = 0;
         CHECK(c3_general_battle_begin(&nb, &k, 0, party, 7, error) && play(&nb, &k, &t) == C3_GB_WON);
@@ -151,16 +153,41 @@ static void synthetic(void)
         CHECK(c3_general_battle_writeback(&nb, &k, copy, &rw) && rw.written && !rw.prize && !rw.exp[0] && !rw.exp[1]);
         CHECK(g16(copy[0] + 0x98 + 10) == 0);
         CHECK(!prize_line(&nb)); /* no getOkane: the prize opcode skips the line */
-        /* The hero's name and msgctrlMoney's thousands commas: base 50000 x
-         * level 5, the same amount the writeback pays. */
+        /* The hero's name and msgctrlMoney's thousands commas: 2 x base
+         * 50000 x level 5, the same amount the writeback pays. */
         k.bytes[k.entries_at + 97] = 1; p16(k.bytes + k.entries_at + 180, 50000);
         CHECK(c3_general_battle_begin(&nb, &k, 0, party, 7, error));
         strcpy(nb.side_name[0], "WES");
         CHECK(play(&nb, &k, &t) == C3_GB_WON);
-        CHECK(prize_line(&nb) && !strcmp(prize_line(&nb), "WES got $250,000 for winning!"));
+        CHECK(prize_line(&nb) && !strcmp(prize_line(&nb), "WES got $500,000 for winning!"));
         memcpy(copy, party, sizeof copy);
-        CHECK(c3_general_battle_writeback(&nb, &k, copy, &rw) && rw.prize == 250000u);
-        p16(k.bytes + k.entries_at + 180, 5); k.bytes[k.entries_at + 97] = 0;
+        CHECK(c3_general_battle_writeback(&nb, &k, copy, &rw) && rw.prize == 500000u);
+        p16(k.bytes + k.entries_at + 180, 5);
+        {   /* OkaneBai 2: a hero Pokemon holding the Amulet Coin (item 189,
+             * soubi 0x20) came out; one left in the party does nothing. */
+            uint8_t coin[6][0x138]; memcpy(coin, party, sizeof coin);
+            p16(coin[1] + 0x88, 189);
+            CHECK(c3_general_battle_begin(&nb, &k, 0, coin, 7, error) && nb.okane_bai == 2);
+            CHECK(play(&nb, &k, &t) == C3_GB_WON);
+            CHECK(prize_line(&nb) && !strcmp(prize_line(&nb), "Player got $100 for winning!"));
+            CHECK(c3_general_battle_writeback(&nb, &k, coin, &rw) && rw.prize == 100u);
+            /* A single battle (one Pokemon a side): mult 1, and the holder in
+             * the second slot never comes out against two level-5 foes. */
+            memcpy(coin, party, sizeof coin); p16(coin[1] + 0x88, 189);
+            k.bytes[k.entries_at + 122] = 1;
+            CHECK(c3_general_battle_begin(&nb, &k, 0, coin, 7, error) && nb.active_count == 1);
+            CHECK(play(&nb, &k, &t) == C3_GB_WON && nb.okane_bai == 1);
+            CHECK(prize_line(&nb) && !strcmp(prize_line(&nb), "Player got $25 for winning!"));
+            k.bytes[k.entries_at + 122] = 2;
+            /* okanePool (the colosseum kinds): the amount goes to the
+             * Premium pool, so no money and no prize line. */
+            k.bytes[k.entries_at + 98] = 1;
+            CHECK(c3_general_battle_begin(&nb, &k, 0, party, 7, error) && play(&nb, &k, &t) == C3_GB_WON);
+            memcpy(coin, party, sizeof coin);
+            CHECK(c3_general_battle_writeback(&nb, &k, coin, &rw) && rw.written && !rw.prize && !prize_line(&nb));
+            k.bytes[k.entries_at + 98] = 0;
+        }
+        k.bytes[k.entries_at + 97] = 0;
         /* doCriticalAttackFlag clear: no critical hit in many battles. */
         k.bytes[k.entries_at + 102] = 0;
         for (unsigned seed = 0; seed < 40; ++seed) {
@@ -349,9 +376,19 @@ static void check_writeback(const C3BattlePack *pack, const C3GeneralBattle *b, 
                             uint8_t before[6][0x138], uint8_t after[6][0x138], const C3GeneralRewards *rw)
 {
     CHECK(rw->result_code == (b->outcome == C3_GB_WON ? 2u : 3u));
-    {   /* The prize line: a won hero battle with getOkane, the paid amount. */
+    {   /* The prize line: a won hero battle with getOkane (not okanePool),
+         * and the amount recomputed as fn_8021E754 does: mult 2 with two
+         * Pokemon a side, the opponent trainer kind's base, the highest
+         * opponent level, and OkaneBai 2 only with an Amulet Coin holder. */
+        unsigned best = 0, coin = 0;
+        for (unsigned i = 0; i < b->party_count[1]; ++i) if (b->party[1][i].level > best) best = b->party[1][i].level;
+        for (unsigned i = 0; i < b->party_count[0]; ++i) coin |= b->party[0][i].held_item == 189;
+        CHECK(b->okane_bai == 1 || (b->okane_bai == 2 && coin));
+        unsigned long expected = (info->active_per_side > 1 ? 2ul : 1ul) * info->prize_base * best * b->okane_bai;
+        if (b->outcome == C3_GB_WON && info->get_money && !info->money_pool && info->back_save && !info->cpu_side0)
+            CHECK(rw->prize == expected);
         const char *line = prize_line(b);
-        if (b->outcome != C3_GB_WON || !info->get_money || info->cpu_side0) CHECK(!line);
+        if (b->outcome != C3_GB_WON || !info->get_money || info->money_pool || info->cpu_side0) CHECK(!line);
         else if (b->event_count < C3_GB_EVENT_LIMIT) {
             CHECK(line && strchr(line, '$'));
             unsigned long amount = 0;
