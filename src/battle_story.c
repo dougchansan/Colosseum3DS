@@ -12,6 +12,12 @@ int c3_battle_story_prepare(const C3GameState *state, C3GeneralBattle *battle)
     if (!state || !battle) return 0;
     /* No Snag Machine when a CPU trainer fights on side 0 (encounter 525). */
     battle->snag = battle->info.cpu_side0 ? 0 : 1;
+    /* The hero's name for the fight text's control 0x13 (the prize line). */
+    {
+        C3GameSummary summary;
+        if (!battle->link && !battle->info.cpu_side0 && c3_game_state_summary(state, &summary))
+            snprintf(battle->side_name[0], sizeof battle->side_name[0], "%.15s", summary.name);
+    }
     memset(battle->balls, 0, sizeof battle->balls);
     for (unsigned slot = 0; slot < 16; ++slot) {
         C3GameItem item;

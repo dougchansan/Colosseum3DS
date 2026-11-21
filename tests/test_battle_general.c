@@ -72,6 +72,20 @@ static C3GeneralOutcome play(C3GeneralBattle *b, const C3BattlePack *p, unsigned
     return b->outcome;
 }
 
+/* The prize line (fight_common message 0x7546) of the battle's last turn:
+ * the message right after the outcome, or NULL when the turn has none. */
+static const char *prize_line(const C3GeneralBattle *b)
+{
+    for (uint32_t i = 0; i < b->event_count; ++i) {
+        if (strstr(b->events[i].text, " for winning!")) {
+            CHECK(i > 0 && b->events[i - 1].kind == C3_GB_EVENT_OUTCOME && b->events[i].kind == C3_GB_EVENT_MESSAGE);
+            CHECK(i + 1 == b->event_count);
+            return b->events[i].text;
+        }
+    }
+    return NULL;
+}
+
 static void synthetic(void)
 {
     size_t n; uint8_t *bytes = make_pack(2, 5, &n);
@@ -108,6 +122,9 @@ static void synthetic(void)
     memcpy(copy, party, sizeof copy);
     CHECK(c3_general_battle_writeback(&b, &pack, copy, &rw));
     CHECK(rw.result_code == 2 && !rw.wipeout && rw.prize == 5u * 5u);
+    /* The won trainer battle ends with the prize line; without a hero name
+     * (c3_battle_story_prepare sets it) the fight text's "Player" is used. */
+    CHECK(prize_line(&b) && !strcmp(prize_line(&b), "Player got $25 for winning!"));
     /* Each foe: 50 * 5 / 7 * 3 / 2 = 52 split over the heroes that faced it. */
     CHECK(rw.exp[0] + rw.exp[1] > 0 && rw.exp[0] <= 104 && rw.exp[1] <= 104);
     CHECK(g32(copy[0] + 0x5c) == 125000u + rw.exp[0]);
@@ -124,12 +141,26 @@ static void synthetic(void)
         memcpy(copy, party, sizeof copy);
         CHECK(c3_general_battle_writeback(&nb, &k, copy, &rw) && rw.result_code == 2 && !rw.written && !rw.prize);
         CHECK(!memcmp(copy, party, sizeof copy));
+        /* The prize opcode pays the fight hero copy and prints its line
+         * whatever backSaveDataFlag says (only heroBiosCopy depends on it). */
+        CHECK(prize_line(&nb) && !strcmp(prize_line(&nb), "Player got $25 for winning!"));
         /* getOkane clear: no prize; getExp clear: no experience or effort. */
         k.bytes[k.entries_at + 88] = 1; k.bytes[k.entries_at + 97] = 0; k.bytes[k.entries_at + 96] = 0;
         CHECK(c3_general_battle_begin(&nb, &k, 0, party, 7, error) && play(&nb, &k, &t) == C3_GB_WON);
         memcpy(copy, party, sizeof copy);
         CHECK(c3_general_battle_writeback(&nb, &k, copy, &rw) && rw.written && !rw.prize && !rw.exp[0] && !rw.exp[1]);
         CHECK(g16(copy[0] + 0x98 + 10) == 0);
+        CHECK(!prize_line(&nb)); /* no getOkane: the prize opcode skips the line */
+        /* The hero's name and msgctrlMoney's thousands commas: base 50000 x
+         * level 5, the same amount the writeback pays. */
+        k.bytes[k.entries_at + 97] = 1; p16(k.bytes + k.entries_at + 180, 50000);
+        CHECK(c3_general_battle_begin(&nb, &k, 0, party, 7, error));
+        strcpy(nb.side_name[0], "WES");
+        CHECK(play(&nb, &k, &t) == C3_GB_WON);
+        CHECK(prize_line(&nb) && !strcmp(prize_line(&nb), "WES got $250,000 for winning!"));
+        memcpy(copy, party, sizeof copy);
+        CHECK(c3_general_battle_writeback(&nb, &k, copy, &rw) && rw.prize == 250000u);
+        p16(k.bytes + k.entries_at + 180, 5); k.bytes[k.entries_at + 97] = 0;
         /* doCriticalAttackFlag clear: no critical hit in many battles. */
         k.bytes[k.entries_at + 102] = 0;
         for (unsigned seed = 0; seed < 40; ++seed) {
@@ -230,6 +261,7 @@ static void synthetic(void)
     make_party(party, 2, 3, 1, 0);
     CHECK(c3_general_battle_begin(&b, &pack, 0, party, 5, error));
     turns = 0; CHECK(play(&b, &pack, &turns) == C3_GB_LOST);
+    CHECK(!prize_line(&b)); /* a loss has no prize line */
     memcpy(copy, party, sizeof copy);
     CHECK(c3_general_battle_writeback(&b, &pack, copy, &rw));
     CHECK(rw.result_code == 3 && rw.wipeout && rw.prize == 0 && g16(copy[0] + 0x8a) == 0);
@@ -298,6 +330,7 @@ static void side0_cpu(void)
     }
     CHECK(b.outcome == C3_GB_WON && turns < 20);
     CHECK(strstr(b.events[b.event_count - 1].text, "EAGUN won"));
+    CHECK(b.info.get_money && !prize_line(&b)); /* no hero on side 0: no prize line */
     unsigned t2 = 0; CHECK(play(&again, &pack, &t2) == C3_GB_WON && t2 == turns);
     C3GeneralRewards rw; memcpy(copy, party, sizeof copy);
     CHECK(c3_general_battle_writeback(&b, &pack, copy, &rw));
@@ -316,6 +349,17 @@ static void check_writeback(const C3BattlePack *pack, const C3GeneralBattle *b, 
                             uint8_t before[6][0x138], uint8_t after[6][0x138], const C3GeneralRewards *rw)
 {
     CHECK(rw->result_code == (b->outcome == C3_GB_WON ? 2u : 3u));
+    {   /* The prize line: a won hero battle with getOkane, the paid amount. */
+        const char *line = prize_line(b);
+        if (b->outcome != C3_GB_WON || !info->get_money || info->cpu_side0) CHECK(!line);
+        else if (b->event_count < C3_GB_EVENT_LIMIT) {
+            CHECK(line && strchr(line, '$'));
+            unsigned long amount = 0;
+            for (const char *c = strchr(line, '$') + 1; (*c >= '0' && *c <= '9') || *c == ','; ++c)
+                if (*c != ',') amount = amount * 10u + (unsigned long)(*c - '0');
+            CHECK(!rw->written || amount == rw->prize);
+        }
+    }
     if (info->cpu_side0) { /* the hero only watched: no whiteout, nothing written */
         CHECK(!rw->wipeout && !rw->written && !rw->prize && !memcmp(before, after, 6 * 0x138)); return; }
     CHECK(rw->wipeout == (b->outcome != C3_GB_WON && info->wipeout));

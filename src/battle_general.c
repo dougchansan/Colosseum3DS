@@ -1305,6 +1305,29 @@ static int order_actors(C3GeneralBattle *b,const C3BattlePack *p,const C3General
     }
     return 1;
 }
+/* Prize: trainer-kind base x highest opponent level (the original prize
+ * opcode 0x5D, fn_8021E754, shape with its side multipliers taken as 1). */
+static uint32_t prize_money(const C3GeneralBattle *b)
+{
+    unsigned top=0;for(unsigned i=0;i<b->party_count[1];++i)if(b->party[1][i].level>top)top=b->party[1][i].level;
+    return (uint32_t)b->info.prize_base*top;
+}
+/* The won trainer battle's prize line, fight_common.fsys message 0x7546
+ * "{13} got ${4b} for winning!". fightActionFlowSyuuryou runs the post-win
+ * script 0x80378801 after the defeat line (0x766C) and the trainer's lose
+ * speech; its prize opcode pays the fight hero, sets 0x13 to the hero's name
+ * and 0x4B (msgctrlMoney: thousands commas) to the amount, then prints it.
+ * The opcode skips the line when getOkane is clear or side 0 has no hero
+ * (a CPU trainer; link battles). Without a hero name (side_name[0], from
+ * c3_battle_story_prepare) the fight text's own "Player" stands in. */
+static void say_prize(C3GeneralBattle *b)
+{
+    char digits[16],money[24];unsigned n=0,k=0;uint32_t v=prize_money(b);
+    do{digits[n++]=(char)('0'+v%10u);v/=10u;}while(v);
+    while(n){money[k++]=digits[--n];if(n&&n%3==0)money[k++]=',';}
+    money[k]=0;
+    say(b,C3_GB_EVENT_MESSAGE,255,255,0,"%s got $%s for winning!",b->side_name[0][0]?b->side_name[0]:"Player",money);
+}
 /* link: player holds all four positions' commands and nothing is drawn
  * for the opponent; otherwise player[0..1] is the hero and the opponent
  * policy picks side 1's commands from the battle RNG. */
@@ -1353,9 +1376,11 @@ static int turn_core(C3GeneralBattle *out,const C3BattlePack *p,const C3GeneralC
     }else if(b->outcome!=C3_GB_RUNNING&&b->info.cpu_side0)
         say(b,C3_GB_EVENT_OUTCOME,255,255,0,b->outcome==C3_GB_DRAW?"The battle ended in a draw.":"%s %s won the battle!",
             b->outcome==C3_GB_WON?b->info.side0_title:b->info.title,b->outcome==C3_GB_WON?b->info.side0_trainer:b->info.trainer);
-    else if(b->outcome!=C3_GB_RUNNING)
+    else if(b->outcome!=C3_GB_RUNNING){
         say(b,C3_GB_EVENT_OUTCOME,255,255,0,b->outcome==C3_GB_WON?"You defeated %s %s!":
             b->outcome==C3_GB_LOST?"You lost to %s %s...":"The battle with %s %s ended in a draw.",b->info.title,b->info.trainer);
+        if(b->outcome==C3_GB_WON&&b->info.get_money)say_prize(b);
+    }
     *out=*b;ok=1;if(e)e[0]=0;
     goto done;
 failed:fail(e,"Battle turn failed: random-number or table bounds.");
@@ -1467,12 +1492,7 @@ int c3_general_battle_writeback(const C3GeneralBattle *b,const C3BattlePack *p,
     /* backSaveDataFlag clear: the hero copy (party, money) is discarded. */
     if(!b->info.back_save){*rw=out;return 1;}
     out.written=1;
-    if(b->outcome==C3_GB_WON&&b->info.get_money){
-        /* Prize: trainer-kind base x highest opponent level (the original
-         * prize opcode's shape with its side multipliers taken as 1). */
-        unsigned top=0;for(unsigned i=0;i<b->party_count[1];++i)if(b->party[1][i].level>top)top=b->party[1][i].level;
-        out.prize=(uint32_t)b->info.prize_base*top;
-    }
+    if(b->outcome==C3_GB_WON&&b->info.get_money)out.prize=prize_money(b);
     for(unsigned i=0;i<b->party_count[0];++i){
         const C3GeneralMon *m=&b->party[0][i];uint8_t *r=party[m->party_slot];unsigned slot=m->party_slot;
         uint32_t before=be32(r+0x5c),gain=m->exp>before?m->exp-before:0;
