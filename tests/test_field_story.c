@@ -102,6 +102,35 @@ static void door(Scene *s,uint32_t source,uint32_t floor,uint32_t spawn)
     for(frame=0;frame<3600&&!c3_field_story_view(&s->story)->next_floor;++frame)tick(s,frame);
     CHECK(frame<3600&&c3_field_story_view(&s->story)->next_floor==floor&&c3_field_story_view(&s->story)->next_spawn==spawn);
 }
+/* Hold the circle pad from the shop's entrance mat as the field scene does
+ * (move, people push, doorway test) for every direction and frame time.
+ * The original player walls (CCD object 0 +0x28) bound the aisle to
+ * x -7.7..4.7, z -0.76..2.97; the only opening is the doorway, whose
+ * transition surface must fire before Wes passes z 2.97. The hero is
+ * restored afterwards, so the story fixture continues unchanged. */
+static void shop_walls_hold(Scene *s)
+{
+    const C3FieldPlayer saved=s->hero;const float dts[]={1.0f/60.0f,1.0f/30.0f,0.1f,0.25f};unsigned doors=0;
+    for(unsigned d=0;d<4;++d)for(unsigned angle=0;angle<360;angle+=15){
+        s->hero=saved;s->hero.collision_count=0;
+        float a=(float)angle*0.017453293f;int sx=(int)lroundf(127.0f*cosf(a)),sy=(int)lroundf(127.0f*sinf(a));
+        for(unsigned f=0;f<(unsigned)(3.0f/dts[d]);++f){
+            float before[3];memcpy(before,s->hero.position,sizeof before);
+            CHECK(c3_field_move(&s->map,&s->hero,sx,sy,0,s->map.camera_yaw,dts[d]));
+            c3_field_story_collide(&s->story,before);
+            float from[3]={before[0],before[1]+8.5f*s->map.scale,before[2]};
+            float to[3]={s->hero.position[0],s->hero.position[1]+8.5f*s->map.scale,s->hero.position[2]};
+            const C3FieldTriangle *door=c3_area_transition_active(&s->area,&s->map,from,to,s->map.radius);
+            if(door){CHECK(door->source_id==2&&c3_area_link(&s->area,1,2));++doors;break;}
+            const float *p=s->hero.position;
+            if(!(p[0]>-7.7f&&p[0]<4.7f&&p[2]>-0.76f&&p[2]<2.97f))
+                fprintf(stderr,"shop escape angle=%u dt=%.3f at %.3f %.3f\n",angle,(double)dts[d],(double)p[0],(double)p[2]);
+            CHECK(p[0]>-7.7f&&p[0]<4.7f&&p[2]>-0.76f&&p[2]<2.97f);
+        }
+    }
+    CHECK(doors>0);s->hero=saved;
+    fprintf(trace,"integration_shop_walls_hold directions=24 frame_times=4 doorway_fired=%u\n",doors);
+}
 static uint16_t counting_random(void *context){unsigned *draws=context;return (uint16_t)(0x1234u+(*draws)++);}
 typedef struct {unsigned calls;uint32_t item;int32_t count;int result;} ItemProbe;
 static int probe_item(void *context,uint32_t item,int32_t count)
@@ -882,6 +911,13 @@ int main(int argc,char **argv)
     fprintf(trace,"integration_approach_scene_complete frames=%u flag03da=1 collision10=disabled passengers_hidden=1\n",approach_frame);
     door(scene,4,2,0);close_scene(scene);
     load_scene(scene,&game,argv[1],2,1,0);until_control(scene,0x426e);
+    /* The shop's init script calls cameraSetFloorDefault(68.32, 73.12, -1.0):
+     * -1 is the follow camera's Y rotation in radians, not "keep". */
+    CHECK(fabsf(scene->map.camera_yaw+1.0f)<1e-6f);
+    CHECK(fabsf(scene->map.camera_height-6.832f)<1e-3f&&fabsf(scene->map.camera_distance-7.312f)<1e-3f);
+    fprintf(trace,"integration_shop_camera rot_y=%.3f height=%.3f distance=%.3f\n",(double)scene->map.camera_yaw,
+            (double)scene->map.camera_height,(double)scene->map.camera_distance);
+    shop_walls_hold(scene);
     CHECK(flag(&game,0x3db)==1&&flag(&game,0x3dc)==0&&flag(&game,0x3de)==0);
     C3StoryActor *willie=c3_field_story_actor(&scene->story,4);CHECK(willie&&willie->visible);
     memcpy(scene->hero.position,willie->pose.position,sizeof scene->hero.position);

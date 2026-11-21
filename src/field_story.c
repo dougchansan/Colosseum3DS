@@ -903,7 +903,20 @@ static int run_native(Impl *s,RunTask *t,char *error)
         log_line(s,"story_treasure_display index=%lu visible=%lu",(unsigned long)a[0],(unsigned long)a[1]);break;
     /* fn_801D0BD0: the Poke Ball battle-intro animation (mode 0) and its
      * cleanup (modes 1-3). Not rendered. */
-    case 0x53:note_presentation(s,0x53,"battle_intro_balls");break;
+    case 0x53:{
+        /* fn_801D0BD0(group,id,mode), the Pokemon Center service: every
+         * mode heals the whole party first through fn_801D0AFC, which runs
+         * pokemonAllKaihuku on each valid member (HP, PP and condition).
+         * Mode 0 then plays the healing machine with the party's balls
+         * beside person (group,id) (fn_801D0DB0); modes 1-3 fade and play
+         * jingle 0x19 (fn_801D0C30). The switch has no default action. */
+        if(a[2]>3)break;
+        if(!s->restore)return fail(error,"Native 53 mode %lu needs the party service",(unsigned long)a[2]);
+        int restored=s->restore(s->restore_context);
+        if(restored<0)return fail(error,"Native 53 mode %lu party service failed",(unsigned long)a[2]);
+        log_line(s,"story_party_restore native=53 mode=%lu members=%d",(unsigned long)a[2],restored);
+        note_presentation(s,0x53,a[2]?"heal_fade_jingle":"heal_machine_balls");
+        }break;
     /* fn_80188984 (peopleIsHeadTurning): head turns complete at once here. */
     case 0x9b:value=0;break;
     /* fn_801C8DD0 (menuSubOpenSelect): the selection menu returns the
@@ -1213,9 +1226,14 @@ static int run_native(Impl *s,RunTask *t,char *error)
     case 0x76:
         value=c3_field_set_object_enabled(s->map,a[0],!!a[1])?0:2;break;
     case 0x7f:
-        if(as_float(a[0])>=0)s->map->camera_height=as_float(a[0])*s->map->scale;
-        if(as_float(a[1])>=0)s->map->camera_distance=as_float(a[1])*s->map->scale;
-        if(as_float(a[2])>=0)s->map->camera_yaw=as_float(a[2]);
+        /* cameraSetFloorDefault(height, distance, rotY) (camera.c) stores all
+         * three as given: there is no "keep" value. The shop passes rotY -1.0,
+         * a real rotation of -1 radian that turns its follow camera to the
+         * front-left three-quarter view; reading it as "unchanged" left the
+         * camera square to the car's black cut-away front wall. */
+        s->map->camera_height=as_float(a[0])*s->map->scale;
+        s->map->camera_distance=as_float(a[1])*s->map->scale;
+        s->map->camera_yaw=as_float(a[2]);
         break;
     case 0x88:
         /* Original disables field-camera auto tracking. The explicit scene
