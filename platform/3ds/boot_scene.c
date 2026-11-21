@@ -1,4 +1,5 @@
 #include "boot_scene.h"
+#include "boot_index.h"
 #include "link_play.h"
 #include "trace_writer.h"
 #include "field_scene.h"
@@ -164,6 +165,9 @@ static int run_title(FILE *trace, C3GameState *state,
                 (unsigned long)title->texture_count, (unsigned long)title->bone_count, (double)title->fps);
         fflush(trace);
     }
+    /* List boot/ once while the title waits for input (boot_index.h):
+     * after the title packs, so it does not delay them. */
+    c3_boot_index_start();
     /* gs_title_8001EF78.c fn_8001FD48: fn_80165A20(0x46A, 0, 0xFF). The
      * original runs the attract demo when the song ends (fn_801666BC == 0)
      * and restarts it on return; without the demo, restart it directly. */

@@ -3,6 +3,7 @@
 #include "colosseum3ds/floor_profile.h"
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 
 static struct {
     uint32_t floor;
@@ -33,10 +34,9 @@ unsigned c3_area_prefetch_start(uint32_t floor, FILE *trace)
     if (!profile) return 0;
     for (unsigned i = 0; i < C3_AREA_PREFETCH_MAX; ++i) {
         C3PackJob *job = prefetch.jobs + prefetch.count;
-        FILE *f;
+        struct stat entry;
         snprintf(job->path, sizeof job->path, "sdmc:/3ds/Colosseum3DS/boot/%s_map%u.c3t", profile->prefix, i);
-        if (!(f = fopen(job->path, "rb"))) { job->path[0] = 0; break; }
-        fclose(f);
+        if (stat(job->path, &entry) != 0) { job->path[0] = 0; break; }
         job->title = prefetch.titles + prefetch.count++;
     }
     if (prefetch.count) prefetch.stream = c3_pack_stream_start(prefetch.jobs, prefetch.count);

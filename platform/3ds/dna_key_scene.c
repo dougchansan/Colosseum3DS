@@ -9,8 +9,12 @@
 #include <3ds.h>
 #include <string.h>
 #include <stdlib.h>
+#include <sys/stat.h>
 #define ROOT "sdmc:/3ds/Colosseum3DS/boot/"
-int c3_dna_key_scene_available(void){char path[160];for(unsigned i=0;i<12;i++){snprintf(path,sizeof path,ROOT "f387_obj%u.c3t",i);FILE *f=fopen(path,"rb");if(!f)return 0;fclose(f);}const char *paths[]={ROOT "f387_107c1800.c3c",ROOT "f387_107d1800.c3c"};for(unsigned i=0;i<2;i++){FILE *f=fopen(paths[i],"rb");if(!f)return 0;fclose(f);}return 1;}
+/* stat, not fopen: the boot index (boot_index.c) answers it without the SD
+ * card; field_scene asks this on every room load. */
+static int exists(const char *path){struct stat entry;return stat(path,&entry)==0&&S_ISREG(entry.st_mode);}
+int c3_dna_key_scene_available(void){char path[160];for(unsigned i=0;i<12;i++){snprintf(path,sizeof path,ROOT "f387_obj%u.c3t",i);if(!exists(path))return 0;}const char *paths[]={ROOT "f387_107c1800.c3c",ROOT "f387_107d1800.c3c"};for(unsigned i=0;i<2;i++)if(!exists(paths[i]))return 0;return 1;}
 int c3_dna_key_scene_run(const uint16_t expected[3],FILE *trace,char *error,size_t capacity){
     if(!expected){snprintf(error,capacity,"DNA expected species missing");return -1;}
     C3DnaKey state;if(!c3_dna_key_init(&state,expected))return state.result;

@@ -42,6 +42,8 @@ CFLAGS += -DC3_DEV_FLOOR
 endif
 ASFLAGS := -g $(ARCH)
 LDFLAGS = -specs=3dsx.specs -g $(ARCH) -Wl,--gc-sections,-Map,$(notdir $*.map)
+# boot/ lookups go through the directory index (platform/3ds/boot_index.c).
+LDFLAGS += -Wl,--wrap=fopen,--wrap=stat
 LIBS := -lcitro3d -lctru -lzstd -lz -lm
 LIBDIRS := $(CTRULIB) $(PORTLIBS)
 

@@ -7,9 +7,10 @@
 #include "n3ds_platform.h"
 #include <3ds.h>
 #include <string.h>
+#include <sys/stat.h>
 #define ROOT "sdmc:/3ds/Colosseum3DS/boot/"
 typedef struct { C3Story story; C3GameSummary summary; FILE *trace; char error[C3_GAME_ERROR_SIZE]; int failed; } Ending;
-static int exists(const char *path){FILE *f=fopen(path,"rb");if(!f)return 0;fclose(f);return 1;}
+static int exists(const char *path){struct stat entry;return stat(path,&entry)==0&&S_ISREG(entry.st_mode);}
 int c3_ending_scene_available(void){return exists(ROOT "staffroll.c3v")&&exists(ROOT "staffroll.c3s");}
 static int movie(void *context)
 {

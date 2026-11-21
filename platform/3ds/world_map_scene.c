@@ -475,10 +475,9 @@ static void journey_open(FILE *trace)
     if (!journey) return;
     for (unsigned i = 0; i < JOURNEY_PARTS; ++i) {
         C3PackJob *job = journey->map_jobs + journey->map_count;
-        FILE *f;
+        struct stat entry;
         snprintf(job->path, sizeof job->path, "sdmc:/3ds/Colosseum3DS/boot/journey_map%u.c3t", i);
-        if (!(f = fopen(job->path, "rb"))) { job->path[0] = 0; break; }
-        fclose(f);
+        if (stat(job->path, &entry) != 0) { job->path[0] = 0; break; }
         job->title = journey->maps + journey->map_count++;
     }
     if (journey->map_count) journey->map_stream = c3_pack_stream_start(journey->map_jobs, journey->map_count);
@@ -586,11 +585,10 @@ static int journey_play(const MapPack *pack, const C3WorldMap *map, uint32_t flo
     if (!journey || !journey->map_count) return 0;
     for (unsigned i = 0; i < JOURNEY_PARTS; ++i) {
         C3PackJob *job = journey->bike_jobs + journey->bike_count;
-        FILE *f;
+        struct stat entry;
         snprintf(job->path, sizeof job->path, "sdmc:/3ds/Colosseum3DS/boot/journey_%s_a%02lu_%u.c3t", bike,
                  (unsigned long)anim, i);
-        if (!(f = fopen(job->path, "rb"))) { job->path[0] = 0; break; }
-        fclose(f);
+        if (stat(job->path, &entry) != 0) { job->path[0] = 0; break; }
         job->title = journey->bike + journey->bike_count++;
     }
     if (trace) {
