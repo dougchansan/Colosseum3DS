@@ -62,7 +62,7 @@ The text box now works like this:
 - the message window spans the header's width, and its text is `C3_UI_MESSAGE_WIDTH` (294 px);
 - a hard line fits by its visible ink, not by a reserved 16 px cell;
 - a hard line that is still too wide gives up spacing: two pixels per word space first, then one pixel per glyph, spread evenly;
-- only a line too wide even then wraps by words, as before. No text is dropped.
+- only a line too wide even then wraps at spaces, by the same ink rule: a word moves to the next row when its visible glyphs would pass the width. A word is split only when it alone is wider than the row. No text is dropped. (The first version kept the old 16 px end cell for each glyph while measuring words by their advances, so the widened window broke the port's save prompt inside "progress".)
 
 Pass the UI pack as well to check every field line:
 
@@ -70,7 +70,7 @@ Pass the UI pack as well to check every field line:
 ./build/test_message_sweep private/sweep/messages.c3ms boot/ui.c3ui
 ```
 
-`make test` passes it as `C3_UI_PACK`. The sweep lays out every hard line of every field page at that width, with the speaker control printing FUN OLD LADY (97 px, wider than 95% of the original person names), and requires one row each: 0 of 13,871 lines wrap. With MYSTERY TROOP, the widest original person name (110 px), 21 lines still wrap; the sweep reports them as information. Five original pages have more than five lines. They are system texts, which the pager splits.
+`make test` passes it as `C3_UI_PACK`. The sweep lays out every hard line of every field page at that width, with the speaker control printing FUN OLD LADY (97 px, wider than 95% of the original person names), and requires one row each: 0 of 13,871 lines wrap. With either speaker, no row of any field page may end inside a word (0). The port's own paragraphs (save, return and preview prompts, title options, P*DA notices) are checked at the width and row count each is drawn with. With MYSTERY TROOP, the widest original person name (110 px), 21 lines still wrap; the sweep reports them as information. Five original pages have more than five lines. They are system texts, which the pager splits.
 
 ### Original font
 

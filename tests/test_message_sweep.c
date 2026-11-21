@@ -20,7 +20,9 @@
  * take one row, so no original line wraps and leaves an orphan word. The
  * speaker control (59) prints SPEAKER_BUDGET, the other names their default
  * (WES, RUI) and every other value "<XX>"; widths with the widest original
- * person name are reported as information.
+ * person name are reported as information. With either speaker no page
+ * may end a row inside a word, and the port's own paragraphs must wrap at
+ * spaces within the rows they are drawn with.
  * Without the private packs the sweep runs only its synthetic checks. */
 #include "colosseum3ds/bottom_ui.h"
 #include "colosseum3ds/field_story.h"
@@ -90,7 +92,7 @@ static unsigned long wrapped_lines(const C3BottomUi *ui, const char *text, int r
         size_t n = strcspn(p, "\n\f");
         if (n >= sizeof line) n = sizeof line - 1;
         memcpy(line, p, n); line[n] = 0;
-        int rows = c3_ui_text_rows(ui, C3_UI_MESSAGE_WIDTH, line);
+        int rows = c3_ui_text_rows(ui, C3_UI_MESSAGE_WIDTH, line, NULL);
         ++*lines;
         page_rows += rows ? rows : 1;
         if (rows > 1) { if (report > 0 && wrapped < (unsigned long)report) fprintf(stderr, "  wraps: %s\n", line); ++wrapped; }
@@ -99,6 +101,58 @@ static unsigned long wrapped_lines(const C3BottomUi *ui, const char *text, int r
         p += n + 1;
     }
     return wrapped;
+}
+
+/* Rows of every page (split at '\f') that end inside a word. */
+static unsigned long split_words(const C3BottomUi *ui, const char *text)
+{
+    unsigned long split = 0;
+    char page[C3_STORY_MESSAGE];
+    for (const char *p = text;;) {
+        size_t n = strcspn(p, "\f");
+        if (n >= sizeof page) n = sizeof page - 1;
+        memcpy(page, p, n); page[n] = 0;
+        int words = 0;
+        c3_ui_text_rows(ui, C3_UI_MESSAGE_WIDTH, page, &words);
+        if (words) fprintf(stderr, "  splits a word: %s\n", page);
+        split += (unsigned long)words;
+        if (!p[n]) break;
+        p += n + 1;
+    }
+    return split;
+}
+
+/* Port-made paragraphs (no hard breaks), at the width and row count each is
+ * drawn with: they wrap at spaces and must fit their rows. The save prompt
+ * once broke "progres" / "s will be kept." at the dialogue width. */
+static void port_paragraphs(const C3BottomUi *ui)
+{
+    static const struct { int width, lines; const char *text; } texts[] = {
+        {C3_UI_MESSAGE_WIDTH, 5, "Save your game here? Continue resumes at this area's entrance. Your party and progress will be kept."},
+        {C3_UI_MESSAGE_WIDTH, 5, "Return to the main menu? Unsaved progress will be lost."},
+        {C3_UI_MESSAGE_WIDTH, 5, "Leave the preview? All preview changes will be discarded."},
+        {290, 3, "3DS has no rumble motor. The preference is kept."},
+        {290, 3, "Apply for this session. Use in-game Save to keep settings."},
+        {275, 5, "A card file already exists. Starting a new Story permits your next Save to replace that file. Continue?"},
+        {235, 8, "The saved list or original PDA data could not be read."},
+        {235, 8, "The saved selection changed. Please choose again."},
+        {235, 8, "The original text for this saved mail is unavailable."},
+        {235, 8, "This mail's saved read effects could not be prepared."},
+        {235, 8, "The saved Strategy Memo unlock could not be read."},
+        {240, 2, "No registered Pokemon match this search."},
+        {240, 2, "There are no items in this pocket."},
+    };
+    for (size_t i = 0; i < sizeof texts / sizeof *texts; ++i) {
+        int words = -1, rows = c3_ui_text_rows(ui, texts[i].width, texts[i].text, &words);
+        if (words || rows > texts[i].lines) fprintf(stderr, "port text: %d rows, %d split: %s\n", rows, words, texts[i].text);
+        CHECK(words == 0 && rows >= 1 && rows <= texts[i].lines);
+    }
+    /* The save prompt takes three rows; two rows stop at a word start. */
+    const char *save = texts[0].text;
+    C3BottomUi measure = {0};
+    measure.assets = ui->assets;
+    size_t shown = c3_ui_text(&measure, 0, 0, C3_UI_MESSAGE_WIDTH, 2, save, 0);
+    CHECK(c3_ui_text_rows(ui, C3_UI_MESSAGE_WIDTH, save, NULL) == 3 && shown > 0 && save[shown - 1] == ' ');
 }
 
 static int values(void *context, uint8_t control, C3StoryValue *value)
@@ -170,7 +224,7 @@ int main(int argc, char **argv)
     }
     C3UiAssets assets;
     C3BottomUi ui = {0};
-    if (ui_pack) { CHECK(c3_ui_assets_open(&assets, ui_pack, (size_t)ui_size)); ui.assets = &assets; }
+    if (ui_pack) { CHECK(c3_ui_assets_open(&assets, ui_pack, (size_t)ui_size)); ui.assets = &assets; port_paragraphs(&ui); }
     if (!pack) {
         printf("message sweep: %u synthetic checks, %u failures; private pack not supplied (tools/prepare_message_sweep.py)\n",
                checks, failures);
@@ -193,7 +247,7 @@ int main(int argc, char **argv)
         if (!strcmp(groups[i].name, "common_rel.rel:messages")) common[1] = &groups[i];
     }
     unsigned long messages = 0, unknown = 0, missing[OWNERS] = {0}, non_ascii = 0;
-    unsigned long field_lines = 0, wrapped = 0, wrapped_widest = 0, pages_over = 0, pages_over_widest = 0, unused = 0;
+    unsigned long field_lines = 0, wrapped = 0, wrapped_widest = 0, pages_over = 0, pages_over_widest = 0, unused = 0, split = 0;
     unsigned pending[OWNERS][256] = {{0}};
     static char out[C3_STORY_MESSAGE * 4];
     char error[C3_STORY_ERROR];
@@ -219,10 +273,10 @@ int main(int argc, char **argv)
                 char shown[C3_STORY_MESSAGE * 4];
                 speaker_name = SPEAKER_BUDGET;
                 if (c3_story_render(&story, id, field_values, NULL, C3_STORY_TEXT_MARKUP, shown, sizeof shown, error))
-                    wrapped += wrapped_lines(&ui, shown, 20, &pages_over, &field_lines);
+                    wrapped += wrapped_lines(&ui, shown, 20, &pages_over, &field_lines), split += split_words(&ui, shown);
                 speaker_name = SPEAKER_WIDEST;
                 if (c3_story_render(&story, id, field_values, NULL, C3_STORY_TEXT_MARKUP, shown, sizeof shown, error))
-                    wrapped_widest += wrapped_lines(&ui, shown, 0, &pages_over_widest, &unused);
+                    wrapped_widest += wrapped_lines(&ui, shown, 0, &pages_over_widest, &unused), split += split_words(&ui, shown);
             }
             Source *owner_source = who == OWNER_FIELD ? &field : &all;
             if (who != OWNER_FIELD) { owner_source->field_only = 1; }
@@ -247,7 +301,8 @@ int main(int argc, char **argv)
                C3_UI_MESSAGE_WIDTH, field_lines, wrapped, SPEAKER_BUDGET, pages_over);
         printf("  with speaker \"%s\" (widest original person name): %lu lines wrap, %lu pages exceed five rows\n",
                SPEAKER_WIDEST, wrapped_widest, pages_over_widest);
-        CHECK(field_lines > 10000 && wrapped == 0);
+        printf("  rows ending inside a word, both speakers, every field page: %lu\n", split);
+        CHECK(field_lines > 10000 && wrapped == 0 && split == 0);
     } else {
         printf("  dialogue widths not checked: UI pack not supplied (tools/prepare_bottom_ui.py)\n");
     }

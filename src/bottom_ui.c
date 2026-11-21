@@ -498,7 +498,7 @@ static int text_width(const C3BottomUi *ui,const char *text)
 }
 
 static int text_right_draw(C3BottomUi *ui,int right,int y,int width,const char *text,uint32_t color);
-static size_t text_draw(C3BottomUi *ui,int x,int y,int width,int lines,const char *text,uint32_t color,int *rows);
+static size_t text_draw(C3BottomUi *ui,int x,int y,int width,int lines,const char *text,uint32_t color,int *rows,int *splits);
 
 int c3_ui_text_right(C3BottomUi *ui,int right,int y,int width,const char *text,uint32_t color)
 {
@@ -511,7 +511,7 @@ int c3_ui_text_right(C3BottomUi *ui,int right,int y,int width,const char *text,u
 size_t c3_ui_text(C3BottomUi *ui,int x,int y,int width,int lines,const char *text,uint32_t color)
 {
     size_t result;
-    UI_TIMED(text_us, result=text_draw(ui,x,y,width,lines,text,color,NULL));
+    UI_TIMED(text_us, result=text_draw(ui,x,y,width,lines,text,color,NULL,NULL));
     if(ui&&text&&width>=16&&width<=320&&lines>=1&&lines<=15)touch(ui,x,y,width+2,lines*17+2);
     return result;
 }
@@ -598,10 +598,11 @@ static int line_fit(const C3BottomUi *ui,const char *text,size_t pos,int width,S
     return 0;
 }
 
-static size_t text_draw(C3BottomUi *ui,int x,int y,int width,int lines,const char *text,uint32_t color,int *rows)
+static size_t text_draw(C3BottomUi *ui,int x,int y,int width,int lines,const char *text,uint32_t color,int *rows,int *splits)
 {
     size_t pos=0,last=0;int cursor=0,line=0,fit=-1;uint32_t current=color;Squeeze q={{0,0},{0,0},{0,0}};
     if(rows)*rows=0;
+    if(splits)*splits=0;
     if(!ui||!text||width<16||width>320||lines<1||lines>15||x < -320||x>320||y < -240||y>240)return 0;
     /* All callers own NUL-terminated strings. Bound scanning even for large
      * unbroken words; never draw outside the requested text rectangle. */
@@ -617,20 +618,25 @@ static size_t text_draw(C3BottomUi *ui,int x,int y,int width,int lines,const cha
             pos+=n;continue;
         }
         if(c==0x1b){pos+=n;continue;}
-        size_t end=pos;unsigned word=0;
+        /* Soft wrapping is by words, measured by their ink like a whole
+         * line: a word moves to the next row when its visible glyphs would
+         * pass the width, and is split only when it alone is wider. */
+        size_t end=pos;int word=0,offset=0;
         while(end<4096u&&text[end]){
             unsigned w;size_t m=next_char(text,end,&w,NULL,0);
             if(w==' '||w=='\n')break;
-            if(w!=0x1b)word+=advance(ui,w);
+            if(w!=0x1b){int e=(int)glyph_extent(ui,w);if(offset+e>word)word=offset+e;offset+=(int)advance(ui,w);}
             end+=m;
         }
-        if(!fit&&cursor&&cursor+(int)word>width){++line;cursor=0;if(line>=lines)break;if(rows)*rows=line+1;}
+        if(!fit&&cursor&&cursor+word>width){++line;cursor=0;if(line>=lines)break;if(rows)*rows=line+1;}
         while(pos<end){
             unsigned g;size_t m=next_char(text,pos,&g,&current,color);
             if(g==0x1b){pos+=m;continue;}
             unsigned step=advance(ui,g);
-            /* Reserve a glyph cell, even when its advance is narrower. */
-            if(!fit&&cursor+16>width){++line;cursor=0;if(line>=lines)return pos;if(rows)*rows=line+1;}
+            if(!fit&&cursor&&cursor+(int)glyph_extent(ui,g)>width){
+                if(splits)++*splits;
+                ++line;cursor=0;if(line>=lines)return pos;if(rows)*rows=line+1;
+            }
             glyph(ui,x+cursor,y+line*17,g,current);
             cursor+=(int)step;
             if(fit&&pos<last)cursor-=(int)squeeze(&q,1,1u);
@@ -640,12 +646,14 @@ static size_t text_draw(C3BottomUi *ui,int x,int y,int width,int lines,const cha
     return pos;
 }
 
-int c3_ui_text_rows(const C3BottomUi *ui,int width,const char *text)
+int c3_ui_text_rows(const C3BottomUi *ui,int width,const char *text,int *split_words)
 {
-    int rows;
+    int rows,splits;
+    if(split_words)*split_words=0;
     if(!ui)return 0;
     C3BottomUi measure=*ui;measure.pixels=NULL;
-    text_draw(&measure,0,0,width,15,text,0,&rows);
+    text_draw(&measure,0,0,width,15,text,0,&rows,&splits);
+    if(split_words)*split_words=splits;
     return rows;
 }
 
