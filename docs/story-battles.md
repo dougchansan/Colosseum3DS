@@ -92,7 +92,8 @@ shown. The Premium pool is the 32-bit save flag `0x0A9E`
 kept even without backSaveDataFlag, since the flag is not part of the hero
 copy). The colosseum entrance scripts clear it at registration with BC(0)
 and, after the last battle, pay it out with BB, scriptAddPokedoru (85) and
-message 0x5BA6 / 0x5B9E "...cash prize of ${4b}!". The Pyrite Colosseum
+the cash prize message (0x5B9E Phenac stadium, 0x5BA6 Pyrite, 0x5BAE and
+0x5BB6 the M4 entrances). The Pyrite Colosseum
 (encounters 169-172) collects 992 + 1,200 + 1,024 + 1,632 = 4,848 on the
 2026-11-21 route run, paid as `story_money delta=4848`.
 
