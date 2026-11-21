@@ -187,9 +187,12 @@ int c3_battle_general_stage_load(C3BattleGeneralStage *s,const C3Battle3dIndex *
         if(!load_actor(s,root,&model,slot,error,cap))goto bad;
     }
     if(model_for_slot(s,0)<0||model_for_slot(s,2)<0)goto invalid;
-    /* Command-phase view, as the encounter-10 scene: behind and above the
-     * hero's side looking across at the opponents. The arena's authored
-     * camera keeps its lens, roll and clip planes. */
+    /* Without the original base camera (battle_home.c3h, loaded with the
+     * WZX layer), the command-phase view of the encounter-10 scene: behind
+     * and above the hero's side looking across at the opponents, through
+     * the 30-degree lens that geometry was framed for. A floor's own scene
+     * camera has any lens (floor 7: 5.4 degrees from far away), so only its
+     * roll and clip planes are kept. */
     {
         float player[3]={0,0,0},enemy[3]={0,0,0};
         for(unsigned slot=0;slot<4;++slot){float p[4];slot_position(slot,2,p);float *side=slot<2?player:enemy;
@@ -199,6 +202,7 @@ int c3_battle_general_stage_load(C3BattleGeneralStage *s,const C3Battle3dIndex *
         axis[0]/=span;axis[1]/=span;
         s->camera.eye[0]=player[0]-axis[0]*7.5f;s->camera.eye[1]=player[1]+3.2f;s->camera.eye[2]=player[2]-axis[1]*7.5f;
         s->camera.target[0]=player[0]+axis[0]*span*.75f;s->camera.target[1]=player[1]+.9f;s->camera.target[2]=player[2]+axis[1]*span*.75f;
+        s->camera.fov_y_degrees=30.f;
     }
     if(!damage_load(s,effects,error,cap))goto bad;
     if(wzx_open(s,root)){wzx_load_persistent(s,root);if(trace){fprintf(trace,"wzx_layer rows=%lu persistent=%u\n",(unsigned long)s->wzx->index.rows,s->wzx->persistent_sequences);fflush(trace);}}

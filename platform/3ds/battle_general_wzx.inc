@@ -51,6 +51,11 @@ struct C3BattleWzxLayer {
     C3WzxCameraScene scene;
     C3TitleCamera home;
     uint8_t camera_ok, sequence_camera, command_phase;
+    /* The original base camera circling the arena (battle_home.c3h); absent,
+     * `home` stays the native view behind the hero's side. */
+    C3WzxHomeCamera home_camera;
+    uint64_t home_units;
+    uint8_t home_ok;
     unsigned persistent_sequences, persistent_banks; /* the Poke Ball specials, kept for the battle */
     char follow[48]; unsigned follow_owner; uint16_t follow_voice, follow_special; uint8_t follow_pending;
 };
@@ -113,6 +118,7 @@ static void wzx_close(C3BattleGeneralStage *s)
     s->wzx->base_count = 0;
     wzx_release_batch(s);
     c3_wzx_index_free(&s->wzx->index);
+    c3_wzx_home_camera_free(&s->wzx->home_camera);
     free(s->wzx->systems); free(s->wzx); s->wzx = NULL;
 }
 
@@ -134,6 +140,14 @@ static int wzx_open(C3BattleGeneralStage *s, const char *root)
         w->camera_ok = 1;
     } else if (s->trace) { fprintf(s->trace, "wzx_camera_unavailable reason=%s\n", error); fflush(s->trace); }
     w->home = s->camera;
+    /* fn_801C2F00: the field's base camera, scaled by the largest Pokemon's
+     * field class (not known here: the default class, lbl_8047DF68). */
+    snprintf(path, sizeof path, "%s/battle_home.c3h", root);
+    if (c3_wzx_home_camera_load(&w->home_camera, path, error, sizeof error)) {
+        w->home_ok = 1;
+        c3_wzx_home_camera_sample(&w->home_camera, 0, w->home_camera.scale[3], &w->home);
+        s->camera = w->home;
+    } else if (s->trace) { fprintf(s->trace, "battle_home_camera_unavailable reason=%s\n", error); fflush(s->trace); }
     return 1;
 }
 
@@ -284,7 +298,9 @@ static int effect_joint(const C3BattleGeneralStage *s, int32_t m, const C3WzxNod
 
 static void colour_at(const C3WzxNode *n, int32_t local, uint8_t rgb[3], int *hold)
 {
-    /* Type-0 keys: from RGBA, to RGBA, duration (-1 holds), interpolation. */
+    /* Type-0 keys: from ARGB, to ARGB, duration (-1 holds), interpolation.
+     * The words are 0xAARRGGBB: neutral 0x80808080, the move dim 0x803A3A3A
+     * (the encounter-10 damage effect reads the same low three bytes). */
     uint32_t mode = c3_wzx_payload_u32(n, 0x14), count = c3_wzx_payload_u32(n, 0x10);
     uint32_t at = mode == 1 || mode == 2 ? 0x18 : 0x1C;
     int32_t t = local; *hold = 0;
@@ -295,7 +311,7 @@ static void colour_at(const C3WzxNode *n, int32_t local, uint8_t rgb[3], int *ho
             float f = span > 0 ? (float)(t < span ? t : span) / (float)span : 1.f;
             if (span < 0) { f = 0; *hold = 1; }
             for (unsigned c = 0; c < 3; ++c) {
-                float a = (float)(from >> (24 - 8 * c) & 255), b = (float)(to >> (24 - 8 * c) & 255);
+                float a = (float)(from >> (16 - 8 * c) & 255), b = (float)(to >> (16 - 8 * c) & 255);
                 rgb[c] = (uint8_t)(a + (b - a) * f + .5f);
             }
             if (span >= 0 && t >= span && k + 1 == count) *hold = 0;
@@ -519,7 +535,11 @@ static void camera_sequence(C3BattleGeneralStage *s, const WzxSequence *q, unsig
 static void camera_step(C3BattleGeneralStage *s, uint32_t ms)
 {
     struct C3BattleWzxLayer *w = s->wzx; char error[160];
-    if (!w || !w->camera_ok) return;
+    if (!w) return;
+    /* The base camera's offset animation loops at 0.5 frames per tick for
+     * the whole battle; each command phase resumes it where it is. */
+    if (w->home_ok) { w->home_units += (uint64_t)ms * 60u; c3_wzx_home_camera_sample(&w->home_camera, w->home_units, w->home_camera.scale[3], &w->home); }
+    if (!w->camera_ok) { s->camera = w->home; return; }
     int running = 0;
     for (unsigned i = 0; i < WZX_PLAYERS; ++i) running |= w->runs[i].active;
     if (w->sequence_camera && !running) { c3_wzx_camera_end(&w->camera); w->sequence_camera = 0; c3_wzx_camera_idle_reset(&w->camera, w->command_phase); }

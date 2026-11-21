@@ -80,6 +80,9 @@ static int battle_cue_pan(uint32_t sound, float pan)
 }
 static int autoplay; /* unattended probe: the hero uses the opponent policy */
 static unsigned hyper_shot_at; /* probe: frame to capture a Hyper Mode entry at */
+#ifdef C3_GENERAL_3D_PROBE
+static unsigned command_frames, faint_shot_at; static int command_shot;
+#endif
 static char story_prefix[48];
 void c3_battle_general_3d_set_autoplay(int on, const char *prefix)
 {
@@ -241,7 +244,16 @@ static int run(const C3BattlePack *pack, C3GeneralBattle *b, C3BattleLinkHooks *
         uint16_t pressed = input.pressed;
         /* Hold A or B to hurry the messages along. */
         stage->message_ms = (input.held & (C3_PAD_A | C3_PAD_B)) && ui.page == C3_GUI_EVENTS ? 300 : 1100;
-        if (autoplay && hooks && ui.page != C3_GUI_EVENTS && ui.page != C3_GUI_RESULT && ui.page != C3_GUI_WAIT) {
+        int hold_command = 0;
+#ifdef C3_GENERAL_3D_PROBE
+        /* probe: show the first turns' command view long enough to capture it */
+        if (autoplay && !hooks && ui.page != C3_GUI_EVENTS && ui.page != C3_GUI_RESULT && b->turn < 3) {
+            if (command_frames < 90) { hold_command = 1; if (++command_frames == 90) command_shot = 1; }
+            else command_frames = 0;
+        }
+#endif
+        if (hold_command) { /* probe: the command page stays up */
+        } else if (autoplay && hooks && ui.page != C3_GUI_EVENTS && ui.page != C3_GUI_RESULT && ui.page != C3_GUI_WAIT) {
             C3GeneralCommand c[2]; memset(c, 0, sizeof c);
             for (unsigned a = 0; a < b->active_count; ++a)
                 if ((hooks->control_mask >> a & 1u) && b->active[0][a] != 255 && b->party[0][b->active[0][a]].hp)
@@ -279,6 +291,10 @@ static int run(const C3BattlePack *pack, C3GeneralBattle *b, C3BattleLinkHooks *
             drawn_page = ui.page; dirty = 0;
             /* probe: capture the Hyper Mode entry while its message is up */
             if (autoplay && !hyper_shot_at && shown < b->event_count && b->events[shown].hyper) hyper_shot_at = frames + 20u;
+#ifdef C3_GENERAL_3D_PROBE
+            /* probe: the HP boxes after the first faint */
+            if (autoplay && !faint_shot_at && shown < b->event_count && b->events[shown].kind == C3_GB_EVENT_FAINT) faint_shot_at = frames + 30u;
+#endif
         }
         C3StageBattleHud hud = {0};
         if (c3_stage_renderer_set_battle_hud(&hud, error, sizeof error) != C3_RENDER_OK) goto done;
@@ -292,14 +308,26 @@ static int run(const C3BattlePack *pack, C3GeneralBattle *b, C3BattleLinkHooks *
             error[0] = 0;
         } else {
             ++frames;
-            if (autoplay && (frames == 240 || frames == 900 || frames == 1800 || frames == 3000 || frames == hyper_shot_at)) {
+            int probe_shot = 0; const char *probe_prefix = NULL;
+#ifdef C3_GENERAL_3D_PROBE
+            if (command_shot) { command_shot = 0; probe_shot = 1; probe_prefix = "command"; }
+            else if (faint_shot_at && frames == faint_shot_at) { probe_shot = 1; probe_prefix = "faint"; }
+#endif
+            if (autoplay && (probe_shot || frames == 240 || frames == 900 || frames == 1800 || frames == 3000 || frames == hyper_shot_at)) {
                 char shot[96];
-                const char *prefix = frames == hyper_shot_at ? "hyper" : hooks && hooks->shot_prefix ? hooks->shot_prefix : story_prefix[0] ? story_prefix : "general3d";
+                const char *prefix = probe_prefix ? probe_prefix : frames == hyper_shot_at ? "hyper" : hooks && hooks->shot_prefix ? hooks->shot_prefix : story_prefix[0] ? story_prefix : "general3d";
                 snprintf(shot, sizeof shot, "sdmc:/3ds/Colosseum3DS/%s_%u_top.bmp", prefix, frames);
                 int top = c3_n3ds_capture_top(shot) == 0;
                 snprintf(shot, sizeof shot, "sdmc:/3ds/Colosseum3DS/%s_%u_bottom.bmp", prefix, frames);
                 int bottom = c3_n3ds_capture_bottom(shot) == 0;
                 if (trace) { fprintf(trace, "general3d_shot frame=%u top=%d bottom=%d\n", frames, top, bottom); fflush(trace); }
+#ifdef C3_GENERAL_3D_PROBE
+                if (trace) { const C3TitleCamera *c = &stage->camera;
+                    fprintf(trace, "general3d_shot_camera prefix=%s eye=%.3f,%.3f,%.3f target=%.3f,%.3f,%.3f fov=%.2f near=%.3f far=%.1f\n", prefix,
+                        (double)c->eye[0], (double)c->eye[1], (double)c->eye[2], (double)c->target[0], (double)c->target[1], (double)c->target[2],
+                        (double)c->fov_y_degrees, (double)c->near_plane, (double)c->far_plane);
+                    fflush(trace); }
+#endif
             }
         }
     }

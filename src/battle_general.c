@@ -259,7 +259,7 @@ static int say(C3GeneralBattle *b,C3GeneralEventKind kind,unsigned actor,unsigne
     if(b->event_count>=C3_GB_EVENT_LIMIT)return 1; /* the log saturates; the battle continues */
     C3GeneralEvent *e=&b->events[b->event_count++];
     memset(e,0,sizeof *e);e->kind=(uint8_t)kind;e->actor=(uint8_t)actor;e->target=(uint8_t)target;e->move=move;
-    for(unsigned i=0;i<4;++i){const C3GeneralMon *m=cat(b,i);e->hp[i]=m?m->hp:0;e->max_hp[i]=m?m->max_hp:0;}
+    for(unsigned i=0;i<4;++i){const C3GeneralMon *m=cat(b,i);e->hp[i]=m?m->hp:0;e->max_hp[i]=m?m->max_hp:0;e->mon[i]=m?b->active[i/2][i%2]:NO_MON;}
     {const C3GeneralMon *m=actor<4?cat(b,actor):NULL;e->species=m?m->species:0;e->ball=m?m->ball:0;}
     e->stat=-1;
     va_list ap;va_start(ap,f);vsnprintf(e->text,sizeof e->text,f,ap);va_end(ap);
@@ -1419,7 +1419,8 @@ void c3_general_battle_mirror(const C3GeneralBattle *in,C3GeneralBattle *out)
     for(uint32_t i=0;i<out->event_count;++i){C3GeneralEvent *ev=&out->events[i];
         ev->actor=flip(ev->actor);ev->target=flip(ev->target);
         for(unsigned k=0;k<2;++k){uint16_t x=ev->hp[k];ev->hp[k]=ev->hp[k+2];ev->hp[k+2]=x;
-            x=ev->max_hp[k];ev->max_hp[k]=ev->max_hp[k+2];ev->max_hp[k+2]=x;}}
+            x=ev->max_hp[k];ev->max_hp[k]=ev->max_hp[k+2];ev->max_hp[k+2]=x;
+            uint8_t y=ev->mon[k];ev->mon[k]=ev->mon[k+2];ev->mon[k+2]=y;}}
 }
 
 /* ---- writeback ----------------------------------------------------------- */

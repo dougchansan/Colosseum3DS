@@ -159,4 +159,22 @@ void c3_wzx_camera_idle_reset(C3WzxCamera *camera, int simple);
 /* 1 while a camera (or a held idle pose) drives camera->camera. */
 int c3_wzx_camera_active(const C3WzxCamera *camera);
 
+/* The battle base camera (fn_801C2F00: cameraPlayOffsetAnime of
+ * fight_common.fsys 0x007B1800, looped, resumed at its current frame every
+ * command phase): one sample per 60 Hz tick from
+ * tools/prepare_battle_home_camera.py (battle_home.c3h, "C3WH" v1). */
+typedef struct {
+    uint8_t *bytes;     /* owned copy of the pack */
+    uint32_t count;     /* samples: eye xyz, target xyz (native units), roll, FOV */
+    float scale[4];     /* lbl_8047DF5C/60/64 (largest field 1, 2, 3), lbl_8047DF68 otherwise */
+} C3WzxHomeCamera;
+
+int c3_wzx_home_camera_decode(C3WzxHomeCamera *out, const void *bytes, size_t size, char *error, size_t capacity);
+int c3_wzx_home_camera_load(C3WzxHomeCamera *out, const char *path, char *error, size_t capacity);
+void c3_wzx_home_camera_free(C3WzxHomeCamera *camera);
+/* The pose `units` (1000 per tick) into the loop, scaled about the arena
+ * origin; eye, target, roll (0: the source's offset animation keeps the up
+ * vector) and FOV change, the lens planes and aspect of *out stay. */
+void c3_wzx_home_camera_sample(const C3WzxHomeCamera *camera, uint64_t units, float scale, C3TitleCamera *out);
+
 #endif

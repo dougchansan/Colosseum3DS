@@ -370,8 +370,46 @@ static void idle_checks(const C3WzxCameraTables *always, const C3WzxCameraTables
     CHECK(c3_wzx_camera_step_units(&d, &scene, 3600000, error, sizeof error) && d.cuts == 0);
 }
 
+/* The base camera pack: a synthetic 4-sample circle. */
+static void home_checks(void)
+{
+    enum { COUNT = 4, BYTES = 32 + 32 * COUNT + 4 };
+    uint8_t b[BYTES]; char error[160];
+    memset(b, 0, sizeof b);
+    memcpy(b, "C3WH", 4); put32(b + 4, 1); put32(b + 8, BYTES); put32(b + 12, COUNT);
+    const float scale[4] = { 1.1f, 1.2f, 1.4f, 1.0f };
+    for (unsigned i = 0; i < 4; ++i) put32(b + 16 + 4 * i, fbits(scale[i]));
+    for (unsigned i = 0; i < COUNT; ++i) {
+        float a = (float)i * 1.5707964f, row[8] = { 10 * sinf(a), 7, 10 * cosf(a), 9 * sinf(a), 6.8f, 9 * cosf(a), .01f, 30 + 2 * (float)i };
+        for (unsigned k = 0; k < 8; ++k) put32(b + 32 + 32 * i + 4 * k, fbits(row[k]));
+    }
+    put32(b + BYTES - 4, fnv1a(b, BYTES - 4));
+    C3WzxHomeCamera h;
+    CHECK(c3_wzx_home_camera_decode(&h, b, sizeof b, error, sizeof error) && h.count == COUNT && h.scale[2] == 1.4f);
+    C3TitleCamera c = base;
+    c3_wzx_home_camera_sample(&h, 0, 1.0f, &c);
+    CHECK(fabsf(c.eye[2] - 10) < 1e-4f && fabsf(c.eye[1] - 7) < 1e-4f && c.roll == 0 && c.fov_y_degrees == 30);
+    CHECK(c.near_plane == base.near_plane && c.far_plane == base.far_plane && c.aspect == base.aspect);
+    c3_wzx_home_camera_sample(&h, 1500, 1.0f, &c); /* halfway between samples 1 and 2 */
+    CHECK(fabsf(c.eye[0] - 5) < 1e-4f && fabsf(c.eye[2] + 5) < 1e-4f && fabsf(c.fov_y_degrees - 33) < 1e-4f);
+    c3_wzx_home_camera_sample(&h, 3500, 1.0f, &c); /* the loop wraps to sample 0 */
+    CHECK(fabsf(c.eye[0] + 5) < 1e-4f && fabsf(c.eye[2] - 5) < 1e-4f && fabsf(c.fov_y_degrees - 33) < 1e-4f);
+    c3_wzx_home_camera_sample(&h, 4000 * 5, 1.2f, &c);
+    CHECK(fabsf(c.eye[2] - 12) < 1e-4f && fabsf(c.target[1] - 6.8f * 1.2f) < 1e-4f);
+    c3_wzx_home_camera_free(&h);
+    CHECK(!h.bytes && !h.count);
+    /* Damaged packs are refused. */
+    b[40] ^= 1;
+    CHECK(!c3_wzx_home_camera_decode(&h, b, sizeof b, error, sizeof error) && !h.bytes);
+    b[40] ^= 1;
+    CHECK(!c3_wzx_home_camera_decode(&h, b, sizeof b - 1, error, sizeof error));
+    put32(b + 32 + 28, fbits(180.0f)); put32(b + BYTES - 4, fnv1a(b, BYTES - 4));
+    CHECK(!c3_wzx_home_camera_decode(&h, b, sizeof b, error, sizeof error));
+}
+
 int main(int argc, char **argv)
 {
+    home_checks();
     uint8_t b[C3_WZX_CAMERA_FILE_BYTES];
     char error[160];
     C3WzxCameraTables tables, always, never;
