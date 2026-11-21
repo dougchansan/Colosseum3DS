@@ -106,7 +106,8 @@ typedef struct C3GeneralEvent {
     uint8_t kind, actor, target;
     uint16_t move;
     uint16_t hp[4], max_hp[4]; /* per battle position after the event */
-    uint16_t species;   /* the Pokemon at `actor` when logged (0: none) */
+    uint8_t mon[4];     /* party index at each battle position after the event (255: none) */
+    uint16_t species;  /* the Pokemon at `actor` when logged (0: none) */
     int8_t stat, stat_delta; /* a stage change: stat 0..6 and delta; stat -1 otherwise */
     uint8_t status;     /* a new status condition (C3_GB_SLEEP..), 0 otherwise */
     uint8_t ball;       /* the ball of the Pokemon at `actor` (item id, 0 none) */

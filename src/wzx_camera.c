@@ -2,6 +2,7 @@
 
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 /* Original GC units per native unit and back (the stage's 0.1 basis). */
@@ -67,6 +68,77 @@ int c3_wzx_camera_tables_load(C3WzxCameraTables *out, const char *path, char *e,
     if (fclose(f)) io = 1;
     if (io) return fail(e, n, "Cannot read WZX camera tables.");
     return c3_wzx_camera_tables_decode(out, bytes, count, e, n);
+}
+
+/* ---- battle_home.c3h (tools/prepare_battle_home_camera.py) ------------ */
+
+#define HOME_MAX_SAMPLES 8192u
+
+int c3_wzx_home_camera_decode(C3WzxHomeCamera *out, const void *bytes, size_t size, char *e, size_t n)
+{
+    const uint8_t *b = bytes;
+    if (!out || !b || size < 36 || memcmp(b, "C3WH", 4) || le32(b + 4) != 1 || le32(b + 8) != size)
+        return fail(e, n, "Invalid base camera header.");
+    uint32_t count = le32(b + 12);
+    if (!count || count > HOME_MAX_SAMPLES || size != 32u + 32u * count + 4u) return fail(e, n, "Base camera bounds.");
+    if (fnv1a(b, size - 4) != le32(b + size - 4)) return fail(e, n, "Base camera checksum.");
+    float scale[4];
+    for (unsigned i = 0; i < 4; ++i) {
+        scale[i] = le_float(b + 16 + 4 * i);
+        if (!isfinite(scale[i]) || scale[i] <= 0 || scale[i] > 10) return fail(e, n, "Invalid base camera scale.");
+    }
+    for (uint32_t i = 0; i < count; ++i) {
+        const uint8_t *s = b + 32 + 32 * (size_t)i;
+        float d = 0;
+        for (unsigned k = 0; k < 7; ++k) if (!isfinite(le_float(s + 4 * k)) || fabsf(le_float(s + 4 * k)) > 1e5f) return fail(e, n, "Nonfinite base camera sample.");
+        for (unsigned k = 0; k < 3; ++k) d += (le_float(s + 12 + 4 * k) - le_float(s + 4 * k)) * (le_float(s + 12 + 4 * k) - le_float(s + 4 * k));
+        float fov = le_float(s + 28);
+        if (!(d > 1e-10f) || !isfinite(fov) || fov <= 0 || fov >= 180) return fail(e, n, "Invalid base camera sample.");
+    }
+    uint8_t *copy = malloc(size);
+    if (!copy) return fail(e, n, "No memory for the base camera.");
+    memcpy(copy, b, size);
+    out->bytes = copy; out->count = count; memcpy(out->scale, scale, sizeof scale);
+    if (e && n) e[0] = 0;
+    return 1;
+}
+
+int c3_wzx_home_camera_load(C3WzxHomeCamera *out, const char *path, char *e, size_t n)
+{
+    enum { CAP = 32 + 32 * HOME_MAX_SAMPLES + 4 };
+    if (!out || !path) return fail(e, n, "Missing base camera path.");
+    memset(out, 0, sizeof *out);
+    FILE *f = fopen(path, "rb");
+    if (!f) return fail(e, n, "Cannot open the base camera.");
+    uint8_t *bytes = malloc(CAP + 1);
+    if (!bytes) { fclose(f); return fail(e, n, "No memory for the base camera."); }
+    size_t count = fread(bytes, 1, CAP + 1, f);
+    int io = ferror(f);
+    if (fclose(f)) io = 1;
+    int ok = io ? fail(e, n, "Cannot read the base camera.") : c3_wzx_home_camera_decode(out, bytes, count, e, n);
+    free(bytes);
+    return ok;
+}
+
+void c3_wzx_home_camera_free(C3WzxHomeCamera *c)
+{
+    if (!c) return;
+    free(c->bytes);
+    memset(c, 0, sizeof *c);
+}
+
+void c3_wzx_home_camera_sample(const C3WzxHomeCamera *c, uint64_t units, float scale, C3TitleCamera *out)
+{
+    if (!c || !c->bytes || !c->count || !out) return;
+    uint64_t tick = units / 1000u;
+    uint32_t i = (uint32_t)(tick % c->count), j = i + 1 < c->count ? i + 1 : 0;
+    float f = (float)(units % 1000u) / 1000.0f;
+    const uint8_t *a = c->bytes + 32 + 32 * (size_t)i, *b = c->bytes + 32 + 32 * (size_t)j;
+    float v[8];
+    for (unsigned k = 0; k < 8; ++k) v[k] = le_float(a + 4 * k) + (le_float(b + 4 * k) - le_float(a + 4 * k)) * f;
+    for (unsigned k = 0; k < 3; ++k) { out->eye[k] = v[k] * scale; out->target[k] = v[3 + k] * scale; }
+    out->roll = 0;
+    out->fov_y_degrees = v[7];
 }
 
 /* ---- cosmetic random stream (fn_800E0BE4 / _fadeEffectGetRandom) ----- */

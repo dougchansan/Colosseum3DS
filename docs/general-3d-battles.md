@@ -14,6 +14,7 @@ bottom screen; otherwise it falls back to the bottom-screen battle.
 | `tools/prepare_particle.py` (general path) | GPT1 banks as C3PT v2 particle packs |
 | `tools/prepare_battle_sfx.py` | Every move sound, cry and battle UI sound as `sfx.c3s` (MusyX FX rendered offline) |
 | `tools/prepare_wzx_camera.py` | The battle camera's DOL tables as `wzx_camera.c3k` |
+| `tools/prepare_battle_home_camera.py` | The battle base camera (fight_common.fsys `007B1800`, fn_801C2F00) as `battle_home.c3h` |
 | `src/battle_general_view.c` | A turn's log as presentation events (status/stat specials, recalls marked) |
 | `src/wzx_player.c` | Schedules any effect sequence as the original does (link timing, owner motion delay, control nodes, hit/finish marks) |
 | `src/wzx_camera.c` | The original battle camera: procedural, camera DAT and idle random camera |
@@ -40,8 +41,14 @@ Converters need the HSD parser as an LF export of the pinned commit
   parts, particles from body parts, floor and Pokemon colour keys, sounds.
 - Status conditions and stat changes: their battle specials on the Pokemon.
 - Cameras: each sequence's original camera (procedural or camera DAT);
-  between them the idle random camera; the command menu shows the command
-  view.
+  between them the idle random camera; otherwise, and in the command menu,
+  the original base camera circling the arena (looped for the whole battle,
+  resumed where it is at each command phase, default field-class scale).
+  Without `battle_home.c3h` the command view is the encounter-10 view
+  behind the hero's side through a 30-degree lens (a floor's own scene
+  camera has any lens: floor 7 is 5.4 degrees from far away).
+- Colour keys: type-0 keys are `0xAARRGGBB` (neutral `80808080`, the move
+  dim `803A3A3A`) on the floor or the owner.
 - End: trainer win/loss clips and wzx_win / wzx_lose.
 - A different species sent out swaps only that pack (about 0.4 s).
 

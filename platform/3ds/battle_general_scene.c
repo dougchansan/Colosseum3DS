@@ -72,7 +72,10 @@ void c3_general_ui_draw(const C3BattlePack *pack, const C3GeneralBattle *b, cons
     for (unsigned pos = 0; pos < 4; ++pos) {
         unsigned side = pos / 2, slot = pos % 2;
         if (slot >= b->active_count) continue;
-        uint8_t m = b->active[side][slot];
+        /* While the log plays, the Pokemon that was there at that event (a
+         * fainted one keeps its name and level until the turn ends). */
+        uint8_t m = e ? e->mon[pos] : b->active[side][slot];
+        if (m != 255 && m >= b->party_count[side]) m = 255;
         unsigned hp = e ? e->hp[pos] : m != 255 ? b->party[side][m].hp : 0;
         unsigned max = e ? e->max_hp[pos] : m != 255 ? b->party[side][m].max_hp : 0;
         if (m == 255 && !max) continue;
