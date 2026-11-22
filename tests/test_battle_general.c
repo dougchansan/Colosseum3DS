@@ -429,6 +429,8 @@ static void shadow_appearance(void)
             CHECK(!noticed && i > 0 && b.events[i - 1].kind == C3_GB_EVENT_SWITCH && strstr(b.events[i - 1].text, "sent out FOE"));
             CHECK(e->kind == C3_GB_EVENT_MESSAGE && e->special == 0x3A && e->cutin == 1 && e->actor >= 2 && b.events[i].mon[e->actor] == 2);
             CHECK(b.party[1][2].gauge_dropped == 1);
+            /* A replacement's notice ends the turn's log: shown before the next command. */
+            for (uint32_t j = i + 1; j < b.event_count; ++j) CHECK(b.events[j].kind == C3_GB_EVENT_MESSAGE || b.events[j].kind == C3_GB_EVENT_SWITCH);
             noticed = 1;
         }
         CHECK(variant == 2 ? !noticed : noticed);
@@ -443,6 +445,20 @@ static void shadow_appearance(void)
         c3_general_battle_appear_checks(&b);
         CHECK(b.event_count == before + 1 && !strcmp(b.events[before].text, aura) && b.events[before].special == 0x3A && b.events[before].actor == 2);
         c3_general_battle_appear_checks(&b); CHECK(b.event_count == before + 1);
+        /* Order: the notice closes the opening log, after every send-out, so
+         * both presentations (the 3D view's batches, the plain scene's event
+         * walk) show it before the command phase they open once the log is
+         * exhausted; the first turn's log does not repeat it. */
+        CHECK(before + 1 == b.event_count && b.events[before - 1].kind == C3_GB_EVENT_SWITCH);
+        {
+            static C3BattlePreviewEvent out[C3_PREVIEW_EVENT_LIMIT]; uint32_t first, k, emitted = 0; C3GeneralView v; memset(&v, 0, sizeof v);
+            while ((k = c3_general_view_batch(&v, &b, out, C3_PREVIEW_EVENT_LIMIT, &first))) emitted = first + k;
+            CHECK(emitted == b.event_count); /* the command phase opens only here, after the notice */
+            static C3GeneralBattle t; t = b;
+            C3GeneralCommand c[2] = {{0, 0, 2}, {0, 0, 2}};
+            CHECK(c3_general_battle_turn(&t, &pack, c, error));
+            for (uint32_t i = 0; i < t.event_count; ++i) CHECK(!t.events[i].special && !t.events[i].cutin && strcmp(t.events[i].text, aura));
+        }
         view_begin(&b);
         {   /* the 3D view: the aura is a battle special on the Pokemon (a status-style event) */
             static C3BattlePreviewEvent out[C3_PREVIEW_EVENT_LIMIT]; uint32_t first, k; C3GeneralView v; memset(&v, 0, sizeof v);
@@ -645,6 +661,8 @@ static void encounter17(const C3BattlePack *pack, uint8_t party[6][0x138])
                         CHECK(i + 1 < b.event_count && b.events[i + 1].special == 0xD9 && b.events[i + 1].cutin);
                         CHECK(!strcmp(b.events[i + 1].text, "RUI: WES!\nIt's that one! That POK\xc3\xa9MON!"));
                         tutorials++;
+                        /* the tutorial plays before the next command: nothing but messages follow in this turn */
+                        for (uint32_t j = i + 1; j < b.event_count; ++j) CHECK(b.events[j].kind == C3_GB_EVENT_MESSAGE);
                     }
                 }
         }
