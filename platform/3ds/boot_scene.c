@@ -1,4 +1,7 @@
 #include "boot_scene.h"
+#ifdef C3_AGENT_HARNESS
+#include "agent_link.h"
+#endif
 #include "boot_index.h"
 #include "link_play.h"
 #include "trace_writer.h"
@@ -176,6 +179,9 @@ static int run_title(FILE *trace, C3GameState *state,
     previous = c3_n3ds_active_time_us();
     result = 1;
     while (c3_n3ds_poll(&input)) {
+#ifdef C3_AGENT_HARNESS
+        c3_agent_link_scene(C3_AGENT_MODE_TITLE);
+#endif
         uint64_t now = c3_n3ds_active_time_us();
         float delta = (float)(now - previous) / 1000000.0f;
         previous = now;

@@ -1,4 +1,7 @@
 #include "world_map_scene.h"
+#ifdef C3_AGENT_HARNESS
+#include "agent_link.h"
+#endif
 #include "bottom_screen.h"
 #include "field_scene.h"
 #include "n3ds_platform.h"
@@ -714,6 +717,9 @@ static int journey_play(const MapPack *pack, const C3WorldMap *map, uint32_t flo
     }
     for (;;) {
         if (!c3_n3ds_poll(&input)) { result = -1; break; }
+#ifdef C3_AGENT_HARNESS
+        c3_agent_link_scene(C3_AGENT_MODE_LOADING); /* the journey */
+#endif
         c3_debug_overlay_input(&input);
         uint64_t now = c3_n3ds_active_time_us();
         float delta = (float)(now - previous) / 1e6f; previous = now;
@@ -828,6 +834,9 @@ int c3_world_map_scene_run(C3GameState *state, FILE *trace, char *error, size_t 
         fflush(trace);
     }
     while (c3_n3ds_poll(&input)) {
+#ifdef C3_AGENT_HARNESS
+        c3_agent_link_scene(C3_AGENT_MODE_WORLDMAP);
+#endif
         c3_debug_overlay_input(&input);
         int choice = -2; /* -2 none, -1 cancel, otherwise visible index */
         if (!input.held && !input.touch_held) released = 1;

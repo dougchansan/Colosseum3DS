@@ -47,6 +47,73 @@
 #define BOOT_ROOT "sdmc:/3ds/Colosseum3DS/boot/"
 #define SAVE_DIRECTORY "sdmc:/3ds/Colosseum3DS/saves"
 
+#ifdef C3_AGENT_HARNESS
+#include "agent_link.h"
+/* Private gameplay harness (C3_AGENT_HARNESS builds only): claim the frame
+ * for the field's mode and, when the feed is about to send, describe the
+ * floor, Wes, the partner, the people and the enabled CCD objects. */
+static void agent_field(const C3FieldMap *map,const C3Area *area,C3FieldStory *story,const C3FieldPlayer *player,
+                        const C3FieldStoryView *view,const char *prefix,FieldPhase phase,PausePage page,
+                        const C3IngameMenu *ingame,uint16_t scene_flags,float move_yaw)
+{
+    uint8_t mode;
+    const uint16_t menus=C3_AGENT_FIELD_SHOP|C3_AGENT_FIELD_NAMING|C3_AGENT_FIELD_PC|C3_AGENT_FIELD_PICK;
+    if(phase!=FIELD_CONTROL)mode=C3_AGENT_MODE_LOADING;
+    else if(page!=PAUSE_CLOSED)mode=C3_AGENT_MODE_PDA; /* the pause menu is the P*DA */
+    else if(scene_flags&menus)mode=C3_AGENT_MODE_MENU;
+    else if(view->dialogue||view->choice)mode=C3_AGENT_MODE_DIALOGUE;
+    else if(!view->control)mode=C3_AGENT_MODE_EVENT;
+    else mode=C3_AGENT_MODE_FIELD;
+    c3_agent_link_scene(mode);
+    if(!c3_agent_link_due())return;
+    C3AgentFeed *feed=c3_agent_link_feed();C3AgentField *f=&feed->field;
+    memset(f,0,sizeof *f);
+    f->floor=(uint16_t)map->floor;f->phase=(uint8_t)phase;f->pause_page=(uint8_t)page;
+    f->ingame_page=(uint8_t)ingame->page;f->motion=(uint8_t)player->motion;
+    f->collisions=(uint8_t)(player->collision_count>255u?255u:player->collision_count);
+    f->flags=scene_flags;
+    if(view->control)f->flags|=C3_AGENT_FIELD_CONTROL;
+    if(view->dialogue)f->flags|=C3_AGENT_FIELD_DIALOGUE;
+    if(view->choice)f->flags|=C3_AGENT_FIELD_CHOICE;
+    if(view->choice_no)f->flags|=C3_AGENT_FIELD_CHOICE_NO;
+    if(view->prepared)f->flags|=C3_AGENT_FIELD_PREPARED;
+    if(ingame->active)f->flags|=C3_AGENT_FIELD_INGAME;
+    if(view->camera_active)f->flags|=C3_AGENT_FIELD_CAMERA;
+    if(view->blocked[0])f->flags|=C3_AGENT_FIELD_BLOCKED;
+    f->message_id=view->message_id;f->battle_id=view->battle_id;f->menu_floor=view->menu_floor;
+    snprintf(f->prefix,sizeof f->prefix,"%s",prefix);
+    memcpy(f->wes,player->position,sizeof f->wes);
+    f->wes_yaw=player->yaw;f->move_yaw=move_yaw;f->camera_yaw=map->camera_yaw;
+    {   const C3StoryActor *rui=c3_field_story_person(story,0,101);
+        if(rui){f->flags|=C3_AGENT_FIELD_PARTNER;if(rui->visible)f->flags|=C3_AGENT_FIELD_PARTNER_SEEN;
+            memcpy(f->partner,rui->pose.position,sizeof f->partner);f->partner_yaw=rui->pose.yaw;f->partner_clip=(uint16_t)rui->clip;}}
+    f->object_count=(uint16_t)map->object_count;
+    memcpy(f->disabled_objects,map->disabled_objects,sizeof f->disabled_objects);
+    feed->actor_count=0;
+    for(uint32_t i=0;i<area->actor_count&&feed->actor_count<C3_AGENT_MAX_ACTORS;++i){
+        const C3AreaActor *source=area->actors+i;
+        const C3StoryActor *actor=c3_field_story_actor(story,source->index);
+        if(!actor)continue;
+        C3AgentActor *out=feed->actors+feed->actor_count++;
+        out->index=(uint16_t)source->index;out->flags=0;
+        if(actor->visible)out->flags|=C3_AGENT_ACTOR_VISIBLE;
+        /* c3_field_story_interact's own test for a person who answers A. */
+        if(actor->visible&&source->talk_script&&source->talk_start!=3&&!(actor->flags&1u))out->flags|=C3_AGENT_ACTOR_TALKABLE;
+        if(actor->playing)out->flags|=C3_AGENT_ACTOR_PLAYING;
+        memcpy(out->position,actor->pose.position,sizeof out->position);out->yaw=actor->pose.yaw;
+    }
+    feed->text[0]=0;
+    if(view->dialogue&&view->message[0]){
+        char text[512];size_t n=strlen(view->message);if(n>=sizeof text)n=sizeof text-1;
+        memcpy(text,view->message,n);text[n]=0;c3_story_text_plain(text);
+        for(char *c=text;*c;++c)if(*c=='\n')*c='|';
+        n=strlen(text);if(n>C3_AGENT_TEXT_MAX)n=C3_AGENT_TEXT_MAX;
+        memcpy(feed->text,text,n);feed->text[n]=0;
+    }
+    feed->has_field=1;
+}
+#endif
+
 static int exists(const char *path)
 {
     struct stat entry;
@@ -1125,6 +1192,13 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         uint64_t now=c3_n3ds_active_time_us();float delta=(float)(now-previous)/1000000.0f;
         previous=now;elapsed+=delta;phase_seconds+=delta;
         c3_game_state_add_play_time(state,delta);
+#ifdef C3_AGENT_HARNESS
+        agent_field(&map,&area,&story,&player,view,prefix,phase,page,ingame,
+                    (uint16_t)((shopping?C3_AGENT_FIELD_SHOP:0u)|(naming?C3_AGENT_FIELD_NAMING:0u)|(pc_open?C3_AGENT_FIELD_PC:0u)|
+                               (relive_pick.open||item_pick.open?C3_AGENT_FIELD_PICK:0u)|
+                               (first_person.enabled?C3_AGENT_FIELD_FIRST_PERSON:0u)|(orbit.active?C3_AGENT_FIELD_ORBIT:0u)),
+                    first_person.enabled?c3_first_person_move_yaw(&first_person):orbit.active?c3_orbit_move_yaw(&camera):map.camera_yaw);
+#endif
 #ifdef C3_FINAL_EVENT_PROBE
         {
             if(elapsed>1200){snprintf(error,capacity,"Final-event probe timed out");result=-1;break;}

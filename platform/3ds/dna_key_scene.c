@@ -1,4 +1,7 @@
 #include "dna_key_scene.h"
+#ifdef C3_AGENT_HARNESS
+#include "agent_link.h"
+#endif
 #include "colosseum3ds/dna_key.h"
 #include "colosseum3ds/title.h"
 #include "colosseum3ds/area_camera.h"
@@ -32,6 +35,9 @@ int c3_dna_key_scene_run(const uint16_t expected[3],FILE *trace,char *error,size
     if(trace){fprintf(trace,"dna_scene floor=387 lifecycle=05960014 native=ce expected=%04x,%04x,%04x models=12\n",expected[0],expected[1],expected[2]);fflush(trace);}
     while(aptMainLoop()){
         C3N3dsInput input;if(!c3_n3ds_poll(&input)||input.exit_requested)goto done;
+#ifdef C3_AGENT_HARNESS
+        c3_agent_link_scene(C3_AGENT_MODE_MENU);
+#endif
         uint64_t now=c3_n3ds_active_time_us();float dt=(now-previous)/1000000.f;previous=now;if(dt>.1f)dt=.1f;time+=dt;if(cursor_wait>0)cursor_wait-=dt;
         if(phase==0&&time>=(tracks[0].frame_count-1)/tracks[0].fps){phase=1;time=0;}
         if(phase==1){

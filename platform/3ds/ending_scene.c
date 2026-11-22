@@ -1,4 +1,7 @@
 #include "ending_scene.h"
+#ifdef C3_AGENT_HARNESS
+#include "agent_link.h"
+#endif
 #include "colosseum3ds/ending.h"
 #include "colosseum3ds/story.h"
 #include "bottom_screen.h"
@@ -37,6 +40,9 @@ static int choice(void *context,uint32_t id,int initial_no)
     c3_ui_dialogue(initial,&pager,text,1,yes);c3_bottom_screen_present();
     while(aptMainLoop()){
         C3N3dsInput input;if(!c3_n3ds_poll(&input)||input.exit_requested)return -1;
+#ifdef C3_AGENT_HARNESS
+        c3_agent_link_scene(C3_AGENT_MODE_MENU);
+#endif
         if(c3_ui_pager_advance(&pager,&input.pressed))dirty=1;
         if(input.pressed&(C3_PAD_UP|C3_PAD_DOWN|C3_PAD_LEFT|C3_PAD_RIGHT)){yes=!yes;dirty=1;}
         if(input.pressed&C3_PAD_B)return 1;

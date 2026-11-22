@@ -1,4 +1,7 @@
 #include "battle_general_3d.h"
+#ifdef C3_AGENT_HARNESS
+#include "agent_link.h"
+#endif
 #include "battle_general_scene.h"
 #include "battle_general_stage.h"
 #include "move_forget_scene.h"
@@ -189,6 +192,9 @@ static int run(const C3BattlePack *pack, C3GeneralBattle *b, C3BattleLinkHooks *
     int dirty = 1;
     uint64_t previous = c3_n3ds_active_time_us();
     while (c3_n3ds_poll(&input)) {
+#ifdef C3_AGENT_HARNESS
+        c3_agent_link_battle(b, (uint8_t)ui.page);
+#endif
         uint64_t now = c3_n3ds_active_time_us();
         uint64_t delta = (now - previous) / 1000u; previous += delta * 1000u;
         uint32_t ms = delta > 1000 ? 1000 : (uint32_t)delta;

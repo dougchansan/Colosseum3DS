@@ -1,4 +1,7 @@
 #include "bottom_screen.h"
+#ifdef C3_AGENT_HARNESS
+#include "agent_link.h"
+#endif
 #include "movie_player.h"
 #include "n3ds_platform.h"
 #include "colosseum3ds/movie.h"
@@ -448,6 +451,9 @@ int c3_movie_player_run(const char *path, const char *label, FILE *trace,
     if (audio.available) ndspChnSetPaused(0, false);
     result = 0;
     while (c3_n3ds_poll(&input)) {
+#ifdef C3_AGENT_HARNESS
+        c3_agent_link_scene(C3_AGENT_MODE_LOADING); /* a movie */
+#endif
         uint64_t now = c3_n3ds_active_time_us();
         uint64_t delta = now - previous;
         previous = now;
