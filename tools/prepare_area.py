@@ -8,7 +8,8 @@ It does not manufacture dialogue, battle outcomes, or later-area assets.
 --floor NAME prepares a later floor from its floor_profiles.py row instead:
 every original person record, the CCD event surfaces, one NPC model pack per
 distinct model resource and the party partner's pack (<prefix>_partner.c3t,
-lit like that floor's Wes pack). The Outskirt modes are unchanged.
+lit like that floor's Wes pack). The Outskirt modes are unchanged;
+--outskirt-partners writes the partner packs of Outskirt Stand's two floors.
 """
 import argparse
 import copy
@@ -22,7 +23,7 @@ import tempfile
 import prepare_title as title
 import prepare_field_geometry as geometry
 import prepare_outskirt as field
-from floor_profiles import PARTNER, story_floors
+from floor_profiles import OUTSKIRT_PARTNERS, PARTNER, story_floors
 from prepare_boot_media import verify_disc
 from prepare_model import check_output
 
@@ -402,6 +403,44 @@ def prepare_wes_only(disc, output, parser):
     return manifest
 
 
+def prepare_outskirt_partners(disc, output, parser):
+    """outskirt_partner.c3t and shop_partner.c3t: Rui follows Wes on both.
+
+    --floor never writes these (the rows have no "map"); each is framed and
+    lit exactly like that floor's Wes pack (prepare_wes_only)."""
+    disc, output = verify_disc(disc), check_output(output)
+    if output.exists():
+        raise ValueError("Choose a new private output directory")
+    geometry.import_parser(title.verify_parser(parser))
+    names = ("common.fsys","field_common.fsys","S1_out.fsys","S1_shop_1F.fsys")
+    archives = {name:admit_archive(disc/"files"/name) for name in names}
+    _common_id,common = common_rel(archives["common.fsys"])
+    output.parent.mkdir(parents=True,exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix=".partner-",dir=output.parent) as temporary:
+        stage = Path(temporary)/"stage"
+        stage.mkdir()
+        partners = []
+        for prefix,(archive,resource,version) in OUTSKIRT_PARTNERS.items():
+            data,raw,scene = geometry.load_scene(archives[archive],resource)
+            if len(scene.cameras)!=1:
+                raise ValueError("Original area camera count changed")
+            camera = scene.cameras[0]
+            fixed = (*camera.position,*camera.target_position,camera.roll,camera.field_of_view,
+                     camera.near,camera.far,camera.aspect,0.)
+            lights = (geometry.fixed_lights(raw,data) if version==2 else
+                      sampled_lights(raw,data,PROFILES[archive][1])[0])
+            partner = prepare_partner(archives["field_common.fsys"],common,stage,prefix+"_partner",
+                                      fixed,lights,version)
+            partners.append({"floor_prefix":prefix,"archive":archive,"map_resource":"%08x" % resource,
+                             **partner})
+        manifest = {"source_commit":title.SOURCE_COMMIT,"parser_commit":title.PARSER_COMMIT,
+            "archives":{name:{"bytes":PROFILES[name][0],"sha256":PROFILES[name][1]} for name in names},
+            "partners":partners}
+        (stage/"partner-manifest.json").write_bytes((json.dumps(manifest,indent=2)+"\n").encode())
+        stage.rename(output)
+    return manifest
+
+
 def prepare_exterior_actors(disc, output, parser, indices=None):
     """Prepare the four actors used by the initial exterior script and CCD metadata."""
     disc, output = verify_disc(disc), check_output(output)
@@ -690,6 +729,8 @@ def main():
                       help="Prepare selected initial exterior actors and area metadata (default all four)")
     mode.add_argument("--floor",choices=sorted(profile_floors()),
                       help="Prepare one profile floor's actors, event surfaces and NPC packs")
+    mode.add_argument("--outskirt-partners",action="store_true",
+                      help="Prepare only the partner packs of Outskirt Stand's two floors")
     parser.add_argument("--no-models",action="store_true",
                         help="With --floor: actor records and event surfaces only (headless story test)")
     args = parser.parse_args()
@@ -697,6 +738,8 @@ def main():
         if args.floor:
             result=prepare_floor_actors(args.disc,args.output,args.parser,args.floor,models=not args.no_models)
             result={key:value for key,value in result.items() if key!="packs"}
+        elif args.outskirt_partners:
+            result=prepare_outskirt_partners(args.disc,args.output,args.parser)
         elif args.exterior_actors_only is not None:
             result=prepare_exterior_actors(args.disc,args.output,args.parser,args.exterior_actors_only or None)
         else:
