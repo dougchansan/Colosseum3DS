@@ -245,6 +245,16 @@ static int explore(int argc,char **argv)
  * 0x3E7/0xB10 (grunts), 0x99E (Mart); the Outskirt Stand shop then writes
  * 0x3E8 (Poke Balls), and the second visit 0x3E9 and 0x3EA/0x9B1-0x9B4. */
 #define VISIT1_AHEAD 0x9a4,0x3e6,0x3e7,0xb10,0x99e,0x3e8,0x3e9,0x3ea,0x9b1,0x9b2,0x9b3,0x9b4
+/* After the mayor's-house ambush: one Mystery Troop member guards each town
+ * exit (bank 013E0E00 pre function 2 shows people 19-21 and enables walls
+ * 42-44 while 0x3EA is set and 0x3EC is not). Beating any one of them
+ * (talk functions 22-24) writes 0x3EC and 0x9D2/0x9D3/0x9D4 and, through
+ * function 44's random pick, two of 0xA1C/0xA92/0xAA4/0xAE2/0xDEF/0xDF0;
+ * main function 26 then sends all three away and writes 0xA59, the
+ * world map's CONSTRUCTION LOT (floor 0x66), whose pre script writes 0x3F8
+ * (Pyrite Town). */
+#define AMBUSH_DONE 0x9a4,0x3e6,0x3e7,0xb10,0x99e,0x3e8,0x3e9,0x3ea,0x9b1,0x9b2,0x9b3,0x9b4
+#define TROOP_AHEAD 0x3ec,0x9d2,0x9d3,0x9d4,0xa59,0x84f,0x850,0x851,0xa1c,0xa92,0xaa4,0xae2,0xdef,0xdf0,0x3f8,0xa58
 #define PREGYM_AHEAD 0x3f1,0x3f2,0x3f3,0x3f4,0x3f5,0x3f6,0x3f7,0x48b,0x995,0x994,0x99c,0x41d,0x41e,0x41f,0x48c,0xddd
 static const Event EVENTS[]={
     /* First visit (main story, after the partner event). */
@@ -262,6 +272,16 @@ static const Event EVENTS[]={
      .action=ARRIVAL,.expect={0x3e9}},
     {.name="mayor_house_ambush",.save=EARLY,.floor=5,.spawn=0,.set={0x9a4,0x3e6,0x3e7,0xb10,0x99e,0x3e8,0x3e9},
      .clear={0x3ea,0x9b1,0x9b2,0x9b3,0x9b4},.action=ARRIVAL,.expect={0x3ea,0x9b1,0x9b2,0x9b3,0x9b4},.battles={15,17}},
+    {.name="troop_verde",.save=EARLY,.floor=3,.spawn=6,.set={AMBUSH_DONE},.clear={TROOP_AHEAD},
+     .action=TALK,.arg=0x01000016,.expect={0x3ec,0x9d2},.battles={27}},
+    {.name="troop_rosso",.save=EARLY,.floor=3,.spawn=6,.set={AMBUSH_DONE},.clear={TROOP_AHEAD},
+     .action=TALK,.arg=0x01000017,.expect={0x3ec,0x9d3},.battles={30}},
+    {.name="troop_bluno",.save=EARLY,.floor=3,.spawn=6,.set={AMBUSH_DONE},.clear={TROOP_AHEAD},
+     .action=TALK,.arg=0x01000018,.expect={0x3ec,0x9d4},.battles={33}},
+    {.name="troop_leaves",.save=EARLY,.floor=3,.spawn=6,.set={AMBUSH_DONE,0x3ec,0x9d4},.clear={0xa59,0x3f8,0xa58},
+     .action=ARRIVAL,.expect={0xa59}},
+    {.name="construction_lot",.save=EARLY,.floor=0x66,.spawn=0,.set={AMBUSH_DONE,0x3ec,0x9d4,0xa59},.clear={0x3f8,0xa58},
+     .action=ARRIVAL,.expect={0x3f8,0xa58}},
     {.name="town_trainer_3ee",.save=EARLY,.floor=3,.spawn=0,.set={0x9a4,0x3e6,0x3e7,0xb10,0x99e,0x3e8,0x3e9},.clear={0x3ee},
      .action=TALK,.arg=0x0100000c,.expect={0x3ee},.battles={20}},
     {.name="mayor_2f_after_pyrite",.save=EARLY,.floor=6,.spawn=0,
@@ -382,6 +402,39 @@ static void partner_event(void)
     CHECK(blocked>0&&wes_start-s->hero.position[2]>0.5f);
     close_floor(s);free(s);c3_title_close(&rui_model);c3_game_state_free(&game);
     printf("phenac-events partner: script positions held, Wes stays outside Rui's cylinder (closest %.3f)\n",(double)closest);
+}
+/* The Phenac escape (console run of 2026-11-21, run-deploy8): after the
+ * ambush the three Mystery Troop members stand at the three exits, each
+ * behind its own wall; beating Bluno at the south bridge sends all three
+ * away and opens every exit, as the original does. */
+static void troop_exits(void)
+{
+    static const uint16_t done[]={AMBUSH_DONE},ahead[]={TROOP_AHEAD};
+    static const struct { unsigned actor, wall; float x, z; } guard[]={{19,44,-16.0f,-4.0f},{20,43,16.0f,-4.0f},{21,42,0.0f,34.7f}};
+    Scene *s=calloc(1,sizeof *s);C3GameState game={0};uint32_t v=0;
+    CHECK(s);error[0]=0;link_floor=0;battle_count=0;current_game=&game;current_floor=3;
+    load_state(&game,EARLY,3,6);
+    for(size_t i=0;i<sizeof done/sizeof done[0];++i)CHECK(c3_game_state_set_flag(&game,done[i],1));
+    for(size_t i=0;i<sizeof ahead/sizeof ahead[0];++i)CHECK(c3_game_state_set_flag(&game,ahead[i],0));
+    CHECK(open_floor(s,&game,3,6));CHECK(run(s,30000)&&!link_floor&&!battle_count);
+    for(unsigned i=0;i<3;++i){
+        C3StoryActor *a=c3_field_story_actor(&s->story,guard[i].actor);
+        CHECK(a&&a->visible&&c3_field_object_enabled(&s->map,guard[i].wall));
+        CHECK(fabsf(a->pose.position[0]-guard[i].x)<1e-3f&&fabsf(a->pose.position[2]-guard[i].z)<1e-3f);
+    }
+    CHECK(talk(s,0x01000018)&&run(s,30000)&&battle_count==1&&battle_log[0]==33);
+    CHECK(c3_game_state_get_flag(&game,0x3ec,&v)&&v);
+    /* Main function 26 runs on the next frames: the troop walks off. */
+    for(unsigned frame=0;frame<600;++frame)
+        CHECK(c3_field_story_tick(&s->story,1.0f/60.0f,0,error)&&c3_field_story_sample(&s->story,error));
+    CHECK(run(s,30000)&&!link_floor&&battle_count==1);
+    CHECK(c3_game_state_get_flag(&game,0xa59,&v)&&v&&c3_game_state_get_flag(&game,0x3f8,&v)&&!v);
+    for(unsigned i=0;i<3;++i){
+        C3StoryActor *a=c3_field_story_actor(&s->story,guard[i].actor);
+        CHECK(a&&!a->visible&&!c3_field_object_enabled(&s->map,guard[i].wall));
+    }
+    close_floor(s);free(s);c3_game_state_free(&game);
+    printf("phenac-events troop: three exits guarded, one battle (encounter 33) opens all three\n");
 }
 /* The console stop of 2026-11-21 (run-deploy6 boot-trace-ring): with Rui
  * following, Wes ran up the north ramp onto the Pre-Gym ring (y 2.0) and
@@ -522,6 +575,7 @@ int main(int argc,char **argv)
     CHECK(messages>0);
     nurse_heals();
     partner_event();
+    troop_exits();
     ring_corner();
     talk_sweep();
     {unsigned played=route_battles_played(),missing=route_battles_close(trace);

@@ -197,13 +197,16 @@ the expected flags and request exactly the expected encounters.
 | Back with Poke Balls (`0x3E8`, Outskirt shop) | 0x03 arrival | function 20, `0x3E9` |
 | | 0x05 arrival | the mayor's-house ambush: encounters 15 and 17, `0x3EA`, `0x9B1`-`0x9B4` |
 | | 0x03, trainer (talk `0100000C`) | encounter 20, `0x3EE` |
+| | 0x03 from the mayor's door, one Mystery Troop member per exit (talks `01000016`-`01000018`) | Verde 27 / Rosso 30 / Bluno 33: `0x3EC` and `0x9D2` / `0x9D3` / `0x9D4` |
+| | 0x03 with `0x3EC` (main function 26) | the troop leaves, `0xA59` (world map: CONSTRUCTION LOT) |
+| | 0x66 Construction Lot arrival (bank `02CC0E00`) | `0x3F8` (world map: Pyrite Town), `0xA58` |
 | After Pyrite (`0x3F9`, `0x413`) | 0x06, person (talk `01000005`) | dialogue only |
 | | 0x0B, challenge (talk `0100000C`) | `0x3F1`, `0x995` |
 | | 0x0B, standing in the ring | four trainers: encounters 22-25, `0x3F2`-`0x3F7`, `0x48B` |
 | | 0x0B, ring with `0x41D` | Justy: encounter 36, `0x41E`, `0x41F`, `0x48C`, `0xDDD` |
 | Later (`0x478`) | 0x05, talks `01000014` / `01000015` | encounters 16 and 19, `0x47C`-`0x47F` |
 | | 0x03 arrival with `0x3EC` | function 26, `0xA59` |
-| | 0x03, talks `01000016`-`01000018` (`0x84F`-`0x851`) | encounters 532-534, `0x3EC`, `0x9D2`-`0x9D4` |
+| | 0x03, talks `01000016`-`01000018` with any of `0x84F`-`0x851` | encounters 532-534, `0x3EC`, `0x9D2`-`0x9D4` |
 | | 0x0D, receptionist | `0x9B7` |
 
 Arrival, the partner event and trainer 15 (encounter 21, approached by
@@ -221,6 +224,33 @@ room's dealer (talk `01000008`) loops, because select menu C7 takes its
 first row ("read a card") and the card menu floor 0x393 returns at once.
 The Pre Gym's rank messages use U+2605 (a star), drawn by the original
 font's extended glyphs.
+
+## Escaping Phenac (console run, 2026-11-21)
+
+After the ambush (`0x3EA`), Phenac's pre script (function 2) shows people
+19 (Verde, west exit), 20 (Rosso, east exit) and 21 (Bluno, south bridge)
+and enables the walls in front of them (CCD objects 44, 43, 42) while
+`0x3EC` is clear. The player battles one of them: that is the choice of
+Johto starter (Bayleef, Quilava, Croconaw), and the other two are not
+battled here. Each talk function (22-24) asks first, then requests
+encounter 27/30/33 (or 532-534 once any of `0x84F`-`0x851` is set), and on
+a win plays Rui's scene (function 47), writes `0x3EC`, then
+`0x9D2`/`0x9D3`/`0x9D4`, and function 44 picks at random (native `02`)
+which pair of `0xA1C`/`0xA92`/`0xAA4`/`0xAE2`/`0xDEF`/`0xDF0` records where
+the other two starters go. Main function 7 then runs function 26: the
+three walk off and hide, Rui speaks (message `05C78`), `0xA59` is written
+and the walls are disabled.
+
+`0xA59` unlocks world-map entry 4 (floor `0x66`, `D4_out`): the original
+names it CONSTRUCTION LOT (`world_map.fsys` message `03CDE`); it becomes
+REALGAM TOWER (floor `0x7B`) only with flag `0x45D`. Arriving there runs
+bank `02CC0E00`: the pre script writes `0x3F8`, which unlocks Pyrite Town
+(entry 6), and the main script plays the site's camera once (`0xA58`).
+On the console (build `a3785d3`, `run-deploy8`) the port did all of this
+as the original does; only the world map named floor `0x66` "REALGAM
+TOWER". It now shows the original names (`docs/world-map.md`).
+`test_phenac_events` rows `troop_*` and `construction_lot`, and its troop
+check, cover this.
 
 ## Not done
 
