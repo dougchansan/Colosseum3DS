@@ -244,6 +244,11 @@ static int run(const C3BattlePack *pack, C3GeneralBattle *b, C3BattleLinkHooks *
             } else if (b->outcome != C3_GB_RUNNING) { ui.page = C3_GUI_RESULT; dirty = 1; }
             else {
                 int any = c3_general_ui_commands(&ui, b); dirty = 1;
+                /* The command phase opens only after the whole log has played
+                 * (the opening's Shadow appearance included). */
+                if (trace) { fprintf(trace, "general_battle_commands turn=%lu after_events=%lu last_kind=%u last_special=0x%x\n", (unsigned long)b->turn,
+                    (unsigned long)b->event_count, b->event_count ? (unsigned)b->events[b->event_count - 1].kind : 0u,
+                    b->event_count ? (unsigned)b->events[b->event_count - 1].special : 0u); fflush(trace); }
                 if (hooks && !any) { C3GeneralCommand none[2]; memset(none, 0, sizeof none); link_submit(hooks, &ui, none); }
             }
         }

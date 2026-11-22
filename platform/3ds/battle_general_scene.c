@@ -268,7 +268,12 @@ int c3_battle_general_scene_run(const C3BattlePack *pack, C3GeneralBattle *b, FI
                 ++event; event_start = now; dirty = 1;
                 if (event >= b->event_count) {
                     if (b->outcome != C3_GB_RUNNING) ui.page = C3_GUI_RESULT;
-                    else c3_general_ui_commands(&ui, b);
+                    else {
+                        c3_general_ui_commands(&ui, b);
+                        if (trace) { fprintf(trace, "general_battle_commands turn=%lu after_events=%lu last_kind=%u last_special=0x%x scene=2d\n", (unsigned long)b->turn,
+                            (unsigned long)b->event_count, b->event_count ? (unsigned)b->events[b->event_count - 1].kind : 0u,
+                    b->event_count ? (unsigned)b->events[b->event_count - 1].special : 0u); fflush(trace); }
+                    }
                 }
             }
         } else if (ui.page == C3_GUI_RESULT) {
