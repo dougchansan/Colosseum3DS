@@ -650,14 +650,14 @@ static int field_renderer_init(C3Title *storage,const C3Title *const *models,uin
 #else
     (void)actors;
 #endif
-    /* The pack cache shares linear memory with the renderer: if the scene
-     * cannot start, empty it and try once more; once it runs, keep a margin
-     * free for buffers allocated later (HUD, particles, audio). */
+    /* The pack cache holds spare heap: if the scene cannot start, empty it
+     * and try once more; once it runs, keep the cache's free-heap floor for
+     * buffers allocated later (menus, previews, audio). */
     if(c3_stage_renderer_init(models,count,error,capacity)){
         c3_pack_cache_clear();
         if(c3_stage_renderer_init(models,count,error,capacity))return 1;
     }
-    c3_pack_cache_trim(6u*1024u*1024u);
+    c3_pack_cache_trim(C3_PACK_CACHE_KEEP_FREE);
     /* GSmodel order (stage_order.h): the map's packs, then each person with
      * its own opaque and translucent passes, so a map light shaft without
      * depth writes no longer washes over a character standing in front. */
@@ -906,6 +906,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         for(unsigned k=0;k<n;++k){C3PackJob *job=slot[k]<load_total?jobs+slot[k]:npc.jobs+(slot[k]-load_total);
             job->ok=pending[k].ok;job->microseconds=pending[k].microseconds;
             job->unpack_us=pending[k].unpack_us;job->decode_us=pending[k].decode_us;job->core=pending[k].core;
+            job->read_us=pending[k].read_us;job->cached=pending[k].cached;
             snprintf(job->error,sizeof job->error,"%s",pending[k].error);}
         if(bad&&slot[bad-1]<load_total)failed=slot[bad-1]+1u;
         free(pending);free(slot);
@@ -913,8 +914,9 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     if(trace){fprintf(trace,"field_prefetch taken=%u of=%u\n",prefetched,load_total);}
     if(trace){fprintf(trace,"field_pack_jobs count=%u us=%llu\n",load_total,(unsigned long long)(c3_n3ds_time_us()-pack_us));}
     for(unsigned j=0;j<load_total;++j){
-        if(trace)fprintf(trace,"field_pack_load file=%s bytes=%lu us=%llu ok=%d unpack_us=%llu decode_us=%llu core=%d\n",jobs[j].path,
+        if(trace)fprintf(trace,"field_pack_load file=%s bytes=%lu us=%llu ok=%d read_us=%llu cached=%d unpack_us=%llu decode_us=%llu core=%d\n",jobs[j].path,
                          (unsigned long)jobs[j].title->file_bytes,(unsigned long long)jobs[j].microseconds,jobs[j].ok,
+                         (unsigned long long)jobs[j].read_us,jobs[j].cached,
                          (unsigned long long)jobs[j].unpack_us,(unsigned long long)jobs[j].decode_us,jobs[j].core);
     }
     opened=load_total; /* every room slot; `done` closes them, loaded or not */
@@ -942,8 +944,9 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     /* Bind the people loaded with the room, posed on their idle clip. */
     for(uint32_t j=0;j<npc.count;++j){
         C3PackJob *job=npc.jobs+j;uint32_t slot=npc.first+j,i=npc.area_index[j];
-        if(trace)fprintf(trace,"field_pack_load file=%s bytes=%lu us=%llu ok=%d unpack_us=%llu decode_us=%llu core=%d\n",job->path,
+        if(trace)fprintf(trace,"field_pack_load file=%s bytes=%lu us=%llu ok=%d read_us=%llu cached=%d unpack_us=%llu decode_us=%llu core=%d\n",job->path,
                          (unsigned long)job->title->file_bytes,(unsigned long long)job->microseconds,job->ok,
+                         (unsigned long long)job->read_us,job->cached,
                          (unsigned long long)job->unpack_us,(unsigned long long)job->decode_us,job->core);
         if(!job->ok){snprintf(error,capacity,"%s",job->error);goto done;}
         snprintf(model_paths[slot],sizeof model_paths[slot],"%s",job->path);
@@ -1398,6 +1401,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
             int released=field_battle_release(&host,trace,story_error,sizeof story_error);
             if(released<0){result=1;break;}
             if(!released)goto story_failed;
+            c3_pack_cache_clear();
             int puzzle=c3_dna_key_scene_run(species,trace,story_error,sizeof story_error);
             int restored=field_battle_restore(&host,0,trace,error,capacity);
             if(restored<0){result=1;break;}
@@ -1571,6 +1575,9 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         }
         if(phase==FIELD_FADE_IN&&phase_seconds>=(arrival?1.0f:.5f)){
             phase=FIELD_CONTROL;phase_seconds=0;dirty=1;
+            /* The scene's own allocations are done: restore the cache's
+             * free-heap floor for what play allocates later. */
+            if(!load_reported)c3_pack_cache_trim(C3_PACK_CACHE_KEEP_FREE);
             if(!load_reported&&trace){c3_pack_cache_trace(trace,"control");load_reported=1;
                 C3BootFsStats fs;c3_boot_fs_stats(&fs);
                 fprintf(trace,"field_fs lookups=%u us=%llu answered=%u session_max_us=%llu session_max=%s\n",fs.lookups-fs_base.lookups,
@@ -2205,7 +2212,8 @@ int c3_field_scene_roundtrip_probe(C3GameState *state,FILE *trace,char *error,si
         else result=run_area(state,0,"sdmc:/3ds/Colosseum3DS/probe-unused.gci",trace,error,capacity);
         snprintf(stage,sizeof stage,"roundtrip_%u_field_%03lx_end",i,(unsigned long)floor);
         c3_n3ds_log_memory(trace,stage);
-        {   size_t used=c3_n3ds_heap_used();
+        /* Packs the pack cache keeps for the next area are not a leak. */
+        {   size_t used=c3_n3ds_heap_used(),cached=c3_pack_cache_bytes();used=used>cached?used-cached:0;
             if(!exits++)baseline=used;
             size_t growth=used>baseline?used-baseline:0;if(growth>worst)worst=growth;
             int ok=growth<=1024u*1024u;leak|=!ok;
@@ -2216,6 +2224,7 @@ int c3_field_scene_roundtrip_probe(C3GameState *state,FILE *trace,char *error,si
             if(trace){fprintf(trace,"roundtrip_stop floor=%03lx\n",(unsigned long)floor);fflush(trace);}break;}
         /* A door led to another field floor: no world-map visit. */
         if(c3_game_state_summary(state,&summary)&&summary.floor!=C3_FLOOR_WORLD_MAP_ID)continue;
+        c3_pack_cache_clear();
         result=c3_world_map_scene_run(state,trace,error,capacity);
         snprintf(stage,sizeof stage,"roundtrip_%u_worldmap_end",i);
         c3_n3ds_log_memory(trace,stage);
@@ -2244,12 +2253,15 @@ int c3_field_scene_run(C3GameState *state,int new_game,const char *save_path,
     do{
         C3GameSummary summary;
         /* Floor 0x38E is the menu-class world map, not a walkable field. */
-        if(c3_game_state_summary(state,&summary)&&summary.floor==0x39f)
-            result=c3_ending_scene_run(state,save_path,trace,error,capacity);
-        else if(c3_game_state_summary(state,&summary)&&summary.floor==C3_FLOOR_WORLD_MAP_ID)
-            result=c3_world_map_scene_run(state,trace,error,capacity);
-        else result=run_area(state,new_game,save_path,trace,error,capacity);
+        /* Cached area packs only help the next area: other scenes get the
+         * whole heap. */
+        if(c3_game_state_summary(state,&summary)&&summary.floor==0x39f){
+            c3_pack_cache_clear();result=c3_ending_scene_run(state,save_path,trace,error,capacity);
+        }else if(c3_game_state_summary(state,&summary)&&summary.floor==C3_FLOOR_WORLD_MAP_ID){
+            c3_pack_cache_clear();result=c3_world_map_scene_run(state,trace,error,capacity);
+        }else result=run_area(state,new_game,save_path,trace,error,capacity);
         new_game=0;
     }while(result==2);
+    c3_pack_cache_clear();
     return result;
 }

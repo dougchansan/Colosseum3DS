@@ -487,6 +487,8 @@ int c3_boot_scene_run(int core_status)
      * round trips with no input. */
     {
         int probe_result = -1;
+        /* As the title does: list boot/ (or start from the saved index). */
+        c3_boot_index_start();
         /* probe-save.gci (a copy of a console save) when present. */
         const char *probe_save = file_exists("sdmc:/3ds/Colosseum3DS/probe-save.gci")
             ? "sdmc:/3ds/Colosseum3DS/probe-save.gci" : "sdmc:/3ds/Colosseum3DS/campaign/save.gci";

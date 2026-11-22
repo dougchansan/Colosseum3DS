@@ -10,20 +10,24 @@ typedef struct {
     C3Title *title;
     int ok;
     uint64_t microseconds;
-    /* Of microseconds: decompression and parsing (the rest is the SD card
-     * and allocation), and the core that ran the job. */
-    uint64_t unpack_us, decode_us;
-    int core;
+    /* Of microseconds: decompression and parsing, and the core that ran
+     * the job. read_us is the SD read (open to close) on the reader thread,
+     * 0 when the bytes came from the pack cache (cached=1). */
+    uint64_t unpack_us, decode_us, read_us;
+    int core, cached;
     char error[192];
 } C3PackJob;
 
-/* Load every job, on the main core and (on New 3DS) the second application
- * core in parallel. The main core takes the largest packs first and the
- * second core (several times slower per pack on the console) the smallest,
- * by compressed size from the boot index; with no sizes, list order. progress
- * (may be NULL) is called on the main thread with the number of finished
- * jobs. Returns the number of the first failed job + 1, or 0 when all
- * loaded. Uses c3_pack_cache_load, which is safe across the two threads. */
+/* Load every job. One reader thread reads whole compressed packs from the
+ * SD card (largest first, by compressed size from the boot index) while the
+ * main core and, on New 3DS, the second application core decompress and
+ * parse the packs already read, so card time and decoding overlap. Packs in
+ * the pack cache need no read. The main core takes the largest ready pack,
+ * the second core the smallest, and only when its measured speed lets it
+ * finish before the main core runs out of work. microseconds = read_us plus
+ * the decode. progress (may be NULL) is called on the main thread with the
+ * number of finished jobs. Returns the number of the first failed job + 1,
+ * or 0 when all loaded. */
 size_t c3_pack_load_all(C3PackJob *jobs, size_t count, void (*progress)(size_t done, size_t total));
 
 /* Background loading while the scene runs (people streamed in after the
