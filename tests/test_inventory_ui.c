@@ -97,6 +97,25 @@ int main(int argc,char **argv)
     CHECK(m.inventory.move==-1&&m.inventory.replacement==-1&&m.inventory.evolution==-1&&!m.inventory.replacement_count);
     tap_inventory(&m,&state,C3_PAD_A);CHECK(m.page==C3_GAME_ITEM_TARGET);
     CHECK(!memcmp(before,body,C3_SAVE_BODY_SIZE));
+    /* A key item (field function fn_80021A9C, here the GEAR) has no Pokemon
+     * to choose: unregistered, the bag says it can't be used now and the
+     * save is untouched; registered by the field, USE closes the menu with
+     * the item for its script. */
+    w16(body+0x840,532);w16(body+0x840+2,1);
+    m.page=C3_GAME_HUB;m.selection=1;tap_inventory(&m,&state,C3_PAD_A);tap_inventory(&m,&state,C3_PAD_R);
+    CHECK(m.page==C3_GAME_ITEMS&&m.pocket==1&&m.count==1);
+    tap_inventory(&m,&state,C3_PAD_X);CHECK(m.page==C3_GAME_ITEM_ACTIONS&&m.selection==0);
+    memcpy(before,body,C3_SAVE_BODY_SIZE);m.key_item_count=0;
+    tap_inventory(&m,&state,C3_PAD_A);CHECK(m.page==C3_GAME_ITEM_RESULT&&strstr(m.error,"can't be used now"));
+    CHECK(!memcmp(before,body,C3_SAVE_BODY_SIZE));
+    tap_inventory(&m,&state,C3_PAD_A);CHECK(m.page==C3_GAME_ITEMS);
+    tap_inventory(&m,&state,C3_PAD_X);m.key_items[0]=13;m.key_items[1]=532;m.key_item_count=2;
+    {C3N3dsInput input={.pressed=C3_PAD_A,.held=C3_PAD_A};C3IngameEvent used=c3_ingame_update(&m,&state,&input,1.0f/60.0f);
+     CHECK(used.kind==C3_INGAME_USE_ITEM&&used.item==532&&m.page==C3_GAME_ITEM_ACTIONS);}
+    CHECK(!memcmp(before,body,C3_SAVE_BODY_SIZE));
+    /* Other items keep their Pokemon target. */
+    m.page=C3_GAME_ITEMS;m.pocket=0;m.count=1;m.selection=0;m.order[0]=0;tap_inventory(&m,&state,C3_PAD_X);
+    tap_inventory(&m,&state,C3_PAD_A);CHECK(m.page==C3_GAME_ITEM_TARGET);
     free(before);c3_ingame_close(&m);c3_game_state_free(&state);free(data);free(pack);unlink(path);rmdir(dir);
     if(argc==3)original_choices(argv[1],argv[2]);
     printf("Inventory UI: %u checks passed.\n",checks);return 0;

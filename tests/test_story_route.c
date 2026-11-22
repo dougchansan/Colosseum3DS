@@ -636,6 +636,17 @@ static int step(char *line)
         return run(30000, 1);
     }
     if (!strcmp(word, "use")) { CHECK(sscanf(line, "%li", (long *)&a) == 1); use_item = (uint32_t)a; return 1; }
+    /* The player's own pause menu (P*DA): open it where the hero stands
+     * (kind 4 surfaces register key items), use the item, close. */
+    if (!strcmp(word, "menu_use")) {
+        CHECK(sscanf(line, "%li", (long *)&a) == 1);
+        if (!c3_field_story_pause_menu_open(&scene->story, error)) return 0;
+        if (!c3_field_story_pause_menu_use(&scene->story, (uint32_t)a)) {
+            c3_field_story_pause_menu_close(&scene->story);
+            snprintf(error, sizeof error, "item %lu can't be used here", a); return 0;
+        }
+        return run(30000, 1);
+    }
     if (!strcmp(word, "press")) {
         float yaw, height = INFINITY;
         CHECK(sscanf(line, "%f %f %f %f", &x, &z, &yaw, &height) >= 3);

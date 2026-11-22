@@ -2107,6 +2107,47 @@ int c3_field_story_item_menu_result(C3FieldStory *story,uint32_t item,char *erro
     }
     return fail(error,"No item menu is waiting");
 }
+int c3_field_story_pause_menu_open(C3FieldStory *story,char *error)
+{
+    Impl *s=story?story->impl:NULL;
+    if(!s)return fail(error,"Invalid pause menu");
+    if(!s->entered)return 1;
+    /* fn_8000D710: fn_80116D30(4, id) for each surface heroMoveCheckEvent
+     * reports, then the menu. A registering script (a flag test and native
+     * 11) runs to its end here; one that waits finishes on later ticks. */
+    for(uint32_t i=0;i<s->area->link_count;++i){const C3AreaLink *l=s->area->links+i;uint16_t key;
+        if(l->kind!=4||!near_surface(s,l->source_id,1.5f))continue;
+        log_line(s,"story_pause_menu_event source=%lu script=%08lx menu=player",(unsigned long)l->source_id,(unsigned long)l->script);
+        if(!start(s,l->script,l->args,4,&key,error))return 0;
+        RunTask *t=NULL;for(unsigned j=0;j<C3_STORY_TASKS&&!t;++j)if(s->tasks[j].key==key)t=s->tasks+j;
+        for(unsigned calls=0;t&&calls<128;++calls){
+            C3StoryStatus status=c3_story_step(&s->vm,t->key,1024,&t->call,error);
+            if(status==C3_STORY_FAILED)return 0;
+            if(status==C3_STORY_FINISHED){log_line(s,"story_end key=%u result=%lu",t->key,(unsigned long)c3_story_result(&s->vm,t->key));break;}
+            if(status==C3_STORY_RUNNING)break;
+            if(!run_native(s,t,error))return 0;
+            if(t->wait!=W_NONE)break;
+        }
+    }
+    log_line(s,"story_pause_menu open registered=%u",s->item_event_count);
+    return 1;
+}
+int c3_field_story_pause_menu_use(C3FieldStory *story,uint32_t item)
+{
+    Impl *s=story?story->impl:NULL;uint32_t script=0;
+    if(!s||!item)return 0;
+    /* fn_80021A9C finds the item in the native 11 list; fn_8000D710 then
+     * queues its script with heroMoveAddAutoEvent (fn_80019070). */
+    for(unsigned j=0;j<s->item_event_count&&!script;++j)if(s->item_events[j].item==(uint16_t)item)script=s->item_events[j].script;
+    log_line(s,"story_pause_menu item=%lu script=%08lx status=%s menu=player",(unsigned long)item,(unsigned long)script,script?"used":"not_now");
+    if(!script)return 0;
+    s->pending_item_script=script;s->pending_item=item;s->item_event_count=0;
+    return 1;
+}
+void c3_field_story_pause_menu_close(C3FieldStory *story)
+{
+    Impl *s=story?story->impl:NULL;if(s)s->item_event_count=0;
+}
 int c3_field_story_shop_done(C3FieldStory *story,char *error)
 {
     Impl *s=story?story->impl:NULL;

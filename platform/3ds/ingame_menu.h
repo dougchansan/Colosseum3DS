@@ -15,8 +15,10 @@ typedef enum {
 } C3IngamePage;
 typedef enum { C3_INGAME_NONE,C3_INGAME_RESUME,C3_INGAME_SAVE,C3_INGAME_LEAVE,
                C3_INGAME_OPTIONS,C3_INGAME_READ_MAIL,C3_INGAME_PREVIEW,
-               C3_INGAME_PLAY_TONE,C3_INGAME_STOP_TONE } C3IngameEventKind;
-typedef struct { C3IngameEventKind kind; C3PdaMailAction mail; unsigned tone; } C3IngameEvent;
+               C3_INGAME_PLAY_TONE,C3_INGAME_STOP_TONE,C3_INGAME_USE_ITEM } C3IngameEventKind;
+/* USE_ITEM: a key item the field registered (key_items) was used; the
+ * caller closes the menu and runs its script (item). */
+typedef struct { C3IngameEventKind kind; C3PdaMailAction mail; unsigned tone,item; } C3IngameEvent;
 typedef struct {
     C3IngamePage page,parent;
     unsigned selection,hub_selection,pda_selection,pocket,sort,tab,detail,option_mono,option_rumble;
@@ -41,6 +43,10 @@ typedef struct {
     C3UiPager pager;
     C3PdaAssets assets;
     uint8_t *asset_memory;
+    /* Key items whose use the field registered (script native 11) when the
+     * menu opened; set by the caller. fn_80021A9C uses only these. */
+    uint32_t key_items[8];
+    unsigned key_item_count;
     char error[192],text[8192];
 } C3IngameMenu;
 

@@ -1766,6 +1766,10 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                     if(home>=0||(input.pressed&(C3_PAD_START|C3_PAD_X))){
                         int original=hub_menu_ready(ingame,state);
                         if(trace){fprintf(trace,"ingame_open original_assets=%d hub_item=%d\n",original,home);fflush(trace);}
+                        /* fn_8000D710: the hero's kind 4 surfaces register
+                         * their key items (native 11) before the menu shows. */
+                        if(!c3_field_story_pause_menu_open(&story,story_error))goto story_failed;
+                        ingame->key_item_count=c3_field_story_item_menu_items(&story,ingame->key_items);
                         ingame->idle=0;ingame->page=C3_GAME_HUB;ingame->selection=ingame->hub_selection=home>=0?(unsigned)home:0u;
                         page=PAUSE_MAIN;selection=0;dirty=1;
                         if(home==5){page=PAUSE_SAVE;yes=0;}
@@ -1870,7 +1874,12 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                     c3_pda_audio_trace(trace,"preview");dirty=1;
                 }
                 else if(event.kind==C3_INGAME_STOP_TONE){c3_pda_audio_stop();dirty=1;}
-                else if(event.kind==C3_INGAME_RESUME){c3_pda_audio_close();c3_pda_sound_close();pda_audio_ready=0;page=PAUSE_CLOSED;dirty=1;}
+                else if(event.kind==C3_INGAME_RESUME||event.kind==C3_INGAME_USE_ITEM){
+                    /* A used key item's script runs once the menu is closed
+                     * (heroMoveAddAutoEvent); closing empties the list. */
+                    if(event.kind!=C3_INGAME_USE_ITEM||!c3_field_story_pause_menu_use(&story,event.item))c3_field_story_pause_menu_close(&story);
+                    if(trace&&event.kind==C3_INGAME_USE_ITEM){fprintf(trace,"ingame_use_item item=%u\n",event.item);fflush(trace);}
+                    c3_pda_audio_close();c3_pda_sound_close();pda_audio_ready=0;page=PAUSE_CLOSED;dirty=1;}
                 else if(event.kind==C3_INGAME_SAVE){page=PAUSE_SAVE;yes=0;dirty=1;}
                 else if(event.kind==C3_INGAME_LEAVE){page=PAUSE_LEAVE;yes=0;dirty=1;}
                 else if(event.kind==C3_INGAME_OPTIONS){c3_movie_player_set_mono(ingame->option_mono);c3_music_set_mono(ingame->option_mono);dirty=1;}
@@ -1881,7 +1890,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                         ready=0;snprintf(story_error,sizeof story_error,"The mail read changes could not be applied.");
                     }
                     if(!ready)c3_ingame_error(ingame,story_error);
-                    else if(event.mail.script){c3_pda_audio_close();c3_pda_sound_close();pda_audio_ready=0;page=PAUSE_CLOSED;}
+                    else if(event.mail.script){c3_field_story_pause_menu_close(&story);c3_pda_audio_close();c3_pda_sound_close();pda_audio_ready=0;page=PAUSE_CLOSED;}
                     if(trace){fprintf(trace,"ingame_mail id=%u committed=%d callback=%08lx disk_write=0\n",event.mail.save.id,ready,(unsigned long)event.mail.script);fflush(trace);}
                     dirty=1;
                 }

@@ -119,6 +119,17 @@ unsigned c3_field_story_treasure_count(const C3FieldStory *story);
 const C3StoryTreasure *c3_field_story_treasure(const C3FieldStory *story,unsigned index);
 unsigned c3_field_story_item_menu_items(const C3FieldStory *story,uint32_t items[8]);
 int c3_field_story_item_menu_result(C3FieldStory *story,uint32_t item,char *error);
+/* The pause menu the player opens (fn_8000D710 mode 0). Opening it first
+ * runs the kind 4 links of the event surfaces the hero is on
+ * (heroMoveCheckEvent), which register key items with native 11 (the
+ * windmill's generator registers the GEAR). Using a key item (field
+ * function fn_80021A9C) that is registered queues its script to run once
+ * the menu has closed and returns 1; an unregistered one returns 0 (the
+ * original says it can't be used now and stays in the bag). Closing the
+ * menu empties the list (fn_80019070). */
+int c3_field_story_pause_menu_open(C3FieldStory *story,char *error);
+int c3_field_story_pause_menu_use(C3FieldStory *story,uint32_t item);
+void c3_field_story_pause_menu_close(C3FieldStory *story);
 /* Item gifts (script native 77). receive adds `count` of `item` to the bag
  * as heroItemAddItemDataId does and writes the item's display name: 0 when
  * everything was added, a positive amount that did not fit, negative when

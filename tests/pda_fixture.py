@@ -63,6 +63,15 @@ def fixture():
         d = bytearray(40)
         struct.pack_into(">II", d, 16, 120, 121)
         entries[7, i] = d
+    # A key item whose use runs a field-registered script (field function
+    # fn_80021A9C), and the bag's refusal when nothing registered it.
+    message(140, "GEAR")
+    message(0x426A, "This item can't be used now.")
+    d = bytearray(40)
+    d[0], d[1] = 5, 1
+    struct.pack_into(">II", d, 16, 140, 121)
+    struct.pack_into(">I", d, 28, 0x80021A9C)
+    entries[7, 532] = d
     d = bytearray(56)
     d[1] = 25
     struct.pack_into(">I", d, 32, 130)

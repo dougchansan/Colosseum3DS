@@ -175,6 +175,21 @@ int c3_ingame_preview_identity(const C3IngameMenu *m,const C3GameState *state,
     }
     return 0;
 }
+/* A key item's USE runs its field function fn_80021A9C: the item must be
+ * in the list the field registered (native 11) when the menu opened; then
+ * the menu closes and the field runs its script. Otherwise the original
+ * says it can't be used now (message 0x426A) and stays in the bag. There
+ * is no Pokemon to choose. 1 when the action was a key item's use. */
+static int key_item_use(C3IngameMenu *m,const C3GameState *state,C3IngameEvent *e)
+{
+    C3GameItem item;C3InventoryItem info;C3GameSummary s;
+    if(!c3_game_state_item(state,m->inventory.pocket,m->inventory.slot,&item)||!item.id||
+       !c3_inventory_item(&m->assets,item.id,&info)||info.field_function!=0x80021A9Cu)return 0;
+    for(unsigned i=0;i<m->key_item_count&&i<8;++i)if(m->key_items[i]==item.id){e->kind=C3_INGAME_USE_ITEM;e->item=item.id;return 1;}
+    if(c3_game_state_summary(state,&s))text(m,&s,0x426a,"This item can't be used now.",m->error,sizeof m->error);
+    else snprintf(m->error,sizeof m->error,"This item can't be used now.");
+    page(m,C3_GAME_ITEM_RESULT,0);return 1;
+}
 static C3IngameEvent step(C3IngameMenu *m,C3GameState *state,const C3N3dsInput *input,float dt)
 {
     C3IngameEvent e={0};
@@ -275,6 +290,7 @@ static C3IngameEvent step(C3IngameMenu *m,C3GameState *state,const C3N3dsInput *
             if(party&&m->selection==0){page(m,C3_GAME_POKEMON,m->inventory_selection);}
             else if(party&&m->selection==1){m->inventory.action=C3_INVENTORY_TAKE;inventory_done(m,state);}
             else if(party){m->inventory.pocket=6;m->inventory.action=C3_INVENTORY_REORDER;page(m,C3_GAME_ITEM_TARGET,0);}
+            else if(m->selection==0&&key_item_use(m,state,&e)){}
             else {m->inventory.action=m->selection==0?C3_INVENTORY_USE:m->selection==1?C3_INVENTORY_GIVE:m->selection==2?C3_INVENTORY_TOSS:C3_INVENTORY_REORDER;
                 page(m,m->inventory.action==C3_INVENTORY_TOSS?C3_GAME_ITEM_QUANTITY:C3_GAME_ITEM_TARGET,0);}
         }

@@ -1009,11 +1009,46 @@ static void mail_regressions(void)
     free(s);c3_game_state_free(&game);CHECK(!unlink(file));CHECK(!rmdir(directory));
     puts("field-story mail delivery regressions passed");
 }
+/* The pause menu the player opens (fn_8000D710 mode 0): the windmill's
+ * generator surfaces (kind 4) register the GEAR with native 11 only when
+ * the hero is at them; using it queues its script for after the menu, and
+ * closing the menu empties the list. */
+static void pause_menu_regressions(void)
+{
+    char directory[]="/tmp/c3-field-story-pause-XXXXXX",file[1024];CHECK(mkdtemp(directory));path(file,directory,"unit.c3s");
+    C3GameState game={0};synthetic_game(&game);Scene *s=calloc(1,sizeof(*s));CHECK(s);
+    Program code[8];memset(code,0,sizeof code);
+    uint32_t args[2]={532,0x1000005};native(code+4,0x11,2,args,1);
+    args[0]=15;native(code+5,0xad,1,args,1);
+    synthetic_load(s,&game,file,code,0,0,0);
+    s->area.interaction_count=1;s->area.interactions=calloc(1,sizeof(*s->area.interactions));
+    s->area.link_count=1;s->area.links=calloc(1,sizeof(*s->area.links));CHECK(s->area.interactions&&s->area.links);
+    const float v[9]={.5f,0,0,.5f,1,0,.5f,0,.5f};memcpy(s->area.interactions[0].vertices,v,sizeof v);
+    s->area.interactions[0].normal[0]=-1;
+    s->area.links[0]=(C3AreaLink){.kind=4,.source_id=0,.script=0x1000004};
+    CHECK(c3_field_story_enter(&s->story,error));CHECK(c3_field_story_tick(&s->story,0,0,error));
+    uint32_t items[8];unsigned before=0,count=0;CHECK(c3_game_state_mail_count(&game,&before));
+    s->hero.position[0]=10;CHECK(c3_field_story_pause_menu_open(&s->story,error));
+    CHECK(!c3_field_story_item_menu_items(&s->story,items));CHECK(!c3_field_story_pause_menu_use(&s->story,532));
+    c3_field_story_pause_menu_close(&s->story);
+    s->hero.position[0]=0;CHECK(c3_field_story_pause_menu_open(&s->story,error));
+    CHECK(c3_field_story_item_menu_items(&s->story,items)==1&&items[0]==532);
+    CHECK(!c3_field_story_pause_menu_use(&s->story,13));CHECK(c3_field_story_pause_menu_use(&s->story,532));
+    CHECK(!c3_field_story_item_menu_items(&s->story,items));
+    for(unsigned i=0;i<3;++i)CHECK(c3_field_story_tick(&s->story,1.0f/60.0f,0,error));
+    CHECK(c3_game_state_mail_count(&game,&count)&&count==before+1);
+    /* A menu closed without a use leaves nothing registered for the next. */
+    CHECK(c3_field_story_pause_menu_open(&s->story,error));c3_field_story_pause_menu_close(&s->story);
+    CHECK(!c3_field_story_pause_menu_use(&s->story,532));
+    close_scene(s);free(s);c3_game_state_free(&game);CHECK(!unlink(file));CHECK(!rmdir(directory));
+    puts("field-story pause menu key item regressions passed");
+}
 int main(int argc,char **argv)
 {
     synthetic_regressions();
     dna_regressions();
     mail_regressions();
+    pause_menu_regressions();
     if(argc==3&&!strcmp(argv[1],"--premium")){premium_regressions(argv[2]);return 0;}
     if(argc<2){puts("field-story private integration skipped: supply privately prepared boot directory");return 0;}
     trace=argc>2?fopen(argv[2],"w+"):tmpfile();CHECK(trace!=NULL);
