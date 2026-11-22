@@ -119,7 +119,7 @@ uint32_t c3_general_view_batch(C3GeneralView *v, const C3GeneralBattle *b,
         default:
             if (!v->introduced && i == 0) { e->kind = C3_PREVIEW_EVENT_INTRO; break; }
             e->kind = C3_PREVIEW_EVENT_MESSAGE;
-            e->cutin = g->cutin;
+            e->cutin = g->cutin; e->hold = g->hold;
             if (g->waza_effect && e->actor < 4) {
                 /* fightOutPokemonWazaEffect: the move's attack sequence on the
                  * Pokemon, no target and no damage. */

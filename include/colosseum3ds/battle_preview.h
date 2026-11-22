@@ -49,6 +49,7 @@ typedef struct {
     int8_t stages[4][7];
     uint8_t confusion[4], taunt[4], reflect[2];
     uint8_t cutin; /* general battles: the partner's cut-in comes first (C3GeneralEvent.cutin) */
+    uint8_t hold;  /* once played, the timeline stays on this event until released (A) */
     C3BattlePreviewOutcome outcome;
     char text[128];
     uint16_t hp[4];

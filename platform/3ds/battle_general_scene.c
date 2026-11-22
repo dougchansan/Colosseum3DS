@@ -264,7 +264,9 @@ int c3_battle_general_scene_run(const C3BattlePack *pack, C3GeneralBattle *b, FI
         uint16_t pressed = input.pressed;
         uint64_t now = c3_n3ds_time_us();
         if (ui.page == C3_GUI_EVENTS) {
-            if ((pressed & C3_PAD_A) || now - event_start >= EVENT_MS * 1000u) {
+            /* The partner's page (the Shadow notice) waits for A. */
+            int hold = event < b->event_count && b->events[event].hold && !c3_battle_general_autoplaying();
+            if ((pressed & C3_PAD_A) || (!hold && now - event_start >= EVENT_MS * 1000u)) {
                 ++event; event_start = now; dirty = 1;
                 if (event >= b->event_count) {
                     if (b->outcome != C3_GB_RUNNING) ui.page = C3_GUI_RESULT;

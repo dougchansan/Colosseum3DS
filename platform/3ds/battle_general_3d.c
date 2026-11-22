@@ -187,7 +187,7 @@ static int run(const C3BattlePack *pack, C3GeneralBattle *b, C3BattleLinkHooks *
     c3_general_view_restart(&view, b);
     uint16_t hp[4]; memcpy(hp, view.hp, sizeof hp);
     if (!open_stage(stage, &index, &cast, pack, hp, audio, trace, error, sizeof error)) goto done;
-    uint32_t first = 0, count = 0, shown = UINT32_MAX;
+    uint32_t first = 0, count = 0, shown = UINT32_MAX, held_logged = UINT32_MAX;
     C3GeneralUiPage drawn_page = C3_GUI_RESULT;
     int dirty = 1;
     uint64_t previous = c3_n3ds_active_time_us();
@@ -291,6 +291,17 @@ static int run(const C3BattlePack *pack, C3GeneralBattle *b, C3BattleLinkHooks *
             int pr = c3_general_ui_press(&ui, pack, b, pressed, trace);
             if (pr == 2 && hooks) link_submit(hooks, &ui, ui.commands);
             else if (pr) { c3_general_view_restart(&view, b); count = 0; }
+        }
+        /* The partner's page (the Shadow notice) stays up once its aura has
+         * played until the player presses A, as its fight window does. */
+        if (ui.page == C3_GUI_EVENTS && stage->presentation.held) {
+            uint32_t at = first + stage->presentation.cursor;
+            if (trace && held_logged != at) { held_logged = at; fprintf(trace, "general_battle_hold event=%lu special=0x%x cutin=%u\n", (unsigned long)at,
+                at < b->event_count ? (unsigned)b->events[at].special : 0u, at < b->event_count ? (unsigned)b->events[at].cutin : 0u); fflush(trace); }
+            if ((pressed & C3_PAD_A) || autoplay || hooks) {
+                c3_battle_presentation_release(&stage->presentation);
+                if (trace) { fprintf(trace, "general_battle_hold_released event=%lu\n", (unsigned long)at); fflush(trace); }
+            }
         }
         c3_battle_general_stage_command_phase(stage, ui.page != C3_GUI_EVENTS && ui.page != C3_GUI_WAIT);
         if (!c3_battle_general_stage_step(stage, ms, error, sizeof error)) goto done;

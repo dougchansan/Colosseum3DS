@@ -40,5 +40,22 @@ int main(void)
     c3_battle_presentation_pause(&a,0);c3_battle_presentation_wait(&a,0);
     assert(c3_battle_presentation_step(&a,600,hold_hp,&a));
     assert(a.cursor==3&&!a.visible[2]&&starts==3&&ends==3);
+    /* A held event (the partner's Shadow notice) plays, then stays current
+     * however long the player takes, with no wait failure; A releases it. */
+    {
+        C3BattlePreviewEvent h[2];memset(h,0,sizeof h);
+        for(unsigned i=0;i<2;++i){h[i].sequence=i+1;h[i].target=2;h[i].actor=2;h[i].kind=C3_PREVIEW_EVENT_STATUS;memcpy(h[i].hp,hp,sizeof hp);}
+        h[0].hold=1;h[0].effect=0x3A;h[1].kind=C3_PREVIEW_EVENT_MESSAGE;h[1].actor=h[1].target=C3_PREVIEW_NO_SLOT;
+        c3_battle_presentation_init(&a,hp);starts=ends=0;
+        c3_battle_presentation_release(&a);assert(!a.released); /* nothing held */
+        assert(c3_battle_presentation_submit(&a,h,2));
+        assert(c3_battle_presentation_step(&a,249,observe,0)&&a.cursor==0&&!a.held);
+        assert(c3_battle_presentation_step(&a,1,observe,0)&&a.cursor==0&&a.held&&ends==1);
+        for(unsigned i=0;i<100;++i)assert(c3_battle_presentation_step(&a,1000,observe,0));
+        assert(a.cursor==0&&a.held&&!a.failed&&starts==1&&ends==1);
+        c3_battle_presentation_release(&a);
+        assert(c3_battle_presentation_step(&a,1,observe,0)&&a.cursor==1&&!a.held&&!a.released&&starts==2&&ends==1);
+        assert(c3_battle_presentation_step(&a,250,observe,0)&&a.cursor==2&&ends==2);
+    }
     return 0;
 }

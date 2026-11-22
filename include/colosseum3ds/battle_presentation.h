@@ -12,7 +12,7 @@ typedef struct {
     int8_t stages[4][7];
     uint8_t visible[4], confusion[4], taunt[4], reflect[2];
     C3BattlePreviewOutcome outcome;
-    uint8_t paused, started, waiting, failed, applied;
+    uint8_t paused, started, waiting, failed, applied, held, released;
     uint32_t wait_ms, wait_limit_ms;
 } C3BattlePresentation;
 void c3_battle_presentation_init(C3BattlePresentation *, const uint16_t hp[4]);
@@ -28,4 +28,8 @@ void c3_battle_presentation_wait(C3BattlePresentation *, int waiting);
 int c3_battle_presentation_wait_limit(C3BattlePresentation *, uint32_t milliseconds);
 int c3_battle_presentation_step(C3BattlePresentation *, uint32_t milliseconds,
                                 C3BattlePresentationNotify, void *);
+/* An event marked hold stays current once it has played (held is set) and
+ * never times out; the player's A press releases it and the next step goes
+ * on. Releasing anything else does nothing. */
+void c3_battle_presentation_release(C3BattlePresentation *);
 #endif

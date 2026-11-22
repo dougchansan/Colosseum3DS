@@ -50,6 +50,52 @@ static void check_view(const C3GeneralBattle *b)
     }
     CHECK(expected == b->event_count);
 }
+/* The 3D battle's message loop (platform/3ds/battle_general_3d.c run)
+ * without the stage: whenever the timeline is idle it takes the view's next
+ * batch, steps 33 ms frames, and the message box shows log event first +
+ * cursor. A held event is released (the player's A) once it has been held
+ * for press_after frames. The command phase opens when the log runs out. */
+typedef struct {
+    uint32_t frames[C3_GB_EVENT_LIMIT]; /* frames each log event was the one on screen */
+    uint32_t held, held_frames, released_at, commands_at, releases;
+} Shown;
+static void present_log(const C3GeneralBattle *b, uint32_t press_after, Shown *o)
+{
+    static C3BattlePreviewEvent batch[C3_PREVIEW_EVENT_LIMIT]; static C3BattlePresentation p; C3GeneralView v;
+    uint32_t first = 0, count = 0, waited = 0; uint16_t hp[4];
+    memset(&v, 0, sizeof v); memset(o, 0, sizeof *o); o->held = UINT32_MAX;
+    c3_general_view_restart(&v, b); memcpy(hp, v.hp, sizeof hp); c3_battle_presentation_init(&p, hp);
+    for (uint32_t frame = 1; frame < 100000; ++frame) {
+        if (p.cursor >= p.count) {
+            uint32_t n = c3_general_view_batch(&v, b, batch, C3_PREVIEW_EVENT_LIMIT, &first);
+            if (!n) { o->commands_at = frame; return; }
+            CHECK(c3_battle_presentation_submit(&p, batch, n)); count = n;
+        }
+        if (p.held) {
+            if (o->held == UINT32_MAX) o->held = first + p.cursor;
+            ++o->held_frames;
+            if (++waited >= press_after) { c3_battle_presentation_release(&p); o->released_at = frame; ++o->releases; waited = 0; }
+        }
+        CHECK(c3_battle_presentation_step(&p, 33, NULL, NULL));
+        uint32_t at = first + (p.cursor < count ? p.cursor : count - 1);
+        CHECK(at < b->event_count); ++o->frames[at];
+    }
+    CHECK(!"the log never ended");
+}
+/* A lead Shadow Pokemon's notice closes the opening log; on screen it must
+ * stay until the player presses A (here after 10 s), and the command phase
+ * opens only after that press. */
+static void check_notice_presented(const C3GeneralBattle *b, uint32_t notice, const char *text)
+{
+    Shown s; const uint32_t press = 300; /* 10 s of 33 ms frames: far longer than any timed event */
+    CHECK(notice + 1 == b->event_count && b->events[notice].hold && b->events[notice].cutin && b->events[notice].special == 0x3A);
+    CHECK(!strcmp(b->events[notice].text, text));
+    present_log(b, press, &s);
+    CHECK(s.held == notice && s.releases == 1 && s.held_frames == press);
+    CHECK(s.frames[notice] >= press);           /* the notice is the message on screen the whole time */
+    CHECK(s.released_at && s.commands_at > s.released_at);
+    for (uint32_t i = 0; i < notice; ++i) CHECK(s.frames[i] > 0 && s.frames[i] < press); /* the rest are timed, each shown */
+}
 static void view_begin(const C3GeneralBattle *b)
 {
     static const uint16_t hp[4];
@@ -467,6 +513,7 @@ static void shadow_appearance(void)
                 for (uint32_t j = 0; j < k; ++j) if (first + j == before) { CHECK(out[j].kind == C3_PREVIEW_EVENT_STATUS && out[j].effect == 0x3A && out[j].target == 2 && out[j].cutin); found = 1; }
             CHECK(found);
         }
+        check_notice_presented(&b, before, aura);
         /* Encounter 0x11: special 0xD9, the tutorial, POUND's attack sequence, and 0x772B without balls. */
         for (unsigned balls = 0; balls < 2; ++balls) {
             CHECK(c3_general_battle_begin(&b, &pack, 0, party, 33, error));
@@ -487,6 +534,8 @@ static void shadow_appearance(void)
             CHECK(b.event_count == before + count);
             for (unsigned k = 0; k < count; ++k) CHECK(!strcmp(b.events[before + k].text, pages[k]) && b.events[before + k].actor == 2);
             CHECK(b.events[before].special == 0xD9 && b.events[before].cutin == 1);
+            /* every page of the partner's waits for A; POUND's attack sequence does not */
+            for (unsigned k = 0; k < count; ++k) CHECK(b.events[before + k].hold == (k != 4));
             CHECK(b.events[before + 4].waza_effect == 1 && b.events[before + 5].special == 0xD9);
             view_begin(&b); /* every event maps (the attack sequence is a move event without a target) */
         }
@@ -688,6 +737,18 @@ static void encounter17(const C3BattlePack *pack, uint8_t party[6][0x138])
             else CHECK(b.event_count == before);
             printf("battle-general: encounter 33: CROCONAW lead noticed at the start: %s (kind flag %u)\n", b.event_count > before ? "yes" : "no", info.partner_aura);
         }
+    }
+    {   /* Encounter 101 (CIPHER PEON NORE): the Shadow YANMA leads; its notice
+         * closes the opening log and the presentation holds it until A. */
+        static C3GeneralBattle b;
+        if (c3_battle_pack_info(pack, 101, &info) && !strcmp(info.trainer, "NORE")) {
+            CHECK(c3_general_battle_begin(&b, pack, 101, party, 0x10100u, error) && b.party[1][0].shadow && !strcmp(b.party[1][0].name, "YANMA"));
+            strcpy(b.side_name[0], "WES"); strcpy(b.partner_name, "RUI");
+            uint32_t before = b.event_count; c3_general_battle_appear_checks(&b);
+            CHECK(info.partner_aura == 1 && b.event_count == before + 1);
+            check_notice_presented(&b, before, "RUI: Oh! WES!\nThere's a POK\xc3\xa9MON with a black aura!");
+            puts("battle-general: encounter 101: YANMA lead noticed at the start, held on screen until A");
+        } else puts("battle-general: encounter 101 is not NORE's; skipped");
     }
 }
 

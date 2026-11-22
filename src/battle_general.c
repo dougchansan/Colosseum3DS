@@ -692,9 +692,13 @@ static void sent_out(C3GeneralBattle *b,const C3BattlePack *p,unsigned side,unsi
 static void say_page(C3GeneralBattle *b,unsigned pos,const char *page)
 {
     const char *second=strchr(page,'\n');second=second?strchr(second+1,'\n'):NULL;
-    if(!second){say(b,C3_GB_EVENT_MESSAGE,pos,pos,0,"%s",page);return;}
-    say(b,C3_GB_EVENT_MESSAGE,pos,pos,0,"%.*s",(int)(second-page),page);
-    say(b,C3_GB_EVENT_MESSAGE,pos,pos,0,"%s",second+1);
+    unsigned first=b->event_count;
+    if(!second)say(b,C3_GB_EVENT_MESSAGE,pos,pos,0,"%s",page);
+    else{say(b,C3_GB_EVENT_MESSAGE,pos,pos,0,"%.*s",(int)(second-page),page);
+         say(b,C3_GB_EVENT_MESSAGE,pos,pos,0,"%s",second+1);}
+    /* Each page is a fight window (fightMenuOpenMsg) that stays open until
+     * fightMenuCloseMsg, after the aura: the player reads it and goes on. */
+    for(unsigned i=first;i<b->event_count;++i)b->events[i].hold=1;
 }
 static void dark_check_appear(C3GeneralBattle *b,unsigned pos)
 {

@@ -126,9 +126,11 @@ typedef struct C3GeneralEvent {
      * 0x3A, 0xD9 in encounter 0x11); cutin: the partner's cut-in (model 0x32
      * playing special 0xA0 in the hero trainer's place) comes first;
      * waza_effect: a move whose attack sequence `actor` plays
-     * (fightOutPokemonWazaEffect, encounter 0x11's tutorial). */
+     * (fightOutPokemonWazaEffect, encounter 0x11's tutorial); hold: the
+     * partner's page stays up until the player presses A (its fight window
+     * closes only after the aura), it never times out. */
     uint16_t special, waza_effect;
-    uint8_t cutin;
+    uint8_t cutin, hold;
     char text[96];
 } C3GeneralEvent;
 

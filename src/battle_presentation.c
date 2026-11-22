@@ -30,8 +30,10 @@ int c3_battle_presentation_submit(C3BattlePresentation *p,const C3BattlePreviewE
         sequence=e->sequence;
     }
     memcpy(p->events,events,count*sizeof *events);p->count=count;p->cursor=0;
-    p->elapsed_ms=0;p->started=0;p->waiting=0;p->wait_ms=0;p->applied=0;return 1;
+    p->elapsed_ms=0;p->started=0;p->waiting=0;p->wait_ms=0;p->applied=0;p->held=0;p->released=0;return 1;
 }
+void c3_battle_presentation_release(C3BattlePresentation *p)
+{if(p&&p->held)p->released=1;}
 void c3_battle_presentation_pause(C3BattlePresentation *p,int paused)
 {if(p)p->paused=(uint8_t)(paused!=0);}
 void c3_battle_presentation_wait(C3BattlePresentation *p,int waiting)
@@ -67,6 +69,8 @@ int c3_battle_presentation_step(C3BattlePresentation *p,uint32_t ms,C3BattlePres
         if(notify)notify(e,1,user);
         if(p->waiting)continue;
         }
+        if(e->hold&&!p->released){p->held=1;return 1;}
+        p->held=0;p->released=0;
         p->last_sequence=e->sequence;++p->cursor;p->elapsed_ms=0;p->started=0;p->applied=0;
         if(!ms)break;
     }
