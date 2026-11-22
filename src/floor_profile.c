@@ -2,6 +2,8 @@
 
 #include <stddef.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 static const C3FloorProfile profiles[] = {
     /* Lifecycle row 0: S1_out.fsys, group 0x1D. */
@@ -68,4 +70,86 @@ const C3FloorProfile *c3_floor_profile(uint32_t floor)
         *row = (C3FloorProfile){floor, text[0], text[1], text[2], 0u};
     }
     return row;
+}
+
+/* Original place names, tools/prepare_place_names.py (C3PN version 1). */
+#define C3_FLOOR_NAME_ROWS 512u
+#define C3_FLOOR_NAME_FILE (16u + C3_FLOOR_NAME_ROWS * (8u + C3_FLOOR_NAME_MAX))
+typedef struct { uint32_t floor; char name[C3_FLOOR_NAME_MAX]; } FloorName;
+static FloorName names[C3_FLOOR_NAME_ROWS];
+static unsigned name_count;
+static int names_tried, names_loaded;
+
+static uint32_t le32(const unsigned char *p)
+{
+    return (uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24;
+}
+
+/* Length of the name at offset, or 0 when it is empty, unterminated,
+ * too long or holds a control byte. */
+static size_t name_length(const unsigned char *d, size_t size, uint32_t offset)
+{
+    for (size_t n = 0; n < C3_FLOOR_NAME_MAX && offset + n < size; ++n) {
+        if (!d[offset + n]) return n;
+        if (d[offset + n] < 0x20u || d[offset + n] == 0x7fu) return 0;
+    }
+    return 0;
+}
+
+int c3_floor_names_parse(const void *data, size_t size)
+{
+    const unsigned char *d = data;
+    if (!d || size < 16u || size > C3_FLOOR_NAME_FILE || memcmp(d, "C3PN", 4) || le32(d + 4) != 1u ||
+        le32(d + 8) != size)
+        return 0;
+    uint32_t count = le32(d + 12);
+    if (!count || count > C3_FLOOR_NAME_ROWS || 16u + count * 8u > size) return 0;
+    for (uint32_t i = 0; i < count; ++i) {
+        const unsigned char *row = d + 16u + i * 8u;
+        uint32_t offset = le32(row + 4);
+        if ((i && le32(row) <= le32(row - 8)) || offset < 16u + count * 8u || offset >= size ||
+            !name_length(d, size, offset))
+            return 0;
+    }
+    for (uint32_t i = 0; i < count; ++i) {
+        const unsigned char *row = d + 16u + i * 8u;
+        uint32_t offset = le32(row + 4);
+        names[i].floor = le32(row);
+        memcpy(names[i].name, d + offset, name_length(d, size, offset) + 1u);
+    }
+    name_count = count;
+    return 1;
+}
+
+int c3_floor_names_load(const char *path)
+{
+    if (names_tried) return names_loaded;
+    names_tried = 1;
+    FILE *file = path ? fopen(path, "rb") : NULL;
+    if (!file) return 0;
+    unsigned char *data = malloc(C3_FLOOR_NAME_FILE + 1u);
+    size_t size = data ? fread(data, 1, C3_FLOOR_NAME_FILE + 1u, file) : 0;
+    names_loaded = data && !ferror(file) && c3_floor_names_parse(data, size);
+    free(data);
+    fclose(file);
+    return names_loaded;
+}
+
+void c3_floor_names_reset(void)
+{
+    name_count = 0;
+    names_tried = names_loaded = 0;
+}
+
+const char *c3_floor_label(uint32_t floor)
+{
+    unsigned lo = 0, hi = name_count;
+    while (lo < hi) {
+        unsigned mid = lo + (hi - lo) / 2;
+        if (names[mid].floor == floor) return names[mid].name;
+        if (names[mid].floor < floor) lo = mid + 1;
+        else hi = mid;
+    }
+    const C3FloorProfile *profile = c3_floor_profile(floor);
+    return profile ? profile->label : NULL;
 }

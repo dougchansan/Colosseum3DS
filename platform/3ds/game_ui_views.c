@@ -37,7 +37,7 @@ void c3_field_ui_draw_to(C3BottomUi *ui,const C3GameSummary *summary,FieldPhase 
     c3_ui_pager_sync(pager,c3_field_ui_identity(page,story));
     snprintf(text,sizeof text,"%s   $%lu   %lu:%02lu",summary->name,(unsigned long)summary->money,
         (unsigned long)(summary->play_seconds/3600u),(unsigned long)(summary->play_seconds/60u%60u));
-    c3_ui_header(ui,summary->floor==2?"OUTSKIRT STAND - INSIDE":c3_floor_profile(summary->floor)?c3_floor_profile(summary->floor)->label:"UNKNOWN AREA",text);
+    c3_ui_header(ui,c3_floor_label(summary->floor)?c3_floor_label(summary->floor):"UNKNOWN AREA",text);
     if(phase==FIELD_SETUP||phase==FIELD_ARRIVAL||phase==FIELD_ARRIVAL_OUT){
         c3_ui_panel(ui,7,64,306,90);
         c3_ui_text(ui,20,80,280,3,phase==FIELD_SETUP?"Loading the original area...":"Arriving...",C3_UI_WHITE);

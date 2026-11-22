@@ -868,6 +868,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     }
     const C3FloorProfile *profile=c3_floor_profile(summary.floor);
     const char *prefix=profile->prefix;
+    c3_floor_names_load(BOOT_ROOT "place_names.c3pn");
     snprintf(path,sizeof path,BOOT_ROOT "%s.c3f",prefix);
     if(!c3_field_load(&map,path,error,capacity))goto done;
     snprintf(path,sizeof path,BOOT_ROOT "%s.c3a",prefix);
@@ -933,7 +934,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     /* From the world map the journey already covered the load and faded
      * out: the bottom screen keeps the map and the top stays black. */
     int from_world_map=summary.previous_floor==C3_FLOOR_WORLD_MAP_ID;
-    if(!from_world_map)c3_bottom_screen_notice(profile->label,"Loading the area...","Please wait...");
+    if(!from_world_map)c3_bottom_screen_notice(c3_floor_label(summary.floor),"Loading the area...","Please wait...");
     unsigned load_total=map.map_pack_count+1u+arrival_count;
     for(uint32_t i=0;i<doors.count;++i)load_total+=doors.rows[i].file[0]!=0;
     load_total+=heal_count;
@@ -1957,7 +1958,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         if(dirty||input.pressed||now>=next_console){
             C3BottomUi *bottom=c3_bottom_screen_begin();
             if(naming)c3_name_entry_draw(&name_entry,bottom);
-            else if(shopping)c3_shop_menu_draw(&shop_menu,state,bottom,profile->label);
+            else if(shopping)c3_shop_menu_draw(&shop_menu,state,bottom,c3_floor_label(summary.floor));
             else if(pc_open)c3_pc_menu_draw(&pc_menu,bottom);
             else if(relive_pick.open)relive_pick_draw(&relive_pick,bottom);
             else if(item_pick.open)item_pick_draw(&item_pick,bottom);
