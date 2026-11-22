@@ -248,7 +248,7 @@ C3ShopEvent c3_shop_menu_update(C3ShopMenu *menu, C3GameState *state, const C3Pd
             const C3ShopSellEntry e = menu->sell[menu->sell_cursor];
             C3ShopResult result = c3_shop_sell(state, assets, e.pocket, e.slot, menu->quantity);
             if (result == C3_SHOP_SOLD)
-                snprintf(text, sizeof text, "You sold %u %s for P%lu.", menu->quantity, e.name,
+                snprintf(text, sizeof text, "You sold %u %s for $%lu.", menu->quantity, e.name,
                          (unsigned long)e.price * menu->quantity);
             else snprintf(text, sizeof text, "%s", result == C3_SHOP_MONEY_FULL ? "You can't carry any more money." :
                           "That item cannot be sold.");
@@ -266,13 +266,17 @@ static void draw_panel(C3BottomUi *ui, int gold, const char *text, int width)
     c3_ui_text(ui, (320 - width) / 2 + 14, PANEL_Y + 8, width - 24, 1, text, gold ? C3_UI_GOLD : C3_UI_WHITE);
 }
 
+/* Money is written with '$', which the menu font draws as the Pokedollar
+ * sign: menuShop prints common_rel messages 0x14F "$" before each price and
+ * 0x151 (fullwidth $, value 0x50) for the hero's money, and the sale lines
+ * use "${4b}". The P*DA and the battle prize line use the same glyph. */
 void c3_shop_menu_draw(const C3ShopMenu *menu, const C3GameState *state, C3BottomUi *ui, const char *title)
 {
     C3GameSummary summary;
     char value[32], money[32], line[96];
     if (!menu || !ui) return;
     if (!state || !c3_game_state_summary(state, &summary)) summary.money = 0;
-    snprintf(money, sizeof money, "Money P%lu", (unsigned long)summary.money);
+    snprintf(money, sizeof money, "Money $%lu", (unsigned long)summary.money);
     c3_ui_header(ui, title ? title : "SHOP", money);
     C3ShopMenuStage stage = menu->stage == C3_SHOP_MENU_MESSAGE ? menu->after_message : menu->stage;
     int panel = menu->stage == C3_SHOP_MENU_MESSAGE || menu->stage == C3_SHOP_MENU_QUANTITY ||
@@ -284,23 +288,23 @@ void c3_shop_menu_draw(const C3ShopMenu *menu, const C3GameState *state, C3Botto
     } else if (stage == C3_SHOP_MENU_SELL_LIST || stage == C3_SHOP_MENU_SELL_QUANTITY) {
         for (unsigned row = 0; row < rows && menu->sell_top + row < menu->sell_count; ++row) {
             const C3ShopSellEntry *e = &menu->sell[menu->sell_top + row];
-            if (e->price) snprintf(value, sizeof value, "x%u  P%u", e->count, e->price);
+            if (e->price) snprintf(value, sizeof value, "x%u  $%u", e->count, e->price);
             else snprintf(value, sizeof value, "x%u  ---", e->count);
             c3_ui_row_value(ui, LIST_Y + (int)row * ROW_H, e->name, value, menu->sell_top + row == menu->sell_cursor, !e->price);
         }
     } else {
         for (unsigned row = 0; row < rows && menu->top + row < menu->count; ++row) {
             unsigned i = menu->top + row;
-            snprintf(value, sizeof value, "P%u", menu->prices[i]);
+            snprintf(value, sizeof value, "$%u", menu->prices[i]);
             c3_ui_row_value(ui, LIST_Y + (int)row * ROW_H, menu->names[i], value, i == menu->cursor, 0);
         }
     }
     if (menu->stage == C3_SHOP_MENU_QUANTITY) {
-        snprintf(line, sizeof line, "x%u   P%lu", menu->quantity, (unsigned long)menu->prices[menu->cursor] * menu->quantity);
+        snprintf(line, sizeof line, "x%u   $%lu", menu->quantity, (unsigned long)menu->prices[menu->cursor] * menu->quantity);
         draw_panel(ui, 1, line, 240);
         c3_ui_footer(ui, "Up/Down: 1   Left/Right: 10   A: buy   B: back");
     } else if (menu->stage == C3_SHOP_MENU_SELL_QUANTITY) {
-        snprintf(line, sizeof line, "x%u   P%lu", menu->quantity, (unsigned long)menu->sell[menu->sell_cursor].price * menu->quantity);
+        snprintf(line, sizeof line, "x%u   $%lu", menu->quantity, (unsigned long)menu->sell[menu->sell_cursor].price * menu->quantity);
         draw_panel(ui, 1, line, 240);
         c3_ui_footer(ui, "Up/Down: 1   Left/Right: 10   A: sell   B: back");
     } else if (menu->stage == C3_SHOP_MENU_MESSAGE) {

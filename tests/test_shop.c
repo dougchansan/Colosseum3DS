@@ -48,6 +48,34 @@ static unsigned held(C3GameState *state, unsigned item)
     return total;
 }
 
+/* Money glyph: a C3UI pack (10 sprites, 95 ASCII glyphs) in which each glyph
+ * has ink, except `blank`. Drawing the menu with and without that glyph's
+ * ink differs exactly when the menu writes that character. */
+#define UI_TABLE (32u + 10u * 16u + 95u * 8u)
+#define UI_PACK (UI_TABLE + 10u * 256u + 95u * 256u)
+static uint8_t ui_pack[UI_PACK], ui_pixels[2][320u * 240u * 3u];
+static int draws_character(const C3ShopMenu *menu, const C3GameState *state, char character)
+{
+    for (unsigned pass = 0; pass < 2; ++pass) {
+        memset(ui_pack, 0, sizeof ui_pack); memcpy(ui_pack, "C3UI", 4);
+        leput32(ui_pack + 4, 1); leput32(ui_pack + 8, UI_PACK); leput32(ui_pack + 12, 10); leput32(ui_pack + 16, 95);
+        unsigned next = UI_TABLE;
+        for (unsigned i = 0; i < 10; ++i, next += 256) {
+            uint8_t *e = ui_pack + 32 + i * 16; leput32(e, 8); leput32(e + 4, 8); leput32(e + 8, next); leput32(e + 12, 256);
+        }
+        for (unsigned i = 0; i < 95; ++i, next += 256) {
+            uint8_t *e = ui_pack + 32 + 10 * 16 + i * 8; leput32(e, 8); leput32(e + 4, next);
+            if (pass == 0 || i != (unsigned)(character - 32)) for (unsigned k = 0; k < 8; ++k) ui_pack[next + k * 16 + k] = 255;
+        }
+        C3UiAssets a = {0}; C3BottomUi ui;
+        CHECK(next == UI_PACK && c3_ui_assets_open(&a, ui_pack, sizeof ui_pack));
+        memset(ui_pixels[pass], 0, sizeof ui_pixels[pass]);
+        c3_ui_begin(&ui, ui_pixels[pass], C3_UI_RGB8, &a, NULL);
+        c3_shop_menu_draw(menu, state, &ui, "STAND");
+    }
+    return memcmp(ui_pixels[0], ui_pixels[1], sizeof ui_pixels[0]) != 0;
+}
+
 int main(void)
 {
     char directory[] = "/tmp/c3-shop-XXXXXX", path[1024], error[192];
@@ -99,13 +127,16 @@ int main(void)
     CHECK(menu.items[0] == 1 && menu.prices[0] == 300 && menu.items[1] == 2);   /* item 3 has no price */
     CHECK(!c3_shop_menu_open(&menu, &table, &assets, 1));
     CHECK(c3_shop_menu_open(&menu, &table, &assets, 0));
+    CHECK(draws_character(&menu, &state, '$') && !draws_character(&menu, &state, 'P'));  /* the money header */
     CHECK(c3_shop_menu_update(&menu, &state, &assets, 8) == C3_SHOP_EVENT_CHANGED && menu.choice == 2);   /* Up wraps to QUIT */
     CHECK(c3_shop_menu_update(&menu, &state, &assets, 4) == C3_SHOP_EVENT_CHANGED && menu.choice == 0);   /* Down wraps to BUY */
     CHECK(c3_shop_menu_update(&menu, &state, &assets, 0x100) == C3_SHOP_EVENT_CHANGED && menu.stage == C3_SHOP_MENU_LIST);
     CHECK(c3_shop_menu_update(&menu, &state, &assets, 8) == C3_SHOP_EVENT_CHANGED && menu.cursor == 1);   /* Up wraps */
     CHECK(c3_shop_menu_update(&menu, &state, &assets, 4) == C3_SHOP_EVENT_CHANGED && menu.cursor == 0);   /* Down wraps */
+    CHECK(draws_character(&menu, &state, '$') && !draws_character(&menu, &state, 'P'));  /* prices: $, never P */
     unsigned cash = money(&state);                                    /* 5100: 17 of item 1 at 300 */
     CHECK(c3_shop_menu_update(&menu, &state, &assets, 0x100) == C3_SHOP_EVENT_CHANGED && menu.stage == C3_SHOP_MENU_QUANTITY && menu.quantity == 1);
+    CHECK(draws_character(&menu, &state, '$') && !draws_character(&menu, &state, 'P'));  /* quantity panel */
     CHECK(c3_shop_menu_update(&menu, &state, &assets, 4) == C3_SHOP_EVENT_CHANGED && menu.quantity == cash / 300); /* 1 - 1 wraps to the most */
     CHECK(c3_shop_menu_update(&menu, &state, &assets, 8) == C3_SHOP_EVENT_CHANGED && menu.quantity == 1);          /* most + 1 wraps to 1 */
     CHECK(c3_shop_menu_update(&menu, &state, &assets, 2) == C3_SHOP_EVENT_CHANGED && menu.quantity == 11);
@@ -159,6 +190,7 @@ int main(void)
         unsigned cash2 = money(&state);
         CHECK(c3_shop_menu_update(&menu, &state, &assets, 0x100) == C3_SHOP_EVENT_CHANGED && menu.stage == C3_SHOP_MENU_MESSAGE);
         CHECK(strstr(menu.message, "sold 3") && money(&state) == cash2 + 450 && held(&state, 1) == 0);
+        CHECK(strstr(menu.message, "for $450."));                               /* the sale line's money glyph */
         CHECK(menu.sell_count == 1 && menu.sell[0].item == 3);                     /* the sold stack is gone */
         CHECK(c3_shop_menu_update(&menu, &state, &assets, 0x100) == C3_SHOP_EVENT_CHANGED && menu.stage == C3_SHOP_MENU_SELL_LIST);
         CHECK(c3_shop_menu_update(&menu, &state, &assets, 0x200) == C3_SHOP_EVENT_CHANGED && menu.stage == C3_SHOP_MENU_CHOICE);
