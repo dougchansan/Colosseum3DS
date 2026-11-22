@@ -18,6 +18,8 @@ typedef struct { C3GameMailRead save; uint32_t script; } C3PdaMailAction;
 int c3_pda_assets_open(C3PdaAssets *assets,const void *data,size_t size);
 const uint8_t *c3_pda_entry(const C3PdaAssets *assets,unsigned kind,unsigned key,size_t *size);
 int c3_pda_text(const C3PdaAssets *assets,uint32_t id,const char *hero,const char *partner,char *text,size_t capacity);
+/* As c3_pda_text, with e-acute and gender signs kept as UTF-8 (story text box). */
+int c3_pda_text_utf8(const C3PdaAssets *assets,uint32_t id,const char *hero,const char *partner,char *text,size_t capacity);
 int c3_pda_species(const C3PdaAssets *assets,unsigned id,C3PdaSpecies *species);
 int c3_pda_snag(const C3PdaAssets *assets,const C3GameState *state,unsigned index,C3PdaSnag *snag);
 int c3_pda_mail_action(const C3PdaAssets *assets,const C3GameState *state,unsigned id,C3PdaMailAction *action);

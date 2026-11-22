@@ -97,7 +97,7 @@ static int receive_item(void *context,uint32_t item,uint32_t count,char *name,si
     uint8_t *data=open_pda(&assets);int result=-1;
     if(data&&c3_inventory_item(&assets,item,&info)&&c3_game_state_summary(state,&summary)){
         result=c3_inventory_receive(state,&assets,item,count);
-        if(!c3_pda_text(&assets,info.name,summary.name,summary.partner,name,capacity))
+        if(!c3_pda_text_utf8(&assets,info.name,summary.name,summary.partner,name,capacity))
             snprintf(name,capacity,"ITEM %lu",(unsigned long)item);
     }
     free(data);return result;
@@ -120,9 +120,9 @@ static int story_namer(void *context,unsigned kind,uint32_t id,C3StoryValue *val
     uint8_t *data=open_pda(&assets);int ok=0;
     if(data&&c3_game_state_summary(state,&summary)){
         if(kind==C3_STORY_NAME_ITEM&&c3_inventory_item(&assets,id,&item))
-            ok=c3_pda_text(&assets,item.name,summary.name,summary.partner,text,sizeof text);
+            ok=c3_pda_text_utf8(&assets,item.name,summary.name,summary.partner,text,sizeof text);
         else if(kind==C3_STORY_NAME_SPECIES&&c3_pda_species(&assets,id,&species))
-            ok=c3_pda_text(&assets,species.name,"","",text,sizeof text);
+            ok=c3_pda_text_utf8(&assets,species.name,"","",text,sizeof text);
     }
     free(data);
     if(ok)value->text=text;

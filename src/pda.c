@@ -57,7 +57,9 @@ static int append(char *out,size_t cap,size_t *used,const char *text)
     while(*text){if(*used+1u>=cap)return 0;out[(*used)++]=*text++;}
     out[*used]=0;return 1;
 }
-static int text_context(const C3PdaAssets *a,uint32_t id,const char *hero,const char *partner,const char *location,char *out,size_t cap)
+/* utf8: keep e-acute and the gender signs as UTF-8 for the story text box,
+ * whose font has the original glyphs (src/story.c); the PDA font does not. */
+static int text_context(const C3PdaAssets *a,uint32_t id,const char *hero,const char *partner,const char *location,int utf8,char *out,size_t cap)
 {
     size_t size,pos=0,used=0;int ruby=0;const uint8_t *d=c3_pda_entry(a,1,id,&size);
     if(!out||!cap)return 0;
@@ -81,8 +83,8 @@ static int text_context(const C3PdaAssets *a,uint32_t id,const char *hero,const 
         }else if(!ruby){
             if(code>=32&&code<=126)encoded[0]=(char)code;
             else switch(code){
-            case 0xe9:text="e";break;
-            case 0xc9:text="E";break;
+            case 0xe9:text=utf8?"\xc3\xa9":"e";break;
+            case 0xc9:text=utf8?"\xc3\x89":"E";break;
             case 0x2605:text="*";break;
             case 0x3000:text=" ";break;
             case 0x2031:text="???";break;
@@ -91,8 +93,8 @@ static int text_context(const C3PdaAssets *a,uint32_t id,const char *hero,const 
             case 0x201c:case 0x201d:text="\"";break;
             case 0xff0d:text="-";break;
             case 0x25cb:text="O";break;
-            case 0x2640:text="F";break;
-            case 0x2642:text="M";break;
+            case 0x2640:text=utf8?"\xe2\x99\x80":"F";break;
+            case 0x2642:text=utf8?"\xe2\x99\x82":"M";break;
             default:goto fail;
             }
         }
@@ -101,7 +103,9 @@ static int text_context(const C3PdaAssets *a,uint32_t id,const char *hero,const 
 fail:out[0]=0;return 0;
 }
 int c3_pda_text(const C3PdaAssets *a,uint32_t id,const char *hero,const char *partner,char *out,size_t cap)
-{return text_context(a,id,hero,partner,NULL,out,cap);}
+{return text_context(a,id,hero,partner,NULL,0,out,cap);}
+int c3_pda_text_utf8(const C3PdaAssets *a,uint32_t id,const char *hero,const char *partner,char *out,size_t cap)
+{return text_context(a,id,hero,partner,NULL,1,out,cap);}
 int c3_pda_species(const C3PdaAssets *a,unsigned id,C3PdaSpecies *out)
 {
     size_t size;const uint8_t *d=c3_pda_entry(a,2,id,&size);if(!d||!out||(size!=64&&size!=65))return 0;
@@ -170,7 +174,7 @@ int c3_pda_snag_text(const C3PdaAssets *a,const C3GameState *state,const C3PdaSn
     unsigned label=floor&&snag->location!=0xfdu&&snag->location!=0xfeu&&snag->location!=0xffu?c3_pda_be32(floor+36):0x18d3u;
     if(!label)label=0x18d3u;
     if(!c3_pda_text(a,label,summary.name,summary.partner,location,sizeof location))return 0;
-    return text_context(a,snag->hint_message?snag->hint_message:0x18d1u,summary.name,summary.partner,location,out,cap);
+    return text_context(a,snag->hint_message?snag->hint_message:0x18d1u,summary.name,summary.partner,location,0,out,cap);
 }
 int c3_pda_mail_action(const C3PdaAssets *a,const C3GameState *state,unsigned id,C3PdaMailAction *out)
 {

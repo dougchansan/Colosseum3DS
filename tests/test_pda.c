@@ -108,6 +108,9 @@ int main(int argc,char **argv)
     CHECK(!c3_pda_assets_open(&assets,data,63));CHECK(!c3_pda_assets_open(&assets,data,bytes-1));
     char text[8192];CHECK(c3_pda_text(&assets,400,"CUSTOM","RUI",text,sizeof text));CHECK(!strncmp(text,"CUSTOM, ",8));
     CHECK(!c3_pda_text(&assets,400,"CUSTOM","RUI",text,8));CHECK(!text[0]);
+    /* The PDA font folds e-acute and gender signs; story text keeps them as UTF-8. */
+    CHECK(c3_pda_text(&assets,122,"","",text,sizeof text)&&!strcmp(text,"POKe BALL F"));
+    CHECK(c3_pda_text_utf8(&assets,122,"","",text,sizeof text)&&!strcmp(text,"POK\xc3\xa9 BALL \xe2\x99\x80"));
     C3PdaMailAction action;CHECK(c3_pda_mail_action(&assets,&state,0,&action));CHECK(action.save.hint_count==1);
     C3PdaMailAction bulk;CHECK(c3_pda_mail_action(&assets,&state,4,&bulk)&&bulk.save.hint_count==29);
     uint8_t *original=malloc(C3_SAVE_BODY_SIZE);CHECK(original);memcpy(original,c3_game_state_body(&state,NULL),C3_SAVE_BODY_SIZE);

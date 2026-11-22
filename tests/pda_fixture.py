@@ -17,6 +17,7 @@ def fixture():
     message(111, "A recorded Pokemon description.")
     message(120, "POTION")
     message(121, "Restores HP.")
+    message(122, "POKé BALL ♀")
     message(130, "BITE")
     for species, key, dex in ((197, 100, 197), (196, 101, 196), (335, 102, 296)):
         d = bytearray(64)
