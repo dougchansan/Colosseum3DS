@@ -383,6 +383,85 @@ static void partner_event(void)
     close_floor(s);free(s);c3_title_close(&rui_model);c3_game_state_free(&game);
     printf("phenac-events partner: script positions held, Wes stays outside Rui's cylinder (closest %.3f)\n",(double)closest);
 }
+/* The console stop of 2026-11-21 (run-deploy6 boot-trace-ring): with Rui
+ * following, Wes ran up the north ramp onto the Pre-Gym ring (y 2.0) and
+ * north-west to (-4.8654, -3.7359), the inside corner of the ring's railing
+ * (CCD object 7: x -5.27 and z -4.14 plus Wes's radius). West, north-west
+ * and north press into that railing; south and east leave. Rui is a human
+ * cylinder for Wes and Wes for her (her steps run fn_8018E9B4 under people
+ * flags 0x701), so at no tick does either stand inside the other. Then Rui
+ * is put inside Wes's cylinder south, east or south-east of him and held
+ * still: a step that does not run into her or the railing still leaves the
+ * corner, so he is never pinned between them. */
+static void ring_step(Scene *s,float yaw,float dt)
+{
+    float before[3],run=s->map.run_distance/s->map.run_frames*dt*60.0f;memcpy(before,s->hero.position,sizeof before);
+    s->hero.yaw=yaw;s->hero.motion=2;
+    s->hero.position[0]+=sinf(yaw)*run;s->hero.position[2]+=cosf(yaw)*run;
+    memcpy(s->hero.proposed,s->hero.position,sizeof s->hero.proposed);
+    CHECK(c3_field_resolve_position(&s->map,&s->hero,before));
+    c3_field_story_collide(&s->story,before);
+}
+static void ring_corner(void)
+{
+    if(!present(root,"phenac_partner.c3t")){printf("phenac-events ring corner: skipped (no phenac_partner.c3t)\n");return;}
+    Scene *s=calloc(1,sizeof *s);C3GameState game={0};static C3Title rui_model;char file[1024];float g;
+    CHECK(s);error[0]=0;link_floor=0;battle_count=0;current_game=&game;current_floor=3;
+    load_state(&game,EARLY,3,0);CHECK(c3_game_state_partner(&game));
+    CHECK(open_floor(s,&game,3,0));
+    CHECK(run(s,30000)&&!link_floor);
+    s->hero.position[0]=-0.1827f;s->hero.position[2]=10.8055f;s->hero.position[1]=0;
+    CHECK(c3_field_ground(&s->map,s->hero.position,&g));s->hero.position[1]=g;s->hero.yaw=3.1415927f;
+    memcpy(s->hero.proposed,s->hero.position,sizeof s->hero.position);
+    path(file,root,"phenac_partner.c3t");CHECK(c3_title_load(&rui_model,file,error,sizeof error));
+    CHECK(c3_field_story_attach_partner(&s->story,&rui_model,error));
+    C3StoryActor *rui=c3_field_story_person(&s->story,0,101);CHECK(rui&&rui->visible);
+    const float dts[]={1.0f/17.0f,1.0f/18.0f,1.0f/15.5f},r=s->map.radius,corner[2]={-4.8654f,-3.7359f};
+    unsigned n=0;float closest=1e9f;
+    #define RING_TICK(yaw_) do { float dt_=dts[n++%3]; ring_step(s,(yaw_),dt_); \
+        CHECK(c3_field_story_tick(&s->story,dt_,0,error)&&c3_field_story_sample(&s->story,error)&&c3_field_story_view(&s->story)->control); \
+        float gap_=gap(&s->hero,&rui->pose);closest=fminf(closest,gap_); \
+        fprintf(trace,"phenac_ring tick=%u wes=%.4f,%.4f,%.4f rui=%.4f,%.4f,%.4f gap=%.3f\n",n,(double)s->hero.position[0],(double)s->hero.position[1], \
+                (double)s->hero.position[2],(double)rui->pose.position[0],(double)rui->pose.position[1],(double)rui->pose.position[2],(double)gap_); \
+        CHECK(gap_>=2*r-1e-3f); } while (0)
+    /* The logged route: up the ramp, then west and north-west along the ring. */
+    static const float way[][2]={{-0.1827f,0.6088f},{-0.2496f,0.4820f},{-1.1608f,-0.8969f},{-4.0366f,-1.4295f},{-4.1090f,-1.5666f},{-6.0f,-5.5f}};
+    for(unsigned w=0;w<sizeof way/sizeof way[0];++w)for(unsigned guard=0;guard<200;++guard){
+        float from[3];memcpy(from,s->hero.position,sizeof from);
+        float dx=way[w][0]-s->hero.position[0],dz=way[w][1]-s->hero.position[2];if(hypotf(dx,dz)<.15f)break;
+        RING_TICK(atan2f(dx,dz));
+        if(hypotf(s->hero.position[0]-from[0],s->hero.position[2]-from[2])<1e-4f)break;
+    }
+    fprintf(trace,"phenac_ring_corner wes=%.4f,%.4f,%.4f\n",(double)s->hero.position[0],(double)s->hero.position[1],(double)s->hero.position[2]);
+    CHECK(fabsf(s->hero.position[0]-corner[0])<.01f&&fabsf(s->hero.position[2]-corner[1])<.01f&&fabsf(s->hero.position[1]-2.0f)<.05f);
+    s->hero.motion=0;for(unsigned i=0;i<20;++i)RING_TICK(s->hero.yaw);
+    /* The railing holds him: west, north-west, north (the console's sticks). */
+    static const float blocked[]={4.712389f,3.627f,3.1415927f};
+    for(unsigned b=0;b<3;++b){for(unsigned i=0;i<17;++i)RING_TICK(blocked[b]);
+        CHECK(fabsf(s->hero.position[0]-corner[0])<.01f&&fabsf(s->hero.position[2]-corner[1])<.01f);}
+    /* South and east leave the corner. */
+    for(unsigned i=0;i<8;++i)RING_TICK(0.0f);
+    CHECK(s->hero.position[2]-corner[1]>.3f);
+    /* Rui inside his cylinder (0.3 south or east of him) and held still (no
+     * story tick, so she cannot step aside): every step away from her still
+     * leaves the corner. */
+    static const struct { float rx, rz, yaw; } pin[]={
+        {0,.3f,1.5707964f},{0,.3f,2.356194f},{0,.3f,1.9f},{.3f,0,0.0f},{.3f,0,-.6f},{.2f,.2f,2.356194f}};
+    for(unsigned a=0;a<sizeof pin/sizeof pin[0];++a){
+        s->hero.position[0]=corner[0];s->hero.position[2]=corner[1];s->hero.position[1]=2.0003f;
+        CHECK(c3_field_ground(&s->map,s->hero.position,&g));s->hero.position[1]=g;
+        rui->pose.position[0]=corner[0]+pin[a].rx;rui->pose.position[2]=corner[1]+pin[a].rz;rui->pose.position[1]=g;
+        float start[3];memcpy(start,s->hero.position,sizeof start);
+        for(unsigned i=0;i<8;++i)ring_step(s,pin[a].yaw,dts[i%3]);
+        float moved=hypotf(s->hero.position[0]-start[0],s->hero.position[2]-start[2]);
+        fprintf(trace,"phenac_ring_unpin rui=+%.1f,+%.1f yaw=%.3f moved=%.3f gap=%.3f\n",(double)pin[a].rx,(double)pin[a].rz,(double)pin[a].yaw,
+                (double)moved,(double)gap(&s->hero,&rui->pose));
+        CHECK(moved>.3f);
+    }
+    #undef RING_TICK
+    close_floor(s);free(s);c3_title_close(&rui_model);c3_game_state_free(&game);
+    printf("phenac-events ring corner: railing corner held, never inside Rui (closest %.3f), unpinned from an overlap\n",(double)closest);
+}
 static void talk_sweep(void)
 {
     static const char *const sweep_saves[]={EARLY,MID_PYRITE,LATE};
@@ -443,6 +522,7 @@ int main(int argc,char **argv)
     CHECK(messages>0);
     nurse_heals();
     partner_event();
+    ring_corner();
     talk_sweep();
     {unsigned played=route_battles_played(),missing=route_battles_close(trace);
      if(played)printf("phenac-events real battles: %u played\n",played);

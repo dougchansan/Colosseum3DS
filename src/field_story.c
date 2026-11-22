@@ -2518,6 +2518,8 @@ static void follow_turn(Impl *s,Person *p,float yaw,float speed)
     if(!p->turning){start_turn(s,p,yaw,speed);return;}
     p->turn_target=yaw+6.2831855f*(int32_t)(pose(s,p)->yaw/6.2831855f);p->turn_speed=speed;
 }
+static int sweep_humans(Impl *s,const Person *self,const float before[3],float pos[3]);
+static int push_out_of_humans(Impl *s,const Person *self,float pos[3]);
 static void follow_partner(Impl *s,float seconds)
 {
     Person *p=&s->partner_actor;float sc=s->map->scale;
@@ -2528,6 +2530,10 @@ static void follow_partner(Impl *s,float seconds)
         memcpy(before,q->position,sizeof before);
         c3_follow_advance(&s->follow,s->hero->position,q->position,12.0f*sc,sc,dt,&step);
         q->position[0]+=step.move[0];q->position[2]+=step.move[1];
+        /* fn_8012CA84 moves her with fn_801885C4 -> fn_8018E9B4 under her
+         * people flags 0x701: human cylinders (0x400, Wes's included), then
+         * walls. She stops at Wes's cylinder instead of walking into him. */
+        (void)sweep_humans(s,p,before,q->position);
         memcpy(q->proposed,q->position,sizeof q->proposed);
         if(!c3_field_resolve_position(s->map,q,before))memcpy(q->position,before,sizeof before);
         /* fn_8012CA84: the turn rate and animation amount come from the
@@ -2558,8 +2564,13 @@ static void follow_partner(Impl *s,float seconds)
         p->public.loop=1;p->public.playing=1;
         if(c3_follow_far(&s->follow,s->hero->position,q->position,sc,dt)){
             float record[3],ground;
-            for(unsigned i=0;c3_follow_record_at(&s->follow,i,record);++i)
-                if(c3_field_ground(s->map,record,&ground)){record[1]=ground;memcpy(q->position,record,sizeof record);break;}
+            /* fn_8012DE94 takes the newest log point where she would hit
+             * nothing; a point inside another person's cylinder is skipped. */
+            for(unsigned i=0;c3_follow_record_at(&s->follow,i,record);++i){float probe[3];
+                if(!c3_field_ground(s->map,record,&ground))continue;
+                record[1]=ground;memcpy(probe,record,sizeof probe);
+                if(push_out_of_humans(s,p,probe))continue;
+                memcpy(q->position,record,sizeof record);break;}
             c3_follow_caught_up(&s->follow);
             log_line(s,"story_partner_catch_up x=%.3f z=%.3f",(double)q->position[0],(double)q->position[2]);
         }
@@ -2844,25 +2855,34 @@ void c3_field_story_cancel_menu_event(C3FieldStory *story)
     Impl *s=story?story->impl:NULL;if(!s||!s->event_key)return;
     c3_story_stop(&s->vm,s->event_key);s->event_key=0;
 }
-/* fn_8010FAF4 for the hero at pos: up to ten passes, each pushing pos out of
- * the first enabled human cylinder it is inside (checkCollisionHeadToHead:
- * height 17, radius sum, 0.0001 margin, +X when the centres coincide).
- * The enabled humans are the visible people of collision type 1 and the
- * partner: hero_move.c registers (0,101) with fn_8018CB5C, PeopleInfo row 2
- * is collision type 1 (radius 4), and native 32 / 23 enable it with her
- * visibility (fn_8018C1E8 -> fn_8018FB2C). 1 when pos was pushed. */
-static int push_out_of_humans(Impl *s,float pos[3])
+/* A human's cylinder radius, or a negative value when its cylinder is not
+ * enabled. Wes (0,100) and the partner (0,101) are registered by hero_move.c
+ * (fn_8018CB5C); PeopleInfo rows 1 and 2 are collision type 1, radius 4.
+ * Floor people need collision type 1. A cylinder follows its person's
+ * visibility (fn_8018C1E8 -> fn_8018FB2C -> GScolsys2HumanEnable). */
+static float human_radius(Impl *s,const Person *p)
 {
-    const float height=17.0f*s->map->scale;int pushed=0;
+    if(p==&s->hero_actor)return s->map->radius;
+    if(!p->public.visible||!p->public.model||!p->source)return -1;
+    if(p!=&s->partner_actor&&p->source->collision_type!=1)return -1;
+    return p->source->radius;
+}
+/* fn_8010FAF4 for mover self at pos: up to ten passes, each pushing pos out
+ * of the first other enabled human cylinder it is inside
+ * (checkCollisionHeadToHead: height 17, radius sum, 0.0001 margin, +X when
+ * the centres coincide). Only self's own cylinder is skipped, so Wes and
+ * Rui block each other as well as the floor's people. 1 when pushed. */
+static int push_out_of_humans(Impl *s,const Person *self,float pos[3])
+{
+    const float height=17.0f*s->map->scale,own=human_radius(s,self);int pushed=0;
     for(unsigned pass=0;pass<10;++pass){
         const float *at=NULL;float dx=0,dz=0,distance=0,radius=0;
-        for(uint32_t i=0;i<=s->area->actor_count&&!at;++i){
-            Person *p=i<s->area->actor_count?s->actors+i:&s->partner_actor;
-            if(!p->public.visible||!p->public.model||!p->source)continue;
-            if(p!=&s->partner_actor&&p->source->collision_type!=1)continue;
-            const float *o=p->public.pose.position;
+        for(uint32_t i=0;i<=s->area->actor_count+1u&&!at;++i){
+            Person *p=person_at(s,i);float other=p==self?-1:human_radius(s,p);
+            if(other<0)continue;
+            const float *o=pose(s,p)->position;
             if(o[1]>=pos[1]+height||o[1]+height<=pos[1])continue;
-            dx=pos[0]-o[0];dz=pos[2]-o[2];distance=sqrtf(dx*dx+dz*dz);radius=p->source->radius+s->map->radius;
+            dx=pos[0]-o[0];dz=pos[2]-o[2];distance=sqrtf(dx*dx+dz*dz);radius=other+own;
             if(distance<radius)at=o;
         }
         if(!at)break;
@@ -2872,27 +2892,34 @@ static int push_out_of_humans(Impl *s,float pos[3])
     }
     return pushed;
 }
-/* GScolsys2HumanCollision for the hero's step: the step from before is
- * tested in slices of the hero's radius, and the first slice end inside a
- * human is pushed out and ends the step there. Testing only the end of a
+/* GScolsys2HumanCollision for self's step from before to pos: the step is
+ * tested in slices of self's radius, and the first slice end inside another
+ * human is pushed out and ends the step there (written to pos). 1 on hit. */
+static int sweep_humans(Impl *s,const Person *self,const float before[3],float pos[3])
+{
+    float delta[3];for(unsigned i=0;i<3;++i)delta[i]=pos[i]-before[i];
+    float distance=sqrtf(delta[0]*delta[0]+delta[1]*delta[1]+delta[2]*delta[2]),own=human_radius(s,self);
+    float step=distance>0&&own>0?fminf(1.0f,own/distance):0;
+    for(float t=0;t<1.0f;t+=step){
+        float next=step>0?fminf(1.0f,t+step):1.0f,slice[3];
+        for(unsigned i=0;i<3;++i)slice[i]=before[i]+delta[i]*next;
+        if(push_out_of_humans(s,self,slice)){memcpy(pos,slice,sizeof slice);return 1;}
+        if(step<=0)break;
+    }
+    return 0;
+}
+/* The hero's step against the human cylinders. Testing only the end of a
  * console-rate step (often longer than a cylinder) let Wes pass through
  * people, and the partner was never an obstacle. */
 void c3_field_story_collide(C3FieldStory *story,const float before[3])
 {
     Impl *s=story?story->impl:NULL;if(!s||!before)return;
-    float moved_from[3],delta[3];memcpy(moved_from,s->hero->position,sizeof moved_from);
-    for(unsigned i=0;i<3;++i)delta[i]=s->hero->position[i]-before[i];
-    float distance=sqrtf(delta[0]*delta[0]+delta[1]*delta[1]+delta[2]*delta[2]);
-    float step=distance>0?fminf(1.0f,s->map->radius/distance):0;
-    for(float t=0;t<1.0f;t+=step){
-        float next=fminf(1.0f,t+step),pos[3],height;
-        for(unsigned i=0;i<3;++i)pos[i]=before[i]+delta[i]*next;
-        if(push_out_of_humans(s,pos)){
-            if(c3_field_ground(s->map,pos,&height)){pos[1]=height;memcpy(s->hero->position,pos,sizeof pos);}
-            else memcpy(s->hero->position,before,3*sizeof(float));
-            ++s->hero->collision_count;break;
-        }
-        if(step<=0)break;
+    float moved_from[3],pos[3],height;memcpy(moved_from,s->hero->position,sizeof moved_from);
+    memcpy(pos,s->hero->position,sizeof pos);
+    if(sweep_humans(s,&s->hero_actor,before,pos)){
+        if(c3_field_ground(s->map,pos,&height)){pos[1]=height;memcpy(s->hero->position,pos,sizeof pos);}
+        else memcpy(s->hero->position,before,3*sizeof(float));
+        ++s->hero->collision_count;
     }
     if(memcmp(moved_from,s->hero->position,sizeof moved_from))
         (void)c3_field_resolve_position(s->map,s->hero,before);
