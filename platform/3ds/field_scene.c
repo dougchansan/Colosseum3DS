@@ -841,9 +841,14 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         count+=heal_count;
     }
     if(profile->features&C3_FLOOR_TV)tv_index=count++;
-    /* The partner's pack (person 0,101), loaded with the room. */
+    /* The partner's pack (person 0,101), loaded with the room. The lookup
+     * goes through the boot index, which also answers boot/packs/<group>/.
+     * With the partner in the party and no pack she would follow unseen
+     * while her lines play: say so in the trace. */
     snprintf(path,sizeof path,BOOT_ROOT "%s_partner.c3t",prefix);
     if(exists(path))partner_index=count++;
+    else if(trace&&c3_game_state_partner(state))
+        fprintf(trace,"field_partner_missing floor=%lu pack=%s_partner.c3t\n",(unsigned long)map.floor,prefix);
     npc.first=count;
     for(uint32_t i=0;i<area.actor_count;++i)if(area.actors[i].file[0]){++count;++npc.count;}
     if(count>C3_STAGE_MAX_MODELS){snprintf(error,capacity,"The area exceeds the model bound.");goto done;}

@@ -584,6 +584,21 @@ def validate_partner(partner=None):
     return partner
 
 
+# Outskirt Stand's two rows have no "map" (dedicated geometry converters), so
+# prepare_area.py --floor never writes their partner pack; --outskirt-partners
+# does, framed and lit like their Wes pack: prefix -> (archive, map scene
+# member, C3T version of that floor's Wes pack).
+OUTSKIRT_PARTNERS = {"outskirt": ("S1_out.fsys", 0x00E20200, 2),
+                     "shop": ("S1_shop_1F.fsys", 0x00E60200, 4)}
+
+
+def partner_pack_floors():
+    """Floor prefix -> the prepare_area.py mode that writes <prefix>_partner.c3t."""
+    floors = {row["prefix"]: "--floor " + name for name, row in story_floors().items() if "map" in row}
+    floors.update({prefix: "--outskirt-partners" for prefix in OUTSKIRT_PARTNERS})
+    return floors
+
+
 # Permanent regional identities are available without a private survey.
 from realgam_profiles import REALGAM_FLOORS
 FLOORS.update(REALGAM_FLOORS)
