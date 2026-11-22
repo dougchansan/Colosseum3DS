@@ -79,7 +79,7 @@ static void place_names_load(C3GameState *state, FILE *trace)
         if (message > 1u && c3_story_message(&messages, message, "", "", "", text, sizeof text, error)) {
             text[strcspn(text, "\n\f")] = 0;
             named = text[0] != 0;
-            if (named) snprintf(place_names[i], sizeof place_names[i], "%s", text);
+            if (named) snprintf(place_names[i], sizeof place_names[i], "%.31s", text);
         }
         if (!named) snprintf(place_names[i], sizeof place_names[i], "%s", label(entry.floor, built != 0));
         if (trace) fprintf(trace, "world_map_place index=%lu floor=%03lx message=%05lx original=%d name=%s\n",
