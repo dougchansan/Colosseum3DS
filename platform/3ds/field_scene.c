@@ -107,7 +107,8 @@ static void agent_field(const C3FieldMap *map,const C3Area *area,C3FieldStory *s
         char text[512];size_t n=strlen(view->message);if(n>=sizeof text)n=sizeof text-1;
         memcpy(text,view->message,n);text[n]=0;c3_story_text_plain(text);
         for(char *c=text;*c;++c)if(*c=='\n')*c='|';
-        snprintf(feed->text,sizeof feed->text,"%s",text);
+        n=strlen(text);if(n>C3_AGENT_TEXT_MAX)n=C3_AGENT_TEXT_MAX;
+        memcpy(feed->text,text,n);feed->text[n]=0;
     }
     feed->has_field=1;
 }
