@@ -96,6 +96,21 @@ build/test_message_sweep: tests/test_message_sweep.c src/bottom_ui.c $(FIELD_STO
 
 build/test_phenac_story: tests/test_phenac_story.c src/floor_profile.c $(FIELD_STORY_SOURCES) $(HEADERS)
 	$(CC) $(CPPFLAGS) -Isrc $(CFLAGS) tests/test_phenac_story.c src/floor_profile.c $(FIELD_STORY_SOURCES) $(LDFLAGS) -lm -o $@
+
+# Place names (boot/place_names.c3pn): a synthetic pack and the fallback
+# always; the original names too when PLACE_NAMES_DISC holds the disc.
+PLACE_NAMES_DISC ?= /disc
+build/test_floor_names: tests/test_floor_names.c src/floor_profile.c include/colosseum3ds/floor_profile.h | build
+	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_floor_names.c src/floor_profile.c $(LDFLAGS) -o $@
+all: build/test_floor_names
+.PHONY: floor-names-check
+floor-names-check: build/test_floor_names tools/prepare_place_names.py
+	./build/test_floor_names
+	@if [ -f "$(PLACE_NAMES_DISC)/sys/main.dol" ]; then \
+	  dir=$$(mktemp -d) && python3 tools/prepare_place_names.py --disc "$(PLACE_NAMES_DISC)" --output "$$dir/place_names.c3pn" && \
+	  ./build/test_floor_names "$$dir/place_names.c3pn"; status=$$?; rm -rf "$$dir"; exit $$status; \
+	else echo "floor names: no disc at $(PLACE_NAMES_DISC); original pack not checked"; fi
+test: floor-names-check
 WORLD_BATTLE_SOURCES = src/inventory.c src/pda.c src/battle_general.c src/battle_story.c src/battle_rng.c src/decomp_rng.c
 # C3_ROUTE_BATTLES=<battles.c3x> plays Willie's encounter 10 on the general engine.
 build/test_field_story: tests/test_field_story.c tests/route_battles.c tests/route_battles.h $(FIELD_STORY_SOURCES) $(WORLD_BATTLE_SOURCES) build/battle_rng_source.h $(HEADERS) $(UPSTREAM)

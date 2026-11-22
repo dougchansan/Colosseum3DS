@@ -101,7 +101,8 @@ static void load_card(C3GameState *state, C3GameMenuSave *view,
     view->valid = 1;
     view->can_continue = c3_field_scene_supports(summary.floor) && prepared != NULL;
     snprintf(view->name, sizeof(view->name), "%s", summary.name);
-    snprintf(view->location, sizeof(view->location), "%s", summary.floor == 2 ? "OUTSKIRT STAND - INSIDE" : c3_floor_profile(summary.floor) ? c3_floor_profile(summary.floor)->label : "Unported area");
+    c3_floor_names_load(BOOT_ROOT "place_names.c3pn");
+    snprintf(view->location, sizeof(view->location), "%s", c3_floor_label(summary.floor) ? c3_floor_label(summary.floor) : "Unported area");
     view->money = summary.money;
     view->play_seconds = summary.play_seconds;
     if (!prepared)

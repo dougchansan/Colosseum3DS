@@ -1,6 +1,7 @@
 #ifndef C3_FLOOR_PROFILE_H
 #define C3_FLOOR_PROFILE_H
 
+#include <stddef.h>
 #include <stdint.h>
 
 /* Prepared-pack naming for each original floor the native scenes can load.
@@ -28,5 +29,21 @@ typedef struct C3FloorProfile {
 
 /* NULL when the floor has no profile. */
 const C3FloorProfile *c3_floor_profile(uint32_t floor);
+
+/* Original place names (boot/place_names.c3pn, tools/prepare_place_names.py):
+ * the message each floor record names at +0x24, as UTF-8 (e-acute kept; the
+ * bottom-screen font draws it). The table loads once; a missing or invalid
+ * pack leaves the profile labels in place. */
+#define C3_FLOOR_NAME_MAX 48
+/* 1 when the pack's names are in use. A later call returns the first result
+ * without reading again. */
+int c3_floor_names_load(const char *path);
+/* 1 when data is a valid pack; its names replace the current table. */
+int c3_floor_names_parse(const void *data, size_t size);
+/* Forget the loaded names (host tests). */
+void c3_floor_names_reset(void);
+/* The area header: the original place name, else the profile label, else
+ * NULL when the floor has neither. */
+const char *c3_floor_label(uint32_t floor);
 
 #endif

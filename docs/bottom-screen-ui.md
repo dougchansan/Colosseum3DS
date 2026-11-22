@@ -77,6 +77,24 @@ windows with libctru's existing font and text menu labels. The boot trace record
 `bottom_ui original_assets=0`. Loading checks every sprite/glyph extent before
 exposing the borrowed bytes to drawing code.
 
+### Place names
+
+The area header (field P*DA panel, save prompt, Continue screen, loading
+notice, shop) shows the original place name of the floor: the message its
+lifecycle-table record holds at `+0x24` (common REL125 data `+0x8BCF4`, read by
+`fn_80115840` for the P*DA location text). Prepare the private pack and copy
+it to `sd:/3ds/Colosseum3DS/boot/place_names.c3pn`:
+
+```sh
+python3 tools/prepare_place_names.py --disc /absolute/path/disc \
+  --output /absolute/path/private/place_names.c3pn
+```
+
+The names stay UTF-8 (e-acute and the gender signs draw with the original
+font's glyphs). Without the pack, or for floors whose record names no place
+(menus, the world map), `c3_floor_label` falls back to the profile labels in
+`src/floor_profile.c` and `AREA %03X` for surveyed floors.
+
 ## Rendering and input ownership
 
 `src/bottom_ui.c` clips CPU drawing against host RGB8 or rotated BGR8/RGB565.
