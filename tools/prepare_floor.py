@@ -109,7 +109,11 @@ def prepare_floor_geometry(archive, field_common, profile, output):
                                         bake_mesh, sample_sequence)
     data, raw, scene = load_scene(archive, profile["map"])
     if profile.get("auto") and "groups" not in profile:
-        profile = dict(profile, **auto_geometry(scene, raw, Model, profile.get("map_objects", ())))
+        # Every door-row model is an object pack, which the door table names.
+        doors = tuple(profile.get("door_objects", {}).values())
+        if any(model >= len(scene.models) for model in doors):
+            raise ValueError("Door row names a model the original floor scene lacks")
+        profile = dict(profile, **auto_geometry(scene, raw, Model, (*profile.get("map_objects", ()), *doors)))
     elif len(scene.models) != profile["models"] or len(scene.cameras) != 1 or scene.fogs:
         raise ValueError("Original floor scene topology changed")
     if not scene.cameras:
@@ -366,6 +370,11 @@ def prepare(disc, output, parser, floor="phenac"):
     archive = admit_floor(disc, profile)
     commons = {name: admit_archive(disc / "files" / name)
                for name in ("field_common.fsys", "common.fsys")}
+    if profile.get("auto"):
+        # The models prepare_story.py names in the floor's door table.
+        from prepare_story import door_objects, extract_doors
+        rel = member(commons["common.fsys"], common_rel(commons["common.fsys"]))
+        profile = dict(profile, door_objects=door_objects(profile, extract_doors(rel, {profile["floor"]})))
     output.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=".floor-", dir=output.parent) as temporary:
         stage = Path(temporary) / "stage"

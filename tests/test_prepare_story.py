@@ -344,6 +344,23 @@ class DoorPackTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             story.encode_door_pack(5, [{**objects[0], "collision_id": 0}], {0x80000000: "a.c3t"})
 
+    def test_surveyed_floor_doors_name_their_map_models(self):
+        # Duking's house (0x14, map 0x008F0200): door row 28 is the bookshelf,
+        # resource 0x008F1002 = model 2. Unnamed, the bookshelf was invisible
+        # while its collision blocked the doorway to 0x15.
+        auto = {"floor": 0x14, "map": 0x008F0200, "auto": True}
+        rows = [{**self.row(28, floor=0x14), "resource_id": "008f1002"},
+                {**self.row(29, floor=0x14), "resource_id": "00901003"},   # another archive's model
+                {**self.row(30, floor=0x15), "resource_id": "008f1004"}]   # another floor
+        self.assertEqual(story.door_objects(auto, rows), {28: 2})
+        pack = story.encode_door_pack(0x14, rows[:1], {row: "f014_obj%d.c3t" % model
+                                                       for row, model in story.door_objects(auto, rows).items()})
+        self.assertEqual(pack[56:96].rstrip(b"\0"), b"f014_obj2.c3t")
+        # A reviewed table wins, even when empty; a reviewed floor never derives one.
+        self.assertEqual(story.door_objects({**auto, "door_objects": {}}, rows), {})
+        self.assertEqual(story.door_objects({**auto, "door_objects": {28: 5}}, rows), {28: 5})
+        self.assertEqual(story.door_objects({"floor": 0x14, "map": 0x008F0200}, rows), {})
+
     def test_rejects_rows_the_runtime_cannot_hold(self):
         with self.assertRaises(ValueError):
             story.encode_door_pack(3, [])

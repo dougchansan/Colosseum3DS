@@ -51,6 +51,7 @@ about 130 messages.
 | Arrival (entrance 0) | town pre (fn 2) and main (fn 6) call fn 5, the arrival talk | `0x3F9`, `0x9AB` |
 | Walk in | main: box x -132..-33, z -136..-106 runs fn 28 (camera) | `0x3FB` |
 | Police | police main fn 6: first visit, fn 4 | `0x9D8` |
+| Bookshelf | 0x14: the bookshelf (door row 28, model 2, CCD object 5) covers the doorway (surface 4); A on its surface 6 runs fn 12: a yes/no question, then native 60 opens row 28 and native 76 enables CCD object 6. Init (fn 2) keeps object 6 off until then. Person 1, the lookout, only talks (fn 7) | `0x20` (row 28's open flag) |
 | Duking | 0x15 pre on entry; back in 0x14, main fn 5 calls fn 4 once `0x3FD` is set | `0x3FD`, `0x3FF`, `0x400` |
 | Rooftop | town door 6 to 0x1C entrance 0; 4F main calls fn 4 while `0xA0A` is clear (it sets `0x9DA` because `0x3FF` is set) and links to the town with spawn 180 (scripted placement) | `0xA0A`, `0x9DA`, then `0x9D9` (town, arrival from 0x1C) |
 | Door 0xE | town main: with `0x9DA`, the box x 18..30, z -264..-250 | `0x403` |
@@ -110,6 +111,13 @@ packs of the same floors. Commands: `tools/prepare_story.py` (and
   the party's event flags and do not nest. Miror B.'s function starts an
   event, battles and returns without 21; the port counted the calls and the
   hero stayed frozen.
+- Surveyed floors have no reviewed `door_objects`, so their door tables named
+  no model: every Pyrite door was invisible while its CCD object still
+  blocked. In Duking's house the closed bookshelf was an invisible wall in
+  front of the dark doorway to 0x15, next to the lookout (playtest
+  2026-11-20, defect 32). `prepare_story.py` now names each door row's map
+  model (resourceId low 12 bits, map group `| 0x1000`) and
+  `prepare_floor.py` makes those models object packs.
 - Door-table close flags lock doors (`floorEventCtrlDoor` mode 0): the
   building's front door (town row 15) stays locked until `0x40A`, so the
   rooftop (town door 6) is how the chapter first reaches 4F.

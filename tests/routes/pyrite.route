@@ -18,6 +18,11 @@ door 12
 expect 0x9d8 1
 door 3
 door 14
+# Duking's house: the bookshelf (door row 28, CCD object 5) covers the
+# doorway to 0x15. A on its surface 6 (function 12, yes) slides it open and
+# sets its open flag 0x20; then surface 4 leads to 0x15.
+inspect 6
+expect 0x20 1
 door 4
 expect 0x3fd 1
 door 0

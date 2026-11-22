@@ -355,6 +355,24 @@ def extract_doors(rel, floors):
     return doors
 
 
+def door_objects(profile, doors):
+    """Door-table row -> object model of the profile's floor (native 60).
+
+    A reviewed row keeps its door_objects. A surveyed row (auto) has none,
+    and leaving its door rows unnamed hid every door model while its CCD
+    object still blocked the way: Duking's bookshelf (0x14 row 28), which
+    surface 6 slides open, stood invisible in front of the 0x15 doorway.
+    floor.c _floorLoadMap registers map model n as modelBase | n
+    ((map & 0xFFFF0000) | 0x1000 | n) and floor_event.c resolves the door
+    row's resourceId through it, so the low 12 bits name the model;
+    prepare_floor.py makes each such model an object pack."""
+    if "door_objects" in profile or not profile.get("auto") or not profile.get("map"):
+        return dict(profile.get("door_objects", {}))
+    base = (profile["map"] & 0xFFFF0000) | 0x1000
+    return {row["index"]: int(row["resource_id"], 16) & 0xFFF for row in doors
+            if row["floor"] == profile["floor"] and int(row["resource_id"], 16) & ~0xFFF == base}
+
+
 # C3D row index of a map object without a door-table row (src/area.h
 # C3_AREA_MAP_OBJECT_ROW | model): after every door row, never a native 60 index.
 MAP_OBJECT_ROW = 0x80000000
@@ -475,7 +493,7 @@ def main():
                 if own:
                     prefix = story_pack[:-len(".c3s")]
                     name = prefix + ".c3d"
-                    objects = {**profile.get("door_objects", {}),
+                    objects = {**door_objects(profile, doors),
                                **{MAP_OBJECT_ROW | model: model for model in profile.get("map_objects", ())}}
                     pack = encode_door_pack(floor, own, {row: "%s_obj%d.c3t" % (prefix, model)
                                                          for row, model in objects.items()})

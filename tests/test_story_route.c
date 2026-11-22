@@ -108,6 +108,7 @@ typedef struct Scene {
     C3Title scene_models[4];      /* event-scene models (aux3 C3SM), loaded for real */
     unsigned scene_model_count;
     C3AreaCamera camera;
+    C3AreaDoors doors;            /* <prefix>.c3d rows, bound without models */
     uint32_t floor, entrance, previous;
     int loaded;
 } Scene;
@@ -261,6 +262,18 @@ static int load(uint32_t floor, uint32_t entrance, uint32_t previous)
     if (!c3_field_story_load(&scene->story, file, &game, &scene->map, &scene->area, &scene->hero, &scene->wes,
                              scene->models, &scene->camera, trace, error)) return 0;
     scene->loaded = 1; last_floor = floor;
+    /* The floor's door rows (prepare_story.py --doors-only), as the field
+     * scene binds them: native 60 then sets their flags and switches their
+     * collision, so a closed door (Duking's bookshelf, 0x14 row 28) gates
+     * the doorway behind it as on the console. */
+    snprintf(name, sizeof name, "%s.c3d", prefix); path(file, root, name);
+    FILE *door_file = fopen(file, "rb");
+    if (door_file) {
+        fclose(door_file);
+        static C3Title *const none[C3_AREA_MAX_DOORS];
+        if (!c3_area_doors_load(&scene->doors, file, error, sizeof error) ||
+            !c3_field_story_bind_doors(&scene->story, scene->doors.rows, scene->doors.count, none, error)) return 0;
+    }
     if (carried_auto_event[0]) {
         fprintf(report, "route_auto_event floor=%03lx script=%08lx\n", (unsigned long)floor, (unsigned long)carried_auto_event[0]);
         c3_field_story_set_auto_event(&scene->story, carried_auto_event);
