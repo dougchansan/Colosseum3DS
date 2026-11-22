@@ -24,6 +24,16 @@ int c3_battle_story_prepare(const C3GameState *state, C3GeneralBattle *battle)
         if (!c3_game_state_item(state, 2, slot, &item)) return 0;
         if (item.id >= 1 && item.id <= 12) battle->balls[item.id] = (uint16_t)(battle->balls[item.id] + item.quantity);
     }
+    /* The partner's name (fight text control 0x2C) and flag 0x9A0 for the
+     * opposing Shadow Pokemon's appearance, then that check for the Pokemon
+     * the battle opened with (fn_8022E6F0 in fightActionFlowKaisiPost). */
+    {
+        C3GameSummary summary; uint32_t named = 0;
+        if (!battle->link && c3_game_state_summary(state, &summary))
+            snprintf(battle->partner_name, sizeof battle->partner_name, "%.15s", summary.partner);
+        battle->shadow_named = c3_game_state_get_flag(state, 0x9a0u, &named) && named;
+    }
+    c3_general_battle_appear_checks(battle);
     return 1;
 }
 

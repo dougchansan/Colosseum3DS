@@ -283,6 +283,10 @@ static void event(const C3BattlePreviewEvent *e,int finished,void *user)
         break;
     case C3_PREVIEW_EVENT_STATUS:
         s->presentation.duration_ms=s->message_ms;
+        /* fn_8022E6F0's partner cut-in (model 0x32 = trainer sequence 50
+         * playing special 0xA0 in the hero trainer's place): that model is
+         * not among the prepared battle3d packs, so the aura plays alone. */
+        if(e->cutin&&s->trace){fprintf(s->trace,"general_partner_cutin owner=%u special=0xA0 model=trn050 drawn=0\n",(unsigned)e->target);fflush(s->trace);}
         /* The status condition's or stat change's own battle special. */
         if(s->wzx&&e->effect&&e->target<4&&s->presentation.visible[e->target]){
             const char *name=c3_wzx_index_special(&s->wzx->index,e->effect);

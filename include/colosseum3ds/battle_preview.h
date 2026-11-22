@@ -48,6 +48,7 @@ typedef struct {
     uint8_t pp[4][4];
     int8_t stages[4][7];
     uint8_t confusion[4], taunt[4], reflect[2];
+    uint8_t cutin; /* general battles: the partner's cut-in comes first (C3GeneralEvent.cutin) */
     C3BattlePreviewOutcome outcome;
     char text[128];
     uint16_t hp[4];

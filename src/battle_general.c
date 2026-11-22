@@ -149,7 +149,7 @@ int c3_battle_pack_info(const C3BattlePack *p,uint32_t id,C3BattleEncounterInfo 
     i.intro_wzx=be32(enc+20);if(!i.intro_wzx)i.intro_wzx=be32(floor+8);
     i.environment_sound=be32(floor+16);
     {const uint8_t *k=r+88;i.back_save=k[0];i.use_item=k[4];i.can_run=k[6];i.get_exp=k[8];i.get_money=k[9];
-     i.money_pool=k[10];i.critical=k[14];i.hyper_mode=k[22];}
+     i.money_pool=k[10];i.critical=k[14];i.partner_aura=k[15];i.hyper_mode=k[22];}
     for(unsigned k=0;k<i.party_count;++k){const uint8_t *m=r+192+k*TRAINER_MON;
         i.species[k]=be16(m+10);i.levels[k]=m[4];i.shadow_count=(uint8_t)(i.shadow_count+(m[3]!=0));}
     const uint8_t *names=p->bytes+p->names_at+(p->species+p->moves+2u*id)*C3_GB_NAME;
@@ -185,6 +185,10 @@ static void species_fields(const C3BattlePack *p,C3GeneralMon *m)
     m->types[0]=s[0x30];m->types[1]=s[0x31];m->growth=s[0];m->base_exp=be16(s+6);
     copy_name(m->name,p->bytes+p->names_at+m->species*C3_GB_NAME);
 }
+/* pokemonGetTokuseiDataId: PokemonData tokuseiDataId[2] (+0x32); the flag
+ * picks the second only when the species has one (pokemonSetTokuseiFlag). */
+static uint8_t species_ability(const C3BattlePack *p,uint16_t species,unsigned flag)
+{const uint8_t *s=species_row(p,species);return s?s[0x32+(flag&&s[0x33]?1:0)]:0;}
 static int mon_from_trainer(const C3BattlePack *p,C3GeneralMon *m,const uint8_t *r)
 {
     memset(m,0,sizeof *m);
@@ -192,6 +196,10 @@ static int mon_from_trainer(const C3BattlePack *p,C3GeneralMon *m,const uint8_t 
     if(!species_row(p,m->species)||!m->level||m->level>100)return 0;
     species_fields(p,m);
     m->nature=r[2]<25?r[2]:0;m->shadow=r[3];m->friendship=be16(r+8);m->held_item=(uint16_t)be32(r+0x10);
+    /* fightTrainerPokemonData +0 TokuseiFlag (s8; below 0 pokemonCreate's
+     * own choice, not modelled: the first ability), +5 KeyPlayerFlag, +6
+     * PartDataId. */
+    m->ability=species_ability(p,m->species,(int8_t)r[0]>0?(unsigned)r[0]:0u);m->key_player=r[5];m->part=r[6];
     const uint8_t *s=species_row(p,m->species);
     for(unsigned j=0;j<6;++j){int8_t iv=(int8_t)r[0x1c+j];int16_t ev=(int16_t)be16(r+0x22+2*j);
         m->ivs[j]=(uint8_t)(iv<0?0:iv>31?31:iv);m->evs[j]=(uint16_t)(ev<0?0:ev>255?255:ev);
@@ -235,6 +243,7 @@ static int mon_from_party(const C3BattlePack *p,C3GeneralMon *m,const uint8_t *r
     species_fields(p,m);
     m->party_slot=(uint8_t)slot;m->exp=be32(r+0x5c);m->held_item=be16(r+0x88);
     m->hp=be16(r+0x8a);m->friendship=be16(r+0xb0);m->shadow=be16(r+0xd8)!=0;m->nature=(uint8_t)(be32(r+4)%25u);
+    m->ability=species_ability(p,m->species,r[0xcc]); /* PokemonBios tokuseiFlag */
     for(unsigned j=0;j<6;++j){m->stats[j]=be16(r+0x8c+2*j);m->ivs[j]=(uint8_t)be16(r+0xa4+2*j);m->evs[j]=be16(r+0x98+2*j);}
     m->max_hp=m->stats[0];
     if(!m->max_hp||m->hp>m->max_hp)return 0;
@@ -664,6 +673,59 @@ static void sent_out(C3GeneralBattle *b,const C3BattlePack *p,unsigned side,unsi
     if(m->gauge_dropped||!hyper_capable(b,p,side*2,m))return;
     m->gauge_dropped=1;gauge_filter(p,m,0);
 }
+/* ---- an opposing Shadow Pokemon appears ------------------------------------
+ * fn_8022E6F0 mode 0 (through _fightActionFlowKaisiPostSubFightOutPokemon-
+ * DarkCheckAppear at the battle's start and the send-out opcode after every
+ * later send-out) for a Pokemon that is not the hero's: once per battle (flag
+ * 0xD1), when the fight kind's doHizukiAiFlag (floor status 0x2B) is set and
+ * the hero trainer is on the field (trainer status 0x4C), the partner's
+ * cut-in (model 0x32, special 0xA0, in the hero trainer's place), then
+ * fightOutPokemonDarkPokemonEffect (special 0x3A) with fight_common message
+ * 0x7717 "Oh! {hero}! There's a POKEMON with a black aura!", or 0x770A "Oh!
+ * There's a SHADOW POKEMON!" once flag 0x9A0 is set. Encounter 0x11 (floor
+ * status 0xD) plays special 0xD9 and the snag tutorial instead: 0x7729,
+ * POUND's attack sequence on the Pokemon (fightOutPokemonWazaEffect(1, 1)),
+ * 0x772A, and 0x772B when the hero has no Poke Balls (fn_801F7B70). Control
+ * 0x2C is the partner's name, 0x2B the hero's. A page of three lines is
+ * shown as two message events (the port's box holds two). */
+#define ENCOUNTER_SNAG_TUTORIAL 0x11u
+static void say_page(C3GeneralBattle *b,unsigned pos,const char *page)
+{
+    const char *second=strchr(page,'\n');second=second?strchr(second+1,'\n'):NULL;
+    if(!second){say(b,C3_GB_EVENT_MESSAGE,pos,pos,0,"%s",page);return;}
+    say(b,C3_GB_EVENT_MESSAGE,pos,pos,0,"%.*s",(int)(second-page),page);
+    say(b,C3_GB_EVENT_MESSAGE,pos,pos,0,"%s",second+1);
+}
+static void dark_check_appear(C3GeneralBattle *b,unsigned pos)
+{
+    C3GeneralMon *m=at(b,pos);
+    if(!m||!m->hp||!m->shadow||m->gauge_dropped||pos/2!=1||b->link||b->info.cpu_side0||b->info.partner_aura!=1)return;
+    m->gauge_dropped=1;
+    const char *r=b->partner_name[0]?b->partner_name:"Rui",*w=b->side_name[0][0]?b->side_name[0]:"Player";
+    char page[192];int tutorial=b->encounter==ENCOUNTER_SNAG_TUTORIAL;
+    unsigned first=b->event_count;
+    if(tutorial)snprintf(page,sizeof page,"%s: %s!\nIt's that one! That POK\xc3\xa9MON!",r,w);
+    else if(b->shadow_named)snprintf(page,sizeof page,"%s: Oh!\nThere's a SHADOW POK\xc3\xa9MON!",r);
+    else snprintf(page,sizeof page,"%s: Oh! %s!\nThere's a POK\xc3\xa9MON with a black aura!",r,w);
+    say_page(b,pos,page);
+    if(b->event_count>first){b->events[first].cutin=1;b->events[first].special=tutorial?0xD9:0x3A;}
+    if(!tutorial)return;
+    snprintf(page,sizeof page,"%s: Those jerks captured me because\nI saw that POK\xc3\xa9MON.",r);say_page(b,pos,page);
+    snprintf(page,sizeof page,"%s: I can see a black aura coming from it.\nThey must have done something to that\nPOK\xc3\xa9MON!",r);say_page(b,pos,page);
+    first=b->event_count;
+    say(b,C3_GB_EVENT_MESSAGE,pos,pos,0,"%s",""); /* POUND's attack sequence, no text */
+    if(b->event_count>first)b->events[first].waza_effect=1;
+    first=b->event_count;
+    snprintf(page,sizeof page,"%s: %s, be careful!\nThis POK\xc3\xa9MON isn't afraid to attack\npeople!",r,w);say_page(b,pos,page);
+    if(b->event_count>first)b->events[first].special=0xD9; /* the aura again (phase 1) */
+    snprintf(page,sizeof page,"%s: I know, %s!\nI hate to say this, but there's no other\nchoice.",r,w);say_page(b,pos,page);
+    snprintf(page,sizeof page,"%s: Get that POK\xc3\xa9MON back from the\nbad guys!\nPlease, you have to!",r);say_page(b,pos,page);
+    snprintf(page,sizeof page,"%s: You can...\nActually, only you can do it!",r);say_page(b,pos,page);
+    {unsigned balls=0;for(unsigned k=1;k<=12;++k)balls+=b->balls[k];
+     if(!balls){snprintf(page,sizeof page,"%s: ...Huh? Whaaaaat?!\nWhy don't you have any POK\xc3\xa9 BALLS\nwith you?",r);say_page(b,pos,page);}}
+}
+void c3_general_battle_appear_checks(C3GeneralBattle *b)
+{if(b&&b->magic==MAGIC&&!b->turn)for(unsigned a=0;a<b->active_count;++a)dark_check_appear(b,2+a);}
 int c3_general_battle_can_call(const C3GeneralBattle *b,unsigned pos)
 {return b&&b->magic==MAGIC&&!b->link&&!b->info.cpu_side0&&pos<2&&alive((C3GeneralBattle *)b,pos);}
 static int call_pokemon(C3GeneralBattle *b,const C3BattlePack *p,unsigned a)
@@ -1083,11 +1145,133 @@ static int ai_pick_move(C3GeneralBattle *b,const C3BattlePack *p,const uint8_t *
     }
     c->slot=slots[k];c->target=(uint8_t)target;return 1;
 }
+/* fightTrainerAiSelectIrekaeDasuFightPokemon (0x8024E690): which reserve
+ * Pokemon an AI trainer sends in, both after a faint and for a switch
+ * (fightTrainerAiSelectFightActionIrekae). The candidates are the side's
+ * healthy Pokemon that are not out (fn_801F87CC, party order). With
+ * PokemonSelectRandomFlag (AI +0) one draw picks one; with
+ * PokemonDataOrderOutFlag (AI +2) the lowest trainer data entry (party
+ * order) goes. Otherwise each candidate is scored with the AI value codes
+ * (pack, fightTrainerAiAddValue's +-200 clamp):
+ *   0x1A/0x1B/0x1C its KeyPlayerFlag 1/2/3 (record +5) when AI +4 is set;
+ *   0x1D (scaled by AI +0x21/+0x23) each of the AI's preferred types it has;
+ *   0x1E HP at or under AI +0xD percent; 0x1F no usable move can hit an
+ *   opponent out (fn_8023C530); 0x21 the highest Speed stat; 0x20 the best
+ *   defensive type score (fn_802389D4: fn_8010C54C mode 0 over its types,
+ *   +10 per attacking type resisted or blocked, -10 per weakness);
+ *   0x22 per opponent out and per damaging move of its own that is super
+ *   effective on it; 0x23 per opponent out and per damaging move of the
+ *   opponent's that is super effective on it; 0x24 (PokemonSelectWeakPoint,
+ *   AI +1) per type it is weak to that an ally already out is weak to too;
+ *   0x25/0x26 (fightTrainerAiGetFightPokemonIrekaeDasuTokuseiAddsubDataId)
+ *   Intimidate with an opponent at full HP, or Trace with an opponent whose
+ *   ability is none of {1,2,0x23,0x24,0x2D,0x32,0x35,0x36,0x3B,0x46};
+ *   then the jitter draw % (2*AI +0x19 + 1) - AI +0x19, and
+ *   fightTrainerAiGetValueAryMaxBanme picks (ties: one draw).
+ * Type checks need ZokuseiCheckFlag (AI +0xB) and ability checks
+ * TokuseiCheckFlag (AI +0xC), as in the original (fn_80238E30, fn_80239058,
+ * fn_80238B0C with Levitate/Wonder Guard). Not modelled: the Baton Pass
+ * branch (move 0xE2 is not in the port), the weather codes 0x27-0x2C (no
+ * weather: fn_80235B04 is 0), and the per-move hit functions fn_8023C530
+ * calls when WazaHitFlag (AI +0x15) is set: a damaging move then hits unless
+ * the type chart blocks it, a status move always. When every value is under
+ * -200 the original returns -1; here the first candidate goes, so a fainted
+ * slot is never left empty while the trainer has Pokemon. */
+static unsigned type_code(const C3BattlePack *p,unsigned attack,unsigned defend)
+{return attack<18&&defend<18?be16(p->bytes+p->types_at+attack*TYPE_ROW+8+defend*2):0x3f;}
+/* fn_80238B0C: a move type against a Pokemon, as the AI sees it. */
+static unsigned ai_type_against(const C3BattlePack *p,const uint8_t *ai,unsigned type,const C3GeneralMon *d,int power)
+{
+    unsigned weak=0,resist=0,n=0,result=0x3f;
+    if(type==9)return 0x3f;
+    if(ai[0xC]==1&&d->ability==0x1A&&type==4)return 0x43;
+    for(unsigned i=0;ai[0xB]==1&&i<2;++i){unsigned t=d->types[i];if(t==9)continue;++n;
+        unsigned c=type_code(p,type,t);if(c==0x43)return 0x43;weak+=c==0x41;resist+=c==0x42;}
+    if(n&&weak!=resist)result=weak>resist?0x41:0x42;
+    if(ai[0xC]==1&&d->ability==0x19&&result!=0x41&&power>0)return 0x43;
+    return result;
+}
+static int ai_has_type(const uint8_t *ai,const C3GeneralMon *m,unsigned type)
+{return ai[0xB]==1?(m->types[0]==type||m->types[1]==type):type==9;}
+/* fn_802389D4 / fn_8010C54C mode 0. */
+static int32_t ai_type_score(const C3BattlePack *p,const uint8_t *ai,const C3GeneralMon *m)
+{
+    int32_t v=0;
+    for(unsigned k=0;ai[0xB]==1&&k<2;++k){unsigned t=m->types[k];if(t==9)continue;
+        for(unsigned i=0;i<18;++i){if(i==9)continue;unsigned c=type_code(p,i,t);
+            if(c==0x43||c==0x42)v+=10;else if(c==0x41)v-=10;}}
+    return v;
+}
+static unsigned mon_moves(const C3BattlePack *p,const C3GeneralMon *m,uint16_t ids[4])
+{unsigned n=0;for(unsigned k=0;k<4;++k)if(m->moves[k]&&m->pp[k]&&move_row(p,m->moves[k]))ids[n++]=m->moves[k];return n;}
+static int ai_can_hit(const C3BattlePack *p,const uint8_t *ai,uint16_t id,const C3GeneralMon *y)
+{
+    const uint8_t *mv=move_row(p,id);
+    if(ai[0x15]!=1)return 1;
+    if(!mv||!be16(mv+22))return 1;
+    return ai_type_against(p,ai,ai_move_type(ai,id,mv),y,(int16_t)be16(mv+22))!=0x43;
+}
+static int ai_select_dasu(C3GeneralBattle *b,const C3BattlePack *p,const uint8_t *ai,unsigned s,const uint8_t reserved[C3_GB_PARTY])
+{
+    uint8_t cand[C3_GB_PARTY];unsigned count=0,r;int32_t values[C3_GB_PARTY]={0};
+    for(unsigned i=0;i<b->party_count[s];++i){int used=reserved&&reserved[i];
+        for(unsigned a=0;a<b->active_count;++a)used|=b->active[s][a]==i;
+        if(!used&&b->party[s][i].hp)cand[count++]=(uint8_t)i;}
+    if(!count)return -1;
+    const C3GeneralMon *foes[2],*allies[C3_GB_PARTY];unsigned nf=0,na=0;
+    for(unsigned a=0;a<b->active_count;++a){uint8_t f=b->active[1-s][a],o=b->active[s][a];
+        if(f!=NO_MON&&b->party[1-s][f].hp)foes[nf++]=&b->party[1-s][f];
+        if(o!=NO_MON&&b->party[s][o].hp)allies[na++]=&b->party[s][o];}
+    for(unsigned i=0;reserved&&i<b->party_count[s];++i)if(reserved[i]&&b->party[s][i].hp)allies[na++]=&b->party[s][i];
+    if(ai[0]==1){if(!ai_draw(b,0,&r))return -2;return cand[(r&0xFFFFu)%count];}
+    uint32_t max_speed=0;int32_t max_score=-0xFFFF;
+    for(unsigned i=0;i<count;++i){const C3GeneralMon *m=&b->party[s][cand[i]];int32_t t=ai_type_score(p,ai,m);
+        if(max_speed<m->stats[5])max_speed=m->stats[5];
+        if(max_score<t)max_score=t;}
+    if(ai[2]==1)return cand[0];
+    unsigned range=ai[0x19];
+    for(unsigned i=0;i<count;++i){
+        const C3GeneralMon *m=&b->party[s][cand[i]];uint16_t mine[4],theirs[4];unsigned n=mon_moves(p,m,mine);int hit=0;
+        for(unsigned f=0;f<nf&&!hit;++f)for(unsigned k=0;k<n&&!hit;++k)if(mine[k]!=0x165&&ai_can_hit(p,ai,mine[k],foes[f]))hit=1;
+        int32_t v=values[i];unsigned kind=ai[4]==1?m->key_player:0;
+        if(kind>=1&&kind<=3)v=ai_add(v,ai_code(p,0x19+kind));
+        for(unsigned k=0;k<2;++k){unsigned t=ai[0x20+2*k];if(t!=9&&ai_has_type(ai,m,t))v=ai_add_scaled(v,ai[0x21+2*k],ai_code(p,0x1D));}
+        if(m->max_hp&&(unsigned)m->hp*100u/m->max_hp<=ai[0xD])v=ai_add(v,ai_code(p,0x1E));
+        if(!hit)v=ai_add(v,ai_code(p,0x1F));
+        if(max_speed<=m->stats[5])v=ai_add(v,ai_code(p,0x21));
+        if(max_score<=ai_type_score(p,ai,m))v=ai_add(v,ai_code(p,0x20));
+        for(unsigned f=0;f<nf;++f)for(unsigned k=0;k<n;++k){const uint8_t *mv=move_row(p,mine[k]);unsigned t=ai_move_type(ai,mine[k],mv);
+            if(t==9||!be16(mv+22))continue;
+            if(ai_type_against(p,ai,t,foes[f],(int16_t)be16(mv+22))==0x41)v=ai_add(v,ai_code(p,0x22));}
+        for(unsigned f=0;f<nf;++f){unsigned fn=mon_moves(p,foes[f],theirs);
+            for(unsigned k=0;k<fn;++k){const uint8_t *mv=move_row(p,theirs[k]);unsigned t=ai_move_type(ai,theirs[k],mv);
+                if(t==9||!be16(mv+22))continue;
+                if(ai_type_against(p,ai,t,m,(int16_t)be16(mv+22))==0x41)v=ai_add(v,ai_code(p,0x23));}}
+        if(ai[1]==1)for(unsigned t=0;t<18;++t){if(t==9||ai_type_against(p,ai,t,m,1)!=0x41)continue;
+            for(unsigned q=0;q<na;++q)if(ai_type_against(p,ai,t,allies[q],1)==0x41)v=ai_add(v,ai_code(p,0x24));}
+        {   /* fightTrainerAiGetFightPokemonIrekaeDasuTokuseiAddsubDataId */
+            static const uint8_t trace_ok[10]={0x01,0x02,0x23,0x24,0x2D,0x32,0x35,0x36,0x3B,0x46};
+            unsigned code=0,ab=ai[0xC]==1?m->ability:0;
+            if(ab==0x16)for(unsigned f=0;f<nf&&!code;++f)if(foes[f]->hp>=foes[f]->max_hp)code=0x25;
+            if(!code&&ab==0x24)for(unsigned f=0;f<nf&&!code;++f){int found=0;unsigned fab=ai[0xC]==1?foes[f]->ability:0;
+                for(unsigned j=0;j<10;++j)found|=fab==trace_ok[j];
+                if(!found)code=0x26;}
+            if(code)v=ai_add(v,ai_code(p,code));
+        }
+        if(!ai_draw(b,0,&r))return -2;
+        v=ai_add(v,(int32_t)((r&0xFFFFu)%(2u*range+1u))-(int32_t)range);
+        values[i]=v;
+    }
+    int best;
+    if(!ai_argmax(b,values,count,&best))return -2;
+    return cand[best<0?0:best];
+}
 /* fightTrainerAiGetFightPokemonIrekaeModosuValue: code 6 when no usable
  * move can affect any foe, code 7 when a damaging one would knock a foe
- * out; fightTrainerAiSelectIrekaeDasuFightPokemon: the first healthy
- * Pokemon in reserve with a move that affects a foe, else the first. */
-static int ai_switch(C3GeneralBattle *b,const C3BattlePack *p,unsigned pos,C3GeneralCommand *c)
+ * out; then fightTrainerAiSelectIrekaeDasuFightPokemon picks the Pokemon to
+ * switch in (ai_select_dasu). Returns -1 on an RNG failure. */
+static int ai_switch(C3GeneralBattle *b,const C3BattlePack *p,const uint8_t *ai,unsigned pos,
+                     const uint8_t reserved[C3_GB_PARTY],C3GeneralCommand *c)
 {
     uint8_t slots[4];unsigned n=ai_moves(b,p,pos,slots),foes[2],nf=ai_foes(b,pos,foes);
     C3GeneralMon *x=at(b,pos);int hittable=0,faster=0;int32_t value=0;
@@ -1100,15 +1284,8 @@ static int ai_switch(C3GeneralBattle *b,const C3BattlePack *p,unsigned pos,C3Gen
     if(!hittable)value=ai_add(value,ai_code(p,6));
     if(faster)value=ai_add(value,ai_code(p,7));
     if(value<=0)return 0;
-    unsigned s=pos/2;int pick=-1;
-    for(unsigned i=0;i<b->party_count[s];++i){
-        int used=0;for(unsigned a=0;a<b->active_count;++a)used|=b->active[s][a]==i;
-        const C3GeneralMon *m=&b->party[s][i];
-        if(used||!m->hp)continue;
-        if(pick<0)pick=(int)i;
-        for(unsigned k=0;k<4;++k){const uint8_t *mv=m->moves[k]&&m->pp[k]?move_row(p,m->moves[k]):NULL;unsigned num,den;
-            for(unsigned f=0;mv&&be16(mv+22)&&f<nf;++f)if(effectiveness(p,mv[2],at(b,foes[f]),&num,&den)){c->kind=1;c->slot=(uint8_t)i;c->target=0;return 1;}}
-    }
+    int pick=ai_select_dasu(b,p,ai,pos/2,reserved);
+    if(pick==-2)return -1;
     if(pick<0)return 0;
     c->kind=1;c->slot=(uint8_t)pick;c->target=0;return 1;
 }
@@ -1120,10 +1297,12 @@ static int ai_side(C3GeneralBattle *b,const C3BattlePack *p,unsigned s,C3General
     const uint8_t *ai=ai_row(b,p,s);unsigned r;uint8_t done[4]={0};
     if(!ai)return -1;
     if(!ai_draw(b,0,&r))return 0;
-    if(ai[7]>(r&0xFFFFu)%100u)
-        for(unsigned a=0;a<b->active_count;++a){unsigned pos=s*2+a;
-            if(alive(b,pos)&&ai_switch(b,p,pos,&cmd[pos])){done[pos]=1;
-                for(unsigned q=0;q<4;++q)if(q!=pos&&done[q]&&cmd[q].kind==1&&cmd[q].slot==cmd[pos].slot){done[pos]=0;cmd[pos].kind=0;}}}
+    if(ai[7]>(r&0xFFFFu)%100u){
+        uint8_t reserved[C3_GB_PARTY]={0}; /* fightTrainerCheckCanIrekae 3: already a switch target */
+        for(unsigned a=0;a<b->active_count;++a){unsigned pos=s*2+a;int sw;
+            if(!alive(b,pos))continue;
+            if((sw=ai_switch(b,p,ai,pos,reserved,&cmd[pos]))<0)return 0;
+            if(sw){done[pos]=1;reserved[cmd[pos].slot]=1;}}}
     if(b->info.use_item&&!ai_draw(b,0,&r))return 0;   /* item roll: no trainer items modelled */
     if(!ai_draw(b,0,&r))return 0;                     /* combo roll: fn_8024E534 returns 0 */
     uint8_t ary[4];
@@ -1233,9 +1412,11 @@ static int replace_fainted(const C3BattlePack *p,C3GeneralBattle *b)
         uint8_t i=b->active[s][a];
         if(i!=NO_MON&&b->party[s][i].hp)continue;
         if(s==1&&i!=NO_MON&&!b->link&&!b->caught[i])award(p,b,i);
-        int n=next_healthy(b,s,a);
+        const uint8_t *ai=ai_row(b,p,s);
+        int n=ai?ai_select_dasu(b,p,ai,s,NULL):next_healthy(b,s,a);
+        if(n==-2)return 0;
         b->active[s][a]=n<0?NO_MON:(uint8_t)n;
-        if(n>=0){announce_send(b,s,a,&b->party[s][n]);sent_out(b,p,s,(unsigned)n);}
+        if(n>=0){announce_send(b,s,a,&b->party[s][n]);sent_out(b,p,s,(unsigned)n);dark_check_appear(b,s*2+a);}
     }
     mark_faced(b);return 1;
 }
@@ -1378,7 +1559,7 @@ static int turn_core(C3GeneralBattle *out,const C3BattlePack *p,const C3GeneralC
             say(b,C3_GB_EVENT_SWITCH,pos,255,0,"%s, come back!",who(b,pos));
             C3GeneralMon *old=at(b,pos);if(old){memset(old->stages,0,sizeof old->stages);old->confusion=0;}
             b->active[pos/2][pos%2]=cmd[pos].slot;mark_faced(b);sent_out(b,p,pos/2,cmd[pos].slot);
-            announce_send(b,pos/2,pos%2,&b->party[pos/2][cmd[pos].slot]);
+            announce_send(b,pos/2,pos%2,&b->party[pos/2][cmd[pos].slot]);dark_check_appear(b,pos);
         }else if(cmd[pos].kind==2){if(!throw_ball(b,p,pos,cmd[pos]))goto failed;}
         else if(cmd[pos].kind==3){if(!call_pokemon(b,p,pos))goto failed;}
         else if(!use_move(b,p,pos,cmd[pos],acted))goto failed;

@@ -34,7 +34,8 @@ static uint8_t *make_ai_pack(unsigned ai_id, int singles, unsigned switch_pct, s
     s += AI_ROWS * 40;
     p32(s, CODES); s += 4;
     static const struct { unsigned code; int value; } codes[] = {
-        {6, 20}, {7, -30}, {0x3D, -200}, {0x3E, 20}, {0x40, -100}, {0x44, 15}, {0x46, 20}, {0x47, 20}};
+        {6, 20}, {7, -30}, {0x3D, -200}, {0x3E, 20}, {0x40, -100}, {0x44, 15}, {0x46, 20}, {0x47, 20},
+        {0x21, 50}, {0x23, -60}};
     for (unsigned i = 0; i < sizeof codes / sizeof codes[0]; ++i) p32(s + codes[i].code * 4, (uint32_t)codes[i].value);
     p32(b + 4, 3); p32(b + 8, (uint32_t)(n + extra));
     c3_save_codec_sha1(b + 72, b + 128, n + extra - 128);
@@ -139,6 +140,37 @@ int main(void)
             CHECK(pct ? switched == 20 : switched == 0);
         }
     }
+    {   /* fightTrainerAiSelectIrekaeDasuFightPokemon after a faint: three foes,
+         * the lead knocked out. Scored (row 1): the fastest reserve (0x21,
+         * +50) comes in, not the next in party order; a reserve weak to the
+         * hero's Fire move (0x23, -60) loses that lead; PokemonDataOrderOut
+         * (+2) sends party order; PokemonSelectRandom (+0) draws either. */
+        static const struct { uint8_t order, random, weak; } modes[] = {{0, 0, 0}, {0, 0, 1}, {1, 0, 0}, {0, 1, 0}};
+        for (unsigned mode = 0; mode < 4; ++mode) {
+            load(1, 1, 0);
+            uint8_t *r = pack.bytes + pack.entries_at, *row1 = pack.bytes + pack.ai_at + 40;
+            r[2] = 3; memcpy(r + 192 + 2 * 80, r + 192, 80);
+            row1[2] = modes[mode].order; row1[0] = modes[mode].random;
+            unsigned seen[3] = {0, 0, 0};
+            for (uint32_t seed = 0; seed < 24; ++seed) {
+                make_party(party, 1, 50, 1, 0);
+                CHECK(c3_general_battle_begin(&b, &pack, 0, party, seed, error));
+                CHECK(b.party_count[1] == 3 && b.active[1][0] == 0);
+                b.party[1][0].hp = 1; b.party[1][0].stats[5] = 1;
+                b.party[1][1].stats[5] = modes[mode].weak ? 200 : 10;
+                b.party[1][2].stats[5] = modes[mode].weak ? 10 : 200;
+                if (modes[mode].weak) b.party[1][1].types[0] = b.party[1][1].types[1] = 0; /* Fire is 2x on Normal */
+                b.party[0][0].stats[5] = 999;
+                C3GeneralCommand c[2] = {{0, 0, 2}, {0}};
+                CHECK(c3_general_battle_turn(&b, &pack, c, error));
+                CHECK(b.party[1][0].hp == 0 && b.active[1][0] != 255);
+                ++seen[b.active[1][0]];
+            }
+            if (mode == 0 || mode == 1) CHECK(seen[2] == 24);
+            if (mode == 2) CHECK(seen[1] == 24);
+            if (mode == 3) CHECK(seen[1] > 3 && seen[2] > 3);
+        }
+    }
     {   /* A spectator battle (side-0 CPU trainer) and an old pack keep working:
          * a version-2 pack has no AI rows and falls back to the uniform policy. */
         size_t n; uint8_t *bytes = make_pack(2, 50, &n); C3BattlePack old = {0};
@@ -149,6 +181,6 @@ int main(void)
         c3_battle_pack_free(&old); free(bytes);
     }
     c3_battle_pack_free(&pack);
-    puts("battle-trainer-ai: scored moves, random rows, KO preference and switching ok");
+    puts("battle-trainer-ai: scored moves, random rows, KO preference, switching and replacement choice ok");
     return 0;
 }

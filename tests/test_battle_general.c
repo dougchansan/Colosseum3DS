@@ -313,12 +313,17 @@ static void synthetic(void)
 }
 
 /* Which opponent party members were ever sent out, from the log. */
-static unsigned foes_seen;
+static unsigned foes_seen, foe_order_len;
+static char foe_order[C3_GB_PARTY + 1];
 static void note_foes(const C3GeneralBattle *b)
 {
     for (uint32_t i = 0; i < b->event_count; ++i)
-        for (unsigned pos = 2; pos < 4; ++pos)
-            if (b->events[i].mon[pos] != 255 && b->events[i].mon[pos] < C3_GB_PARTY) foes_seen |= 1u << b->events[i].mon[pos];
+        for (unsigned pos = 2; pos < 4; ++pos) {
+            unsigned m = b->events[i].mon[pos];
+            if (m == 255 || m >= C3_GB_PARTY || (foes_seen >> m & 1u)) continue;
+            foes_seen |= 1u << m;
+            if (foe_order_len < C3_GB_PARTY) { foe_order[foe_order_len++] = (char)('0' + m); foe_order[foe_order_len] = 0; }
+        }
 }
 
 /* A trainer with more Pokemon than positions: a fainted foe is replaced by
@@ -381,6 +386,98 @@ static void reserve_replacement(void)
         c3_battle_pack_free(&pack); free(bytes);
         printf("battle-general: reserve replacement (%u a side): third foe out on turn %u, snagged, won in %u turns\n", per_side, third_turn, turns);
     }
+}
+
+/* fn_8022E6F0 mode 0: an opposing Shadow Pokemon's first appearance, the
+ * partner's notice with the aura special, once per Pokemon, only with the
+ * fight kind's doHizukiAiFlag (+15); encounter 0x11's snag tutorial. */
+static unsigned find_text(const C3GeneralBattle *b, const char *text, uint32_t from)
+{
+    for (uint32_t i = from; i < b->event_count; ++i) if (!strcmp(b->events[i].text, text)) return i;
+    return UINT32_MAX;
+}
+static void shadow_appearance(void)
+{
+    size_t n; uint8_t *bytes = make_pack(2, 5, &n);
+    uint8_t *r = bytes + g32(bytes + 124);
+    r[2] = 3;
+    for (unsigned k = 0; k < 3; ++k) { uint8_t *t = r + 192 + k * 80; memset(t, 0, 80); t[4] = 5; p16(t + 10, 2); t[3] = k == 2; p32(t + 0x34, 1); }
+    r[88 + 15] = 1;
+    c3_save_codec_sha1(bytes + 72, bytes + 128, n - 128);
+    C3BattlePack pack = {0}; CHECK(c3_battle_pack_decode(&pack, bytes, n, error));
+    C3BattleEncounterInfo info; CHECK(c3_battle_pack_info(&pack, 0, &info) && info.partner_aura == 1);
+    uint8_t party[6][0x138]; make_party(party, 1, 50, 2, 0);
+    static C3GeneralBattle b;
+    static const char aura[] = "RUI: Oh! WES!\nThere's a POK\xc3\xa9MON with a black aura!";
+    static const char named[] = "RUI: Oh!\nThere's a SHADOW POK\xc3\xa9MON!";
+    for (unsigned variant = 0; variant < 3; ++variant) {   /* 0 black aura (0x7717), 1 flag 0x9A0 (0x770A), 2 kind flag clear */
+        pack.bytes[pack.entries_at + 88 + 15] = variant == 2 ? 0 : 1;
+        CHECK(c3_general_battle_begin(&b, &pack, 0, party, 31, error));
+        strcpy(b.side_name[0], "WES"); strcpy(b.partner_name, "RUI"); b.shadow_named = variant == 1; b.balls[4] = 3;
+        uint32_t before = b.event_count;
+        c3_general_battle_appear_checks(&b); CHECK(b.event_count == before); /* the Shadow one waits in reserve */
+        view_begin(&b);
+        int noticed = 0;
+        while (b.outcome == C3_GB_RUNNING) {
+            C3GeneralCommand c[2] = {{0, 0, 2}, {0, 0, 2}};
+            for (unsigned a = 0; a < 2; ++a) for (unsigned t = 3; t >= 2; --t) if (b.active[1][t - 2] != 255 && b.party[1][b.active[1][t - 2]].hp) c[a].target = (uint8_t)t;
+            CHECK(c3_general_battle_turn(&b, &pack, c, error)); check_view(&b);
+            uint32_t i = find_text(&b, variant == 1 ? named : aura, 0);
+            if (variant == 2) { CHECK(i == UINT32_MAX && find_text(&b, named, 0) == UINT32_MAX); continue; }
+            if (i == UINT32_MAX) continue;
+            const C3GeneralEvent *e = &b.events[i];
+            CHECK(!noticed && i > 0 && b.events[i - 1].kind == C3_GB_EVENT_SWITCH && strstr(b.events[i - 1].text, "sent out FOE"));
+            CHECK(e->kind == C3_GB_EVENT_MESSAGE && e->special == 0x3A && e->cutin == 1 && e->actor >= 2 && b.events[i].mon[e->actor] == 2);
+            CHECK(b.party[1][2].gauge_dropped == 1);
+            noticed = 1;
+        }
+        CHECK(variant == 2 ? !noticed : noticed);
+    }
+    pack.bytes[pack.entries_at + 88 + 15] = 1;
+    {   /* A Shadow lead: noticed at the start (fightActionFlowKaisiPost), once. */
+        uint8_t *t0 = pack.bytes + pack.entries_at + 192, *t2 = t0 + 2 * 80;
+        t0[3] = 1; t2[3] = 0;
+        CHECK(c3_general_battle_begin(&b, &pack, 0, party, 32, error));
+        strcpy(b.side_name[0], "WES"); strcpy(b.partner_name, "RUI"); b.balls[4] = 3;
+        uint32_t before = b.event_count;
+        c3_general_battle_appear_checks(&b);
+        CHECK(b.event_count == before + 1 && !strcmp(b.events[before].text, aura) && b.events[before].special == 0x3A && b.events[before].actor == 2);
+        c3_general_battle_appear_checks(&b); CHECK(b.event_count == before + 1);
+        view_begin(&b);
+        {   /* the 3D view: the aura is a battle special on the Pokemon (a status-style event) */
+            static C3BattlePreviewEvent out[C3_PREVIEW_EVENT_LIMIT]; uint32_t first, k; C3GeneralView v; memset(&v, 0, sizeof v);
+            int found = 0;
+            while ((k = c3_general_view_batch(&v, &b, out, C3_PREVIEW_EVENT_LIMIT, &first)))
+                for (uint32_t j = 0; j < k; ++j) if (first + j == before) { CHECK(out[j].kind == C3_PREVIEW_EVENT_STATUS && out[j].effect == 0x3A && out[j].target == 2 && out[j].cutin); found = 1; }
+            CHECK(found);
+        }
+        /* Encounter 0x11: special 0xD9, the tutorial, POUND's attack sequence, and 0x772B without balls. */
+        for (unsigned balls = 0; balls < 2; ++balls) {
+            CHECK(c3_general_battle_begin(&b, &pack, 0, party, 33, error));
+            b.encounter = 0x11; strcpy(b.side_name[0], "WES"); strcpy(b.partner_name, "RUI"); b.balls[4] = (uint16_t)balls;
+            before = b.event_count;
+            c3_general_battle_appear_checks(&b);
+            static const char *const pages[] = {
+                "RUI: WES!\nIt's that one! That POK\xc3\xa9MON!",
+                "RUI: Those jerks captured me because\nI saw that POK\xc3\xa9MON.",
+                "RUI: I can see a black aura coming from it.\nThey must have done something to that", "POK\xc3\xa9MON!",
+                "",
+                "RUI: WES, be careful!\nThis POK\xc3\xa9MON isn't afraid to attack", "people!",
+                "RUI: I know, WES!\nI hate to say this, but there's no other", "choice.",
+                "RUI: Get that POK\xc3\xa9MON back from the\nbad guys!", "Please, you have to!",
+                "RUI: You can...\nActually, only you can do it!",
+                "RUI: ...Huh? Whaaaaat?!\nWhy don't you have any POK\xc3\xa9 BALLS", "with you?"};
+            unsigned count = balls ? 12 : 14;
+            CHECK(b.event_count == before + count);
+            for (unsigned k = 0; k < count; ++k) CHECK(!strcmp(b.events[before + k].text, pages[k]) && b.events[before + k].actor == 2);
+            CHECK(b.events[before].special == 0xD9 && b.events[before].cutin == 1);
+            CHECK(b.events[before + 4].waza_effect == 1 && b.events[before + 5].special == 0xD9);
+            view_begin(&b); /* every event maps (the attack sequence is a move event without a target) */
+        }
+        t0[3] = 0; t2[3] = 1;
+    }
+    c3_battle_pack_free(&pack); free(bytes);
+    puts("battle-general: Shadow appearance (0x7717, 0x770A, encounter 0x11 tutorial, kind flag, once) ok");
 }
 
 /* Encounter 525's shape: a CPU trainer on side 0 (pack v3 side-0 section).
@@ -523,12 +620,13 @@ static void encounter17(const C3BattlePack *pack, uint8_t party[6][0x138])
     CHECK(c3_general_mon_from_trainer(pack, 17, 2, &m) && m.shadow == 1 && !strcmp(m.name, "MAKUHITA") && m.level == 30);
     int table = c3_battle_pack_shadow(pack, m.shadow, &sh);
     if (table) CHECK(sh.species == m.species && sh.snag_flag == 0x84e);
-    unsigned won = 0;
+    unsigned won = 0, tutorials = 0;
     for (uint32_t seed = 0; seed < 32; ++seed) {
         static C3GeneralBattle b;
         CHECK(c3_general_battle_begin(&b, pack, 17, party, 0x1700u + seed, error));
         CHECK(b.party_count[1] == 3 && b.active[1][0] == 0 && b.active[1][1] == 1 && b.party[1][2].shadow == 1);
-        b.snag = 1; b.balls[4] = 5;
+        b.snag = 1; b.balls[4] = 5; strcpy(b.side_name[0], "WES"); strcpy(b.partner_name, "RUI");
+        uint32_t opening = b.event_count; c3_general_battle_appear_checks(&b); CHECK(b.event_count == opening);
         int out = 0;
         while (b.outcome == C3_GB_RUNNING) {
             C3GeneralCommand c[2] = {{0}}; int thrown = 0;
@@ -542,6 +640,12 @@ static void encounter17(const C3BattlePack *pack, uint8_t party[6][0x138])
             for (uint32_t i = 0; i < b.event_count; ++i)
                 if (b.events[i].kind == C3_GB_EVENT_SWITCH && b.events[i].actor >= 2 && b.events[i].actor < 4 && b.events[i].mon[b.events[i].actor] == 2) {
                     CHECK(strstr(b.events[i].text, "TRUDLY sent out MAKUHITA!")); out = 1;
+                    /* fn_8022E6F0 for encounter 0x11: Rui's snag tutorial with the aura (0xD9). */
+                    if (info.partner_aura) {
+                        CHECK(i + 1 < b.event_count && b.events[i + 1].special == 0xD9 && b.events[i + 1].cutin);
+                        CHECK(!strcmp(b.events[i + 1].text, "RUI: WES!\nIt's that one! That POK\xc3\xa9MON!"));
+                        tutorials++;
+                    }
                 }
         }
         if (b.outcome != C3_GB_WON) continue; /* the save's party lost before Makuhita was needed */
@@ -551,9 +655,22 @@ static void encounter17(const C3BattlePack *pack, uint8_t party[6][0x138])
         if (table) CHECK(rw.caught_count == 1 && rw.caught[0] == 2 && rw.balls_used[4] == 1 && b.caught[2] == 4);
         else CHECK(rw.caught_count == 0 && rw.balls_used[4] == 0);
     }
-    CHECK(won);
-    printf("battle-general: encounter 17: MAKUHITA (Shadow 1) came out from reserve in all %u won battles; %s\n", won,
-           table ? "one Poke Ball snagged it each time" : "WARNING: version-1 pack without the Shadow table, it cannot be snagged");
+    CHECK(won && (!info.partner_aura || tutorials >= won));
+    printf("battle-general: encounter 17: MAKUHITA (Shadow 1) came out from reserve in all %u won battles; %s; partner tutorial %u times (kind flag %u)\n", won,
+           table ? "one Poke Ball snagged it each time" : "WARNING: version-1 pack without the Shadow table, it cannot be snagged", tutorials, info.partner_aura);
+    {   /* Encounter 33 (MYSTERY TROOP BLUNO): the Shadow CROCONAW leads, so the
+         * notice (0x7717, aura 0x3A) comes at the start, at position 2. */
+        static C3GeneralBattle b;
+        if (c3_battle_pack_info(pack, 33, &info) && !strcmp(info.trainer, "BLUNO")) {
+            CHECK(c3_general_battle_begin(&b, pack, 33, party, 0x3300u, error) && b.party[1][0].shadow);
+            strcpy(b.side_name[0], "WES"); strcpy(b.partner_name, "RUI");
+            uint32_t before = b.event_count; c3_general_battle_appear_checks(&b);
+            if (info.partner_aura) CHECK(b.event_count == before + 1 && b.events[before].special == 0x3A && b.events[before].actor == 2 &&
+                                         !strcmp(b.events[before].text, "RUI: Oh! WES!\nThere's a POK\xc3\xa9MON with a black aura!"));
+            else CHECK(b.event_count == before);
+            printf("battle-general: encounter 33: CROCONAW lead noticed at the start: %s (kind flag %u)\n", b.event_count > before ? "yes" : "no", info.partner_aura);
+        }
+    }
 }
 
 static void private_sweep(const char *pack_path, const char *newgame_dir, const char *save)
@@ -573,8 +690,9 @@ static void private_sweep(const char *pack_path, const char *newgame_dir, const 
         if (info.reason) { ++refused; continue; }
         ++admitted;
         CHECK(c3_general_battle_begin(&b, &pack, e, party, 0x1000u + e, error));
+        strcpy(b.side_name[0], "WES"); strcpy(b.partner_name, "RUI"); c3_general_battle_appear_checks(&b);
         unsigned turns = 0;
-        foes_seen = 0;
+        foes_seen = 0; foe_order_len = 0;
         C3GeneralOutcome o = play(&b, &pack, &turns);
         /* A won battle saw every opponent Pokemon come out. */
         unsigned foe_out = 0;
@@ -588,8 +706,8 @@ static void private_sweep(const char *pack_path, const char *newgame_dir, const 
         check_writeback(&pack, &b, &info, party, copy, &rw);
         unsigned levels = 0, learned = 0, skipped = 0; unsigned long exp = 0;
         for (unsigned i = 0; i < 6; ++i) { levels += rw.levels_gained[i]; learned += rw.learned_count[i]; skipped += rw.skipped_count[i]; exp += rw.exp[i]; }
-        printf("battle encounter=%lu trainer=%s/%s kind=%u party=%u active=%u foe_out=%u turns=%u outcome=%s result=%lu prize=%lu premium=%lu written=%d exp=%lu levels=%u learned=%u skipped=%u wipeout=%d\n",
-               (unsigned long)e, info.title, info.trainer, info.kind, info.party_count, info.active_per_side, foe_out, turns,
+        printf("battle encounter=%lu trainer=%s/%s kind=%u party=%u active=%u foe_out=%u order=%s turns=%u outcome=%s result=%lu prize=%lu premium=%lu written=%d exp=%lu levels=%u learned=%u skipped=%u wipeout=%d\n",
+               (unsigned long)e, info.title, info.trainer, info.kind, info.party_count, info.active_per_side, foe_out, foe_order, turns,
                o == C3_GB_WON ? "won" : o == C3_GB_LOST ? "lost" : "draw",
                (unsigned long)rw.result_code, (unsigned long)rw.prize, (unsigned long)rw.premium, rw.written, exp, levels, learned, skipped, rw.wipeout);
         ++checked_writebacks;
@@ -650,6 +768,7 @@ int main(int argc, char **argv)
 {
     synthetic();
     reserve_replacement();
+    shadow_appearance();
     side0_cpu();
     if (argc >= 4) private_sweep(argv[1], argv[2], argv[3]);
     else puts("battle-general: private sweep skipped (needs <battles.c3x> <newgame dir> <save.gci>)");
