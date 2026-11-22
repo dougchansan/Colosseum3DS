@@ -597,7 +597,8 @@ void c3_ingame_draw_to(C3IngameMenu *m,const C3GameState *state,C3BottomUi *ui)
     }
     case C3_GAME_TRAINER:{
         header(m,ui,s.name,"TRAINER");const uint8_t *b=c3_game_state_body(state,NULL);
-        snprintf(m->text,sizeof m->text,"TRAINER ID  %05u\nMoney  %lu\nPOKE COUPONS  %lu\nTime  %lu:%02lu\nParty  %u\nPartner  %s",(unsigned)(s.trainer_id&65535u),(unsigned long)s.money,(unsigned long)c3_pda_be32(b+0x70+0xa88),(unsigned long)(s.play_seconds/3600u),(unsigned long)(s.play_seconds/60u%60u),s.party_count,s.partner);
+        /* pda_menu 0x36DF "${50}": '$' is the font's Pokedollar sign. */
+        snprintf(m->text,sizeof m->text,"TRAINER ID  %05u\nMoney  $%lu\nPOKE COUPONS  %lu\nTime  %lu:%02lu\nParty  %u\nPartner  %s",(unsigned)(s.trainer_id&65535u),(unsigned long)s.money,(unsigned long)c3_pda_be32(b+0x70+0xa88),(unsigned long)(s.play_seconds/3600u),(unsigned long)(s.play_seconds/60u%60u),s.party_count,s.partner);
         body(m,ui,m->text);footer(ui,"B: in-game menu");break;
     }
     case C3_GAME_OPTIONS:
