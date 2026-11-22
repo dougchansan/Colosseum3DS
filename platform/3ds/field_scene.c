@@ -410,6 +410,15 @@ static int play_story_battle(C3FieldStory *story,C3GameState *state,uint32_t enc
         snprintf(error,capacity,"%s",c3_battle_pack_reason(info.reason));
         c3_battle_pack_free(&pack);return 0;
     }
+    if(trace){
+        /* Which pack the console runs: a version-1 pack has no Shadow table
+         * (nothing can be snagged) and no trainer AI rows. */
+        unsigned shadow=0,rows=0;
+        for(unsigned k=0;k<info.party_count;++k){C3GeneralMon m;C3ShadowInfo sh;
+            if(c3_general_mon_from_trainer(&pack,encounter,k,&m)&&m.shadow){++shadow;rows+=c3_battle_pack_shadow(&pack,m.shadow,&sh)!=0;}}
+        fprintf(trace,"field_battle_pack encounter=%lu party=%u shadow=%u shadow_rows=%u shadow_table=%d ai_rows=%lu\n",
+                (unsigned long)encounter,info.party_count,shadow,rows,pack.shadow_at!=0,(unsigned long)pack.ai_count);fflush(trace);
+    }
     uint32_t seed=(uint32_t)c3_game_state_random16(state)<<16|c3_game_state_random16(state);
     C3GeneralRewards rewards;memset(&rewards,0,sizeof rewards);int result=-1;
     if(autoplay){
