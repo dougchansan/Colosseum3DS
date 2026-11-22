@@ -1,18 +1,15 @@
 #include "pack_cache.h"
 #include <3ds.h>
+#include <malloc.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
 #define CACHE_ENTRIES 160u
-/* Linear memory left free when a new entry is added (the renderer and
- * audio allocate from the same space after loads). */
-#define CACHE_ADD_MARGIN (8u * 1024u * 1024u)
 
-/* Two threads load packs at once (pack_loader): the table and linear
- * allocations are guarded by one lock, and an entry being decompressed is
- * marked busy so it is never evicted under the reader. Decompression itself
- * runs outside the lock. */
+/* Two threads decode packs at once (pack_loader): the table is guarded by
+ * one lock, and an entry being decoded is marked busy so it is never
+ * evicted under the reader. Decompression itself runs outside the lock. */
 typedef struct {
     char path[160];
     void *data;
@@ -35,9 +32,16 @@ static void enter(void)
 }
 static void leave(void) { LightLock_Unlock(&lock); }
 
+size_t c3_pack_cache_heap_free(void)
+{
+    struct mallinfo memory = mallinfo();
+    size_t heap = (size_t)envGetHeapSize(), used = (size_t)memory.uordblks;
+    return heap > used ? heap - used : 0;
+}
+
 static void drop(Entry *e)
 {
-    if (e->data) linearFree(e->data);
+    free(e->data);
     memset(e, 0, sizeof *e);
 }
 
@@ -51,7 +55,7 @@ static Entry *oldest(void)
 
 static void trim_locked(size_t keep_free)
 {
-    while (linearSpaceFree() < keep_free) {
+    while (c3_pack_cache_heap_free() < keep_free) {
         Entry *e = oldest();
         if (!e) break;
         drop(e);
@@ -70,6 +74,15 @@ void c3_pack_cache_clear(void)
     leave();
 }
 
+size_t c3_pack_cache_bytes(void)
+{
+    size_t bytes = 0;
+    enter();
+    for (unsigned i = 0; i < CACHE_ENTRIES; ++i) if (entries[i].data) bytes += entries[i].bytes;
+    leave();
+    return bytes;
+}
+
 void c3_pack_cache_trace(FILE *trace, const char *stage)
 {
     if (!trace) return;
@@ -78,62 +91,50 @@ void c3_pack_cache_trace(FILE *trace, const char *stage)
     for (unsigned i = 0; i < CACHE_ENTRIES; ++i) if (entries[i].data) { bytes += entries[i].bytes; ++count; }
     unsigned h = hits, m = misses;
     leave();
-    fprintf(trace, "pack_cache stage=%s entries=%u bytes=%lu hits=%u misses=%u linear_free=%lu\n", stage, count,
-            (unsigned long)bytes, h, m, (unsigned long)linearSpaceFree());
+    fprintf(trace, "pack_cache stage=%s entries=%u bytes=%lu hits=%u misses=%u heap_free=%lu linear_free=%lu\n", stage,
+            count, (unsigned long)bytes, h, m, (unsigned long)c3_pack_cache_heap_free(), (unsigned long)linearSpaceFree());
     fflush(trace);
 }
 
-int c3_pack_cache_load(C3Title *title, const char *path, char *error, size_t capacity)
+const void *c3_pack_cache_acquire(const char *path, size_t *bytes)
+{
+    const void *data = NULL;
+    enter();
+    for (unsigned i = 0; i < CACHE_ENTRIES && !data; ++i)
+        if (entries[i].data && !strcmp(entries[i].path, path)) {
+            Entry *e = entries + i;
+            e->used = ++clock_tick; ++e->busy;
+            data = e->data; *bytes = e->bytes;
+        }
+    if (data) ++hits; else ++misses;
+    leave();
+    return data;
+}
+
+void c3_pack_cache_release(const void *data)
 {
     enter();
     for (unsigned i = 0; i < CACHE_ENTRIES; ++i)
-        if (entries[i].data && !strcmp(entries[i].path, path)) {
-            Entry *e = entries + i;
-            e->used = ++clock_tick; ++hits; ++e->busy;
-            leave();
-            int loaded = c3_title_load_memory(title, e->data, e->bytes, error, capacity);
-            enter(); --e->busy; leave();
-            return loaded;
-        }
-    ++misses;
+        if (entries[i].data == data && entries[i].busy) { --entries[i].busy; break; }
     leave();
-    FILE *file = fopen(path, "rb");
-    if (!file) return c3_title_load(title, path, error, capacity);
-    unsigned char head[8];
-    long size = -1;
-    int compressed = fread(head, 1, sizeof head, file) == sizeof head && c3_title_is_compressed(head, sizeof head, NULL);
-    if (compressed && fseek(file, 0, SEEK_END) == 0) size = ftell(file);
-    if (!compressed || size <= 8 || strlen(path) >= sizeof entries[0].path) {
-        fclose(file); return c3_title_load(title, path, error, capacity);
-    }
-    /* Reserve a slot and the linear bytes under the lock; read outside it. */
+}
+
+void c3_pack_cache_offer(const char *path, void *data, size_t bytes)
+{
+    if (!data) return;
+    if (strlen(path) >= sizeof entries[0].path) { free(data); return; }
     enter();
-    trim_locked((size_t)size + CACHE_ADD_MARGIN);
     Entry *slot = NULL;
-    for (unsigned i = 0; i < CACHE_ENTRIES && !slot; ++i) if (!entries[i].data && !entries[i].busy) slot = entries + i;
-    if (!slot) { slot = oldest(); if (slot) drop(slot); }
-    void *data = slot && linearSpaceFree() >= (size_t)size + CACHE_ADD_MARGIN ? linearAlloc((size_t)size) : NULL;
-    if (data) { snprintf(slot->path, sizeof slot->path, "%s", path); slot->bytes = (size_t)size; slot->busy = 1; }
-    leave();
-    if (!data) {
-        /* No linear room to keep it: read it into the heap for this load
-         * only. Reopening by path cost a second SD directory lookup. */
-        unsigned char *heap = malloc((size_t)size);
-        if (!heap) { fclose(file); return c3_title_load(title, path, error, capacity); }
-        int read = fseek(file, 0, SEEK_SET) == 0 && fread(heap, 1, (size_t)size, file) == (size_t)size;
-        fclose(file);
-        int loaded = read && c3_title_load_memory(title, heap, (size_t)size, error, capacity);
-        free(heap);
-        if (!read) return c3_title_load(title, path, error, capacity);
-        return loaded;
+    int present = 0;
+    for (unsigned i = 0; i < CACHE_ENTRIES; ++i) {
+        if (entries[i].data && !strcmp(entries[i].path, path)) present = 1;
+        else if (!entries[i].data && !slot) slot = entries + i;
     }
-    int read = fseek(file, 0, SEEK_SET) == 0 && fread(data, 1, (size_t)size, file) == (size_t)size;
-    fclose(file);
-    int loaded = read && c3_title_load_memory(title, data, (size_t)size, error, capacity);
-    enter();
-    if (loaded) { slot->data = data; slot->used = ++clock_tick; slot->busy = 0; }
-    else { linearFree(data); memset(slot, 0, sizeof *slot); }
+    if (!present && !slot && (slot = oldest()) != NULL) drop(slot);
+    if (present || !slot) { leave(); free(data); return; }
+    snprintf(slot->path, sizeof slot->path, "%s", path);
+    slot->data = data; slot->bytes = bytes; slot->used = ++clock_tick; slot->busy = 0;
+    /* Newest last: older entries go first, then this one if still short. */
+    trim_locked(C3_PACK_CACHE_KEEP_FREE);
     leave();
-    if (!read) return c3_title_load(title, path, error, capacity);
-    return loaded;
 }
