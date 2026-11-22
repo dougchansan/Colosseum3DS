@@ -19,6 +19,12 @@ endif
 ifeq ($(C3_DEV_FLOOR),1)
 BUILD := $(BUILD)-devfloor
 endif
+# C3_AGENT_HARNESS=1 adds the private gameplay-harness state feed (UDP to
+# the PC bridge; platform/3ds/agent_link.c). Off by default, its own object
+# directory, and a default build compiles none of it.
+ifeq ($(C3_AGENT_HARNESS),1)
+BUILD := $(BUILD)-agent
+endif
 SOURCES := platform/3ds src build $(BUILD)/gekko vendor/gekkoctr/runtime
 INCLUDES := $(BUILD)/gekko/include include compat/include vendor/colosseum/include platform/3ds src build \
             vendor/gekkoctr/include vendor/gekkoctr/platform/ctr/include
@@ -40,6 +46,15 @@ endif
 ifeq ($(C3_DEV_FLOOR),1)
 CFLAGS += -DC3_DEV_FLOOR
 endif
+ifeq ($(C3_AGENT_HARNESS),1)
+CFLAGS += -DC3_AGENT_HARNESS
+ifneq ($(strip $(C3_AGENT_HOST)),)
+CFLAGS += -DC3_AGENT_HOST=\"$(C3_AGENT_HOST)\"
+endif
+ifneq ($(strip $(C3_AGENT_PORT)),)
+CFLAGS += -DC3_AGENT_PORT=$(C3_AGENT_PORT)
+endif
+endif
 ASFLAGS := -g $(ARCH)
 LDFLAGS = -specs=3dsx.specs -g $(ARCH) -Wl,--gc-sections,-Map,$(notdir $*.map)
 # boot/ lookups go through the directory index (platform/3ds/boot_index.c).
@@ -50,6 +65,9 @@ LIBDIRS := $(CTRULIB) $(PORTLIBS)
 export APP_TITLE := Colosseum3DS
 ifeq ($(C3_DEV_FLOOR),1)
 export APP_TITLE := Colosseum3DS DEV FLOOR
+endif
+ifeq ($(C3_AGENT_HARNESS),1)
+export APP_TITLE := Colosseum3DS AGENT
 endif
 export APP_DESCRIPTION := Native boot and first-area checkpoint
 export APP_AUTHOR := Colosseum3DS contributors
@@ -63,6 +81,9 @@ export DEPSDIR := $(CURDIR)/$(BUILD)
 export LD := $(CC)
 
 CFILES := $(notdir $(wildcard platform/3ds/*.c src/*.c)) save_codec.c
+ifneq ($(C3_AGENT_HARNESS),1)
+CFILES := $(filter-out agent_feed.c agent_link.c,$(CFILES))
+endif
 ifeq ($(C3_BOOT_ONLY),1)
 # A focused native boot target also works without the optional C3M/Gekko
 # preview dependency. Keep its object directory separate from the full build.

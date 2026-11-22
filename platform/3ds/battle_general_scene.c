@@ -1,4 +1,7 @@
 #include "battle_general_scene.h"
+#ifdef C3_AGENT_HARNESS
+#include "agent_link.h"
+#endif
 #include "battle_general_3d.h"
 #include "bottom_screen.h"
 #include "move_forget_scene.h"
@@ -255,6 +258,9 @@ int c3_battle_general_scene_run(const C3BattlePack *pack, C3GeneralBattle *b, FI
         (unsigned long)b->encounter, b->info.title, b->info.trainer, b->active_count, b->party_count[0], b->party_count[1]); fflush(trace); }
     int dirty = 1;
     while (c3_n3ds_poll(&input)) {
+#ifdef C3_AGENT_HARNESS
+        c3_agent_link_battle(b, (uint8_t)ui.page);
+#endif
         uint16_t pressed = input.pressed;
         uint64_t now = c3_n3ds_time_us();
         if (ui.page == C3_GUI_EVENTS) {

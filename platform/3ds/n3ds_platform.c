@@ -2,6 +2,9 @@
 #include "stage_renderer.h"
 #include "bottom_screen.h"
 #include "colosseum3ds/touch_ring.h"
+#ifdef C3_AGENT_HARNESS
+#include "agent_link.h"
+#endif
 
 #include <3ds.h>
 #include <stdio.h>
@@ -273,6 +276,9 @@ bool c3_n3ds_poll(C3N3dsInput *input)
         input->touch_released = edges.released;
     }
     input->exit_requested = (keys & (KEY_START | KEY_SELECT)) == (KEY_START | KEY_SELECT);
+#ifdef C3_AGENT_HARNESS
+    c3_agent_link_poll(input);
+#endif
 #ifdef C3_CAMPAIGN
     if (autopress_enabled && c3_n3ds_time_us() >= autopress_next_us) {
         input->pressed |= C3_PAD_A;
@@ -471,6 +477,9 @@ void c3_n3ds_wait_for_exit(void)
 
 void c3_n3ds_shutdown(void)
 {
+#ifdef C3_AGENT_HARNESS
+    c3_agent_link_close();
+#endif
     if (graphics_started) {
         c3_bottom_screen_close();
         c3_stage_renderer_fini();

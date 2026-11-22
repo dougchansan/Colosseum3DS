@@ -1,4 +1,7 @@
 #include "move_forget_scene.h"
+#ifdef C3_AGENT_HARNESS
+#include "agent_link.h"
+#endif
 #include "bottom_screen.h"
 #include "n3ds_platform.h"
 #include "sfx_player.h"
@@ -62,6 +65,9 @@ int c3_move_forget_scene_prompt(void *context, const C3BattlePack *pack,
     uint64_t page_start = c3_n3ds_time_us();
     C3N3dsInput input; memset(&input, 0, sizeof input);
     while (f.step != C3_MF_DONE && c3_n3ds_poll(&input)) {
+#ifdef C3_AGENT_HARNESS
+        c3_agent_link_scene(C3_AGENT_MODE_MENU);
+#endif
         if (input.exit_requested) break;
         uint16_t m; uint32_t id = c3_move_forget_message(&f, &m);
         if (f.step != shown) {

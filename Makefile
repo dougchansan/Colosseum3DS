@@ -38,6 +38,16 @@ build/test_title_characters: tests/test_title_characters.c src/title_characters.
 
 all: build/test_title_characters
 test: title-characters-check
+
+# Private gameplay-harness feed encoder (C3_AGENT_HARNESS builds only).
+build/test_agent_feed: tests/test_agent_feed.c src/agent_feed.c include/colosseum3ds/agent_feed.h | build
+	$(CC) $(CPPFLAGS) -DC3_AGENT_HARNESS $(CFLAGS) tests/test_agent_feed.c src/agent_feed.c $(LDFLAGS) -o $@
+
+all: build/test_agent_feed
+test: agent-feed-check
+.PHONY: agent-feed-check
+agent-feed-check: build/test_agent_feed
+	./build/test_agent_feed build/agent_feed_field.bin build/agent_feed_battle.bin
 .PHONY: title-characters-check
 title-characters-check: build/test_title_characters
 	./build/test_title_characters
