@@ -46,6 +46,16 @@ int c3_world_map_choose(const C3WorldMap *map, int visible_index,
                         C3WorldMapFlag flag, void *context,
                         uint32_t *floor, int *travel);
 
+/* The info text of table entry index (fn_800246FC): the first row of
+ * lbl_3_data_90 whose flag is zero or set, then that row's message for the
+ * entry's column (lbl_802E4F58). The messages are world_map.fsys group
+ * 0C5A0A00 (boot/worldmap.c3m); the first line names the place, which
+ * changes with the story: entry 0x66 is the CONSTRUCTION LOT until flag
+ * 0x45D (then REALGAM TOWER), entry 0x41 the MYSTERY LAB before the SHADOW
+ * PKMN LAB. Returns 1, the original's empty message, when the row has none,
+ * and 0 when a flag read fails. */
+uint32_t c3_world_map_info_message(uint32_t index, C3WorldMapFlag flag, void *context);
+
 /* The journey (menu 0xC3, gs_title.c fn_80025F84). Two cycling indices
  * (lbl_8047A394 east, lbl_8047A398 west) live for the whole session; the
  * world map's open (fn_800259B0) does not reset them. */

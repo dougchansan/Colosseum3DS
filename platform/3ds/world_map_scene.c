@@ -5,6 +5,7 @@
 #include "colosseum3ds/floor_profile.h"
 #include "colosseum3ds/world_map.h"
 #include "colosseum3ds/title.h"
+#include "colosseum3ds/story.h"
 #include "colosseum3ds/field.h"
 #include "pack_loader.h"
 #include "pack_cache.h"
@@ -24,9 +25,11 @@
 #define ROW_TOP 52
 #define ROW_HEIGHT 18
 
-/* Port labels for the nine destination floors of the pinned table. The
- * original menu strings are not extracted yet (docs/world-map.md). */
-static const char *label(uint32_t floor)
+/* Port labels for the nine destination floors of the pinned table, used
+ * only when boot/worldmap.c3m is missing. Floor 0x66 is the Realgam Tower
+ * site: the original calls it CONSTRUCTION LOT until flag 0x45D, when the
+ * entry links to the finished tower (0x7B). */
+static const char *label(uint32_t floor, int tower_built)
 {
     switch (floor) {
     case 0x01: return "OUTSKIRT STAND";
@@ -35,7 +38,7 @@ static const char *label(uint32_t floor)
     case 0x24: return "AGATE VILLAGE";
     case 0x4A: return "MT. BATTLE";
     case 0x7A: return "THE UNDER";
-    case 0x66: return "REALGAM TOWER";
+    case 0x66: return tower_built ? "REALGAM TOWER" : "CONSTRUCTION LOT";
     case 0x41: return "SHADOW PKMN LAB";
     case 0x88: return "SNAGEM HIDEOUT";
     default: return "UNKNOWN AREA";
@@ -45,6 +48,44 @@ static const char *label(uint32_t floor)
 static int read_flag(void *context, uint32_t flag, uint32_t *value)
 {
     return c3_game_state_get_flag(context, flag, value);
+}
+
+/* Place names as the original shows them: the first line of each entry's
+ * info message (c3_world_map_info_message) from world_map.fsys group
+ * 0C5A0A00, prepared as boot/worldmap.c3m by tools/prepare_menu_messages.py. */
+#define WORLDMAP_MESSAGES "sdmc:/3ds/Colosseum3DS/boot/worldmap.c3m"
+static char place_names[16][32];
+static void place_names_load(C3GameState *state, FILE *trace)
+{
+    C3Story messages = {0};
+    char error[C3_STORY_ERROR] = {0}, text[256];
+    uint8_t *group = NULL;
+    long size = -1;
+    uint32_t built = 0, count = c3_world_map_entry_count();
+    FILE *file = fopen(WORLDMAP_MESSAGES, "rb");
+    if (file && fseek(file, 0, SEEK_END) == 0) size = ftell(file);
+    if (file && size > 16 && size < 256 * 1024 && fseek(file, 0, SEEK_SET) == 0 && (group = malloc((size_t)size)) &&
+        fread(group, 1, (size_t)size, file) == (size_t)size) {
+        if (!c3_story_add_messages(&messages, group, (size_t)size, error)) c3_story_free(&messages);
+    }
+    if (file) fclose(file);
+    free(group);
+    if (!read_flag(state, 0x45Du, &built)) built = 0;
+    for (uint32_t i = 0; i < count && i < 16u; ++i) {
+        C3WorldMapEntry entry;
+        uint32_t message = c3_world_map_info_message(i, read_flag, state);
+        int named = 0;
+        if (!c3_world_map_entry(i, &entry)) continue;
+        if (message > 1u && c3_story_message(&messages, message, "", "", "", text, sizeof text, error)) {
+            text[strcspn(text, "\n\f")] = 0;
+            named = text[0] != 0;
+            if (named) snprintf(place_names[i], sizeof place_names[i], "%s", text);
+        }
+        if (!named) snprintf(place_names[i], sizeof place_names[i], "%s", label(entry.floor, built != 0));
+        if (trace) fprintf(trace, "world_map_place index=%lu floor=%03lx message=%05lx original=%d name=%s\n",
+                           (unsigned long)i, (unsigned long)entry.floor, (unsigned long)message, named, place_names[i]);
+    }
+    c3_story_free(&messages);
 }
 
 int c3_world_map_scene_available(void) { return 1; }
@@ -255,7 +296,7 @@ static void draw_native(const MapPack *pack, const C3WorldMap *map, const char *
         if (i == map->cursor) {
             c3_ui_rgba(ui, cursor->rgba, cursor->w, cursor->h, cx - (int)cursor->w / 2, cy - (int)cursor->h / 2,
                        (int)cursor->w, (int)cursor->h);
-            name = label(entry.floor);
+            name = place_names[index];
         }
     }
     if (name) { c3_ui_panel(ui, 8, 196, 304, 24); c3_ui_text(ui, 18, 202, 284, 1, name, C3_UI_WHITE); }
@@ -272,7 +313,7 @@ static void draw(const C3WorldMap *map, const char *note)
         C3WorldMapEntry entry;
         int index = c3_world_map_visible(map, i);
         if (index < 0 || !c3_world_map_entry((uint32_t)index, &entry)) continue;
-        c3_ui_row_value(ui, ROW_TOP + (int)i * ROW_HEIGHT, label(entry.floor),
+        c3_ui_row_value(ui, ROW_TOP + (int)i * ROW_HEIGHT, place_names[index],
                         c3_field_scene_supports(entry.floor) ? NULL : "not prepared",
                         i == map->cursor, !c3_field_scene_supports(entry.floor));
     }
@@ -779,6 +820,7 @@ int c3_world_map_scene_run(C3GameState *state, FILE *trace, char *error, size_t 
         return -1;
     }
     journey_open(trace);
+    place_names_load(state, trace);
     if (trace) {
         fprintf(trace, "world_map_begin previous=%lu enabled=%03lx visible=%lu cursor=%lu save_writes=0\n",
                 (unsigned long)summary.previous_floor, (unsigned long)map.enabled,

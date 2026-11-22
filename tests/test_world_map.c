@@ -91,6 +91,32 @@ int main(void)
      CHECK(map.cursor == before.cursor && map.enabled == before.enabled && map.previous_floor == before.previous_floor);}
     CHECK(!c3_world_map_open(NULL, 1, read_flag, &flags) && !c3_world_map_open(&map, 1, NULL, NULL));
 
+    /* Info text (fn_800246FC over lbl_3_data_90, columns lbl_802E4F58).
+     * Just after the Phenac troop battle (0x3EC, 0xA59) the first passing
+     * row is row 8 (flag 0): Outskirt 3CDA, Phenac 3CDC, entry 0x66
+     * 3CDE "CONSTRUCTION LOT", Pyrite 3CE9; Snagem has no text yet. */
+    {   Flags early = {{0x3DF, 0x3EC, 0xA59}, 3, 0, 0};
+        CHECK(c3_world_map_info_message(0, read_flag, &early) == 0x3CDAu);
+        CHECK(c3_world_map_info_message(5, read_flag, &early) == 0x3CDCu);
+        CHECK(c3_world_map_info_message(4, read_flag, &early) == 0x3CDEu);
+        CHECK(c3_world_map_info_message(6, read_flag, &early) == 0x3CE9u);
+        CHECK(c3_world_map_info_message(1, read_flag, &early) == 1u);
+        CHECK(c3_world_map_info_message(9, read_flag, &early) == 1u);
+        /* The finished tower (0x45D, row 1): entry 0x66 is 3CF6 "REALGAM
+         * TOWER"; 0xA0E (row 3) names entry 0x41 3CDD "MYSTERY LAB";
+         * 0x477 (row 0) gives every place, Snagem Hideout 3D0E. */
+        early.set[early.count++] = 0xA0E;
+        CHECK(c3_world_map_info_message(2, read_flag, &early) == 0x3CDDu);
+        CHECK(c3_world_map_info_message(4, read_flag, &early) == 0x3D16u);
+        early.set[early.count++] = 0x45D;
+        CHECK(c3_world_map_info_message(4, read_flag, &early) == 0x3CF6u);
+        early.set[early.count++] = 0x477;
+        CHECK(c3_world_map_info_message(1, read_flag, &early) == 0x3D0Eu);
+        CHECK(c3_world_map_info_message(4, read_flag, &early) == 0x3D08u);
+        early.fail = 1;
+        CHECK(c3_world_map_info_message(4, read_flag, &early) == 0u);
+        CHECK(c3_world_map_info_message(4, NULL, NULL) == 0u); }
+
     /* Journey rows (fn_80025F84 over lbl_3_data_270). */
     {   C3WorldMapJourney journey = {0}; uint32_t anim = 99, camera = 0;
         CHECK(c3_world_map_journey_west(0, 100, 40) == 1 && c3_world_map_journey_west(1, 100, 160) == 0);

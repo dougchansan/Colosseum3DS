@@ -143,6 +143,27 @@ int c3_world_map_choose(const C3WorldMap *map, int visible_index,
     return 1;
 }
 
+/* lbl_802E4F58 (DOL data_802E4DB0.c): the column of each table entry in a
+ * row of lbl_3_data_90; titleSlotMessage reads entry 0's column past 9. */
+static const uint8_t info_column[10] = {0, 8, 6, 5, 2, 1, 3, 4, 7, 0};
+
+uint32_t c3_world_map_info_message(uint32_t index, C3WorldMapFlag flag, void *context)
+{
+    publish();
+    if (!flag) return 0;
+    for (uint32_t slot = 0; slot < *c3_wm_slot_count; ++slot) {
+        const u32 *row = (const u32 *)c3_wm_slots + slot * 10u;
+        uint32_t value = 1;
+        if (row[0] && !flag(context, row[0], &value)) return 0;
+        if (!value) continue;
+        /* Only the first passing row is read; an index past the table
+         * shows message 1 (empty). */
+        if (index >= *c3_wm_entry_count) return 1;
+        return row[1u + info_column[index > 9u ? 0u : index]];
+    }
+    return 1;
+}
+
 int c3_world_map_journey_west(int previous_west, int origin_x, int destination_x)
 {
     /* fn_80023E60 normalises (destination - origin) and dots it with +X;

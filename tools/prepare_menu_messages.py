@@ -8,6 +8,7 @@ with c3_story_add_messages. Outputs stay private.
   name_entry.c3m  name_entry_menu.fsys 02FD0A00  name entry (floor 0x390)
   pcbox.c3m       pcbox_menu.fsys      02E90A00  PC box / bag menus (0x391, 0x38F)
   pda.c3m         pda_menu.fsys        03750A00  P*DA and mail (0x392)
+  worldmap.c3m    world_map.fsys       0C5A0A00  world-map place names and info (0x38E)
 """
 import argparse
 import hashlib
@@ -21,6 +22,7 @@ PACKS = {
     "name_entry.c3m": ("name_entry_menu.fsys", 0x02FD0A00),
     "pcbox.c3m": ("pcbox_menu.fsys", 0x02E90A00),
     "pda.c3m": ("pda_menu.fsys", 0x03750A00),
+    "worldmap.c3m": ("world_map.fsys", 0x0C5A0A00),
 }
 
 

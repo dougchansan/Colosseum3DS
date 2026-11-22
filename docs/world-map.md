@@ -36,9 +36,15 @@ cursor on the bottom screen (`boot/worldmap.c3w`, `tools/prepare_world_map.py`);
 the D-pad follows the original link table and a tap selects a marker (tap
 again to go); B is the menu's cancel. Without that pack it falls back to a
 list in table order. The top screen orbits the highlighted destination.
-- Destination names are the port's own English labels, chosen from the
-  archive identity of each floor. The original menu strings and the twelve
-  location images are not extracted yet.
+- Destination names are the original's: the first line of each entry's
+  info message. `c3_world_map_info_message` lowers `fn_800246FC` (the first
+  row of `lbl_3_data_90` whose flag is zero or set, column
+  `lbl_802E4F58[entry]`); the messages are `world_map.fsys` group
+  `0C5A0A00`, prepared as `boot/worldmap.c3m` by
+  `tools/prepare_menu_messages.py`. So floor `0x66` is CONSTRUCTION LOT
+  until flag `0x45D` (then REALGAM TOWER) and floor `0x41` MYSTERY LAB before
+  SHADOW PKMN LAB. Without the pack the port's own labels are used. The
+  info text below the name and the twelve location images are not drawn.
 - A travel choice plays the original journey on the top screen (below).
 - The original 3D Orre map menu and the info text slots are not drawn.
 - The world-map script bank `01E00E00` (init/pre/main/post, native `B4`) is
