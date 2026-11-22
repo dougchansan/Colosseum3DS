@@ -15,8 +15,15 @@
 
 static uint32_t u32(const uint8_t *p)
 {
+#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+    /* One load instead of four byte loads (the console and hosts are LE). */
+    uint32_t value;
+    memcpy(&value, p, sizeof value);
+    return value;
+#else
     return (uint32_t)p[0] | (uint32_t)p[1] << 8 |
            (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24;
+#endif
 }
 
 static float f32(const uint8_t *p)
@@ -42,14 +49,16 @@ size_t c3_title_texture_bytes(uint32_t width, uint32_t height, uint32_t gpu_form
     return total;
 }
 
+/* Every magnitude is finite, so the comparisons alone reject NaN and
+ * infinities (a separate isfinite test doubled the cost of pack checks). */
 static int bounded(float value, float magnitude)
 {
-    return isfinite(value) && fabsf(value) <= magnitude;
+    return fabsf(value) <= magnitude;
 }
 
 static int unit(float value)
 {
-    return isfinite(value) && value >= 0.0f && value <= 1.0f;
+    return value >= 0.0f && value <= 1.0f;
 }
 
 /* The source title uses rigid joints, but inverse-transpose is still required
@@ -85,6 +94,27 @@ static int normal_matrix(const float *m, float *n)
     return 1;
 }
 
+/* Load-time check only: true guarantees normal_matrix(m) succeeds, so the
+ * double-precision inverse runs only for the rare near-singular joint. The
+ * basis is normalized as there; float rounding moves the determinant of
+ * entries |x| <= 1 by well under 1e-5, so |det| >= 1e-3 implies the exact
+ * test's 1e-12, and scale >= 1e-20 keeps every inverse entry finite. */
+static int clearly_invertible(const float *m)
+{
+    float scale=0.0f;
+    static const unsigned basis[9]={0,1,2,4,5,6,8,9,10};
+    for(unsigned k=0;k<9;++k){
+        float value=fabsf(m[basis[k]]);
+        if(!(value<=1.0e30f))return 0;
+        if(value>scale)scale=value;
+    }
+    if(!(scale>=1.0e-20f))return 0;
+    float s=1.0f/scale;
+    float a=m[0]*s,b=m[1]*s,c=m[2]*s,d=m[4]*s,e=m[5]*s,f=m[6]*s,g=m[8]*s,h=m[9]*s,i=m[10]*s;
+    float determinant=a*(e*i-f*h)-b*(d*i-f*g)+c*(d*h-e*g);
+    return fabsf(determinant)>=1.0e-3f;
+}
+
 static void read_floats(float *out, const uint8_t *p, uint32_t count)
 {
     uint32_t i;
@@ -102,6 +132,13 @@ static int bone_hidden(const C3Title *title, const uint8_t *materials, uint32_t 
     return 1;
 }
 
+/* bounded(x, 1e6f) and unit(x) on a stored float's bits, for the per-frame
+ * checks: non-negative IEEE-754 floats order as their integers, and NaN
+ * patterns lie above infinity, so no float compare is needed. */
+#define BOUND_1E6_BITS 0x49742400u /* 1000000.0f */
+static int bounded_word(uint32_t bits) { return (bits & 0x7fffffffu) <= BOUND_1E6_BITS; }
+static int unit_word(uint32_t bits) { return bits <= 0x3f800000u || bits == 0x80000000u; }
+
 static int validate_frames(const C3Title *title)
 {
     uint32_t frame, bone, batch, i;
@@ -109,24 +146,24 @@ static int validate_frames(const C3Title *title)
         const uint8_t *p = title->file_data + title->frame_offset + frame*title->frame_bytes;
         for (bone = 0; bone < title->bone_count; ++bone, p += 48u) {
             float matrix[12], normal[9];
+            for (i = 0; i < 12; ++i) if (!bounded_word(u32(p+i*4u))) return 0;
             read_floats(matrix, p, 12);
-            for (i = 0; i < 12; ++i) if (!bounded(matrix[i], 1000000.0f)) return 0;
-            if (!normal_matrix(matrix, normal) &&
+            if (!clearly_invertible(matrix) && !normal_matrix(matrix, normal) &&
                 !bone_hidden(title, p+(title->bone_count-bone)*48u, bone)) return 0;
         }
         for (batch = 0; batch < title->batch_count; ++batch, p += title->material_frame_bytes) {
-            for (i = 0; i < 4; ++i) if (!bounded(f32(p+i*4u), 1000000.0f)) return 0;
-            for (i = 4; i < 12; ++i) if (!unit(f32(p+i*4u))) return 0;
+            for (i = 0; i < 4; ++i) if (!bounded_word(u32(p+i*4u))) return 0;
+            for (i = 4; i < 12; ++i) if (!unit_word(u32(p+i*4u))) return 0;
             if (f32(p+20u) != 0.0f && f32(p+20u) != 1.0f) return 0;
             if (title->format_version >= 2u) {
-                for (i=12; i<16; ++i) if (!bounded(f32(p+i*4u),1000000.0f)) return 0;
+                for (i=12; i<16; ++i) if (!bounded_word(u32(p+i*4u))) return 0;
             }
             if (title->format_version >= 3u) {
-                for (i=16; i<23; ++i) if (!bounded(f32(p+i*4u),1000000.0f)) return 0;
+                for (i=16; i<23; ++i) if (!bounded_word(u32(p+i*4u))) return 0;
                 if (u32(p+92u)) return 0;
             }
         }
-        for (i = 0; i < 11; ++i) if (!bounded(f32(p+i*4u), 1000000.0f)) return 0;
+        for (i = 0; i < 11; ++i) if (!bounded_word(u32(p+i*4u))) return 0;
         if (f32(p+28u) <= 1.0f || f32(p+28u) >= 179.0f ||
             f32(p+32u) <= 0.0f || f32(p+36u) <= f32(p+32u) ||
             f32(p+40u) <= 0.0f || f32(p+40u) > 10.0f || u32(p+44u)) return 0;
@@ -213,7 +250,7 @@ static int decode_owned(C3Title *title, char *error, size_t capacity)
         memcpy(v->rgba,p+32u,4);
         v->bone = u32(p+36u);
         if (title->format_version>=2u) read_floats(v->uv2,p+40u,2);
-        for (j=0; j<8; ++j) if (!bounded(f32(p+j*4u),1000000.0f)) return fail(error,capacity,"Nonfinite or excessive title vertex");
+        for (j=0; j<8; ++j) if (!bounded_word(u32(p+j*4u))) return fail(error,capacity,"Nonfinite or excessive title vertex");
         for (j=0; j<3; ++j) if (!bounded(v->normal[j],1.001f)) return fail(error,capacity,"Invalid title vertex normal");
         if (v->bone >= title->bone_count) return fail(error,capacity,"Title vertex bone is out of range");
         for (j=0; j<2; ++j) if (!bounded(v->uv2[j],1000000.0f)) return fail(error,capacity,"Invalid second texture coordinate");
