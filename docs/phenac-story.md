@@ -38,6 +38,16 @@ private packs. 7,230 checks pass.
   end of each step and skipped the partner, so after the sack event (Wes
   at (0, 323.75) facing Rui at (0, 313), both placed by native 3B) Wes ran
   straight through her (`test_phenac_events` partner row).
+- Wes is a cylinder for Rui too: the follower's step (`fn_8012CA84` ->
+  `fn_801885C4` -> `fn_8018E9B4`) runs under her people flags 0x701, human
+  cylinders then walls, so she stops at his cylinder instead of walking into
+  him; both cylinders are switched off during events (`heroMoveInitEvent`)
+  and back on after (`heroMoveTermEvent`). The console stop at
+  (-4.8654, 2.0003, -3.7359) on the Pre-Gym ring is the inside corner of
+  the ring railing (CCD object 7), not Rui: a planner that grounds the
+  point from y 0 lands on the street below and misses the railing
+  (`test_phenac_events` ring-corner row). `field_partner` trace lines give
+  Rui's position beside each `field_tick`.
 - Event kind 1 is a crossed surface (`fn_801101B4`), kind 2 a touched one
   (`GScolsys2ThruGetEventID`, sphere of the person's radius), kind 3 the
   A-button query; `hero_move.c` dispatches 3, 2, 1 in that order. Phenac has

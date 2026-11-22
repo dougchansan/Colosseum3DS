@@ -2072,6 +2072,12 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                 (unsigned long)stats.draw_calls,(unsigned long)snapshot.last_command_words,(unsigned long)stats.gpu_buffer_bytes,
                 (unsigned long)stats.vertices,(unsigned long)stats.vertices_prepared,(unsigned long)stats.cached_models,
                 (double)stats.gpu_previous_ms,perf);
+            /* The partner (0,101) beside each field tick: where she stands
+             * relative to Wes explains a blocked step. */
+            {const C3StoryActor *rui=c3_field_story_person(&story,0,101);
+             if(rui)fprintf(trace,"field_partner floor=%lu visible=%d xyz=%.4f,%.4f,%.4f yaw=%.4f clip=%lu gap=%.4f\n",(unsigned long)map.floor,rui->visible,
+                 (double)rui->pose.position[0],(double)rui->pose.position[1],(double)rui->pose.position[2],(double)rui->pose.yaw,(unsigned long)rui->clip,
+                 (double)hypotf(rui->pose.position[0]-player.position[0],rui->pose.position[2]-player.position[2]));}
             /* A queued cue alone does not prove DSP playback progressed. */
             if(pda_audio_ready&&ingame->active&&ingame->page==C3_GAME_TONES)c3_pda_audio_trace(trace,"pda_menu_tick");
             fflush(trace);next_trace=now+UINT64_C(1000000);
