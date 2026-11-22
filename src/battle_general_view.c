@@ -119,7 +119,16 @@ uint32_t c3_general_view_batch(C3GeneralView *v, const C3GeneralBattle *b,
         default:
             if (!v->introduced && i == 0) { e->kind = C3_PREVIEW_EVENT_INTRO; break; }
             e->kind = C3_PREVIEW_EVENT_MESSAGE;
-            if (g->stat >= 0 && g->stat < 7 && e->actor < 4) {
+            e->cutin = g->cutin;
+            if (g->waza_effect && e->actor < 4) {
+                /* fightOutPokemonWazaEffect: the move's attack sequence on the
+                 * Pokemon, no target and no damage. */
+                e->kind = C3_PREVIEW_EVENT_MOVE; e->move = g->waza_effect; e->target = C3_PREVIEW_NO_SLOT;
+                v->group = v->sequence; v->last_move = g->waza_effect; v->last_actor = e->actor; v->last_move_group = v->group;
+            } else if (g->special && e->actor < 4) {
+                /* fightOutPokemonDarkPokemonEffect: a battle special on the Pokemon. */
+                e->kind = C3_PREVIEW_EVENT_STATUS; e->target = e->actor; e->effect = g->special;
+            } else if (g->stat >= 0 && g->stat < 7 && e->actor < 4) {
                 int next = v->stages[e->actor][g->stat] + g->stat_delta;
                 v->stages[e->actor][g->stat] = (int8_t)(next > 6 ? 6 : next < -6 ? -6 : next);
                 e->kind = C3_PREVIEW_EVENT_STATUS;

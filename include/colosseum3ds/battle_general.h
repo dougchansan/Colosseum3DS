@@ -55,6 +55,9 @@ typedef struct C3BattleEncounterInfo {
      * nigeru, getExp, getOkane, okanePool, doCriticalAttack and
      * darkpokemonHypermode. */
     uint8_t back_save, use_item, can_run, get_exp, get_money, money_pool, critical, hyper_mode;
+    /* doHizukiAiFlag (kind +15, floor status 0x2B): the partner notices an
+     * opposing Shadow Pokemon when it first comes out (fn_8022E6F0). */
+    uint8_t partner_aura;
     /* Side 0 is a CPU trainer, not the hero (pack v3; encounter 525, Eagun
      * vs Skrub): both sides are chosen by the trainer AI, nothing is written
      * back, and the result is 2 when side 0 wins, 3 when side 1 does. */
@@ -88,7 +91,13 @@ typedef struct C3GeneralMon {
      * hyper: joutai 0x3E (Hyper Mode); gauge_dropped: flag 0xD1 (the send-out
      * gauge drop is once per battle). */
     int32_t dp, dp_max;
-    uint8_t hyper, gauge_dropped;
+    uint8_t hyper, gauge_dropped; /* gauge_dropped is flag 0xD1 for either side: the
+                                   * opponent's Shadow appearance check ran too */
+    /* pokemonGetTokuseiDataId: species row +0x32[flag] (the flag is 0 when the
+     * species has one ability); trainer records give the flag at +0, party
+     * records at +0xCC. key_player / part: trainer record +5 / +6
+     * (fightTrainerPokemonData KeyPlayerFlag, PartDataId), 0 for the hero's. */
+    uint8_t ability, key_player, part;
 } C3GeneralMon;
 
 typedef struct C3GeneralCommand {
@@ -112,6 +121,14 @@ typedef struct C3GeneralEvent {
     uint8_t status;     /* a new status condition (C3_GB_SLEEP..), 0 otherwise */
     uint8_t ball;       /* the ball of the Pokemon at `actor` (item id, 0 none) */
     uint8_t hyper;      /* the Pokemon at `actor` went into Hyper Mode here */
+    /* The opposing Shadow Pokemon's appearance (fn_8022E6F0 mode 0):
+     * special: a battle special played on `actor` (fightOutPokemonDarkPokemonEffect:
+     * 0x3A, 0xD9 in encounter 0x11); cutin: the partner's cut-in (model 0x32
+     * playing special 0xA0 in the hero trainer's place) comes first;
+     * waza_effect: a move whose attack sequence `actor` plays
+     * (fightOutPokemonWazaEffect, encounter 0x11's tutorial). */
+    uint16_t special, waza_effect;
+    uint8_t cutin;
     char text[96];
 } C3GeneralEvent;
 
@@ -147,6 +164,11 @@ typedef struct C3GeneralBattle {
      * multiplier): 1 at fightTrainerInit, 2 once a hero Pokemon holding the
      * Amulet Coin (item 189, soubi data 0x20) comes out (fn_8022D084). */
     uint8_t okane_bai;
+    /* The partner (Rui) for fight text control 0x2C (c3_battle_story_prepare;
+     * empty: "Rui") and flag 0x9A0 (the story has named Shadow Pokemon:
+     * message 0x770A instead of 0x7717). */
+    char partner_name[C3_GB_NAME];
+    uint8_t shadow_named;
     uint32_t event_count;
     C3GeneralEvent events[C3_GB_EVENT_LIMIT];
 } C3GeneralBattle;
@@ -205,6 +227,11 @@ unsigned c3_general_dark_level(const C3GeneralMon *mon);
  * hero's own side outside link battles; it snaps a Shadow Pokemon out of
  * Hyper Mode or wakes a sleeper). */
 int c3_general_battle_can_call(const C3GeneralBattle *battle, unsigned position);
+/* fn_8022E6F0 mode 0 for the opponent's opening Pokemon (turn 0 only; once
+ * per Pokemon): the partner notices a Shadow Pokemon (src/battle_general.c).
+ * c3_battle_story_prepare calls it after naming the partner; later
+ * send-outs run the check themselves. */
+void c3_general_battle_appear_checks(C3GeneralBattle *battle);
 /* Whether the hero at `position` may throw `ball` at `target` now. */
 int c3_general_battle_can_snag(const C3GeneralBattle *battle, const C3BattlePack *pack,
                                unsigned position, unsigned ball, unsigned target);
