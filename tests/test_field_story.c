@@ -206,6 +206,11 @@ static void call_end(Program *p,unsigned argc,int discard)
 {raw(p,0x25);raw(p,0);raw(p,1);raw(p,0);raw(p,(uint8_t)(argc+1));if(discard)drop(p);}
 static void native(Program *p,uint32_t id,unsigned argc,const uint32_t *args,int discard)
 {push(p,0);push(p,id);for(unsigned i=0;i<argc;++i)push(p,args[i]);call_end(p,argc,discard);}
+/* Bank offset of program `index` (see bank()) and absolute jumps into it. */
+static unsigned program_base(const Program programs[8],unsigned index)
+{unsigned base=56;for(unsigned i=0;i<index;++i)base+=programs[i].size+1;return base;}
+static unsigned jump(Program *p,uint8_t op,uint32_t target){raw(p,op);unsigned at=p->size;for(unsigned i=0;i<4;++i)raw(p,(uint8_t)(target>>(24-8*i)));return at;}
+static void wait_frames(Program *p,uint32_t frames){push(p,frames);raw(p,0x24);raw(p,0);raw(p,0);raw(p,0);raw(p,1);}
 static unsigned bank(uint8_t *out,unsigned id,const Program programs[8])
 {
     unsigned size=56;memset(out,0,56);be16(out,id);be16(out+4,8);be32(out+16,56);
@@ -464,6 +469,38 @@ static void synthetic_regressions(void)
     CHECK(c3_field_story_tick(&s->story,1.f/60,0,error));CHECK(!c3_field_story_view(&s->story)->control);
     CHECK(c3_field_story_tick(&s->story,.25f,0,error));CHECK(!c3_field_story_view(&s->story)->control);
     CHECK(c3_field_story_tick(&s->story,.25f,0,error));CHECK(c3_field_story_view(&s->story)->control&&!c3_field_story_view(&s->story)->camera_active);close_scene(s);
+    /* A sight trainer talked to: updateChat (fn_8012C0B4) suspends the
+     * person's own thread for the talk (fn_80183730/fn_80183688). Pyrite 2F
+     * Geats: function 10 loops "not beaten and a9 sees the hero: run the talk
+     * function"; with the thread running during the talk, both paths fought
+     * the battle. Here the sight path sets the camera eye, the talk waits
+     * half a second and sets the camera target; both then hide the person,
+     * which ends a9 as the beaten flag does. */
+    {
+        memset(code,0,sizeof code);native(code+3,0x1f,0,NULL,1);
+        wait_frames(code+5,30);args[0]=bits(1);args[1]=args[2]=0;native(code+5,0x26,3,args,1);
+        args[0]=3;args[1]=0;native(code+5,0x64,2,args,1);
+        const uint32_t loop=program_base(code,6);
+        args[0]=29;args[1]=3;native(code+6,0xa9,2,args,0);unsigned unseen=jump(code+6,7,0);
+        args[0]=bits(2);args[1]=args[2]=0;native(code+6,0x28,3,args,1);
+        args[0]=3;args[1]=0;native(code+6,0x64,2,args,1);
+        be32(code[6].data+unseen,loop+code[6].size);wait_frames(code+6,1);jump(code+6,6,loop);
+        synthetic_load(s,&game,file,code,0,0,0x1000003);
+        s->area.actors[0].move_script=0x1000006;s->area.actors[0].talk_script=0x1000005;
+        actor=c3_field_story_actor(&s->story,3);actor->pose.position[2]=1;actor->pose.yaw=3.14159265f;
+        s->hero.position[2]=-100;
+        CHECK(c3_field_story_enter(&s->story,error));
+        for(unsigned i=0;i<10;++i)CHECK(c3_field_story_tick(&s->story,1.f/60,0,error));
+        const C3FieldStoryView *view=c3_field_story_view(&s->story);
+        CHECK(view->control&&actor->visible&&view->camera.eye[0]==0&&view->camera.target[0]==0);
+        s->hero.position[2]=0;CHECK(c3_field_story_interact(&s->story,error));CHECK(!view->control);
+        for(unsigned i=0;i<45;++i)CHECK(c3_field_story_tick(&s->story,1.f/60,0,error));
+        CHECK(view->camera.target[0]==1&&view->camera.eye[0]==0&&!actor->visible&&view->control);
+        /* The thread resumes after the talk and still watches. */
+        actor->visible=1;
+        for(unsigned i=0;i<3;++i)CHECK(c3_field_story_tick(&s->story,1.f/60,0,error));
+        CHECK(view->camera.eye[0]==2&&!actor->visible);close_scene(s);
+    }
     /* TalkWallThrough bypasses the talk ray only. The same solid wall still
      * blocks an actor with the bit clear; native76 can disable its CCD object. */
     for(unsigned mode=0;mode<3;++mode){

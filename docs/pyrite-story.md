@@ -118,6 +118,13 @@ packs of the same floors. Commands: `tools/prepare_story.py` (and
   2026-11-20, defect 32). `prepare_story.py` now names each door row's map
   model (resourceId low 12 bits, map group `| 0x1000`) and
   `prepare_floor.py` makes those models object packs.
+- Talking to a person suspends that person's own script thread until the
+  talk ends (updateChat `fn_8012C0B4`: `fn_80183730` before the talk
+  script, `fn_80183688` after). 2F trainer Geats' thread (function 10)
+  loops on "beaten flag 0x9FD clear and native A9 sees Wes", then runs the
+  talk function 5. The port kept that thread running during the talk, so
+  both fought encounter 110 and paid out twice (playtest 2026-11-20). Every
+  trainer with a sight loop had the same problem.
 - Door-table close flags lock doors (`floorEventCtrlDoor` mode 0): the
   building's front door (town row 15) stays locked until `0x40A`, so the
   rooftop (town door 6) is how the chapter first reaches 4F.

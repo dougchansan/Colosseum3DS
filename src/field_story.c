@@ -42,6 +42,7 @@ typedef struct Person {
     float target[3], look[3], old_yaw, speed, turn_target, turn_speed;
     double turn_fraction;
     int moving, turning, talking, looking, talk_lock;
+    uint16_t thread_key; /* its own script thread (fn_801837D8 keeps it at person+0x4C) */
     /* Streamed models (field_scene loads people after the room): what the
      * scripts asked for while the model was absent, applied on attach. */
     int dynamic_active;
@@ -70,6 +71,7 @@ typedef struct {
     int battle_loaded;
     FILE *trace;
     uint16_t setup_key, talk_key, event_key, post_key, main_key, exit_fade_key;
+    uint16_t talk_held; /* the talked-to person's thread, suspended for the talk */
     int setup_stage, preparing, entered, hero_ready, event_depth, departure_started;
     int event_depth_base; /* event_depth when the current talk/event script started */
     int hero_event; /* heroMoveInitEvent (native 20) until heroMoveTermEvent (21) */
@@ -2406,10 +2408,10 @@ int c3_field_story_enter(C3FieldStory *story,char *error)
     Impl *s=story?story->impl:NULL;
     if(!s||!s->view.prepared||s->entered)return fail(error,"Story entry called out of sequence");
     s->entered=1;
-    for(uint32_t i=0;i<s->area->actor_count;++i){Person *p=s->actors+i;uint16_t key;
+    for(uint32_t i=0;i<s->area->actor_count;++i){Person *p=s->actors+i;
         if(p->public.visible&&p->source->move_script){
             uint32_t args[4]={s->area->group,p->public.index,0,0};
-            if(!start(s,p->source->move_script,args,4,&key,error))return 0;
+            if(!start(s,p->source->move_script,args,4,&p->thread_key,error))return 0;
         }
     }
     /* movie.c fn_80035F64 installs this entry override after floorLink(2,1).
@@ -2702,6 +2704,7 @@ int c3_field_story_tick(C3FieldStory *story,float seconds,uint16_t pressed,char 
     }
     for(unsigned i=0;i<C3_STORY_TASKS;++i){RunTask *t=s->tasks+i;
         if(!t->key||!c3_story_active(&s->vm,t->key))continue;
+        if(t->key==s->talk_held)continue;
         if(!wait_task(s,t,seconds,&pressed,error))return 0;
         if(t->wait!=W_NONE)continue;
         for(unsigned calls=0;calls<128;++calls){
@@ -2724,7 +2727,7 @@ int c3_field_story_tick(C3FieldStory *story,float seconds,uint16_t pressed,char 
     }
     if(s->talk_key&&!c3_story_active(&s->vm,s->talk_key)){
         log_line(s,"story_talk_complete task=%u",s->talk_key);
-        s->talk_key=0;close_message(s);restore_speakers(s);
+        s->talk_key=0;s->talk_held=0;close_message(s);restore_speakers(s);
         /* heroMoveInitEvent (native 20) without its heroMoveTermEvent:
          * an event branch may return early (Phenac fn 27 when flag 9a2 is
          * set). The hero move lock belongs to the event, so it ends with it. */
@@ -2740,6 +2743,7 @@ int c3_field_story_tick(C3FieldStory *story,float seconds,uint16_t pressed,char 
         /* The original scene runs its post callback on departure. Suspend
          * other floor tasks before it so no more input or event can race it. */
         for(unsigned i=0;i<C3_STORY_TASKS;++i)if(s->tasks[i].key)c3_story_stop(&s->vm,s->tasks[i].key);
+        s->talk_held=0;
         if(!start(s,0x05960009u,NULL,0,&s->exit_fade_key,error))return 0;
         if(!start_floor_script(s,s->area->post_script,&s->post_key,error))return 0;
         s->departure_started=1;
@@ -2850,6 +2854,12 @@ int c3_field_story_interact(C3FieldStory *story,char *error)
         s->hero->yaw=atan2f(best->public.pose.position[0]-s->hero->position[0],best->public.pose.position[2]-s->hero->position[2]);
         s->hero->motion=0;s->hero->animation_seconds=0;
         log_line(s,"story_talk actor=%lu script=%08lx",(unsigned long)best->public.index,(unsigned long)best->source->talk_script);
+        /* updateChat (fn_8012C0B4) suspends the person's own thread around
+         * the talk: fn_80183730 before fn_800F7434, fn_80183688 after. A
+         * trainer's sight loop (Pyrite 2F function 10: a9, then the talk
+         * function) cannot fight the same battle while the talk runs. */
+        s->talk_held=c3_story_active(&s->vm,best->thread_key)?best->thread_key:0;
+        if(s->talk_held)log_line(s,"story_talk_hold task=%u",s->talk_held);
         s->view.control=0;return start(s,best->source->talk_script,args,4,&s->talk_key,error);
     }
     float from[3]={s->hero->position[0],s->hero->position[1]+.5f,s->hero->position[2]};
