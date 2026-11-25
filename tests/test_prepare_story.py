@@ -344,6 +344,30 @@ class DoorPackTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             story.encode_door_pack(5, [{**objects[0], "collision_id": 0}], {0x80000000: "a.c3t"})
 
+    def test_elevator_rows_record_the_retained_part_bone(self):
+        # Pyrite Building 3F row 140 (door type 2, part 1, model 0): the
+        # object pack keeps part 1 as its last sampled bone (3), per the
+        # prepare_floor.py manifest; the C3D row stores bone + 1 at +18.
+        with tempfile.TemporaryDirectory() as directory:
+            manifest = Path(directory) / "f01b-manifest.json"
+            manifest.write_text('{"objects": [{"file": "f01b_obj0.c3t", "retained_parts": {"1": 3}},'
+                                ' {"file": "f01b_obj3.c3t", "retained_parts": {}}]}', encoding="utf-8")
+            retained = story.retained_parts([manifest])
+        self.assertEqual(retained, {"f01b_obj0.c3t": {1: 3}})
+        lift = {**self.row(140, floor=0x1B), "door_type": 2, "part_index": 1, "resource_id": "00a71000"}
+        door = {**self.row(32, floor=0x1B), "resource_id": "00a71003"}
+        rows = [story.elevator_bone(door, "f01b_obj3.c3t", retained),
+                story.elevator_bone(lift, "f01b_obj0.c3t", retained)]
+        self.assertNotIn("part_bone_plus_one", rows[0])
+        self.assertEqual(rows[1]["part_bone_plus_one"], 4)
+        # An elevator whose pack keeps no part, or has no pack, records none.
+        self.assertNotIn("part_bone_plus_one", story.elevator_bone(lift, "f01b_obj3.c3t", retained))
+        self.assertNotIn("part_bone_plus_one", story.elevator_bone(lift, None, retained))
+        pack = story.encode_door_pack(0x1B, rows, {32: "f01b_obj3.c3t", 140: "f01b_obj0.c3t"})
+        self.assertEqual([struct.unpack_from("<H", pack, 32 + 64 * i + 18)[0] for i in range(2)], [0, 4])
+        with self.assertRaises(ValueError):
+            story.encode_door_pack(0x1B, [{**rows[1], "part_bone_plus_one": 65}], {140: "f01b_obj0.c3t"})
+
     def test_surveyed_floor_doors_name_their_map_models(self):
         # Duking's house (0x14, map 0x008F0200): door row 28 is the bookshelf,
         # resource 0x008F1002 = model 2. Unnamed, the bookshelf was invisible

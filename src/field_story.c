@@ -20,7 +20,7 @@
 
 typedef enum { W_NONE, W_SECONDS, W_TASK, W_MOTION, W_MOVE, W_CAMERA,
                W_CAMERA_MOVE, W_FADE, W_MESSAGE, W_CHOICE, W_TV, W_BATTLE, W_NAME, W_ITEM, W_DOOR, W_SHOP, W_MENU_FLOOR, W_JINGLE, W_DIALOG,
-               W_RELIVE, W_FALL, W_ITEM_MENU, W_OBJECT, W_HEAL } Wait;
+               W_RELIVE, W_FALL, W_ITEM_MENU, W_OBJECT, W_HEAL, W_LIFT } Wait;
 typedef struct {
     uint16_t key, child;
     C3StoryCall call;
@@ -99,6 +99,12 @@ typedef struct {
     C3FieldStoryTake take;void *take_context;
     C3FieldStoryAudio audio;void *audio_context;
     const C3AreaDoor *door_rows;C3StoryDoor doors[C3_AREA_MAX_DOORS];uint32_t door_count;
+    /* Native C5 (fn_801C9B6C -> floorEventCtrlElevator / fn_801C8E14): the
+     * command waiting on its animations and walks, the party that rides
+     * (lbl_8047B3C4) and the people attached to the cabin part. */
+    struct { uint32_t pos, cmd, value; int party, stage; float timer, partner_target[3]; } lift;
+    int lift_party;
+    struct { int on, party; uint32_t pos; float offset[2][3]; } ride;
     /* Native 53 mode 0 (fn_801D0DB0): the ball models the scene loaded and
      * the catch ball each shows, then the running sequence's state. */
     C3Title *heal_models[C3_HEAL_BALL_SLOTS];uint8_t heal_bound[C3_HEAL_BALL_SLOTS];uint32_t heal_model_count;
@@ -547,6 +553,189 @@ static int tv_setup(Impl *s,char *error)
     if(!set_flag(s,0x0A05,1,error))return 0;
     s->view.tv_enabled=1;return 1;
 }
+/* ---- Native C5: elevators (floor_event.c floorEventCtrlElevator and
+ * gs_range_801C766C.c fn_801C8E14, chosen by fn_801C9B6C). Offsets are
+ * original units (x map scale); the cabin part is the object pack's
+ * retained bone (C3D part_bone_plus_one). */
+static int lift_door(const Impl *s,uint32_t row,uint32_t *pos)
+{
+    for(uint32_t i=0;i<s->door_count;++i)
+        if(s->door_rows[i].index==row&&!(row&C3_AREA_MAP_OBJECT_ROW)){*pos=i;return 1;}
+    return 0;
+}
+/* GSpartGetTransform position of the row's part, as the cabin stands now. */
+static int lift_part(const Impl *s,uint32_t pos,float out[3])
+{
+    const C3StoryDoor *door=s->doors+pos;const C3AreaDoor *row=s->door_rows+pos;float m[12];
+    if(!door->model||!row->part_bone_plus_one||row->part_bone_plus_one>door->model->bone_count||
+       !c3_title_sample_bone(door->model,door->clip,door->seconds,row->part_bone_plus_one-1u,m))return 0;
+    out[0]=m[3];out[1]=m[7];out[2]=m[11];return 1;
+}
+static float lift_clip_seconds(const C3Title *model,int clip)
+{
+    if(!model||clip<0||(uint32_t)clip>=model->clip_count||model->clips[clip].frame_count<2u||!(model->fps>0))return 0;
+    return (float)(model->clips[clip].frame_count-1u)/model->fps;
+}
+/* fieldModelStartAnim: play a clip of the cabin from frame 0. */
+static void lift_play(Impl *s,uint32_t pos,int clip)
+{
+    C3StoryDoor *door=s->doors+pos;
+    if(!door->model||clip<0||(uint32_t)clip>=door->model->clip_count)return;
+    door->clip=(uint32_t)clip;door->seconds=0;door->playing=1;door->loop=0;door->rate=1;
+}
+static Person *lift_partner(Impl *s)
+{
+    Person *p=person(s,0,101);return p&&p->public.visible?p:NULL;
+}
+static void lift_place(Impl *s,Person *p,const float at[3])
+{
+    C3FieldPlayer *q=pose(s,p);float spot[3]={at[0],at[1],at[2]},ground;
+    if(c3_field_ground(s->map,spot,&ground))spot[1]=ground;
+    memcpy(q->position,spot,sizeof spot);memcpy(q->proposed,spot,sizeof spot);
+    p->moving=p->turning=0;
+}
+/* fn_8018AACC(group, id, 1, pos): walk there (native 3D with its facing). */
+static int lift_walk(Impl *s,Person *p,const float at[3],char *error)
+{
+    float ground;memcpy(p->target,at,sizeof p->target);
+    if(c3_field_ground(s->map,p->target,&ground))p->target[1]=ground;
+    p->moving=1;p->waypoint_active=0;p->speed=1;p->public.flags|=8u;
+    start_turn(s,p,atan2f(p->target[0]-pose(s,p)->position[0],p->target[2]-pose(s,p)->position[2]),1);
+    return set_motion(s,p,p->source?p->source->motions[1]:2,0,1,error);
+}
+/* fn_801845E4 + fn_801860F8: attach Wes (and Rui) to the cabin part with
+ * their offsets; fn_801C8E14 places the pair 5 apart along z. */
+static void ride_attach(Impl *s,uint32_t pos,int party,uint32_t direction)
+{
+    static const float pair[4][3]={{0,0,5},{0,0,-5},{5,0,0},{-5,0,0}};
+    memset(&s->ride,0,sizeof s->ride);s->ride.on=1;s->ride.pos=pos;s->ride.party=party;
+    if(party){
+        unsigned k=direction>=2&&direction<=5?direction-2u:direction?0u:1u;
+        for(unsigned i=0;i<3;++i){s->ride.offset[0][i]=pair[k][i]*s->map->scale;s->ride.offset[1][i]=-pair[k][i]*s->map->scale;}
+    }
+    log_line(s,"story_lift_attach row=%lu party=%d",(unsigned long)s->door_rows[pos].index,party);
+}
+static void ride_update(Impl *s)
+{
+    float at[3];if(!s->ride.on||!lift_part(s,s->ride.pos,at))return;
+    Person *who[2]={&s->hero_actor,s->ride.party?lift_partner(s):NULL};
+    for(unsigned k=0;k<2;++k){if(!who[k])continue;C3FieldPlayer *q=pose(s,who[k]);
+        for(unsigned i=0;i<3;++i)q->position[i]=at[i]+s->ride.offset[k][i];
+        memcpy(q->proposed,q->position,sizeof q->position);who[k]->moving=0;}
+}
+/* Without the cabin model: the field entrance nearest the surface whose
+ * common door script 05960006 calls this row, so the hero is never left
+ * where the floor link put him (entrance 0). */
+static int lift_spawn(const Impl *s,uint32_t row,float out[3],float *yaw)
+{
+    float centre[3]={0,0,0};unsigned n=0;
+    for(uint32_t i=0;i<s->area->link_count&&!n;++i){const C3AreaLink *l=s->area->links+i;
+        if(l->kind!=2||l->script!=0x05960006u||l->args[0]!=row)continue;
+        for(uint32_t j=0;j<s->area->transition_count;++j){const C3FieldTriangle *tr=s->area->transitions+j;
+            if(tr->source_id!=l->source_id)continue;
+            for(unsigned v=0;v<3;++v){centre[0]+=tr->vertices[v*3];centre[2]+=tr->vertices[v*3+2];++n;}}
+    }
+    if(!n||!s->map->spawn_count)return 0;
+    centre[0]/=(float)n;centre[2]/=(float)n;
+    uint32_t best=0;float best_d=INFINITY;
+    for(uint32_t i=0;i<s->map->spawn_count;++i){const float *q=s->map->spawns[i].position;
+        float d=(q[0]-centre[0])*(q[0]-centre[0])+(q[2]-centre[2])*(q[2]-centre[2]);if(d<best_d){best_d=d;best=i;}}
+    memcpy(out,s->map->spawns[best].position,3*sizeof(float));*yaw=s->map->spawns[best].yaw;return 1;
+}
+/* The animated and walking commands: 1/0x81 walk into the cabin, 2/0x82
+ * step out of it, 0xC0 wait for the cabin's clip. */
+static int lift_step(Impl *s,RunTask *t,float seconds,char *error)
+{
+    const float sc=s->map->scale;C3StoryDoor *door=s->doors+s->lift.pos;const C3AreaDoor *row=s->door_rows+s->lift.pos;
+    Person *hero=&s->hero_actor,*partner=s->lift.party?lift_partner(s):NULL;float at[3],spot[3],yaw;
+    for(unsigned guard=0;guard<8;++guard)switch(s->lift.stage){
+    case 0: /* enterAnim played to its end, then the part */
+        if(door->model&&door->playing)return 1;
+        /* Stepping out ends 30 in front of the part. A part whose step-out
+         * point has no floor under it (the 3F cabin's path joint stands 70
+         * behind its doors: the spline's own joint offset is not applied,
+         * as in HSD) takes the entrance fallback below. */
+        int part=lift_part(s,s->lift.pos,at);
+        if(part&&!(s->lift.cmd&1)){float out[3]={at[0],at[1],at[2]+30*sc},ground;part=c3_field_ground(s->map,out,&ground);}
+        if(part){
+            if(s->lift.cmd&1){
+                spot[0]=at[0];spot[1]=at[1];spot[2]=at[2]-5*sc;if(!lift_walk(s,hero,spot,error))return 0;
+                s->lift.partner_target[0]=at[0];s->lift.partner_target[1]=at[1];s->lift.partner_target[2]=at[2]+5*sc;
+            }else{
+                s->ride.on=0;
+                spot[0]=at[0];spot[1]=at[1];spot[2]=at[2]+5*sc;lift_place(s,hero,spot);
+                if(partner){spot[2]=at[2]-5*sc;lift_place(s,partner,spot);}
+                spot[2]=at[2]+30*sc;if(!lift_walk(s,hero,spot,error))return 0;
+                s->lift.partner_target[0]=at[0];s->lift.partner_target[1]=at[1];s->lift.partner_target[2]=at[2]+20*sc;
+            }
+            s->lift.timer=.2f;s->lift.stage=1;continue;
+        }
+        if(!(s->lift.cmd&1)){
+            s->ride.on=0;
+            if(lift_spawn(s,row->index,spot,&yaw)){
+                lift_place(s,hero,spot);s->hero->yaw=yaw;
+                if(partner&&partner==&s->partner_actor)partner_place_behind(s);
+            }
+            log_line(s,"story_lift_fallback row=%lu step_out=spawn",(unsigned long)row->index);
+        }
+        s->lift.stage=3;continue;
+    case 1: /* 0.2 s, then Rui follows */
+        s->lift.timer-=seconds;if(s->lift.timer>0)return 1;
+        if(partner&&!lift_walk(s,partner,s->lift.partner_target,error))return 0;
+        s->lift.stage=2;continue;
+    case 2: /* peopleMoveCheck for both; walking in ends facing yaw 0 (fn_8018805C) */
+        if(hero->moving||hero->turning||(partner&&partner->moving))return 1;
+        if(s->lift.cmd&1){start_turn(s,hero,0,.5f);if(partner)start_turn(s,partner,0,.5f);s->lift.stage=4;continue;}
+        s->lift.stage=3;continue;
+    case 4:
+        if(hero->turning||(partner&&partner->turning))return 1;
+        s->lift.stage=3;continue;
+    case 3: /* exitAnim */
+        lift_play(s,s->lift.pos,row->close_anim);s->lift.stage=5;continue;
+    case 5:
+        if(door->model&&door->playing)return 1;
+        log_line(s,"story_lift_done row=%lu cmd=%lx",(unsigned long)row->index,(unsigned long)s->lift.cmd);
+        return resume(s,t,s->lift.value,error);
+    default:return fail(error,"Invalid elevator step");
+    }
+    return 1;
+}
+static int lift_native(Impl *s,RunTask *t,const uint32_t a[],uint32_t *value)
+{
+    uint32_t pos,cmd=a[2]&0xffffu,direction=a[3]&0xffu;
+    if(!lift_door(s,a[1],&pos)||!s->door_rows[pos].resource){*value=UINT32_MAX;return 1;}
+    const C3AreaDoor *row=s->door_rows+pos;C3StoryDoor *door=s->doors+pos;Person *partner=lift_partner(s);
+    /* fn_801C9B6C: walking in with Rui on the field, or direction 1 with
+     * her, makes the pair ride (fn_801C8E14); otherwise Wes alone. */
+    if(cmd&1)s->lift_party=partner!=NULL;
+    if(direction==1&&partner)s->lift_party=1;
+    int party=s->lift_party||(direction>=2&&direction<=5);
+    log_line(s,"story_lift row=%lu cmd=%lx direction=%lu party=%d model=%d part_bone=%u",(unsigned long)row->index,
+             (unsigned long)cmd,(unsigned long)direction,party,door->model!=NULL,(unsigned)row->part_bone_plus_one);
+    if(direction>=2&&direction<=5){
+        ride_attach(s,pos,1,direction);lift_play(s,pos,(int)cmd);ride_update(s);*value=0;return 1;
+    }
+    memset(&s->lift,0,sizeof s->lift);s->lift.pos=pos;s->lift.cmd=cmd;s->lift.party=party;
+    switch(cmd){
+    case 1:case 2:case 0x81:case 0x82:
+        lift_play(s,pos,row->open_anim);
+        if(cmd&0x80)note_presentation(s,0xc5,"elevator_sound_backend_pending");
+        t->wait=W_LIFT;return 2;
+    case 0xc0:s->lift.stage=5;t->wait=W_LIFT;return 2;
+    case 0x100:*value=0;return 1;
+    default:{
+        int clip=cmd&4?row->alternate_a:cmd&8?row->alternate_b:-1;
+        if(clip<0||!door->model||(uint32_t)clip>=door->model->clip_count){*value=UINT32_MAX;return 1;}
+        if(cmd&0x20)ride_attach(s,pos,party,direction);
+        float end=lift_clip_seconds(door->model,clip);
+        door->clip=(uint32_t)clip;door->seconds=cmd&0x10?end:0;door->playing=1;door->loop=0;door->rate=1;
+        ride_update(s);
+        /* 100 x (2 x frames / 60): the scripts wait value/100 - 0.5 s. */
+        s->lift.value=(uint32_t)lroundf(200.0f*end);*value=s->lift.value;
+        if(cmd&0x40){s->lift.stage=5;t->wait=W_LIFT;return 2;}
+        return 1;}
+    }
+}
 static int run_native(Impl *s,RunTask *t,char *error)
 {
     C3StoryCall *c=&t->call;uint32_t *a=c->args,value=0;Person *p;
@@ -908,7 +1097,8 @@ static int run_native(Impl *s,RunTask *t,char *error)
      * riding the platform. The animation is not rendered and its duration
      * (percent of a second) is zero; the floor change that follows is the
      * script's own native. */
-    case 0x61:case 0xc5:note_presentation(s,c->native,"elevator_animation");value=0;break;
+    case 0x61:note_presentation(s,c->native,"elevator_animation");value=0;break;
+    case 0xc5:{int r=lift_native(s,t,a,&value);if(!r)return 0;if(r==2)return 1;break;}
     /* fn_80181478: lock a person for a conversation (motion 1) or release
      * it; 1 while locked. Floor people here are always active. */
     case 0xe7:
@@ -942,7 +1132,10 @@ static int run_native(Impl *s,RunTask *t,char *error)
             if(dark&&dp>=0&&(c->native==0x7c||dp==0))++value;}
     }break;
     /* fn_80184470: detach a person from the part it rides. */
-    case 0xa8:p=person(s,a[0],a[1]);if(p&&p->parent){p->parent=NULL;}break;
+    case 0xa8:
+        p=person(s,a[0],a[1]);if(p&&p->parent)p->parent=NULL;
+        if(p&&(p==&s->hero_actor||p==&s->partner_actor))s->ride.on=0;
+        break;
     /* floorEventSetTresureDisp: show or hide a treasure object; treasure
      * objects are not floor people here, so the change is recorded. */
     /* floorEventSetTresureDisp(table index, shown). */
@@ -1842,6 +2035,7 @@ static int wait_task(Impl *s,RunTask *t,float seconds,uint16_t *pressed,char *er
     case W_OBJECT:
         if(t->stage<s->door_count&&s->doors[t->stage].playing)return 1;
         return resume(s,t,0,error);
+    case W_LIFT:return lift_step(s,t,seconds,error);
     case W_HEAL:{
         /* fn_801D0DB0: turn to the machine, one ball every half second into
          * parts 9.., clip <balls> at rate 1.0 with jingle 0x19 played to its
@@ -2660,6 +2854,7 @@ int c3_field_story_tick(C3FieldStory *story,float seconds,uint16_t pressed,char 
         if(door->seconds>=end&&door->loop)door->seconds=end>0?fmodf(door->seconds,end):0;
         else if(door->seconds>=end){door->seconds=end;door->playing=0;}
     }
+    ride_update(s);
     if(s->camera_playing&&s->view.camera_active)s->view.camera_seconds+=seconds*s->camera_rate;
     int rotating=s->rotation_time<s->rotation_duration;
     if(rotating){

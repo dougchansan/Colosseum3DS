@@ -1,0 +1,27 @@
+# Pyrite Building elevator (native C5) for build/test_story_route: from the
+# Colosseum checkpoint (private/pyrite/saves/pyrite-2-colosseum.gci, floor
+# 0x78) through the bridge event into 1F, then 1F surface 4 (door row 138)
+# up to 3F. The up-ramp to 4F is only reachable from 3F's elevator room
+# (docs/pyrite-story.md): the arrival must put Wes there, not at entrance 0.
+floor 0x78 0
+expect 0x409 1
+door 2
+at 35 -339
+expect 0x40a 1
+expect 0x40b 1
+expect_floor 0x19
+touch 4
+expect_floor 0x1b
+expect_near -10 -150 12
+walk -20 -140
+# Back down: 3F surface 9 (row 140) lands beside 1F's elevator.
+walk -10 -146
+touch 9
+expect_floor 0x19
+expect_near 3 -51 12
+touch 4
+expect_floor 0x1b
+walk -20 -140
+walk -20 -118
+door 7
+expect_floor 0x1c

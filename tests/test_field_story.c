@@ -1050,6 +1050,83 @@ static void mail_regressions(void)
  * generator surfaces (kind 4) register the GEAR with native 11 only when
  * the hero is at them; using it queues its script for after the menu, and
  * closing the menu empties the list. */
+/* Native C5 (fn_801C9B6C -> floorEventCtrlElevator): the Pyrite Building
+ * arrival script attaches Wes to the cabin part (0x24) and rides travel
+ * clip A, waits for it (0xC0), then steps out (0x82): open clip, Wes set 5
+ * in front of the part and walked to 30 in front, close clip. The cabin
+ * part is the pack's retained bone (part_bone_plus_one). Without the cabin
+ * model Wes stands at the entrance nearest the elevator's surface. */
+static void elevator_regressions(void)
+{
+    char directory[]="/tmp/c3-field-story-lift-XXXXXX",file[1024];CHECK(mkdtemp(directory));path(file,directory,"unit.c3s");
+    C3GameState game={0};synthetic_game(&game);Scene *s=calloc(1,sizeof(*s));CHECK(s);
+    Program code[8];memset(code,0,sizeof code);
+    uint32_t args[4]={1,140,0x24,1};native(code+3,0xc5,4,args,1);
+    args[2]=0xc0;native(code+3,0xc5,4,args,1);args[2]=0x82;native(code+3,0xc5,4,args,1);
+    args[0]=3;args[1]=0;native(code+3,0x64,2,args,1);
+    C3AreaDoor row={.index=140,.door_type=2,.part_index=1,.part_bone_plus_one=1,.open_anim=0,.close_anim=1,
+                    .open_end_anim=-1,.close_end_anim=-1,.alternate_a=3,.alternate_b=2,.collision_id=-1,.resource=1};
+    C3Title cabin={0};synthetic_model(&cabin);
+    for(unsigned c=0;c<4;++c)cabin.clips[c].loop=0;
+    /* The cabin part: x 2, rising z -10 + frame/10 over each clip. */
+    for(unsigned i=0;i<31;++i){uint8_t *frame=cabin.file_data+i*cabin.frame_bytes;
+        le32(frame+3*4,bits(2));le32(frame+11*4,bits(-10+.1f*(float)i));}
+    C3Title *models[1]={&cabin};
+    synthetic_load(s,&game,file,code,0,0,0x1000003);
+    /* Floor under the hall in front of the cabin (z -5..40). */
+    s->map.walk_count=2;s->map.walk=calloc(2,sizeof(*s->map.walk));CHECK(s->map.walk);
+    {const float a[9]={-50,0,-5,50,0,-5,50,0,40},b[9]={-50,0,-5,50,0,40,-50,0,40};
+     memcpy(s->map.walk[0].vertices,a,sizeof a);memcpy(s->map.walk[1].vertices,b,sizeof b);
+     s->map.walk[0].normal[1]=s->map.walk[1].normal[1]=1;s->map.object_count=1;}
+    CHECK(c3_field_story_bind_doors(&s->story,&row,1,models,error));
+    CHECK(c3_field_story_enter(&s->story,error));CHECK(c3_field_story_tick(&s->story,0,0,error));
+    const C3StoryDoor *door=c3_field_story_door(&s->story,0);
+    CHECK(door->clip==3&&door->playing&&fabsf(s->hero.position[0]-2)<1e-4f&&fabsf(s->hero.position[2]+10)<1e-4f);
+    CHECK(c3_field_story_tick(&s->story,.5f,0,error));
+    CHECK(fabsf(s->hero.position[2]+8.5f)<1e-3f&&!c3_field_story_view(&s->story)->control); /* riding */
+    unsigned steps=0;
+    for(;steps<4000&&c3_field_story_actor(&s->story,3)->visible;++steps)CHECK(c3_field_story_tick(&s->story,.05f,0,error));
+    CHECK(steps<4000);
+    /* Stepped out from the open clip's last part position (z -7): 30 in front. */
+    CHECK(fabsf(s->hero.position[0]-2)<1e-3f&&fabsf(s->hero.position[2]-23)<1e-2f);
+    CHECK(door->clip==1&&!door->playing);
+    close_scene(s);
+    /* No cabin model: the attach and travel return -1, and stepping out
+     * puts Wes at the entrance nearest the surface that calls row 140
+     * (common script 05960006), facing that entrance's way. */
+    C3Title *none[1]={NULL};
+    synthetic_load(s,&game,file,code,0,0,0x1000003);
+    s->map.spawn_count=2;s->map.spawns=calloc(2,sizeof(*s->map.spawns));
+    s->area.transition_count=1;s->area.transitions=calloc(1,sizeof(*s->area.transitions));
+    s->area.link_count=1;s->area.links=calloc(1,sizeof(*s->area.links));
+    CHECK(s->map.spawns&&s->area.transitions&&s->area.links);
+    s->map.spawns[1].position[0]=7;s->map.spawns[1].position[2]=9;s->map.spawns[1].yaw=1.5f;
+    {const float v[9]={6,0,11,8,0,11,7,1,11};memcpy(s->area.transitions[0].vertices,v,sizeof v);}
+    s->area.transitions[0].source_id=4;
+    s->area.links[0]=(C3AreaLink){.kind=2,.source_id=4,.script=0x05960006u,.args={140,0x19,0,0}};
+    CHECK(c3_field_story_bind_doors(&s->story,&row,1,none,error));
+    CHECK(c3_field_story_enter(&s->story,error));
+    for(steps=0;steps<400&&c3_field_story_actor(&s->story,3)->visible;++steps)CHECK(c3_field_story_tick(&s->story,.05f,0,error));
+    CHECK(steps<400&&s->hero.position[0]==7&&s->hero.position[2]==9&&s->hero.yaw==1.5f);
+    close_scene(s);
+    /* The cabin model is there but 30 in front of its part has no floor
+     * (Pyrite 3F): the same entrance fallback. */
+    synthetic_load(s,&game,file,code,0,0,0x1000003);
+    s->map.spawn_count=2;s->map.spawns=calloc(2,sizeof(*s->map.spawns));
+    s->area.transition_count=1;s->area.transitions=calloc(1,sizeof(*s->area.transitions));
+    s->area.link_count=1;s->area.links=calloc(1,sizeof(*s->area.links));
+    CHECK(s->map.spawns&&s->area.transitions&&s->area.links);
+    s->map.spawns[1].position[0]=7;s->map.spawns[1].position[2]=9;s->map.spawns[1].yaw=1.5f;
+    {const float v[9]={6,0,11,8,0,11,7,1,11};memcpy(s->area.transitions[0].vertices,v,sizeof v);}
+    s->area.transitions[0].source_id=4;
+    s->area.links[0]=(C3AreaLink){.kind=2,.source_id=4,.script=0x05960006u,.args={140,0x19,0,0}};
+    CHECK(c3_field_story_bind_doors(&s->story,&row,1,models,error));
+    CHECK(c3_field_story_enter(&s->story,error));
+    for(steps=0;steps<400&&c3_field_story_actor(&s->story,3)->visible;++steps)CHECK(c3_field_story_tick(&s->story,.05f,0,error));
+    CHECK(steps<400&&s->hero.position[0]==7&&s->hero.position[2]==9);
+    close_scene(s);free(s);c3_game_state_free(&game);CHECK(!unlink(file));CHECK(!rmdir(directory));
+    puts("field-story elevator regressions passed");
+}
 static void pause_menu_regressions(void)
 {
     char directory[]="/tmp/c3-field-story-pause-XXXXXX",file[1024];CHECK(mkdtemp(directory));path(file,directory,"unit.c3s");
@@ -1086,6 +1163,7 @@ int main(int argc,char **argv)
     dna_regressions();
     mail_regressions();
     pause_menu_regressions();
+    elevator_regressions();
     if(argc==3&&!strcmp(argv[1],"--premium")){premium_regressions(argv[2]);return 0;}
     if(argc<2){puts("field-story private integration skipped: supply privately prepared boot directory");return 0;}
     trace=argc>2?fopen(argv[2],"w+"):tmpfile();CHECK(trace!=NULL);
