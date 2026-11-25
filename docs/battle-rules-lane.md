@@ -102,7 +102,7 @@ The chances come from the nature row for the dark level
   or wanting to return (`fn_8022A504`).
 - **Shadow Rush:** a critical hit 90% of the time in Hyper Mode.
 - **End of turn:** a reminder line.
-- **Call:** L on the command page (`fn_80212D6C`).
+- **Call:** CALL on the action menu (`fn_80212D6C`).
 
 The heart gauge drops once per battle when the Pokémon is sent out (filter 0)
 and again on a successful Call (filter 2). The gauge is written back to

@@ -66,6 +66,41 @@ static int next_position(const C3GeneralUi *ui, const C3GeneralBattle *b, unsign
     }
     return -1;
 }
+/* The controlled position before this one that is still able to act: B on
+ * an action menu goes back to its command (SubMain's result 1, i != 0). */
+static int previous_position(const C3GeneralUi *ui, const C3GeneralBattle *b)
+{
+    for (int p = (int)ui->position - 1; p >= 0; --p) {
+        if (ui->control_mask && !(ui->control_mask >> p & 1u)) continue;
+        const C3GeneralMon *m = hero(b, (unsigned)p); if (m && m->hp) return p;
+    }
+    return -1;
+}
+/* A Pokemon's command starts on the action menu with the cursor on FIGHT. */
+static void open_action(C3GeneralUi *ui)
+{
+    ui->page = C3_GUI_ACTION; ui->action_cursor = C3_GUI_FIGHT; ui->cursor = 0;
+}
+
+static const uint32_t action_messages[C3_GUI_ACTIONS] = { 0x13C, 0x13D, 0x13E, 0x140 };
+static char action_labels[C3_GUI_ACTIONS][24] = { "FIGHT", "ITEM", "POKEMON", "CALL" };
+uint32_t c3_general_ui_action_message(unsigned entry) { return entry < C3_GUI_ACTIONS ? action_messages[entry] : 0; }
+void c3_general_ui_set_action_label(unsigned entry, const char *text)
+{
+    if (entry < C3_GUI_ACTIONS && text && text[0]) snprintf(action_labels[entry], sizeof action_labels[entry], "%s", text);
+}
+const char *c3_general_ui_action_label(unsigned entry) { return entry < C3_GUI_ACTIONS ? action_labels[entry] : ""; }
+
+/* One button of the action menu's 2x2 grid (items at GC x 87/227, y 373/401). */
+static void action_cell(C3BottomUi *s, int x, int y, const char *label, int selected, int disabled)
+{
+    if (selected) {
+        c3_ui_rect(s, x, y, 146, 24, 0x30494bu);
+        c3_ui_rect(s, x, y, 2, 24, C3_UI_GOLD);
+        c3_ui_sprite(s, C3_UI_HAND, x + 5, y + 4, 22, 16);
+    }
+    c3_ui_text(s, x + 32, y + 3, 108, 1, label, disabled ? C3_UI_MUTED : selected ? C3_UI_GOLD : C3_UI_WHITE);
+}
 
 void c3_general_ui_draw(const C3BattlePack *pack, const C3GeneralBattle *b, const C3GeneralUi *ui, const C3GeneralEvent *e)
 {
@@ -91,13 +126,20 @@ void c3_general_ui_draw(const C3BattlePack *pack, const C3GeneralBattle *b, cons
     const char *message = e ? e->text : ui->error[0] ? ui->error : "";
     if (ui->page == C3_GUI_RESULT && b->event_count) message = b->events[b->event_count - 1].text;
     if (ui->page == C3_GUI_WAIT) message = "Waiting for the other players...";
-    if (ui->page == C3_GUI_MOVES || ui->page == C3_GUI_TARGET || ui->page == C3_GUI_SWITCH || ui->page == C3_GUI_BALL) {
+    if (ui->page == C3_GUI_ACTION || ui->page == C3_GUI_MOVES || ui->page == C3_GUI_TARGET || ui->page == C3_GUI_SWITCH || ui->page == C3_GUI_BALL) {
         const C3GeneralMon *m = hero(b, ui->position);
         snprintf(text, sizeof text, "What will %s do?", m ? m->name : "?");
         message = ui->error[0] ? ui->error : text;
     }
     c3_ui_text(s, 13, 100, 294, 2, message, C3_UI_WHITE);
-    if (ui->page == C3_GUI_MOVES) {
+    if (ui->page == C3_GUI_ACTION) {
+        unsigned balls[12];
+        int unavailable[C3_GUI_ACTIONS] = { 0, !ball_list(b, balls), 0, !c3_general_battle_can_call(b, ui->position) };
+        c3_ui_panel(s, 5, 148, 310, 68);
+        for (unsigned i = 0; i < C3_GUI_ACTIONS; ++i)
+            action_cell(s, 12 + (int)(i & 1u) * 150, 155 + (int)(i >> 1) * 30, action_labels[i], ui->action_cursor == i, unavailable[i]);
+        c3_ui_footer(s, previous_position(ui, b) >= 0 ? "A: choose  B: back" : "A: choose");
+    } else if (ui->page == C3_GUI_MOVES) {
         const C3GeneralMon *m = hero(b, ui->position);
         uint8_t legal = c3_general_battle_legal_moves(b, pack, ui->position);
         for (unsigned i = 0; i < 4 && m; ++i) {
@@ -105,10 +147,7 @@ void c3_general_ui_draw(const C3BattlePack *pack, const C3GeneralBattle *b, cons
             if (m->moves[i]) { c3_battle_pack_move_name(pack, m->moves[i], name); snprintf(pp, sizeof pp, "%u/%u", m->pp[i], m->pp_max[i]); }
             c3_ui_row_value(s, 148 + (int)i * 19, name, pp, ui->cursor == i, !(legal >> i & 1u));
         }
-        unsigned balls[12];
-        int can_ball = ball_list(b, balls) > 0, can_switch = b->party_count[0] > b->active_count;
-        c3_ui_footer(s, can_switch && can_ball ? "A: use  Y: switch  X: ball  L: call" : can_switch ? "A: use  B: back  Y: switch  L: call" :
-                        can_ball ? "A: use  B: back  X: ball  L: call" : "A: use  B: back  L: call");
+        c3_ui_footer(s, "A: use  B: back");
     } else if (ui->page == C3_GUI_BALL) {
         unsigned balls[12], n = ball_list(b, balls);
         for (unsigned i = 0; i < n && i < 4; ++i) {
@@ -136,8 +175,8 @@ void c3_general_ui_draw(const C3BattlePack *pack, const C3GeneralBattle *b, cons
         c3_ui_footer(s, "A: switch in  B: back");
     } else if (ui->page == C3_GUI_RESULT) {
         c3_ui_footer(s, "A: continue");
-    } else {
-        c3_ui_footer(s, "A: next");
+    } else if (!ui->timed_log || (e && e->hold)) {
+        c3_ui_footer(s, "A: next"); /* the 3D log's timed messages take no press */
     }
     c3_bottom_screen_present();
 }
@@ -147,7 +186,7 @@ int c3_general_ui_commands(C3GeneralUi *ui, const C3GeneralBattle *b)
     memset(ui->commands, 0, sizeof ui->commands);
     int p = next_position(ui, b, 0);
     ui->position = p < 0 ? 0 : (unsigned)p;
-    ui->cursor = 0; ui->page = C3_GUI_MOVES;
+    open_action(ui);
     c3_press_gate_close(&ui->gate); /* the press that ended the log is not a command */
     return p >= 0;
 }
@@ -163,25 +202,39 @@ int c3_general_ui_press(C3GeneralUi *ui, const C3BattlePack *pack, C3GeneralBatt
     c3_press_gate_consume(&ui->gate, pressed); /* this press acts on this page only */
     ui->error[0] = 0;
     int submit = 0;
-    if (ui->page == C3_GUI_MOVES) {
+    if (ui->page == C3_GUI_ACTION) {
+        /* Menu 0x4B has no button shortcuts: the d-pad moves in the grid,
+         * A takes the entry, B goes back to the previous Pokemon. */
+        if (pressed & (C3_PAD_LEFT | C3_PAD_RIGHT)) ui->action_cursor ^= 1u;
+        if (pressed & (C3_PAD_UP | C3_PAD_DOWN)) ui->action_cursor ^= 2u;
+        ui->action_cursor %= C3_GUI_ACTIONS;
+        if (pressed & C3_PAD_B) {
+            int back = previous_position(ui, b);
+            if (back >= 0) { ui->position = (unsigned)back; open_action(ui); }
+        } else if (pressed & C3_PAD_A) {
+            C3GeneralCommand *c = &ui->commands[ui->position];
+            unsigned balls[12], foes[2], n = living_foes(b, foes);
+            if (ui->action_cursor == C3_GUI_FIGHT) {
+                /* No move with PP left: FIGHT commits Struggle at once. */
+                if (!c3_general_battle_legal_moves(b, pack, ui->position)) {
+                    c->kind = 0; c->slot = 4; c->target = n ? (uint8_t)foes[0] : 2; submit = 1;
+                } else { ui->page = C3_GUI_MOVES; ui->cursor = 0; }
+            } else if (ui->action_cursor == C3_GUI_ITEMS) {
+                /* The bag's usable pocket here is the Snag Machine's balls. */
+                if (ball_list(b, balls)) { ui->page = C3_GUI_BALL; ui->cursor = 0; }
+                else snprintf(ui->error, sizeof ui->error, "There is no item to use now.");
+            } else if (ui->action_cursor == C3_GUI_PKMN) {
+                ui->page = C3_GUI_SWITCH; ui->cursor = 0;
+            } else if (c3_general_battle_can_call(b, ui->position)) {
+                c->kind = 3; c->slot = 0; c->target = (uint8_t)ui->position; submit = 1;
+            } /* Call unavailable: the menu stays (SubMain's result 2). */
+        }
+    } else if (ui->page == C3_GUI_MOVES) {
         uint8_t legal = c3_general_battle_legal_moves(b, pack, ui->position);
         if (pressed & C3_PAD_UP) ui->cursor = (ui->cursor + 3) % 4;
         if (pressed & C3_PAD_DOWN) ui->cursor = (ui->cursor + 1) % 4;
-        unsigned balls[12];
-        if ((pressed & C3_PAD_X) && ball_list(b, balls)) { ui->page = C3_GUI_BALL; ui->cursor = 0; }
-        else if ((pressed & C3_PAD_Y) && b->party_count[0] > b->active_count) { ui->page = C3_GUI_SWITCH; ui->cursor = 0; }
-        else if ((pressed & C3_PAD_L) && c3_general_battle_can_call(b, ui->position)) {
-            C3GeneralCommand *c = &ui->commands[ui->position];
-            c->kind = 3; c->slot = 0; c->target = (uint8_t)ui->position; submit = 1;
-        }
-        else if (pressed & C3_PAD_B) {
-            int back = -1;
-            for (int p = (int)ui->position - 1; p >= 0; --p) {
-                if (ui->control_mask && !(ui->control_mask >> p & 1u)) continue;
-                const C3GeneralMon *m = hero(b, (unsigned)p); if (m && m->hp) { back = p; break; }
-            }
-            if (back >= 0) { ui->position = (unsigned)back; ui->cursor = 0; }
-        } else if (pressed & C3_PAD_A) {
+        if (pressed & C3_PAD_B) { ui->page = C3_GUI_ACTION; ui->cursor = 0; }
+        else if (pressed & C3_PAD_A) {
             C3GeneralCommand *c = &ui->commands[ui->position];
             unsigned foes[2], n = living_foes(b, foes);
             c->kind = 0; c->target = n ? (uint8_t)foes[0] : 2;
@@ -198,10 +251,10 @@ int c3_general_ui_press(C3GeneralUi *ui, const C3BattlePack *pack, C3GeneralBatt
         }
     } else if (ui->page == C3_GUI_BALL) {
         unsigned balls[12], n = ball_list(b, balls);
-        if (!n) { ui->page = C3_GUI_MOVES; ui->cursor = 0; }
+        if (!n) { ui->page = C3_GUI_ACTION; ui->cursor = 0; }
         else if (pressed & C3_PAD_UP) ui->cursor = (ui->cursor + n - 1) % n;
         else if (pressed & C3_PAD_DOWN) ui->cursor = (ui->cursor + 1) % n;
-        else if (pressed & C3_PAD_B) { ui->page = C3_GUI_MOVES; ui->cursor = 0; }
+        else if (pressed & C3_PAD_B) { ui->page = C3_GUI_ACTION; ui->cursor = 0; }
         else if (pressed & C3_PAD_A) {
             /* The Snag Machine: a ball only at a Shadow Pokemon. */
             unsigned ball = balls[ui->cursor % n], targets[2], t = snag_targets(b, pack, ui->position, ball, targets);
@@ -224,7 +277,7 @@ int c3_general_ui_press(C3GeneralUi *ui, const C3BattlePack *pack, C3GeneralBatt
     } else if (ui->page == C3_GUI_SWITCH) {
         if (pressed & C3_PAD_UP) ui->cursor = (ui->cursor + b->party_count[0] - 1) % b->party_count[0];
         if (pressed & C3_PAD_DOWN) ui->cursor = (ui->cursor + 1) % b->party_count[0];
-        if (pressed & C3_PAD_B) { ui->page = C3_GUI_MOVES; ui->cursor = 0; }
+        if (pressed & C3_PAD_B) { ui->page = C3_GUI_ACTION; ui->cursor = 0; }
         else if (pressed & C3_PAD_A) {
             int active = 0;
             for (unsigned a = 0; a < b->active_count; ++a) active |= b->active[0][a] == ui->cursor;
@@ -236,7 +289,7 @@ int c3_general_ui_press(C3GeneralUi *ui, const C3BattlePack *pack, C3GeneralBatt
     }
     if (!submit) return 0;
     int p = next_position(ui, b, ui->position + 1);
-    if (p >= 0) { ui->position = (unsigned)p; ui->cursor = 0; ui->page = C3_GUI_MOVES; return 0; }
+    if (p >= 0) { ui->position = (unsigned)p; open_action(ui); return 0; }
     if (ui->defer) { ui->page = C3_GUI_WAIT; return 2; }
     char error[C3_GB_ERROR_SIZE];
     if (!c3_general_battle_turn(b, pack, ui->commands, error)) {

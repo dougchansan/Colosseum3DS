@@ -11,11 +11,13 @@
 
 /* One press acts in one battle UI layer (platform/3ds/battle_general_3d.c
  * frame order, synthetic pack). The 3D scene's log is timed: the frame after
- * the last message expires opens the command page (FIGHT's move list,
- * "What will X do?") at the top of the loop, before that frame's press is
- * read and before the page is drawn. A press whose edge falls on that frame
- * was made while the message was on screen and must not choose a command;
- * the next press, and each one after it, advances exactly one level. */
+ * the last message expires opens the command page (the action menu, "What
+ * will X do?") at the top of the loop, before that frame's press is read and
+ * before the page is drawn. A press whose edge falls on that frame was made
+ * while the message was on screen and must not choose anything; the next
+ * press, and each one after it, advances exactly one level. The action menu
+ * is the original's menu 0x4B (FIGHT ITEMS / PKMN CALL): a stray A there can
+ * only open FIGHT's move list, never commit a move. */
 
 #define CHECK(x) do { if (!(x)) { fprintf(stderr, "FAIL %s:%d: %s (%s)\n", __FILE__, __LINE__, #x, error); exit(1); } } while (0)
 static char error[256];
@@ -76,11 +78,23 @@ static void press(Loop *l, uint16_t button, int gated)
     loop_frame(l, 0, gated);
 }
 static void idle(Loop *l, unsigned frames, int gated) { while (frames--) loop_frame(l, 0, gated); }
+/* A press whose c3_general_ui_press result is returned (the last one any
+ * of its frames gave, -1 for none). */
+static int press_result(Loop *l, uint16_t button)
+{
+    int r = -1, k;
+    for (unsigned f = 0; f < 9; ++f) if ((k = loop_frame(l, button, 1)) >= 0) r = k;
+    if ((k = loop_frame(l, 0, 1)) >= 0) r = k;
+    return r;
+}
 static int nothing_chosen(const Loop *l)
 {
     static const C3GeneralCommand zero[2];
-    return l->ui.page == C3_GUI_MOVES && l->ui.position == 0 && l->ui.cursor == 0 && !memcmp(l->ui.commands, zero, sizeof zero);
+    return l->ui.page == C3_GUI_ACTION && l->ui.position == 0 && l->ui.action_cursor == C3_GUI_FIGHT &&
+           !memcmp(l->ui.commands, zero, sizeof zero);
 }
+/* Waits out a press, then makes the next one. */
+static void next(Loop *l, uint16_t button) { idle(l, 60, 1); press(l, button, 1); }
 
 int main(void)
 {
@@ -108,38 +122,50 @@ int main(void)
         CHECK(c3_press_gate_take(&g, 0, 0) == 0 && g.blocked == 0);
     }
 
+    {   /* The entries' texts: stand-ins until the game's messages are set. */
+        CHECK(c3_general_ui_action_message(C3_GUI_FIGHT) == 0x13C && c3_general_ui_action_message(C3_GUI_ITEMS) == 0x13D);
+        CHECK(c3_general_ui_action_message(C3_GUI_PKMN) == 0x13E && c3_general_ui_action_message(C3_GUI_CALL) == 0x140);
+        CHECK(c3_general_ui_action_message(C3_GUI_ACTIONS) == 0);
+        CHECK(!strcmp(c3_general_ui_action_label(C3_GUI_FIGHT), "FIGHT"));
+        c3_general_ui_set_action_label(C3_GUI_CALL, "");
+        CHECK(!strcmp(c3_general_ui_action_label(C3_GUI_CALL), "CALL"));
+        c3_general_ui_set_action_label(C3_GUI_CALL, "ABCDEFGHIJKLMNOPQRSTUVWXYZ");
+        CHECK(!strcmp(c3_general_ui_action_label(C3_GUI_CALL), "ABCDEFGHIJKLMNOPQRSTUVW")); /* 23 bytes kept */
+        c3_general_ui_set_action_label(C3_GUI_CALL, "CALL");
+    }
+
     /* Before the gate: an A whose edge falls on the frame the command page
-     * opens picks the first move and lands on target selection (two foes),
-     * the hardware report. */
+     * opens acts on the action menu, which only opens FIGHT's move list. */
     b = start; loop_begin(&l, &b, &pack, 30);
     idle(&l, 30, 0);
     press(&l, C3_PAD_A, 0);
-    CHECK(l.ui.page == C3_GUI_TARGET && l.ui.commands[0].slot == 0);
+    CHECK(l.ui.page == C3_GUI_MOVES && l.ui.position == 0 && l.ui.commands[0].kind == 0 && l.ui.commands[0].target == 0);
 
     /* With it, at every phase of the press against the message's end (the
      * press starting up to 12 frames before the page opens, on its opening
-     * frame, or while the button is still down): the page is open at the
-     * top with nothing chosen. */
+     * frame, or while the button is still down): the action menu is open
+     * on FIGHT with nothing chosen. */
     for (unsigned lead = 0; lead <= 12; ++lead) {
         b = start; loop_begin(&l, &b, &pack, 30);
         idle(&l, 30 - lead, 1);
         press(&l, C3_PAD_A, 1);
         idle(&l, 12, 1);
         CHECK(nothing_chosen(&l));
-        /* Then one press per level: move list -> target list -> the
-         * second Pokemon's move list -> its target list -> the turn runs. */
-        idle(&l, 60, 1);
-        press(&l, C3_PAD_A, 1);
+        /* Then one press per level: FIGHT -> move list -> target list ->
+         * the second Pokemon's action menu -> FIGHT -> its target list ->
+         * the turn runs. */
+        next(&l, C3_PAD_A);
+        CHECK(l.ui.page == C3_GUI_MOVES && l.ui.position == 0 && l.ui.cursor == 0);
+        next(&l, C3_PAD_A);
         CHECK(l.ui.page == C3_GUI_TARGET && l.ui.position == 0 && l.ui.commands[0].slot == 0);
-        idle(&l, 60, 1);
-        press(&l, C3_PAD_A, 1);
-        CHECK(l.ui.page == C3_GUI_MOVES && l.ui.position == 1 && l.ui.commands[0].target >= 2);
-        idle(&l, 60, 1);
-        press(&l, C3_PAD_A, 1);
+        next(&l, C3_PAD_A);
+        CHECK(l.ui.page == C3_GUI_ACTION && l.ui.position == 1 && l.ui.action_cursor == C3_GUI_FIGHT && l.ui.commands[0].target >= 2);
+        next(&l, C3_PAD_A);
+        CHECK(l.ui.page == C3_GUI_MOVES && l.ui.position == 1);
+        next(&l, C3_PAD_A);
         CHECK(l.ui.page == C3_GUI_TARGET && l.ui.position == 1);
         uint32_t turn = b.turn;
-        idle(&l, 60, 1);
-        press(&l, C3_PAD_A, 1);
+        next(&l, C3_PAD_A);
         CHECK(l.ui.page == C3_GUI_EVENTS && b.turn == turn + 1);
         /* The next turn's page opens as the first did (its log started on
          * that press's first frame). */
@@ -150,39 +176,117 @@ int main(void)
     }
 
     /* "Go, ESPEON!" with one foe left: the move list commits a move with
-     * no target page, so a carried press would queue it outright. */
+     * no target page. Even a carried press only opens FIGHT now. */
     {
         C3GeneralBattle one = start;
         one.party[1][one.active[1][1]].hp = 0;
         b = one; loop_begin(&l, &b, &pack, 20);
         idle(&l, 20, 0);
         press(&l, C3_PAD_A, 0);
-        CHECK(l.ui.page == C3_GUI_MOVES && l.ui.position == 1); /* before the gate: the first Pokemon's move went in */
+        CHECK(l.ui.page == C3_GUI_MOVES && l.ui.position == 0 && l.ui.commands[0].target == 0); /* before the gate */
         b = one; loop_begin(&l, &b, &pack, 20);
         idle(&l, 20, 1);
         press(&l, C3_PAD_A, 1);
         CHECK(nothing_chosen(&l));
-        idle(&l, 60, 1);
-        press(&l, C3_PAD_A, 1);
-        CHECK(l.ui.page == C3_GUI_MOVES && l.ui.position == 1 && l.ui.commands[0].target == 2);
+        next(&l, C3_PAD_A);
+        CHECK(l.ui.page == C3_GUI_MOVES && l.ui.position == 0);
+        next(&l, C3_PAD_A);
+        CHECK(l.ui.page == C3_GUI_ACTION && l.ui.position == 1 && l.ui.commands[0].target == 2);
     }
 
     /* B held from the log (the "hurry" button) does not back out of the
      * page later; it is free again once released. Direction edges after
-     * the opening frame move the cursor one row each. */
+     * the opening frame move in the 2x2 grid: FIGHT ITEMS / PKMN CALL. */
     b = start; loop_begin(&l, &b, &pack, 10);
     idle(&l, 10, 1);
     for (unsigned k = 0; k < 20; ++k) loop_frame(&l, C3_PAD_B, 1);
     CHECK(nothing_chosen(&l));
     loop_frame(&l, C3_PAD_B | C3_PAD_DOWN, 1);
-    CHECK(l.ui.page == C3_GUI_MOVES && l.ui.cursor == 1);
+    CHECK(l.ui.page == C3_GUI_ACTION && l.ui.action_cursor == C3_GUI_PKMN);
+    loop_frame(&l, 0, 1); loop_frame(&l, C3_PAD_RIGHT, 1);
+    CHECK(l.ui.action_cursor == C3_GUI_CALL);
+    loop_frame(&l, 0, 1); loop_frame(&l, C3_PAD_UP, 1);
+    CHECK(l.ui.action_cursor == C3_GUI_ITEMS);
+    loop_frame(&l, 0, 1); loop_frame(&l, C3_PAD_LEFT, 1);
+    CHECK(l.ui.action_cursor == C3_GUI_FIGHT && l.ui.page == C3_GUI_ACTION);
     loop_frame(&l, 0, 1);
+    /* B from the move list (and its target list) goes back up a level at a
+     * time to the action menu, still on FIGHT. */
+    press(&l, C3_PAD_A, 1);
+    CHECK(l.ui.page == C3_GUI_MOVES);
+    loop_frame(&l, C3_PAD_DOWN, 1); loop_frame(&l, 0, 1);
+    CHECK(l.ui.page == C3_GUI_MOVES && l.ui.cursor == 1);
     press(&l, C3_PAD_A, 1);
     CHECK(l.ui.page == C3_GUI_TARGET && l.ui.commands[0].slot == 1);
     press(&l, C3_PAD_B, 1);
     CHECK(l.ui.page == C3_GUI_MOVES && l.ui.position == 0);
+    press(&l, C3_PAD_B, 1);
+    CHECK(l.ui.page == C3_GUI_ACTION && l.ui.position == 0 && l.ui.action_cursor == C3_GUI_FIGHT);
+    /* B on the first Pokemon's action menu stays (no earlier choice). */
+    press(&l, C3_PAD_B, 1);
+    CHECK(l.ui.page == C3_GUI_ACTION && l.ui.position == 0);
+    /* B on the second Pokemon's action menu goes back to the first one's,
+     * on FIGHT, to choose again. */
+    press(&l, C3_PAD_A, 1); press(&l, C3_PAD_A, 1); press(&l, C3_PAD_A, 1);
+    CHECK(l.ui.page == C3_GUI_ACTION && l.ui.position == 1);
+    loop_frame(&l, C3_PAD_RIGHT, 1); loop_frame(&l, 0, 1);
+    CHECK(l.ui.action_cursor == C3_GUI_ITEMS);
+    press(&l, C3_PAD_B, 1);
+    CHECK(l.ui.page == C3_GUI_ACTION && l.ui.position == 0 && l.ui.action_cursor == C3_GUI_FIGHT);
+
+    /* PKMN opens the party (both are out here, so neither can switch in);
+     * B returns to the action menu with its cursor where it was. */
+    b = start; loop_begin(&l, &b, &pack, 1);
+    idle(&l, 30, 1);
+    loop_frame(&l, C3_PAD_DOWN, 1); loop_frame(&l, 0, 1);
+    press(&l, C3_PAD_A, 1);
+    CHECK(l.ui.page == C3_GUI_SWITCH && l.ui.position == 0);
+    press(&l, C3_PAD_A, 1);
+    CHECK(l.ui.page == C3_GUI_SWITCH && l.ui.error[0] && l.ui.commands[0].kind == 0);
+    press(&l, C3_PAD_B, 1);
+    CHECK(l.ui.page == C3_GUI_ACTION && l.ui.action_cursor == C3_GUI_PKMN);
+
+    /* ITEMS without the Snag Machine: nothing to use, the menu stays. */
+    b = start; b.snag = 0; loop_begin(&l, &b, &pack, 1);
+    idle(&l, 30, 1);
+    loop_frame(&l, C3_PAD_RIGHT, 1); loop_frame(&l, 0, 1);
+    press(&l, C3_PAD_A, 1);
+    CHECK(l.ui.page == C3_GUI_ACTION && l.ui.action_cursor == C3_GUI_ITEMS && l.ui.error[0]);
+
+    /* ITEMS with the Snag Machine and a ball: the ball list, B back to the
+     * action menu, then a throw at the one Shadow foe (no target page). */
+    b = start; b.snag = 1; b.balls[1] = 1; loop_begin(&l, &b, &pack, 1);
+    CHECK(c3_general_battle_can_snag(&b, &pack, 0, 1, 2) && !c3_general_battle_can_snag(&b, &pack, 0, 1, 3));
+    idle(&l, 30, 1);
+    loop_frame(&l, C3_PAD_RIGHT, 1); loop_frame(&l, 0, 1);
+    press(&l, C3_PAD_A, 1);
+    CHECK(l.ui.page == C3_GUI_BALL && l.ui.cursor == 0);
+    press(&l, C3_PAD_B, 1);
+    CHECK(l.ui.page == C3_GUI_ACTION && l.ui.action_cursor == C3_GUI_ITEMS);
+    press(&l, C3_PAD_A, 1);
+    press(&l, C3_PAD_A, 1);
+    CHECK(l.ui.page == C3_GUI_ACTION && l.ui.position == 1 && l.ui.action_cursor == C3_GUI_FIGHT);
+    CHECK(l.ui.commands[0].kind == 2 && l.ui.commands[0].slot == 1 && l.ui.commands[0].target == 2);
+    /* CALL commits the second Pokemon's command, and the turn runs. */
+    loop_frame(&l, C3_PAD_DOWN | C3_PAD_RIGHT, 1); loop_frame(&l, 0, 1);
+    CHECK(l.ui.action_cursor == C3_GUI_CALL);
+    {
+        uint32_t turn = b.turn;
+        CHECK(press_result(&l, C3_PAD_A) == 1);
+        CHECK(l.ui.page == C3_GUI_EVENTS && b.turn == turn + 1 && l.ui.commands[1].kind == 3 && l.ui.commands[1].target == 1);
+        CHECK(b.caught[0] == 1 && b.balls_used[1] == 1);
+    }
+
+    /* The old shortcuts are gone: X, Y and L do nothing on either page. */
+    b = start; b.snag = 1; b.balls[1] = 1; loop_begin(&l, &b, &pack, 1);
+    idle(&l, 30, 1);
+    press(&l, C3_PAD_X, 1); press(&l, C3_PAD_Y, 1); press(&l, C3_PAD_L, 1);
+    CHECK(nothing_chosen(&l));
+    press(&l, C3_PAD_A, 1);
+    press(&l, C3_PAD_X, 1); press(&l, C3_PAD_Y, 1); press(&l, C3_PAD_L, 1);
+    CHECK(l.ui.page == C3_GUI_MOVES && l.ui.position == 0 && l.ui.commands[0].kind == 0 && l.ui.commands[0].target == 0);
 
     c3_battle_pack_free(&pack); free(bytes);
-    printf("battle command input: one press per UI layer\n");
+    printf("battle command input: action menu, one press per UI layer\n");
     return 0;
 }

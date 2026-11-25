@@ -7,8 +7,9 @@
 #define C3_BATTLE_PACK_PATH "sdmc:/3ds/Colosseum3DS/boot/battles.c3x"
 
 /* Modal story battle on the bottom screen: plays back each turn's events,
- * takes the hero's commands (move, target, switch) and runs until the
- * battle ends. Draws no top-screen frame and allocates no GPU memory.
+ * takes the hero's commands (action menu, move, target, switch, ball, call)
+ * and runs until the battle ends. Draws no top-screen frame and allocates
+ * no GPU memory.
  * Returns 0 when the battle finished, 1 when the application must exit,
  * -1 on an engine error (the battle is left unfinished). */
 int c3_battle_general_scene_run(const C3BattlePack *pack, C3GeneralBattle *battle, FILE *trace);
@@ -23,10 +24,27 @@ void c3_battle_music_end(const C3BattleMusic *music);
 
 /* The bottom-screen command UI, shared with the 3D battle scene
  * (battle_general_3d.c), which shows the events on the top screen. */
-typedef enum { C3_GUI_EVENTS, C3_GUI_MOVES, C3_GUI_TARGET, C3_GUI_SWITCH, C3_GUI_RESULT, C3_GUI_WAIT, C3_GUI_BALL } C3GeneralUiPage;
+typedef enum { C3_GUI_EVENTS, C3_GUI_MOVES, C3_GUI_TARGET, C3_GUI_SWITCH, C3_GUI_RESULT, C3_GUI_WAIT, C3_GUI_BALL,
+               C3_GUI_ACTION } C3GeneralUiPage;
+/* The action menu each Pokemon's command starts on: fightMenuFightTrainer-
+ * GcHeroOpenMenu's menu 0x4B (menuFightMainCtrl), items 0xB5-0xB8 in a 2x2
+ * grid, FIGHT ITEMS / PKMN CALL. The entry is the menu result its SubMain
+ * takes: 0 the move list, 1 the bag, 2 the party, 3 Call. */
+enum { C3_GUI_FIGHT, C3_GUI_ITEMS, C3_GUI_PKMN, C3_GUI_CALL, C3_GUI_ACTIONS };
+/* The entry's text: the item's original message (common_rel 0x13C, 0x13D,
+ * 0x13E, 0x140). The scene starts with plain stand-ins; set_action_label
+ * replaces one with the game's text (copied, at most 23 bytes). */
+uint32_t c3_general_ui_action_message(unsigned entry);
+void c3_general_ui_set_action_label(unsigned entry, const char *text);
+const char *c3_general_ui_action_label(unsigned entry);
 typedef struct {
     C3GeneralUiPage page;
     unsigned cursor, position, target_cursor;
+    /* The action menu's cursor: FIGHT for each Pokemon, kept while its
+     * submenus open and close (fn_80011A1C's cursor). */
+    unsigned action_cursor;
+    /* The 3D scene times its messages; only a held one waits for A. */
+    int timed_log;
     C3GeneralCommand commands[2];
     char error[C3_GB_ERROR_SIZE];
     /* Link battles (docs/link-play.md): control_mask is the side-0

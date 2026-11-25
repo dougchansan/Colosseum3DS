@@ -166,7 +166,7 @@ static int run(const C3BattlePack *pack, C3GeneralBattle *b, C3BattleLinkHooks *
     int result = -1, audio = 0, ended = 0;
     unsigned frames = 0;
     memset(&view, 0, sizeof view); memset(&ui, 0, sizeof ui);
-    ui.page = C3_GUI_EVENTS;
+    ui.page = C3_GUI_EVENTS; ui.timed_log = 1;
     if (hooks) { ui.control_mask = hooks->control_mask; ui.defer = 1; }
     C3BattleRng local_rng; c3_battle_rng_init(&local_rng, 0x1u + (uint32_t)c3_n3ds_time_us());
     if (!stage) return -1;

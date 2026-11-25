@@ -50,6 +50,19 @@ Converters need the HSD parser as an LF export of the pinned commit
 - Colour keys: type-0 keys are `0xAARRGGBB` (neutral `80808080`, the move
   dim `803A3A3A`) on the floor or the owner.
 - End: trainer win/loss clips and wzx_win / wzx_lose.
+- Commands: each Pokemon's turn starts on the action menu, the original
+  `fightMenuFightTrainerGcHeroOpenMenu` menu 0x4B (`menuFightMainCtrl`,
+  items 0xB5-0xB8): FIGHT and ITEMS above PKMN and CALL, the cursor on
+  FIGHT, texts from common messages 0x13C/0x13D/0x13E/0x140. FIGHT opens
+  the move list (Struggle at once with no PP left), ITEMS the Snag
+  Machine's balls, PKMN the party, CALL calls out (otherwise the menu
+  stays). There are no button shortcuts. B goes back one level: from the
+  move list, ball list or party to the action menu, and from the second
+  Pokemon's action menu to the first one's. Not ported: the rest of the
+  bag (only balls can be used) and GIVE IN, which takes ITEMS' place when
+  floor status 0x22 allows running (no story battle).
+- Messages: the log is timed; only a held message (the partner's Shadow
+  notice) shows "A: next".
 - A different species sent out swaps only that pack (about 0.4 s).
 
 ## Coverage (2026-11-14)
