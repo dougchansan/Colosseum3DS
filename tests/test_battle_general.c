@@ -399,13 +399,14 @@ static void reserve_replacement(void)
         unsigned turns = 0, third_turn = 0; int snagged = 0;
         while (b.outcome == C3_GB_RUNNING && turns < 40) {
             C3GeneralCommand c[2] = {{0}};
+            int ball = 0; /* one ball a turn (fightTrainerIsSelectedItemBall) */
             for (unsigned a = 0; a < b.active_count; ++a) {
                 if (b.active[0][a] == 255 || !b.party[0][b.active[0][a]].hp) continue;
                 /* Snag the Shadow Pokemon once it is out, else TACKLE the
                  * first live foe. */
                 int thrown = 0;
-                for (unsigned t = 2; t < 2u + b.active_count && !thrown; ++t)
-                    if (c3_general_battle_can_snag(&b, &pack, a, 1, t)) { c[a].kind = 2; c[a].slot = 1; c[a].target = (uint8_t)t; thrown = 1; }
+                for (unsigned t = 2; t < 2u + b.active_count && !thrown && !ball; ++t)
+                    if (c3_general_battle_can_snag(&b, &pack, a, 1, t)) { c[a].kind = 2; c[a].slot = 1; c[a].target = (uint8_t)t; thrown = ball = 1; }
                 if (!thrown) {
                     c[a].kind = 0; c[a].slot = 0; c[a].target = 2;
                     for (unsigned t = 2; t < 2u + b.active_count; ++t)
@@ -843,12 +844,178 @@ static void private_sweep(const char *pack_path, const char *newgame_dir, const 
     c3_game_state_free(&game); c3_battle_pack_free(&pack);
 }
 
+/* The hero's bag (fight_menu.c SubItem, fn_80211E18): an item acts in the
+ * item bracket, before any move, leaves the bag only when its action runs,
+ * and the item rows' effects (itemEffectParam) are applied as fn_80144574
+ * does. Synthetic rows only. */
+static uint32_t find_part(const C3GeneralBattle *b, const char *part)
+{
+    for (uint32_t i = 0; i < b->event_count; ++i) if (strstr(b->events[i].text, part)) return i;
+    return UINT32_MAX;
+}
+static void put_bag(C3GeneralBattle *b, unsigned k, uint16_t item, uint16_t count, uint8_t use, const char *name,
+                    unsigned at, uint8_t value)
+{
+    C3GeneralBagItem *e = &b->bag[k];
+    memset(e, 0, sizeof *e);
+    e->item = item; e->count = count; e->use = use; e->pocket = 0;
+    snprintf(e->name, sizeof e->name, "%s", name);
+    if (at < 16) e->param[at] = value;
+    if (k >= b->bag_count) b->bag_count = (uint8_t)(k + 1);
+}
+static void bag_items(void)
+{
+    size_t n; uint8_t *bytes = make_pack(2, 5, &n);
+    C3BattlePack pack = {0};
+    CHECK(c3_battle_pack_decode(&pack, bytes, n, error));
+    uint8_t party[6][0x138]; make_party(party, 1, 50, 3, 0);
+    static C3GeneralBattle start, b;
+    CHECK(c3_general_battle_begin(&start, &pack, 0, party, 7, error));
+    CHECK(start.active_count == 2 && start.party_count[0] == 3 && start.info.use_item);
+    strcpy(start.side_name[0], "WES");
+    enum { HYPER_POTION, REVIVE, ANTIDOTE, ETHER, X_ATTACK, DIRE_HIT, POKE_DOLL, HP_UP };
+    put_bag(&start, HYPER_POTION, 21, 3, C3_GB_USE_MEDICINE, "HYPER POTION", 10, 200);
+    put_bag(&start, REVIVE, 24, 1, C3_GB_USE_MEDICINE, "REVIVE", 10, 254); start.bag[REVIVE].param[4] = 0x40;
+    put_bag(&start, ANTIDOTE, 14, 1, C3_GB_USE_MEDICINE, "ANTIDOTE", 3, 0x10);
+    put_bag(&start, ETHER, 34, 1, C3_GB_USE_PP, "ETHER", 11, 10); start.bag[ETHER].param[4] = 0x20;
+    put_bag(&start, X_ATTACK, 75, 1, C3_GB_USE_BATTLE, "X ATTACK", 0, 0x02);
+    put_bag(&start, DIRE_HIT, 74, 1, C3_GB_USE_BATTLE, "DIRE HIT", 0, 0x20);
+    put_bag(&start, POKE_DOLL, 80, 1, C3_GB_USE_REFUSED, "POKE DOLL", 16, 0);
+    put_bag(&start, HP_UP, 63, 1, C3_GB_USE_NONE, "HP UP", 8, 10);
+    CHECK(c3_general_bag_use_class(0x80023B9Cu) == C3_GB_USE_MEDICINE && c3_general_bag_use_class(0x80023968u) == C3_GB_USE_PP);
+    CHECK(c3_general_bag_use_class(0x8002217Cu) == C3_GB_USE_BATTLE && c3_general_bag_use_class(0) == C3_GB_USE_NONE);
+    CHECK(c3_general_bag_use_class(0x80023DA8u) == C3_GB_USE_REFUSED && c3_general_bag_use_class(0x80021B14u) == C3_GB_USE_REFUSED);
+    C3GeneralCommand tackle = {0, 0, 2};
+    uint16_t max = start.party[0][0].max_hp;
+
+    {   /* A Hyper Potion on the hurt lead: "WES used a HYPER POTION!", its
+         * gauge rises by 200 (to its maximum here) before the foes move,
+         * and one leaves the bag. */
+        b = start; b.party[0][0].hp = 10;
+        CHECK(c3_general_battle_item_check(&b, 0, HYPER_POTION, 0, 0, 0) == C3_GB_ITEM_OK);
+        C3GeneralCommand c[2] = {{4, HYPER_POTION, 0}, tackle};
+        CHECK(c3_general_battle_turn(&b, &pack, c, error));
+        uint32_t used = find_text(&b, "WES used a HYPER POTION!", 0), restored = find_text(&b, "HERO's HP was restored.", 0);
+        CHECK(used != UINT32_MAX && restored == used + 1);
+        CHECK(b.events[restored].kind == C3_GB_EVENT_HP && b.events[restored].actor == 0);
+        CHECK(b.events[restored].hp[0] == (max < 210 ? max : 210));
+        for (uint32_t i = 0; i < used; ++i) CHECK(b.events[i].kind != C3_GB_EVENT_MOVE);
+        CHECK(b.bag[HYPER_POTION].count == 2 && b.bag[HYPER_POTION].used == 1);
+        /* At full HP it has no effect and is refused when chosen. */
+        b = start;
+        CHECK(c3_general_battle_item_check(&b, 0, HYPER_POTION, 0, 0, 0) == C3_GB_ITEM_NO_EFFECT);
+        C3GeneralCommand full[2] = {{4, HYPER_POTION, 0}, tackle};
+        CHECK(!c3_general_battle_turn(&b, &pack, full, error) && b.turn == start.turn);
+    }
+    {   /* A Revive on the fainted Pokemon in reserve: half its HP back, from
+         * the second Pokemon's command; not on a living one, and a Potion
+         * does nothing for a fainted one. */
+        b = start; b.party[0][2].hp = 0;
+        CHECK(c3_general_battle_item_check(&b, 1, REVIVE, 0, 0, 0) == C3_GB_ITEM_NO_EFFECT);
+        CHECK(c3_general_battle_item_check(&b, 1, HYPER_POTION, 2, 0, 0) == C3_GB_ITEM_NO_EFFECT);
+        CHECK(c3_general_battle_item_check(&b, 1, REVIVE, 2, 0, 0) == C3_GB_ITEM_OK);
+        C3GeneralCommand c[2] = {tackle, {4, REVIVE, 2}};
+        CHECK(c3_general_battle_turn(&b, &pack, c, error));
+        CHECK(find_text(&b, "WES used a REVIVE!", 0) != UINT32_MAX && find_text(&b, "HERO was revived!", 0) != UINT32_MAX);
+        CHECK(b.party[0][2].hp == b.party[0][2].max_hp / 2 && b.bag[REVIVE].count == 0 && b.bag[REVIVE].used == 1);
+        /* None left: the bag entry can't be chosen again. */
+        b.party[0][2].hp = 0;
+        CHECK(c3_general_battle_item_check(&b, 0, REVIVE, 2, 0, 0) == C3_GB_ITEM_NONE_LEFT);
+    }
+    {   /* A status heal: an Antidote cures poison (and bad poison). */
+        b = start; b.party[0][1].status = C3_GB_TOXIC; b.party[0][1].toxic_count = 3;
+        CHECK(c3_general_battle_item_check(&b, 0, ANTIDOTE, 0, 0, 0) == C3_GB_ITEM_NO_EFFECT);
+        C3GeneralCommand c[2] = {{4, ANTIDOTE, 1}, tackle};
+        CHECK(c3_general_battle_turn(&b, &pack, c, error));
+        CHECK(find_text(&b, "HERO was cured of its poisoning.", 0) != UINT32_MAX);
+        CHECK(b.party[0][1].status == 0 && b.party[0][1].toxic_count == 0 && b.bag[ANTIDOTE].used == 1);
+    }
+    {   /* An Ether restores the chosen move only; without a move it asks for one. */
+        b = start; b.party[0][0].pp[0] = 1; b.party[0][0].pp[1] = 1;
+        CHECK(c3_general_battle_item_check(&b, 0, ETHER, 0, 255, 0) == C3_GB_ITEM_NEED_MOVE);
+        CHECK(c3_general_battle_item_check(&b, 0, ETHER, 0, 3, 0) == C3_GB_ITEM_NEED_MOVE); /* an empty slot */
+        C3GeneralCommand c[2] = {{4, ETHER, 0 | 1 << 4}, tackle};
+        CHECK(c3_general_battle_turn(&b, &pack, c, error));
+        CHECK(b.party[0][0].pp[1] == 11 && b.party[0][0].pp[0] <= 1 && find_text(&b, "HERO's PP was restored.", 0) != UINT32_MAX);
+    }
+    {   /* X Attack on the Pokemon choosing: Attack +1 with the stage event. */
+        b = start;
+        C3GeneralCommand c[2] = {{4, X_ATTACK, 5}, tackle}; /* the target is the user's own slot */
+        CHECK(c3_general_battle_turn(&b, &pack, c, error));
+        uint32_t rose = find_text(&b, "HERO's ATTACK rose!", 0);
+        CHECK(rose != UINT32_MAX && b.events[rose].stat == 0 && b.events[rose].stat_delta == 1 && b.party[0][0].stages[0] == 1);
+        b = start; b.party[0][0].stages[0] = 6;
+        CHECK(c3_general_battle_item_check(&b, 0, X_ATTACK, 0, 0, 0) == C3_GB_ITEM_NO_EFFECT);
+    }
+    {   /* The item acts before a faster foe's move (bracket 1 before 4),
+         * while the same hero's move waits for that foe. */
+        b = start; b.party[0][0].hp = 10;
+        for (unsigned i = 0; i < 2; ++i) b.party[1][i].stats[5] = 999;
+        C3GeneralCommand moves[2] = {tackle, tackle};
+        C3GeneralBattle *m = malloc(sizeof *m); CHECK(m); *m = b;
+        CHECK(c3_general_battle_turn(m, &pack, moves, error));
+        uint32_t first_move = UINT32_MAX;
+        for (uint32_t i = 0; i < m->event_count && first_move == UINT32_MAX; ++i) if (m->events[i].kind == C3_GB_EVENT_MOVE) first_move = i;
+        CHECK(first_move != UINT32_MAX && m->events[first_move].actor >= 2); /* the foe moved first */
+        free(m);
+        C3GeneralCommand c[2] = {{4, HYPER_POTION, 0}, tackle};
+        CHECK(c3_general_battle_turn(&b, &pack, c, error));
+        CHECK(find_text(&b, "WES used a HYPER POTION!", 0) == 0 && b.events[1].kind == C3_GB_EVENT_HP && b.events[1].hp[0] > 10);
+    }
+    {   /* Refusals. */
+        b = start;
+        b.party[0][0].hp = 10;
+        CHECK(c3_general_battle_item_check(&b, 0, DIRE_HIT, 0, 0, 0) == C3_GB_ITEM_CANT_USE);   /* not modelled */
+        CHECK(c3_general_battle_item_check(&b, 0, POKE_DOLL, 0, 0, 0) == C3_GB_ITEM_CANT_USE);  /* fn_80023DA8 */
+        CHECK(c3_general_battle_item_check(&b, 0, HP_UP, 0, 0, 0) == C3_GB_ITEM_CANT_USE);     /* no battleUseFunc */
+        CHECK(c3_general_battle_item_check(&b, 0, 40, 0, 0, 0) == C3_GB_ITEM_INVALID);
+        CHECK(c3_general_battle_item_check(&b, 0, HYPER_POTION, 6, 0, 0) == C3_GB_ITEM_INVALID);
+        CHECK(c3_general_battle_item_check(&b, 0, HYPER_POTION, 0, 0, 3) == C3_GB_ITEM_NONE_LEFT);
+        b.party[0][0].hyper = 1;                                                                 /* 0x424D */
+        CHECK(c3_general_battle_item_check(&b, 1, HYPER_POTION, 0, 0, 0) == C3_GB_ITEM_HYPER);
+        CHECK(c3_general_battle_item_check(&b, 0, X_ATTACK, 0, 0, 0) == C3_GB_ITEM_HYPER);
+        b.party[0][0].hyper = 0;
+        b.info.use_item = 0;                                                                     /* floor 0x20 */
+        CHECK(c3_general_battle_item_check(&b, 0, HYPER_POTION, 0, 0, 0) == C3_GB_ITEM_NOT_NOW);
+        C3GeneralCommand c[2] = {{4, HYPER_POTION, 0}, tackle};
+        CHECK(!c3_general_battle_turn(&b, &pack, c, error));
+        /* The last Revive can't be chosen by both Pokemon. */
+        b = start; b.party[0][2].hp = 0;
+        C3GeneralCommand twice[2] = {{4, REVIVE, 2}, {4, REVIVE, 2}};
+        CHECK(!c3_general_battle_turn(&b, &pack, twice, error) && b.bag[REVIVE].count == 1);
+    }
+    {   /* Balls (defect #49): the ball leaves the bag only when it is thrown;
+         * one whose thrower fainted first stays, and the hero throws one a
+         * turn (fightTrainerIsSelectedItemBall, message 0x426D). */
+        b = start; b.snag = 1; b.balls[4] = 3;
+        CHECK(c3_general_battle_can_snag(&b, &pack, 1, 4, 2));
+        C3GeneralCommand two[2] = {{2, 4, 2}, {2, 4, 2}};
+        CHECK(!c3_general_battle_turn(&b, &pack, two, error) && strstr(error, "one ball") && b.balls[4] == 3);
+        b.party[0][1].hp = 0; /* fainted, its ball still queued */
+        C3GeneralCommand c[2] = {tackle, {2, 4, 2}};
+        CHECK(c3_general_battle_turn(&b, &pack, c, error));
+        CHECK(b.balls[4] == 3 && b.balls_used[4] == 0 && find_part(&b, "threw") == UINT32_MAX);
+        /* The same for a bag item. */
+        b = start; b.party[0][1].hp = 0; b.party[0][0].hp = 10;
+        C3GeneralCommand item[2] = {tackle, {4, HYPER_POTION, 0}};
+        CHECK(c3_general_battle_turn(&b, &pack, item, error));
+        CHECK(b.bag[HYPER_POTION].count == 3 && !b.bag[HYPER_POTION].used && find_part(&b, "WES used") == UINT32_MAX);
+    }
+    {   /* Link battles take no item. */
+        b = start; b.party[0][0].hp = 10; b.link = 1;
+        CHECK(c3_general_battle_item_check(&b, 0, HYPER_POTION, 0, 0, 0) == C3_GB_ITEM_INVALID);
+    }
+    c3_battle_pack_free(&pack); free(bytes);
+    puts("battle-general: bag items (Hyper Potion, Revive, Antidote, Ether, X Attack, refusals, ball #49) ok");
+}
+
 int main(int argc, char **argv)
 {
     synthetic();
     reserve_replacement();
     shadow_appearance();
     side0_cpu();
+    bag_items();
     if (argc >= 4) private_sweep(argv[1], argv[2], argv[3]);
     else puts("battle-general: private sweep skipped (needs <battles.c3x> <newgame dir> <save.gci>)");
     return 0;

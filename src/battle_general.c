@@ -1374,6 +1374,138 @@ static int throw_ball(C3GeneralBattle *b,const C3BattlePack *p,unsigned a,C3Gene
     return say(b,C3_GB_EVENT_FAINT,t,t,0,"Gotcha! %s was snagged!",y->name);
 }
 
+/* ---- the bag ------------------------------------------------------------- */
+
+/* The item row's battleUseFunc (ItemDataBios +0x20, main.dol 0x80363CE8
+ * rows): fn_80023B9C medicine on a party Pokemon, fn_80023968 PP restore
+ * (a move with itemParamGetPPSelectFlag), fn_8002217C X items / Dire Hit /
+ * Guard Spec on the Pokemon choosing, fn_80023DA8 message 0x44C6 only,
+ * fn_80021B14 the Enigma Berry; 0 none. Balls (fn_80022050) are balls[]. */
+uint8_t c3_general_bag_use_class(uint32_t f)
+{
+    switch(f){
+    case 0x80023B9Cu:return C3_GB_USE_MEDICINE;
+    case 0x80023968u:return C3_GB_USE_PP;
+    case 0x8002217Cu:return C3_GB_USE_BATTLE;
+    case 0:return C3_GB_USE_NONE;
+    default:return C3_GB_USE_REFUSED;
+    }
+}
+int c3_general_bag_item_selects_move(const C3GeneralBagItem *e){return e&&(e->param[4]>>5&1u);}
+/* What fn_80144574 did to the Pokemon (its ItemUsePokemonLog types). */
+enum { IL_SLEEP=1u<<0, IL_POISON=1u<<1, IL_BURN=1u<<2, IL_FREEZE=1u<<3, IL_PARALYSIS=1u<<4,
+       IL_CONFUSION=1u<<5, IL_REVIVE=1u<<6, IL_HP=1u<<7, IL_PP=1u<<8, IL_STAGE=1u<<9 };
+typedef struct { unsigned mask, hp; int8_t stage[7]; } ItemLog;
+/* fn_80144574 for the effects a battle item has (itemParamGet* layout):
+ * +0 bits 1-4 Attack up, bit 5 Dire Hit, bit 7 infatuation; +1 Defense
+ * (high) / Speed (low) up; +2 accuracy (high) / Sp. Atk (low) up; +3 cures
+ * bit 0 confusion, 1 paralysis, 2 freeze, 3 burn, 4 poison, 5 sleep, bit 7
+ * Guard Spec; +4 bit 5 PP-selective, bit 6 Revive; +10 HP (255 all, 254
+ * half; Revive only on a fainted Pokemon, the rest only on a living one);
+ * +11 PP for the chosen move or all four (not Struggle or Shadow Rush).
+ * Stages rise only on a Pokemon that is out, to +6. Returns whether
+ * anything changed. Dire Hit, Guard Spec and infatuation are not modelled
+ * (item_unmodelled). */
+static int item_effect(C3GeneralMon *y,int out,const C3GeneralBagItem *e,unsigned move,ItemLog *log)
+{
+    const uint8_t *q=e->param;
+    memset(log,0,sizeof *log);
+    if(out&&y->hp){
+        static const uint8_t stage_of[5]={0,1,4,5,2};
+        unsigned boost[5]={q[0]>>1&15u,q[1]>>4,q[1]&15u,q[2]>>4,q[2]&15u};
+        for(unsigned k=0;k<5;++k){int s=y->stages[stage_of[k]];
+            if(!boost[k]||s>=6)continue;
+            int next=s+(int)boost[k];if(next>6)next=6;
+            log->stage[stage_of[k]]=(int8_t)(next-s);y->stages[stage_of[k]]=(int8_t)next;log->mask|=IL_STAGE;}
+    }
+    if((q[3]&0x20)&&y->status==C3_GB_SLEEP){y->status=0;y->status_turns=0;log->mask|=IL_SLEEP;}
+    if((q[3]&0x10)&&(y->status==C3_GB_POISON||y->status==C3_GB_TOXIC)){y->status=0;y->toxic_count=0;log->mask|=IL_POISON;}
+    if((q[3]&0x08)&&y->status==C3_GB_BURN){y->status=0;log->mask|=IL_BURN;}
+    if((q[3]&0x04)&&y->status==C3_GB_FREEZE){y->status=0;log->mask|=IL_FREEZE;}
+    if((q[3]&0x02)&&y->status==C3_GB_PARALYSIS){y->status=0;log->mask|=IL_PARALYSIS;}
+    if((q[3]&0x01)&&y->confusion){y->confusion=0;log->mask|=IL_CONFUSION;}
+    {   unsigned boost=q[10];int revive=q[4]>>6&1u;
+        if(boost&&y->hp<y->max_hp&&(y->hp==0)==revive){
+            unsigned gain=boost==255?y->max_hp:boost==254?(y->max_hp/2u?y->max_hp/2u:1u):boost==253?0u:boost;
+            unsigned next=y->hp+gain;if(next>y->max_hp)next=y->max_hp;
+            if(next>y->hp){log->hp=next-y->hp;y->hp=(uint16_t)next;log->mask|=revive?IL_REVIVE:IL_HP;}
+        }
+    }
+    if(q[11]){
+        for(unsigned i=0;i<4;++i){
+            if((q[4]&0x20)&&i!=move)continue;
+            if(!y->moves[i]||y->moves[i]==STRUGGLE||y->moves[i]==SHADOW_RUSH||y->pp[i]>=y->pp_max[i])continue;
+            unsigned next=y->pp[i]+q[11];y->pp[i]=(uint8_t)(next>y->pp_max[i]?y->pp_max[i]:next);log->mask|=IL_PP;
+        }
+    }
+    return log->mask!=0;
+}
+static int item_unmodelled(const C3GeneralBagItem *e){return (e->param[0]&0xA0u)||(e->param[3]&0x80u);}
+/* The battle position the hero's party member is out at, else 255. */
+static unsigned hero_position(const C3GeneralBattle *b,unsigned party)
+{for(unsigned a=0;a<b->active_count;++a)if(b->active[0][a]==party)return a;return NO_MON;}
+C3GeneralItemCheck c3_general_battle_item_check(const C3GeneralBattle *cb,unsigned pos,unsigned bag,unsigned party,
+                                                unsigned move,unsigned reserved)
+{
+    C3GeneralBattle *b=(C3GeneralBattle *)cb;
+    if(!b||b->magic!=MAGIC||pos>=2||!alive(b,pos)||b->link||b->info.cpu_side0||bag>=b->bag_count||bag>=C3_GB_BAG)
+        return C3_GB_ITEM_INVALID;
+    if(!b->info.use_item)return C3_GB_ITEM_NOT_NOW;
+    const C3GeneralBagItem *e=&b->bag[bag];
+    if(e->count<=reserved)return C3_GB_ITEM_NONE_LEFT;
+    if(e->use!=C3_GB_USE_MEDICINE&&e->use!=C3_GB_USE_PP&&e->use!=C3_GB_USE_BATTLE)return C3_GB_ITEM_CANT_USE;
+    if(e->use==C3_GB_USE_BATTLE)party=b->active[0][pos];
+    if(party>=b->party_count[0]||!b->party[0][party].species)return C3_GB_ITEM_INVALID;
+    const C3GeneralMon *y=&b->party[0][party];
+    /* fn_80121ADC(pokemon, 0x3E): a Pokemon in Hyper Mode takes no item. */
+    if(y->hyper)return C3_GB_ITEM_HYPER;
+    if(c3_general_bag_item_selects_move(e)&&(move>3||!y->moves[move]))return C3_GB_ITEM_NEED_MOVE;
+    if(item_unmodelled(e))return C3_GB_ITEM_CANT_USE;
+    C3GeneralMon copy=*y;ItemLog log;
+    return item_effect(&copy,hero_position(b,party)!=NO_MON,e,move,&log)?C3_GB_ITEM_OK:C3_GB_ITEM_NO_EFFECT;
+}
+/* fn_80211E18 for the hero's item: "<hero> used <item>!" (trainer name
+ * control 0x13, item name 0x29), then what it did (fn_800216E8's choice,
+ * table lbl_80266C7C: the first effect in the order sleep, poison, burn,
+ * freeze, paralysis, confusion, Revive, HP, PP gives the line; a cure and
+ * a second effect of another group give message 0x4201; X items use
+ * lbl_80266D78). The item leaves the bag here, when the action runs, not
+ * when it was chosen; a Pokemon that fainted first never runs it. */
+static int use_bag_item(C3GeneralBattle *b,unsigned a,C3GeneralCommand c)
+{
+    if(c.slot>=b->bag_count)return 1;
+    C3GeneralBagItem *e=&b->bag[c.slot];
+    unsigned party=e->use==C3_GB_USE_BATTLE?b->active[0][a]:c.target&15u;
+    if(!e->count||party>=b->party_count[0])return 1;
+    C3GeneralMon *y=&b->party[0][party];
+    const char *w=b->side_name[0][0]?b->side_name[0]:"Player";
+    if(!say(b,C3_GB_EVENT_MESSAGE,a,255,0,"%s used %s %s!",w,strchr("AEIOU",e->name[0])?"an":"a",e->name))return 0;
+    unsigned pos=hero_position(b,party);ItemLog log;C3GeneralMon before=*y;
+    if(y->hyper||item_unmodelled(e)||!item_effect(y,pos!=NO_MON,e,c.target>>4,&log)){
+        *y=before;return say(b,C3_GB_EVENT_MESSAGE,a,255,0,"It won't have any effect.");}
+    --e->count;++e->used;
+    if(log.mask&IL_STAGE){
+        static const char *const rose[7]={"ATTACK","DEFENSE","SP. ATK","SP. DEF","SPEED","accuracy","evasiveness"};
+        for(unsigned s=0;s<7;++s)if(log.stage[s]){unsigned first=b->event_count;
+            if(!say(b,C3_GB_EVENT_MESSAGE,pos,pos,0,"%s's %s %srose!",y->name,rose[s],log.stage[s]>1?"sharply ":""))return 0;
+            if(b->event_count>first){b->events[first].stat=(int8_t)s;b->events[first].stat_delta=log.stage[s];}}
+    }
+    static const struct { unsigned bit; int group; const char *text; } line[9]={
+        {IL_SLEEP,0," woke up!"},{IL_POISON,1," was cured of its poisoning."},{IL_BURN,2,"'s burn was healed."},
+        {IL_FREEZE,3," was thawed out."},{IL_PARALYSIS,4," was cured of paralysis."},
+        {IL_CONFUSION,5," snapped out of its confusion."},{IL_REVIVE,-1," was revived!"},
+        {IL_HP,7,"'s HP was restored."},{IL_PP,-1,"'s PP was restored."}};
+    unsigned k=0;
+    while(k<9&&!(log.mask&line[k].bit))++k;
+    if(k==9)return 1;
+    const char *text=line[k].text;
+    if(line[k].group>=0)for(unsigned j=k+1;j<9;++j)
+        if((log.mask&line[j].bit)&&line[j].group>=0&&line[j].group!=line[k].group){text="'s HP and condition were restored.";break;}
+    /* An HP change on a Pokemon that is out moves its gauge. */
+    int gauge=pos!=NO_MON&&(log.mask&(IL_HP|IL_REVIVE));
+    return say(b,gauge?C3_GB_EVENT_HP:C3_GB_EVENT_MESSAGE,gauge?pos:a,gauge?pos:255,0,"%s%s",y->name,text);
+}
+
 /* ---- turns --------------------------------------------------------------- */
 int c3_general_battle_choose(C3GeneralBattle *b,const C3BattlePack *p,unsigned pos,C3GeneralCommand *c)
 {
@@ -1406,6 +1538,7 @@ static int command_valid(C3GeneralBattle *b,const C3BattlePack *p,unsigned pos,C
     }
     if(c.kind==2)return snag_allowed(b,p,pos,c.slot,c.target);
     if(c.kind==3)return c3_general_battle_can_call(b,pos);
+    if(c.kind==4)return c3_general_battle_item_check(b,pos,c.slot,c.target&15u,c.target>>4,0)==C3_GB_ITEM_OK;
     if(c.kind!=0||c.target>=4)return 0;
     uint8_t mask=c3_general_battle_legal_moves(b,p,pos);
     return c.slot==4?!mask:c.slot<4&&(mask>>c.slot&1u);
@@ -1453,8 +1586,8 @@ static int end_of_turn(C3GeneralBattle *b,const C3BattlePack *p)
 int c3_general_battle_command_valid(const C3GeneralBattle *b,const C3BattlePack *p,unsigned pos,C3GeneralCommand c)
 {return b&&p&&b->magic==MAGIC&&pos<4&&command_valid((C3GeneralBattle *)b,p,pos,c);}
 /* lbl_80375BB8: the action kind's bracket (Run 0, Item 1, Call 2,
- * Switch 3, Move 4); a ball is an item. */
-static int action_bracket(const C3GeneralCommand *c){return c->kind==1?3:c->kind==2?1:c->kind==3?2:4;}
+ * Switch 3, Move 4); a ball and a bag item are items. */
+static int action_bracket(const C3GeneralCommand *c){return c->kind==1?3:c->kind==2||c->kind==4?1:c->kind==3?2:4;}
 static int8_t command_priority(C3GeneralBattle *b,const C3BattlePack *p,unsigned pos,const C3GeneralCommand *c)
 {
     const C3GeneralMon *m=at(b,pos);
@@ -1543,6 +1676,15 @@ static int turn_core(C3GeneralBattle *out,const C3BattlePack *p,const C3GeneralC
         if(!link&&(pos/2||out->info.cpu_side0))continue;
         if(pos%2<out->active_count&&!command_valid(out,p,pos,player[pos]))return fail(e,"Choose a usable move or a healthy Pokemon.");
     }
+    /* The hero's two commands together (fight_menu.c SubItem): one ball a
+     * turn (fightTrainerIsSelectedItemBall, message 0x426D), and the same
+     * bag item twice only while two are left. */
+    if(!link&&!out->info.cpu_side0&&out->active_count==2&&alive(out,0)&&alive(out,1)){
+        if(player[0].kind==2&&player[1].kind==2)return fail(e,"Only one ball can be thrown a turn.");
+        if(player[0].kind==4&&player[1].kind==4&&player[0].slot==player[1].slot&&
+           c3_general_battle_item_check(out,1,player[1].slot,player[1].target&15u,player[1].target>>4,1)!=C3_GB_ITEM_OK)
+            return fail(e,"Choose a usable move or a healthy Pokemon.");
+    }
     C3GeneralBattle *b=malloc(sizeof *b);if(!b)return fail(e,"Turn allocation failed.");
     *b=*out;b->event_count=0;++b->turn;
     C3GeneralCommand cmd[4]={{0}};uint8_t order[4],count=0,acted[4]={0};int ok=0;
@@ -1566,6 +1708,7 @@ static int turn_core(C3GeneralBattle *out,const C3BattlePack *p,const C3GeneralC
             announce_send(b,pos/2,pos%2,&b->party[pos/2][cmd[pos].slot]);dark_check_appear(b,pos);
         }else if(cmd[pos].kind==2){if(!throw_ball(b,p,pos,cmd[pos]))goto failed;}
         else if(cmd[pos].kind==3){if(!call_pokemon(b,p,pos))goto failed;}
+        else if(cmd[pos].kind==4){if(!use_bag_item(b,pos,cmd[pos]))goto failed;}
         else if(!use_move(b,p,pos,cmd[pos],acted))goto failed;
         acted[pos]=1;
         check_outcome(b);if(b->outcome!=C3_GB_RUNNING)break;

@@ -43,14 +43,6 @@ static const C3GeneralMon *hero(const C3GeneralBattle *b, unsigned pos)
     uint8_t m = pos < b->active_count ? b->active[0][pos] : 255;
     return m != 255 ? &b->party[0][m] : NULL;
 }
-/* Balls the hero holds (item ids), for the Snag Machine page. */
-static unsigned ball_list(const C3GeneralBattle *b, unsigned out[12])
-{
-    unsigned n = 0;
-    if (!b->snag || b->link) return 0;
-    for (unsigned ball = 1; ball <= 12; ++ball) if (b->balls[ball]) out[n++] = ball;
-    return n;
-}
 static unsigned snag_targets(const C3GeneralBattle *b, const C3BattlePack *pack, unsigned pos, unsigned ball, unsigned out[2])
 {
     unsigned n = 0;
@@ -102,6 +94,89 @@ static void action_cell(C3BottomUi *s, int x, int y, const char *label, int sele
     c3_ui_text(s, x + 32, y + 3, 108, 1, label, disabled ? C3_UI_MUTED : selected ? C3_UI_GOLD : C3_UI_WHITE);
 }
 
+static const uint32_t bag_messages[C3_GUI_BAG_LABELS] = { 0x2AF9, 0x2AFA, 0x2AFC, 0x131, 0x134 };
+static char bag_labels[C3_GUI_BAG_LABELS][24] = { "ITEMS", "POKE BALLS", "BERRIES", "USE", "CANCEL" };
+uint32_t c3_general_ui_bag_message(unsigned entry) { return entry < C3_GUI_BAG_LABELS ? bag_messages[entry] : 0; }
+void c3_general_ui_set_bag_label(unsigned entry, const char *text)
+{
+    if (entry < C3_GUI_BAG_LABELS && text && text[0]) snprintf(bag_labels[entry], sizeof bag_labels[entry], "%s", text);
+}
+const char *c3_general_ui_bag_label(unsigned entry) { return entry < C3_GUI_BAG_LABELS ? bag_labels[entry] : ""; }
+/* The open pocket's entries: bag entries (Items, Berries) or ball ids. */
+static unsigned pocket_list(const C3GeneralBattle *b, unsigned pocket, unsigned out[C3_GB_BAG])
+{
+    unsigned n = 0;
+    if (pocket == C3_GUI_BAG_BALLS) {
+        for (unsigned ball = 1; ball <= 12; ++ball) if (b->balls[ball]) out[n++] = ball;
+        return n;
+    }
+    for (unsigned k = 0; k < b->bag_count && k < C3_GB_BAG; ++k)
+        if (b->bag[k].pocket == (pocket == C3_GUI_BAG_ITEMS ? 0u : 4u) && b->bag[k].count) out[n++] = k;
+    return n;
+}
+/* Uses of a bag entry (entry < 0: any; or balls) already chosen by an
+ * earlier Pokemon this turn. */
+static unsigned chosen_before(const C3GeneralUi *ui, unsigned kind, int entry)
+{
+    unsigned n = 0;
+    for (unsigned p = 0; p < ui->position && p < 2; ++p)
+        n += ui->commands[p].kind == kind && (entry < 0 || ui->commands[p].slot == (unsigned)entry);
+    return n;
+}
+/* The Items pocket offers USE only for an item with a battleUseFunc
+ * (summary menu flag 2); balls and berries always do. */
+static int bag_offers_use(const C3GeneralBattle *b, const C3GeneralUi *ui)
+{
+    return ui->bag_pocket != C3_GUI_BAG_ITEMS || (ui->bag_entry < b->bag_count && b->bag[ui->bag_entry].use != C3_GB_USE_NONE);
+}
+static void item_refusal(C3GeneralUi *ui, C3GeneralItemCheck r)
+{
+    static const char *const text[] = {
+        "", "Items can't be used now.", "That can't be used now.", "A Pokemon in Hyper Mode won't take it.",
+        "It won't have any effect.", "There are none left.", "Choose a move.", "That item can't be used." };
+    snprintf(ui->error, sizeof ui->error, "%s", text[r <= C3_GB_ITEM_INVALID ? r : C3_GB_ITEM_INVALID]);
+}
+static void open_bag(C3GeneralUi *ui)
+{
+    ui->page = C3_GUI_BAG; ui->bag_cursor = 0; ui->bag_confirm = 0; ui->bag_choice = 0;
+    if (ui->bag_pocket > C3_GUI_BAG_BERRIES) ui->bag_pocket = C3_GUI_BAG_ITEMS;
+}
+/* USE on the chosen item. Returns 1 when it is the Pokemon's command. */
+static int bag_use(C3GeneralUi *ui, const C3BattlePack *pack, const C3GeneralBattle *b)
+{
+    C3GeneralCommand *c = &ui->commands[ui->position];
+    ui->bag_confirm = 0;
+    if (ui->bag_pocket == C3_GUI_BAG_BALLS) {
+        /* fn_80022050: one ball a turn (message 0x426D); then the Snag
+         * Machine's target, a Shadow Pokemon only (0x7716 / 0x7702). */
+        unsigned ball = ui->bag_entry, targets[2], t = snag_targets(b, pack, ui->position, ball, targets);
+        if (chosen_before(ui, 2, -1)) { snprintf(ui->error, sizeof ui->error, "Only one ball can be thrown a turn."); return 0; }
+        if (!t) { snprintf(ui->error, sizeof ui->error, "There is no Shadow Pokemon to snag."); return 0; }
+        c->kind = 2; c->slot = (uint8_t)ball; c->target = (uint8_t)targets[0];
+        if (t > 1) { ui->page = C3_GUI_TARGET; ui->target_cursor = 0; return 0; }
+        return 1;
+    }
+    unsigned entry = ui->bag_entry;
+    if (entry >= b->bag_count) return 0;
+    const C3GeneralBagItem *e = &b->bag[entry];
+    if (e->use == C3_GB_USE_BATTLE) {
+        /* fn_8002217C: on the Pokemon choosing, no party list. */
+        C3GeneralItemCheck r = c3_general_battle_item_check(b, ui->position, entry, 0, 0, chosen_before(ui, 4, (int)entry));
+        if (r != C3_GB_ITEM_OK) { item_refusal(ui, r); return 0; }
+        c->kind = 4; c->slot = (uint8_t)entry; c->target = b->active[0][ui->position];
+        return 1;
+    }
+    if (e->use == C3_GB_USE_MEDICINE || e->use == C3_GB_USE_PP) {
+        /* fn_800141BC: the party list, from the Pokemon choosing. */
+        ui->page = C3_GUI_BAG_PARTY;
+        ui->cursor = b->active[0][ui->position] < b->party_count[0] ? b->active[0][ui->position] : 0;
+        return 0;
+    }
+    /* No battle use (0x4261), or fn_80023DA8 / the Enigma Berry (0x44C6). */
+    item_refusal(ui, e->use == C3_GB_USE_NONE ? C3_GB_ITEM_NO_EFFECT : C3_GB_ITEM_CANT_USE);
+    return 0;
+}
+
 void c3_general_ui_draw(const C3BattlePack *pack, const C3GeneralBattle *b, const C3GeneralUi *ui, const C3GeneralEvent *e)
 {
     C3BottomUi *s = c3_bottom_screen_begin();
@@ -126,19 +201,30 @@ void c3_general_ui_draw(const C3BattlePack *pack, const C3GeneralBattle *b, cons
     const char *message = e ? e->text : ui->error[0] ? ui->error : "";
     if (ui->page == C3_GUI_RESULT && b->event_count) message = b->events[b->event_count - 1].text;
     if (ui->page == C3_GUI_WAIT) message = "Waiting for the other players...";
-    if (ui->page == C3_GUI_ACTION || ui->page == C3_GUI_MOVES || ui->page == C3_GUI_TARGET || ui->page == C3_GUI_SWITCH || ui->page == C3_GUI_BALL) {
+    if (ui->page == C3_GUI_ACTION || ui->page == C3_GUI_MOVES || ui->page == C3_GUI_TARGET || ui->page == C3_GUI_SWITCH) {
         const C3GeneralMon *m = hero(b, ui->position);
         snprintf(text, sizeof text, "What will %s do?", m ? m->name : "?");
         message = ui->error[0] ? ui->error : text;
     }
+    const char *item_name = ui->bag_pocket == C3_GUI_BAG_BALLS ? c3_general_ball_name(ui->bag_entry) :
+                            ui->bag_entry < b->bag_count ? b->bag[ui->bag_entry].name : "";
+    if (ui->page == C3_GUI_BAG) {
+        snprintf(text, sizeof text, "%s", ui->bag_confirm ? item_name : bag_labels[ui->bag_pocket % 3u]);
+        message = ui->error[0] ? ui->error : text;
+    } else if (ui->page == C3_GUI_BAG_PARTY) {
+        snprintf(text, sizeof text, "Use the %s on which Pokemon?", item_name);
+        message = ui->error[0] ? ui->error : text;
+    } else if (ui->page == C3_GUI_BAG_MOVE) {
+        snprintf(text, sizeof text, "Restore which move's PP?");
+        message = ui->error[0] ? ui->error : text;
+    }
     c3_ui_text(s, 13, 100, 294, 2, message, C3_UI_WHITE);
     if (ui->page == C3_GUI_ACTION) {
-        unsigned balls[12];
-        int unavailable[C3_GUI_ACTIONS] = { 0, !ball_list(b, balls), 0, !c3_general_battle_can_call(b, ui->position) };
+        int unavailable[C3_GUI_ACTIONS] = { 0, !b->info.use_item || b->link || b->info.cpu_side0, 0, !c3_general_battle_can_call(b, ui->position) };
         c3_ui_panel(s, 5, 148, 310, 68);
         for (unsigned i = 0; i < C3_GUI_ACTIONS; ++i)
             action_cell(s, 12 + (int)(i & 1u) * 150, 155 + (int)(i >> 1) * 30, action_labels[i], ui->action_cursor == i, unavailable[i]);
-        c3_ui_footer(s, previous_position(ui, b) >= 0 ? "A: choose  B: back" : "A: choose");
+        c3_ui_footer(s, previous_position(ui, b) >= 0 && !chosen_before(ui, 4, -1) ? "A: choose  B: back" : "A: choose");
     } else if (ui->page == C3_GUI_MOVES) {
         const C3GeneralMon *m = hero(b, ui->position);
         uint8_t legal = c3_general_battle_legal_moves(b, pack, ui->position);
@@ -148,15 +234,39 @@ void c3_general_ui_draw(const C3BattlePack *pack, const C3GeneralBattle *b, cons
             c3_ui_row_value(s, 148 + (int)i * 19, name, pp, ui->cursor == i, !(legal >> i & 1u));
         }
         c3_ui_footer(s, "A: use  B: back");
-    } else if (ui->page == C3_GUI_BALL) {
-        unsigned balls[12], n = ball_list(b, balls);
-        for (unsigned i = 0; i < n && i < 4; ++i) {
-            unsigned first = ui->cursor >= 4 ? ui->cursor - 3 : 0, k = first + i;
-            if (k >= n) break;
-            snprintf(text, sizeof text, "x%u", b->balls[balls[k]]);
-            c3_ui_row_value(s, 148 + (int)i * 19, c3_general_ball_name(balls[k]), text, ui->cursor == k, 0);
+    } else if (ui->page == C3_GUI_BAG && ui->bag_confirm) {
+        int use = bag_offers_use(b, ui);
+        if (use) c3_ui_row(s, 148, bag_labels[C3_GUI_BAG_USE], ui->bag_choice == 0, 0);
+        c3_ui_row(s, use ? 167 : 148, bag_labels[C3_GUI_BAG_CANCEL], !use || ui->bag_choice == 1, 0);
+        c3_ui_footer(s, "A: choose  B: back");
+    } else if (ui->page == C3_GUI_BAG) {
+        unsigned list[C3_GB_BAG], n = pocket_list(b, ui->bag_pocket, list);
+        unsigned first = ui->bag_cursor >= 4 ? ui->bag_cursor - 3 : 0;
+        for (unsigned i = 0; i < 4 && first + i < n; ++i) {
+            unsigned k = first + i, left;
+            const char *name;
+            if (ui->bag_pocket == C3_GUI_BAG_BALLS) { name = c3_general_ball_name(list[k]); left = b->balls[list[k]]; }
+            else { name = b->bag[list[k]].name; left = b->bag[list[k]].count - chosen_before(ui, 4, (int)list[k]); }
+            snprintf(text, sizeof text, "x%u", left);
+            c3_ui_row_value(s, 148 + (int)i * 19, name, text, ui->bag_cursor == k, 0);
         }
-        c3_ui_footer(s, "A: throw  B: back");
+        if (!n) c3_ui_row(s, 148, "-", 0, 1);
+        c3_ui_footer(s, "A: choose  B: back  L/R: pocket");
+    } else if (ui->page == C3_GUI_BAG_PARTY) {
+        for (unsigned i = 0; i < b->party_count[0]; ++i) {
+            const C3GeneralMon *m = &b->party[0][i];
+            snprintf(text, sizeof text, "%u/%u", m->hp, m->max_hp);
+            c3_ui_row_value(s, 148 + (int)i * 13, m->name, text, ui->cursor == i, 0);
+        }
+        c3_ui_footer(s, "A: use  B: back");
+    } else if (ui->page == C3_GUI_BAG_MOVE) {
+        const C3GeneralMon *m = ui->target_cursor < b->party_count[0] ? &b->party[0][ui->target_cursor] : NULL;
+        for (unsigned i = 0; i < 4 && m; ++i) {
+            char name[C3_GB_NAME] = "-", pp[16] = "";
+            if (m->moves[i]) { c3_battle_pack_move_name(pack, m->moves[i], name); snprintf(pp, sizeof pp, "%u/%u", m->pp[i], m->pp_max[i]); }
+            c3_ui_row_value(s, 148 + (int)i * 19, name, pp, ui->cursor == i, !m->moves[i]);
+        }
+        c3_ui_footer(s, "A: use  B: back");
     } else if (ui->page == C3_GUI_TARGET) {
         unsigned foes[2], n = living_foes(b, foes);
         for (unsigned i = 0; i < n; ++i) {
@@ -209,20 +319,23 @@ int c3_general_ui_press(C3GeneralUi *ui, const C3BattlePack *pack, C3GeneralBatt
         if (pressed & (C3_PAD_UP | C3_PAD_DOWN)) ui->action_cursor ^= 2u;
         ui->action_cursor %= C3_GUI_ACTIONS;
         if (pressed & C3_PAD_B) {
+            /* fightTrainerIsUsedItem: once an earlier Pokemon has chosen a
+             * bag item (not a ball), B stays on this Pokemon's menu. */
             int back = previous_position(ui, b);
-            if (back >= 0) { ui->position = (unsigned)back; open_action(ui); }
+            if (back >= 0 && !chosen_before(ui, 4, -1)) { ui->position = (unsigned)back; open_action(ui); }
         } else if (pressed & C3_PAD_A) {
             C3GeneralCommand *c = &ui->commands[ui->position];
-            unsigned balls[12], foes[2], n = living_foes(b, foes);
+            unsigned foes[2], n = living_foes(b, foes);
             if (ui->action_cursor == C3_GUI_FIGHT) {
                 /* No move with PP left: FIGHT commits Struggle at once. */
                 if (!c3_general_battle_legal_moves(b, pack, ui->position)) {
                     c->kind = 0; c->slot = 4; c->target = n ? (uint8_t)foes[0] : 2; submit = 1;
                 } else { ui->page = C3_GUI_MOVES; ui->cursor = 0; }
             } else if (ui->action_cursor == C3_GUI_ITEMS) {
-                /* The bag's usable pocket here is the Snag Machine's balls. */
-                if (ball_list(b, balls)) { ui->page = C3_GUI_BALL; ui->cursor = 0; }
-                else snprintf(ui->error, sizeof ui->error, "There is no item to use now.");
+                /* SubMain result 1: floor status 0x20 (the fight kind's
+                 * useItem) clear refuses the bag with message 0x75F5. */
+                if (!b->info.use_item || b->link || b->info.cpu_side0) item_refusal(ui, C3_GB_ITEM_NOT_NOW);
+                else open_bag(ui);
             } else if (ui->action_cursor == C3_GUI_PKMN) {
                 ui->page = C3_GUI_SWITCH; ui->cursor = 0;
             } else if (c3_general_battle_can_call(b, ui->position)) {
@@ -249,25 +362,53 @@ int c3_general_ui_press(C3GeneralUi *ui, const C3BattlePack *pack, C3GeneralBatt
                 else submit = 1;
             }
         }
-    } else if (ui->page == C3_GUI_BALL) {
-        unsigned balls[12], n = ball_list(b, balls);
-        if (!n) { ui->page = C3_GUI_ACTION; ui->cursor = 0; }
-        else if (pressed & C3_PAD_UP) ui->cursor = (ui->cursor + n - 1) % n;
-        else if (pressed & C3_PAD_DOWN) ui->cursor = (ui->cursor + 1) % n;
-        else if (pressed & C3_PAD_B) { ui->page = C3_GUI_ACTION; ui->cursor = 0; }
+    } else if (ui->page == C3_GUI_BAG && ui->bag_confirm) {
+        /* USE / CANCEL (CANCEL alone for an item with no battle use). */
+        unsigned choices = bag_offers_use(b, ui) ? 2u : 1u;
+        if (pressed & (C3_PAD_UP | C3_PAD_DOWN)) ui->bag_choice = (ui->bag_choice + 1u) % choices;
+        if (pressed & C3_PAD_B) ui->bag_confirm = 0;
         else if (pressed & C3_PAD_A) {
-            /* The Snag Machine: a ball only at a Shadow Pokemon. */
-            unsigned ball = balls[ui->cursor % n], targets[2], t = snag_targets(b, pack, ui->position, ball, targets);
-            C3GeneralCommand *c = &ui->commands[ui->position];
-            if (!t) snprintf(ui->error, sizeof ui->error, "There is no Shadow Pokemon to snag.");
-            else { c->kind = 2; c->slot = (uint8_t)ball; c->target = (uint8_t)targets[0];
-                   if (t > 1) { ui->page = C3_GUI_TARGET; ui->target_cursor = 0; } else submit = 1; }
+            if (choices == 1 || ui->bag_choice == 1) ui->bag_confirm = 0;
+            else submit = bag_use(ui, pack, b);
+        }
+    } else if (ui->page == C3_GUI_BAG) {
+        unsigned list[C3_GB_BAG], n = pocket_list(b, ui->bag_pocket, list);
+        if (pressed & C3_PAD_L) { ui->bag_pocket = (ui->bag_pocket + 2u) % 3u; ui->bag_cursor = 0; }
+        else if (pressed & C3_PAD_R) { ui->bag_pocket = (ui->bag_pocket + 1u) % 3u; ui->bag_cursor = 0; }
+        else if (pressed & C3_PAD_B) { ui->page = C3_GUI_ACTION; ui->cursor = 0; }
+        else if (n && (pressed & C3_PAD_UP)) ui->bag_cursor = (ui->bag_cursor + n - 1u) % n;
+        else if (n && (pressed & C3_PAD_DOWN)) ui->bag_cursor = (ui->bag_cursor + 1u) % n;
+        else if (n && (pressed & C3_PAD_A)) { ui->bag_entry = list[ui->bag_cursor % n]; ui->bag_confirm = 1; ui->bag_choice = 0; }
+    } else if (ui->page == C3_GUI_BAG_PARTY) {
+        unsigned n = b->party_count[0];
+        if (n && (pressed & C3_PAD_UP)) ui->cursor = (ui->cursor + n - 1u) % n;
+        if (n && (pressed & C3_PAD_DOWN)) ui->cursor = (ui->cursor + 1u) % n;
+        if (pressed & C3_PAD_B) { ui->page = C3_GUI_BAG; ui->bag_confirm = 0; }
+        else if ((pressed & C3_PAD_A) && n) {
+            unsigned entry = ui->bag_entry, party = ui->cursor % n;
+            C3GeneralItemCheck r = c3_general_battle_item_check(b, ui->position, entry, party, 255, chosen_before(ui, 4, (int)entry));
+            if (r == C3_GB_ITEM_NEED_MOVE) { ui->page = C3_GUI_BAG_MOVE; ui->target_cursor = party; ui->cursor = 0; }
+            else if (r != C3_GB_ITEM_OK) item_refusal(ui, r);
+            else { C3GeneralCommand *c = &ui->commands[ui->position];
+                   c->kind = 4; c->slot = (uint8_t)entry; c->target = (uint8_t)party; submit = 1; }
+        }
+    } else if (ui->page == C3_GUI_BAG_MOVE) {
+        /* fn_80019B48: the move an Ether restores; B goes back to the party. */
+        if (pressed & C3_PAD_UP) ui->cursor = (ui->cursor + 3u) % 4u;
+        if (pressed & C3_PAD_DOWN) ui->cursor = (ui->cursor + 1u) % 4u;
+        if (pressed & C3_PAD_B) { ui->page = C3_GUI_BAG_PARTY; ui->cursor = ui->target_cursor; }
+        else if (pressed & C3_PAD_A) {
+            unsigned entry = ui->bag_entry;
+            C3GeneralItemCheck r = c3_general_battle_item_check(b, ui->position, entry, ui->target_cursor, ui->cursor, chosen_before(ui, 4, (int)entry));
+            if (r != C3_GB_ITEM_OK) item_refusal(ui, r);
+            else { C3GeneralCommand *c = &ui->commands[ui->position];
+                   c->kind = 4; c->slot = (uint8_t)entry; c->target = (uint8_t)(ui->target_cursor | ui->cursor << 4); submit = 1; }
         }
     } else if (ui->page == C3_GUI_TARGET) {
         unsigned foes[2], n = living_foes(b, foes);
         C3GeneralCommand *c = &ui->commands[ui->position];
         if (pressed & (C3_PAD_UP | C3_PAD_DOWN | C3_PAD_LEFT | C3_PAD_RIGHT)) ui->target_cursor = n ? (ui->target_cursor + 1) % n : 0;
-        if (pressed & C3_PAD_B) { ui->page = c->kind == 2 ? C3_GUI_BALL : C3_GUI_MOVES; ui->cursor = 0; }
+        if (pressed & C3_PAD_B) { if (c->kind == 2) { ui->page = C3_GUI_BAG; ui->bag_confirm = 0; } else { ui->page = C3_GUI_MOVES; ui->cursor = 0; } }
         else if ((pressed & C3_PAD_A) && n) {
             unsigned target = foes[ui->target_cursor % n];
             if (c->kind == 2 && !c3_general_battle_can_snag(b, pack, ui->position, c->slot, target))

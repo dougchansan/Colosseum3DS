@@ -505,6 +505,14 @@ static int play_story_battle(C3FieldStory *story,C3GameState *state,uint32_t enc
             /* The action menu's entries in the game's own text (common messages). */
             for(unsigned k=0;k<C3_GUI_ACTIONS;++k){char label[24];
                 if(c3_field_story_text(story,c3_general_ui_action_message(k),"",label,sizeof label))c3_general_ui_set_action_label(k,label);}
+            /* The bag (Items, Berries) with its item rows, names and labels
+             * from the P*DA pack, released again before the stage loads. */
+            {C3PdaAssets pda={0};uint8_t *pda_data=open_pda(&pda);
+             if(!c3_battle_story_prepare_bag(state,pda_data?&pda:NULL,battle)&&trace){fprintf(trace,"field_battle_bag status=unreadable\n");fflush(trace);}
+             for(unsigned k=0;pda_data&&k<C3_GUI_BAG_LABELS;++k){char label[24];
+                 if(c3_pda_text(&pda,c3_general_ui_bag_message(k),"","",label,sizeof label))c3_general_ui_set_bag_label(k,label);}
+             if(trace){fprintf(trace,"field_battle_bag entries=%u pda=%d\n",(unsigned)battle->bag_count,pda_data!=NULL);fflush(trace);}
+             free(pda_data);}
 #ifdef C3_ROUNDTRIP_PROBE
             {char prefix[32];snprintf(prefix,sizeof prefix,"probe/battle_%lu",(unsigned long)encounter);
              mkdir("sdmc:/3ds/Colosseum3DS/probe",0777);c3_battle_general_3d_set_autoplay(1,prefix);}

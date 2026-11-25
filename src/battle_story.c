@@ -1,4 +1,5 @@
 #include "colosseum3ds/battle_story.h"
+#include "colosseum3ds/inventory.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -37,6 +38,36 @@ int c3_battle_story_prepare(const C3GameState *state, C3GeneralBattle *battle)
     return 1;
 }
 
+int c3_battle_story_prepare_bag(const C3GameState *state, const C3PdaAssets *assets, C3GeneralBattle *battle)
+{
+    static const unsigned pockets[2] = { 0, 4 }; /* Items, Berries */
+    C3GameSummary summary;
+    if (!state || !battle) return 0;
+    if (!c3_game_state_summary(state, &summary)) memset(&summary, 0, sizeof summary);
+    battle->bag_count = 0;
+    memset(battle->bag, 0, sizeof battle->bag);
+    for (unsigned k = 0; k < 2; ++k)
+        for (unsigned slot = 0; slot < c3_inventory_capacity(pockets[k]); ++slot) {
+            C3GameItem item;
+            if (!c3_game_state_item(state, pockets[k], slot, &item)) return 0;
+            if (!item.id || !item.quantity || battle->bag_count >= C3_GB_BAG) continue;
+            C3GeneralBagItem *e = &battle->bag[battle->bag_count++];
+            size_t n = 0, pn = 0;
+            const uint8_t *row = assets ? c3_pda_entry(assets, 7, item.id, &n) : NULL;
+            e->item = item.id; e->count = item.quantity; e->pocket = (uint8_t)pockets[k];
+            snprintf(e->name, sizeof e->name, "ITEM %u", (unsigned)item.id);
+            if (!row || n != 40) continue;
+            /* ItemDataBios: +4 itemEffectParam, +0x10 name, +0x20 battleUseFunc. */
+            e->use = c3_general_bag_use_class(rd32(row + 0x20));
+            const uint8_t *param = row[4] ? c3_pda_entry(assets, 14, row[4], &pn) : NULL;
+            if (param && pn == 16) memcpy(e->param, param, 16);
+            char name[64];
+            if (c3_pda_text(assets, rd32(row + 0x10), summary.name, summary.partner, name, sizeof name) && name[0])
+                snprintf(e->name, sizeof e->name, "%.15s", name);
+        }
+    return 1;
+}
+
 /* Snagged Shadow Pokemon into the party or PC box, the snag flag and the
  * balls thrown out of the bag. The heart gauge comes from the save's Shadow
  * runtime table (savedata section 15 at body+0x1B014, row id*0x18, +0x4A6:
@@ -47,6 +78,10 @@ static int apply_snags(C3GameState *state, const C3GeneralBattle *battle, const 
     for (unsigned ball = 1; ball <= 12; ++ball)
         if (rw->balls_used[ball] && !c3_game_state_take_item(state, 2, ball, rw->balls_used[ball]))
             return fail(error, "The thrown balls are not in the bag.");
+    /* Bag items used in the turns (heroItemDecItemDataId as each ran). */
+    for (unsigned k = 0; k < battle->bag_count && k < C3_GB_BAG; ++k)
+        if (battle->bag[k].used && !c3_game_state_take_item(state, battle->bag[k].pocket, battle->bag[k].item, battle->bag[k].used))
+            return fail(error, "The used items are not in the bag.");
     if (!rw->caught_count) return 1;
     size_t bytes = 0; const uint8_t *body = c3_game_state_body(state, &bytes);
     C3GameSummary summary; uint8_t first[C3_GB_POKEMON_SIZE];

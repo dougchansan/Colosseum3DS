@@ -7,7 +7,7 @@
 #define C3_BATTLE_PACK_PATH "sdmc:/3ds/Colosseum3DS/boot/battles.c3x"
 
 /* Modal story battle on the bottom screen: plays back each turn's events,
- * takes the hero's commands (action menu, move, target, switch, ball, call)
+ * takes the hero's commands (action menu, move, target, switch, bag, call)
  * and runs until the battle ends. Draws no top-screen frame and allocates
  * no GPU memory.
  * Returns 0 when the battle finished, 1 when the application must exit,
@@ -24,8 +24,10 @@ void c3_battle_music_end(const C3BattleMusic *music);
 
 /* The bottom-screen command UI, shared with the 3D battle scene
  * (battle_general_3d.c), which shows the events on the top screen. */
+/* C3_GUI_BALL is retired (the balls are the bag's second pocket); the
+ * values stay as they were for the agent link's page numbers. */
 typedef enum { C3_GUI_EVENTS, C3_GUI_MOVES, C3_GUI_TARGET, C3_GUI_SWITCH, C3_GUI_RESULT, C3_GUI_WAIT, C3_GUI_BALL,
-               C3_GUI_ACTION } C3GeneralUiPage;
+               C3_GUI_ACTION, C3_GUI_BAG, C3_GUI_BAG_PARTY, C3_GUI_BAG_MOVE } C3GeneralUiPage;
 /* The action menu each Pokemon's command starts on: fightMenuFightTrainer-
  * GcHeroOpenMenu's menu 0x4B (menuFightMainCtrl), items 0xB5-0xB8 in a 2x2
  * grid, FIGHT ITEMS / PKMN CALL. The entry is the menu result its SubMain
@@ -37,6 +39,18 @@ enum { C3_GUI_FIGHT, C3_GUI_ITEMS, C3_GUI_PKMN, C3_GUI_CALL, C3_GUI_ACTIONS };
 uint32_t c3_general_ui_action_message(unsigned entry);
 void c3_general_ui_set_action_label(unsigned entry, const char *text);
 const char *c3_general_ui_action_label(unsigned entry);
+/* ITEMS opens the bag (fight_menu.c SubItem, the item menu fn_80018F88 in
+ * battle mode): the pockets with a battle use, ITEMS, POKe BALLS and
+ * BERRIES (summary pages 5, 4 and 2: titles 0x2AF9, 0x2AFA, 0x2AFC),
+ * switched with L/R; an item opens USE / CANCEL (common 0x131 / 0x134;
+ * an Items-pocket item with no battleUseFunc offers only CANCEL); USE
+ * opens the party (medicine), then a move (Ether), or goes straight on
+ * (balls to the Shadow target, X items on the Pokemon choosing). B steps
+ * back one page each time. Labels as for the action menu. */
+enum { C3_GUI_BAG_ITEMS, C3_GUI_BAG_BALLS, C3_GUI_BAG_BERRIES, C3_GUI_BAG_USE, C3_GUI_BAG_CANCEL, C3_GUI_BAG_LABELS };
+uint32_t c3_general_ui_bag_message(unsigned entry);
+void c3_general_ui_set_bag_label(unsigned entry, const char *text);
+const char *c3_general_ui_bag_label(unsigned entry);
 typedef struct {
     C3GeneralUiPage page;
     unsigned cursor, position, target_cursor;
@@ -45,6 +59,10 @@ typedef struct {
     unsigned action_cursor;
     /* The 3D scene times its messages; only a held one waits for A. */
     int timed_log;
+    /* The bag: the pocket (kept for the battle), the list cursor, the
+     * USE / CANCEL menu (bag_confirm, its cursor bag_choice) and the item
+     * chosen (a bag entry, or a ball id in the ball pocket). */
+    unsigned bag_pocket, bag_cursor, bag_confirm, bag_choice, bag_entry;
     C3GeneralCommand commands[2];
     char error[C3_GB_ERROR_SIZE];
     /* Link battles (docs/link-play.md): control_mask is the side-0

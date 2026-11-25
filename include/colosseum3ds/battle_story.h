@@ -4,6 +4,7 @@
 #include "colosseum3ds/battle_general.h"
 #include "colosseum3ds/field_story.h"
 #include "colosseum3ds/game_state.h"
+#include "colosseum3ds/pda.h"
 
 /* Feed a finished general battle back to the save and the waiting native 98:
  * party HP/PP/experience/levels, prize money on a win, and the result.
@@ -25,6 +26,14 @@ int c3_battle_story_apply(C3FieldStory *story, C3GameState *state,
  * pocket (pocket 2) supplies the throwable balls and side_name[0] takes the
  * hero's name (the prize line, fight message 0x7546). */
 int c3_battle_story_prepare(const C3GameState *state, C3GeneralBattle *battle);
+
+/* The in-battle bag (fight_menu.c SubItem): the Items and Berries pockets
+ * as the battle begins, each slot with its count, its item row's battle
+ * use (battleUseFunc) and effect row (itemEffectParam) and its name from
+ * the P*DA assets. Without assets the slots are listed but none can be
+ * used. Used items leave the save's bag in c3_battle_story_apply, with the
+ * thrown balls. */
+int c3_battle_story_prepare_bag(const C3GameState *state, const C3PdaAssets *assets, C3GeneralBattle *battle);
 
 /* Unattended battle (both sides use the opponent policy), then apply. For
  * headless runs and the warp tour; never used for the player's own battles. */

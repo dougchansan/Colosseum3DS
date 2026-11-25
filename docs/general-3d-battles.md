@@ -54,13 +54,39 @@ Converters need the HSD parser as an LF export of the pinned commit
   `fightMenuFightTrainerGcHeroOpenMenu` menu 0x4B (`menuFightMainCtrl`,
   items 0xB5-0xB8): FIGHT and ITEMS above PKMN and CALL, the cursor on
   FIGHT, texts from common messages 0x13C/0x13D/0x13E/0x140. FIGHT opens
-  the move list (Struggle at once with no PP left), ITEMS the Snag
-  Machine's balls, PKMN the party, CALL calls out (otherwise the menu
-  stays). There are no button shortcuts. B goes back one level: from the
-  move list, ball list or party to the action menu, and from the second
-  Pokemon's action menu to the first one's. Not ported: the rest of the
-  bag (only balls can be used) and GIVE IN, which takes ITEMS' place when
-  floor status 0x22 allows running (no story battle).
+  the move list (Struggle at once with no PP left), ITEMS the bag, PKMN
+  the party, CALL calls out (otherwise the menu stays). There are no
+  button shortcuts. B goes back one level: from the move list, bag or
+  party to the action menu, and from the second Pokemon's action menu to
+  the first one's, except once the first chose a bag item
+  (`fightTrainerIsUsedItem`). Not ported: GIVE IN, which takes ITEMS'
+  place when floor status 0x22 allows running (no story battle).
+- Bag (`_fightMenuFightTrainerGcHeroOpenMenuSubItem`, fight_menu.c:2026):
+  refused with fight message 0x75F5 when floor status 0x20 (the fight
+  kind's useItem, fight_floor.c:2696) is clear. Pockets ITEMS, POKe BALLS,
+  BERRIES (summary pages 5, 4, 2 of `lbl_80266918`, titles 0x2AF9 /
+  0x2AFA / 0x2AFC; L/R), then USE / CANCEL (0x131 / 0x134; an Items-pocket
+  item without a battleUseFunc offers only CANCEL). The item row's
+  battleUseFunc (ItemDataBios +0x20) decides the rest: fn_80023B9C
+  medicine opens the party (fainted members too, for Revive), fn_80023968
+  PP items the party then a move (Ether), fn_8002217C X items act on the
+  Pokemon choosing, fn_80022050 balls go to the Snag Machine's target (one
+  ball a turn, 0x426D), fn_80023DA8 refuses (0x44C6). Refusals: Hyper Mode
+  (0x424D), no effect (0x4261). Effects follow fn_80144574 on the
+  itemEffectParam row (HP 255 all / 254 half; Revive only on a fainted
+  Pokemon; cures; PP; stages to +6). Not modelled: Dire Hit, Guard Spec,
+  the flutes' infatuation cure and the Enigma Berry (refused as unusable),
+  friendship changes, and the full-party/full-box ball refusal (0x4416).
+- Item turns: the action is in bracket 1 (lbl_80375BB8), before calls,
+  switches and moves. It shows "<hero> used <item>!" (fn_80211E18) and the
+  effect line (fn_800216E8, table lbl_80266C7C), and the item leaves the
+  bag then, so a Pokemon that fainted first keeps it. The original applies
+  a non-ball item in the bag menu itself and takes it out there
+  (gs_title.c fn_80023B9C, menuPokemon.c fn_80018594); only balls are
+  taken when the action runs (fight_range_80211A00.c fn_80211E18,
+  heroItemDecItemDataId when the use-slot flag is 0). Since items act
+  first, the outcome is the same; the port shows the effect line after the
+  "used" line instead of in the bag.
 - Messages: the log is timed; only a held message (the partner's Shadow
   notice) shows "A: next".
 - A different species sent out swaps only that pack (about 0.4 s).

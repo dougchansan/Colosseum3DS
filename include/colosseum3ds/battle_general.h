@@ -12,8 +12,9 @@
  * chart and growth data are the original rows. The turn rules are a
  * documented Gen-3 style approximation (src/battle_general.c lists the move
  * effects it models), not the original battle scripts, which are being
- * lowered separately (feat/original-battle-turns). There is no bag, no
- * snagging and no escape; the opponent AI picks uniformly among legal moves.
+ * lowered separately (feat/original-battle-turns). The hero's bag (balls
+ * at Shadow Pokemon, medicine, PP and battle items) is modelled; trainer
+ * items and escape are not.
  * The result is fed back to the story (2 hero win, 3 hero loss) and the
  * party's HP, PP and experience and the prize money are written back. */
 
@@ -101,10 +102,47 @@ typedef struct C3GeneralMon {
 } C3GeneralMon;
 
 typedef struct C3GeneralCommand {
-    uint8_t kind;   /* 0 move, 1 switch, 2 throw a ball (snag), 3 call (the hero's own Pokemon) */
-    uint8_t slot;   /* move slot 0..3, 4 = Struggle; party index to switch in; or ball item 1..12 */
-    uint8_t target; /* battle position 0..3 (side*2 + active index) */
+    uint8_t kind;   /* 0 move, 1 switch, 2 throw a ball (snag), 3 call (the hero's own Pokemon),
+                     * 4 use a bag item (C3GeneralBagItem) */
+    uint8_t slot;   /* move slot 0..3, 4 = Struggle; party index to switch in; ball item 1..12;
+                     * or the bag entry */
+    uint8_t target; /* battle position 0..3 (side*2 + active index); kind 4: the hero's party
+                     * index, plus 16 x the move slot for a move-selective item (Ether) */
 } C3GeneralCommand;
+
+/* ---- the bag (fight_menu.c _fightMenuFightTrainerGcHeroOpenMenuSubItem) --
+ * The hero's Items and Berries pockets as the battle began; balls stay in
+ * balls[] (the Snag Machine). use is the item row's battleUseFunc
+ * (ItemDataBios +0x20), param its itemEffectParam row (16 bytes,
+ * itemParamGet*), filled by c3_battle_story_prepare_bag. count drops and
+ * used rises only when the item's action runs in the turn. */
+#define C3_GB_BAG 66u
+enum {
+    C3_GB_USE_NONE,     /* 0: no battle use (the Items pocket offers only CANCEL) */
+    C3_GB_USE_MEDICINE, /* fn_80023B9C: one party Pokemon (HP, status, Revive) */
+    C3_GB_USE_PP,       /* fn_80023968: one party Pokemon, a move when PP-selective */
+    C3_GB_USE_BATTLE,   /* fn_8002217C: the Pokemon choosing (X items, Dire Hit, Guard Spec) */
+    C3_GB_USE_REFUSED   /* fn_80023DA8 (message 0x44C6) and the Enigma Berry: not usable here */
+};
+typedef struct C3GeneralBagItem {
+    uint16_t item, count, used;
+    uint8_t pocket;     /* save pocket: 0 Items, 4 Berries */
+    uint8_t use;        /* C3_GB_USE_* */
+    uint8_t param[16];
+    char name[C3_GB_NAME];
+} C3GeneralBagItem;
+/* Why an item can't be used (c3_general_battle_item_check), with the
+ * original message each stands for. */
+typedef enum {
+    C3_GB_ITEM_OK,
+    C3_GB_ITEM_NOT_NOW,    /* floor status 0x20 (FightKindData useItem) clear: fight message 0x75F5 */
+    C3_GB_ITEM_CANT_USE,   /* no battle use, or one the engine does not model */
+    C3_GB_ITEM_HYPER,      /* the Pokemon is in Hyper Mode: P*DA message 0x424D */
+    C3_GB_ITEM_NO_EFFECT,  /* message 0x4261 */
+    C3_GB_ITEM_NONE_LEFT,  /* every one left is already chosen this turn */
+    C3_GB_ITEM_NEED_MOVE,  /* a PP-selective item without a valid move slot */
+    C3_GB_ITEM_INVALID
+} C3GeneralItemCheck;
 
 typedef enum {
     C3_GB_EVENT_MESSAGE = 1, C3_GB_EVENT_MOVE, C3_GB_EVENT_HP, C3_GB_EVENT_FAINT,
@@ -159,6 +197,9 @@ typedef struct C3GeneralBattle {
     uint8_t snag;
     uint16_t balls[13], balls_used[13];
     uint8_t caught[C3_GB_PARTY];
+    /* The bag's Items and Berries pockets (C3GeneralBagItem). */
+    uint8_t bag_count;
+    C3GeneralBagItem bag[C3_GB_BAG];
     /* Floor status 0x5B: the turn's shared Quick Claw roll, drawn at the
      * start of the battle and again at the end of every turn. */
     uint16_t quick_claw_roll;
@@ -282,6 +323,19 @@ void c3_general_set_forget_prompt(C3MoveForgetPrompt prompt, void *context);
 int c3_battle_pack_move_is_hm(const C3BattlePack *pack, uint16_t move);
 /* pokemonWazaCreate into slot: the move with its full PP and no PP Ups. */
 int c3_battle_pack_set_move(const C3BattlePack *pack, uint8_t record[C3_GB_POKEMON_SIZE], unsigned slot, uint16_t move);
+
+/* Whether the hero at `position` may use bag entry `bag` on party member
+ * `party` (move: the move slot for a PP-selective item, else ignored) now.
+ * `reserved` counts the same entry already chosen by an earlier position
+ * this turn. A battle-only item (C3_GB_USE_BATTLE) acts on the Pokemon at
+ * `position`, whatever `party` says. */
+C3GeneralItemCheck c3_general_battle_item_check(const C3GeneralBattle *battle, unsigned position,
+                                                unsigned bag, unsigned party, unsigned move,
+                                                unsigned reserved);
+/* Whether the bag entry's item is PP-selective (Ether: itemParamGetPPSelectFlag). */
+int c3_general_bag_item_selects_move(const C3GeneralBagItem *item);
+/* The battle-use class of an item row's battleUseFunc address. */
+uint8_t c3_general_bag_use_class(uint32_t battle_use_func);
 
 /* party: the save body's six consecutive 0x138-byte records, read-only. */
 int c3_general_battle_begin(C3GeneralBattle *battle, const C3BattlePack *pack,

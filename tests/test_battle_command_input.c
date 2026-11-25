@@ -246,35 +246,162 @@ int main(void)
     press(&l, C3_PAD_B, 1);
     CHECK(l.ui.page == C3_GUI_ACTION && l.ui.action_cursor == C3_GUI_PKMN);
 
-    /* ITEMS without the Snag Machine: nothing to use, the menu stays. */
-    b = start; b.snag = 0; loop_begin(&l, &b, &pack, 1);
+    /* ITEMS with floor status 0x20 (the fight kind's useItem) clear: the
+     * refusal (fight message 0x75F5) and the menu stays. */
+    b = start; b.info.use_item = 0; loop_begin(&l, &b, &pack, 1);
     idle(&l, 30, 1);
     loop_frame(&l, C3_PAD_RIGHT, 1); loop_frame(&l, 0, 1);
     press(&l, C3_PAD_A, 1);
     CHECK(l.ui.page == C3_GUI_ACTION && l.ui.action_cursor == C3_GUI_ITEMS && l.ui.error[0]);
 
-    /* ITEMS with the Snag Machine and a ball: the ball list, B back to the
-     * action menu, then a throw at the one Shadow foe (no target page). */
+    /* ITEMS opens the bag on its ITEMS pocket even with nothing in it; B
+     * goes back to the action menu on ITEMS. */
+    b = start; b.snag = 0; loop_begin(&l, &b, &pack, 1);
+    idle(&l, 30, 1);
+    loop_frame(&l, C3_PAD_RIGHT, 1); loop_frame(&l, 0, 1);
+    press(&l, C3_PAD_A, 1);
+    CHECK(l.ui.page == C3_GUI_BAG && l.ui.bag_pocket == C3_GUI_BAG_ITEMS && !l.ui.bag_confirm);
+    press(&l, C3_PAD_A, 1);
+    CHECK(l.ui.page == C3_GUI_BAG && !l.ui.bag_confirm); /* an empty pocket: nothing to choose */
+    press(&l, C3_PAD_B, 1);
+    CHECK(l.ui.page == C3_GUI_ACTION && l.ui.action_cursor == C3_GUI_ITEMS);
+
+    /* The Snag Machine's balls are the bag's second pocket (R): a ball,
+     * USE, and the throw at the one Shadow foe (no target page). */
     b = start; b.snag = 1; b.balls[1] = 1; loop_begin(&l, &b, &pack, 1);
     CHECK(c3_general_battle_can_snag(&b, &pack, 0, 1, 2) && !c3_general_battle_can_snag(&b, &pack, 0, 1, 3));
     idle(&l, 30, 1);
     loop_frame(&l, C3_PAD_RIGHT, 1); loop_frame(&l, 0, 1);
     press(&l, C3_PAD_A, 1);
-    CHECK(l.ui.page == C3_GUI_BALL && l.ui.cursor == 0);
-    press(&l, C3_PAD_B, 1);
-    CHECK(l.ui.page == C3_GUI_ACTION && l.ui.action_cursor == C3_GUI_ITEMS);
+    CHECK(l.ui.page == C3_GUI_BAG && l.ui.bag_pocket == C3_GUI_BAG_ITEMS);
+    press(&l, C3_PAD_R, 1);
+    CHECK(l.ui.page == C3_GUI_BAG && l.ui.bag_pocket == C3_GUI_BAG_BALLS && l.ui.bag_cursor == 0);
     press(&l, C3_PAD_A, 1);
+    CHECK(l.ui.page == C3_GUI_BAG && l.ui.bag_confirm && l.ui.bag_entry == 1 && l.ui.bag_choice == 0);
     press(&l, C3_PAD_A, 1);
     CHECK(l.ui.page == C3_GUI_ACTION && l.ui.position == 1 && l.ui.action_cursor == C3_GUI_FIGHT);
     CHECK(l.ui.commands[0].kind == 2 && l.ui.commands[0].slot == 1 && l.ui.commands[0].target == 2);
+    /* One ball a turn: the second Pokemon's USE on a ball is refused
+     * (message 0x426D) and the pocket stays open. */
+    b.balls[1] = 2;
+    loop_frame(&l, C3_PAD_RIGHT, 1); loop_frame(&l, 0, 1);
+    press(&l, C3_PAD_A, 1);
+    CHECK(l.ui.page == C3_GUI_BAG && l.ui.bag_pocket == C3_GUI_BAG_BALLS); /* the pocket is kept */
+    press(&l, C3_PAD_A, 1); press(&l, C3_PAD_A, 1);
+    CHECK(l.ui.page == C3_GUI_BAG && !l.ui.bag_confirm && l.ui.error[0] && l.ui.commands[1].kind == 0);
+    press(&l, C3_PAD_B, 1);
+    CHECK(l.ui.page == C3_GUI_ACTION && l.ui.position == 1);
+    b.balls[1] = 1;
     /* CALL commits the second Pokemon's command, and the turn runs. */
-    loop_frame(&l, C3_PAD_DOWN | C3_PAD_RIGHT, 1); loop_frame(&l, 0, 1);
+    loop_frame(&l, C3_PAD_DOWN, 1); loop_frame(&l, 0, 1);
     CHECK(l.ui.action_cursor == C3_GUI_CALL);
     {
         uint32_t turn = b.turn;
         CHECK(press_result(&l, C3_PAD_A) == 1);
         CHECK(l.ui.page == C3_GUI_EVENTS && b.turn == turn + 1 && l.ui.commands[1].kind == 3 && l.ui.commands[1].target == 1);
         CHECK(b.caught[0] == 1 && b.balls_used[1] == 1);
+    }
+
+    /* Bag items. A Hyper Potion, an Ether and a Poke Doll in the ITEMS
+     * pocket, an HP Up (no battle use) and a berry. */
+    C3GeneralBattle bag = start;
+    {
+        static const struct { uint16_t item, count; uint8_t use, pocket, at, value; const char *name; } rows[] = {
+            { 21, 2, C3_GB_USE_MEDICINE, 0, 10, 200, "HYPER POTION" }, { 34, 1, C3_GB_USE_PP, 0, 11, 10, "ETHER" },
+            { 80, 1, C3_GB_USE_REFUSED, 0, 16, 0, "POKE DOLL" }, { 63, 1, C3_GB_USE_NONE, 0, 8, 10, "HP UP" },
+            { 139, 1, C3_GB_USE_MEDICINE, 4, 10, 10, "ORAN BERRY" } };
+        bag.bag_count = 5;
+        for (unsigned k = 0; k < 5; ++k) {
+            C3GeneralBagItem *e = &bag.bag[k]; memset(e, 0, sizeof *e);
+            e->item = rows[k].item; e->count = rows[k].count; e->use = rows[k].use; e->pocket = rows[k].pocket;
+            e->param[rows[k].at] = rows[k].value; snprintf(e->name, sizeof e->name, "%s", rows[k].name);
+        }
+        bag.bag[1].param[4] = 0x20; /* the Ether is PP-selective */
+        strcpy(bag.side_name[0], "WES");
+    }
+    /* B steps back one bag page at a time: move list -> party -> item list
+     * (USE / CANCEL closed) -> action menu. */
+    b = bag; b.party[0][0].pp[0] = 1; loop_begin(&l, &b, &pack, 1);
+    idle(&l, 30, 1);
+    loop_frame(&l, C3_PAD_RIGHT, 1); loop_frame(&l, 0, 1);
+    press(&l, C3_PAD_A, 1);
+    CHECK(l.ui.page == C3_GUI_BAG && l.ui.bag_pocket == C3_GUI_BAG_ITEMS);
+    loop_frame(&l, C3_PAD_DOWN, 1); loop_frame(&l, 0, 1);
+    CHECK(l.ui.bag_cursor == 1);
+    press(&l, C3_PAD_A, 1);
+    CHECK(l.ui.page == C3_GUI_BAG && l.ui.bag_confirm && l.ui.bag_entry == 1);
+    press(&l, C3_PAD_B, 1);
+    CHECK(l.ui.page == C3_GUI_BAG && !l.ui.bag_confirm && l.ui.bag_cursor == 1);
+    press(&l, C3_PAD_A, 1); press(&l, C3_PAD_A, 1);
+    CHECK(l.ui.page == C3_GUI_BAG_PARTY && l.ui.cursor == 0); /* from the Pokemon choosing */
+    press(&l, C3_PAD_A, 1);
+    CHECK(l.ui.page == C3_GUI_BAG_MOVE && l.ui.target_cursor == 0 && l.ui.cursor == 0);
+    press(&l, C3_PAD_B, 1);
+    CHECK(l.ui.page == C3_GUI_BAG_PARTY && l.ui.cursor == 0);
+    press(&l, C3_PAD_B, 1);
+    CHECK(l.ui.page == C3_GUI_BAG && !l.ui.bag_confirm);
+    press(&l, C3_PAD_B, 1);
+    CHECK(l.ui.page == C3_GUI_ACTION && l.ui.action_cursor == C3_GUI_ITEMS && l.ui.position == 0);
+    /* The Ether on TACKLE: the move page commits it. */
+    press(&l, C3_PAD_A, 1);
+    loop_frame(&l, C3_PAD_DOWN, 1); loop_frame(&l, 0, 1);
+    press(&l, C3_PAD_A, 1); press(&l, C3_PAD_A, 1); press(&l, C3_PAD_A, 1); press(&l, C3_PAD_A, 1);
+    CHECK(l.ui.page == C3_GUI_ACTION && l.ui.position == 1);
+    CHECK(l.ui.commands[0].kind == 4 && l.ui.commands[0].slot == 1 && l.ui.commands[0].target == 0);
+    /* fightTrainerIsUsedItem: B can't take the first Pokemon's item back. */
+    press(&l, C3_PAD_B, 1);
+    CHECK(l.ui.page == C3_GUI_ACTION && l.ui.position == 1 && l.ui.commands[0].kind == 4);
+
+    /* Refusals stay on their page with the reason: an item with no battle
+     * use offers only CANCEL; the Poke Doll can't be used here; a Hyper
+     * Potion at full HP has no effect; one on a Pokemon in Hyper Mode is
+     * refused. */
+    b = bag; loop_begin(&l, &b, &pack, 1);
+    idle(&l, 30, 1);
+    loop_frame(&l, C3_PAD_RIGHT, 1); loop_frame(&l, 0, 1);
+    press(&l, C3_PAD_A, 1);
+    loop_frame(&l, C3_PAD_UP, 1); loop_frame(&l, 0, 1);
+    CHECK(l.ui.bag_cursor == 3);
+    press(&l, C3_PAD_A, 1);
+    CHECK(l.ui.bag_confirm && l.ui.bag_entry == 3);
+    press(&l, C3_PAD_A, 1); /* CANCEL, the only entry */
+    CHECK(l.ui.page == C3_GUI_BAG && !l.ui.bag_confirm && !l.ui.error[0]);
+    loop_frame(&l, C3_PAD_UP, 1); loop_frame(&l, 0, 1);
+    press(&l, C3_PAD_A, 1); press(&l, C3_PAD_A, 1);
+    CHECK(l.ui.page == C3_GUI_BAG && !l.ui.bag_confirm && l.ui.error[0] && l.ui.bag_entry == 2);
+    loop_frame(&l, C3_PAD_UP, 1); loop_frame(&l, 0, 1); loop_frame(&l, C3_PAD_UP, 1); loop_frame(&l, 0, 1);
+    CHECK(l.ui.bag_cursor == 0);
+    press(&l, C3_PAD_A, 1); press(&l, C3_PAD_A, 1);
+    CHECK(l.ui.page == C3_GUI_BAG_PARTY && !l.ui.error[0]);
+    press(&l, C3_PAD_A, 1);
+    CHECK(l.ui.page == C3_GUI_BAG_PARTY && l.ui.error[0] && l.ui.commands[0].kind == 0);
+    b.party[0][1].hyper = 1; b.party[0][1].hp = 1;
+    loop_frame(&l, C3_PAD_DOWN, 1); loop_frame(&l, 0, 1);
+    press(&l, C3_PAD_A, 1);
+    CHECK(l.ui.page == C3_GUI_BAG_PARTY && l.ui.error[0] && l.ui.commands[0].kind == 0);
+    /* The Berries pocket (L from ITEMS wraps to BERRIES) lists the berry. */
+    press(&l, C3_PAD_B, 1);
+    press(&l, C3_PAD_L, 1);
+    CHECK(l.ui.page == C3_GUI_BAG && l.ui.bag_pocket == C3_GUI_BAG_BERRIES && l.ui.bag_cursor == 0);
+    press(&l, C3_PAD_A, 1);
+    CHECK(l.ui.bag_confirm && l.ui.bag_entry == 4);
+
+    /* A Hyper Potion on the hurt second Pokemon from the first one's
+     * command; the second fights; the item acts first and one is left. */
+    b = bag; b.party[0][1].hp = 5; loop_begin(&l, &b, &pack, 1);
+    idle(&l, 30, 1);
+    loop_frame(&l, C3_PAD_RIGHT, 1); loop_frame(&l, 0, 1);
+    press(&l, C3_PAD_A, 1); press(&l, C3_PAD_A, 1); press(&l, C3_PAD_A, 1);
+    CHECK(l.ui.page == C3_GUI_BAG_PARTY);
+    loop_frame(&l, C3_PAD_DOWN, 1); loop_frame(&l, 0, 1);
+    press(&l, C3_PAD_A, 1);
+    CHECK(l.ui.page == C3_GUI_ACTION && l.ui.position == 1 && l.ui.commands[0].kind == 4 && l.ui.commands[0].target == 1);
+    press(&l, C3_PAD_A, 1); press(&l, C3_PAD_A, 1);
+    {
+        uint32_t turn = b.turn;
+        CHECK(press_result(&l, C3_PAD_A) == 1);
+        CHECK(b.turn == turn + 1 && b.bag[0].count == 1 && b.bag[0].used == 1);
+        CHECK(!strcmp(b.events[0].text, "WES used a HYPER POTION!") && b.events[1].kind == C3_GB_EVENT_HP && b.events[1].hp[1] > 5);
     }
 
     /* The old shortcuts are gone: X, Y and L do nothing on either page. */
@@ -287,6 +414,6 @@ int main(void)
     CHECK(l.ui.page == C3_GUI_MOVES && l.ui.position == 0 && l.ui.commands[0].kind == 0 && l.ui.commands[0].target == 0);
 
     c3_battle_pack_free(&pack); free(bytes);
-    printf("battle command input: action menu, one press per UI layer\n");
+    printf("battle command input: action menu, bag, one press per UI layer\n");
     return 0;
 }
