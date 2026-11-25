@@ -370,7 +370,11 @@ def prepare_television(archive, profile, reports, output):
                           frozen_material_colors=True)
             if any(clip >= max(len(model.ends), 1) for clip in pack["clips"]):
                 raise ValueError("Television entry names a clip its model lacks")
-            meshes = expand_image_swaps([build_mesh(model, i) for i in range(len(model.meshes))])
+            # Texture selectors the pack runtime rejects leave their mesh out,
+            # as on the interiors (the native reader refuses the whole pack).
+            omitted = []
+            meshes = runtime_meshes(expand_image_swaps([build_mesh(model, i) for i in range(len(model.meshes))]),
+                                    pack["model_index"], True, omitted)
             meshes += instance_meshes(model, meshes)
             schedules = [(clip, sample_sequence(model.ends[clip]) if model.ends and model.ends[clip] else [0.], True)
                          for clip in pack["clips"]]
@@ -379,7 +383,8 @@ def prepare_television(archive, profile, reports, output):
                                      profile["sha256"], output, field_tv.tv_pack_name(prefix, index)[:-4],
                                      expected_count=1, format_version=version, gpu_textures=True)
             group[0].update(sampling="television", source_resource="%08x" % pack["model"],
-                            camera_resource="%08x" % pack["camera"], source_clips=pack["clips"])
+                            camera_resource="%08x" % pack["camera"], source_clips=pack["clips"],
+                            omitted_meshes=omitted)
             written += group
     except ValueError as error:
         for report in written:
