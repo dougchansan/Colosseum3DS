@@ -123,7 +123,12 @@ packs of the same floors. Commands: `tools/prepare_story.py` (and
   cabin's path joint stands 70 behind its doors (HSD applies the spline point
   without the spline joint's offset), so its step-out point has no floor; then,
   or without the cabin model, Wes stands at the entrance nearest the elevator's
-  surface (3F entrance 1, 1F entrance 1). Route: `tests/routes/pyrite-elevator.route`.
+  surface (3F entrance 1, 1F entrance 1). The building is one-way: 1F and
+  2F stairs reach 3F's hall; 3F door row 34 (surface 6) and the outside ramp
+  (surface 10) reach the town walkway, whose door (town surface 6) is 4F's
+  entrance 0. 4F's stairs lead to 3F's elevator room (entrance 3, with the
+  up-ramp), its elevator to 1F's elevator room, and 1F function 12 (door row
+  164) lets Wes out into the hall. Route: `tests/routes/pyrite-elevator.route`.
 - Surveyed floors have no reviewed `door_objects`, so their door tables named
   no model: every Pyrite door was invisible while its CCD object still
   blocked. In Duking's house the closed bookshelf was an invisible wall in
