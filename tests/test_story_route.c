@@ -583,6 +583,45 @@ static int step(char *line)
         return run(30000, 1);
     }
     if (!strcmp(word, "run")) { CHECK(sscanf(line, "%li", (long *)&a) == 1); return run((unsigned)a, 0); }
+    /* expect_near x z r: the hero stands within r of (x, z), source units. */
+    if (!strcmp(word, "expect_near")) {
+        float r;
+        CHECK(sscanf(line, "%f %f %f", &x, &z, &r) == 3);
+        float dx = scene->hero.position[0] / scene->map.scale - x, dz = scene->hero.position[2] / scene->map.scale - z;
+        fprintf(report, "route_hero floor=%03lx x=%.1f z=%.1f\n", (unsigned long)scene->floor,
+                scene->hero.position[0] / scene->map.scale, scene->hero.position[2] / scene->map.scale);
+        if (dx * dx + dz * dz > r * r) {
+            snprintf(error, sizeof error, "hero at %.1f,%.1f is not within %.1f of %.1f,%.1f",
+                     scene->hero.position[0] / scene->map.scale, scene->hero.position[2] / scene->map.scale, r, x, z);
+            return 0;
+        }
+        return 1;
+    }
+    /* walk x z: the player walks straight there with the field's walls and
+     * people (c3_field_move + c3_field_story_collide), as the scene does;
+     * fails when the hero stops short. No transition is taken. */
+    if (!strcmp(word, "walk")) {
+        CHECK(sscanf(line, "%f %f", &x, &z) == 2);
+        float best = INFINITY; unsigned stalled = 0;
+        for (unsigned frame = 0; frame < 3600; ++frame) {
+            const C3FieldStoryView *v = c3_field_story_view(&scene->story);
+            float dx = x * scene->map.scale - scene->hero.position[0], dz = z * scene->map.scale - scene->hero.position[2];
+            float distance = sqrtf(dx * dx + dz * dz) / scene->map.scale;
+            if (distance < 2.0f) return 1;
+            if (distance < best - 0.05f) { best = distance; stalled = 0; } else if (++stalled > 120) break;
+            if (v->control) {
+                float before[3]; memcpy(before, scene->hero.position, sizeof before);
+                if (!c3_field_move(&scene->map, &scene->hero, 0, 127, 0, atan2f(dx, dz) - 3.14159265f, 1.0f / 60.0f)) {
+                    snprintf(error, sizeof error, "field movement failed"); return 0;
+                }
+                c3_field_story_collide(&scene->story, before);
+            }
+            if (!c3_field_story_tick(&scene->story, 1.0f / 60.0f, 0, error)) return 0;
+        }
+        snprintf(error, sizeof error, "walk to %.1f,%.1f stopped at %.1f,%.1f", x, z,
+                 scene->hero.position[0] / scene->map.scale, scene->hero.position[2] / scene->map.scale);
+        return 0;
+    }
     if (!strcmp(word, "at")) {
         CHECK(sscanf(line, "%f %f", &x, &z) == 2);
         scene->hero.position[0] = x * scene->map.scale; scene->hero.position[2] = z * scene->map.scale;

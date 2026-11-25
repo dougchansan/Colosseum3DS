@@ -208,14 +208,22 @@ def prepare_floor_geometry(archive, field_common, profile, output):
             if len(model.joints) <= HEAL_PARTS[-1]:
                 raise ValueError("Healing machine lacks its ball slot parts")
             retained = tuple((model, part, part) for part in HEAL_PARTS)
+        elevator_part = profile.get("elevator_parts", {}).get(index)
+        if elevator_part is not None:
+            if retained or not 0 <= elevator_part < len(model.joints):
+                raise ValueError("Elevator part is not a joint of its object model")
+            retained = ((model, elevator_part, elevator_part),)
         group = prepare_pack_set(own, schedules, 60, [fixed] * samples, lights, profile["sha256"], output,
                                  "%s_obj%d" % (profile["prefix"], index), expected_count=1,
                                  format_version=version, gpu_textures=True, crop_textures=True,
                                  retained_parts=retained)
         group[0].update(source_models=[index], sampling="object", source_clip_ends=list(model.ends))
-        if retained and [part["sampled_bone"] for part in group[0]["retained_parts"]] != list(
+        if index == profile.get("healing_machine") and [part["sampled_bone"] for part in group[0]["retained_parts"]] != list(
                 range(group[0]["sampled_bones"] - len(HEAL_PARTS), group[0]["sampled_bones"])):
             raise ValueError("Healing machine ball slots are not the pack's last bones")
+        if elevator_part is not None and [part["sampled_bone"] for part in group[0]["retained_parts"]] != [
+                group[0]["sampled_bones"] - 1]:
+            raise ValueError("Elevator part is not the pack's last bone")
         object_reports += group
     ball_reports = (prepare_heal_balls(archive, output, profile["prefix"], fixed, lights, profile["sha256"], version)
                     if "healing_machine" in profile else [])
@@ -301,7 +309,12 @@ def interior_manifest(manifest, profile, extras):
     manifest = dict(manifest)
     manifest.update(developer_only=False, scene="interior", pack_format=profile.get("pack_format", 2),
                     objects=[{"model": report["source_models"][0], "file": report["file"],
-                              "source_clip_ends": report["source_clip_ends"]} for report in extras["objects"]],
+                              "source_clip_ends": report["source_clip_ends"],
+                              # Elevator parts kept as bones (prepare_story.py --floor-manifest).
+                              **({"retained_parts": {str(part["source_part"]): part["sampled_bone"]
+                                                     for part in report["retained_parts"]}}
+                                 if report.get("retained_parts") else {})}
+                             for report in extras["objects"]],
                     frozen_material_tracks=extras["frozen_material_tracks"],
                     path_joints=extras["path_joints"], omitted_meshes=extras["omitted_meshes"],
                     ccd_objects=extras["ccd_objects"], limitations=limitations)
@@ -374,7 +387,14 @@ def prepare(disc, output, parser, floor="phenac"):
         # The models prepare_story.py names in the floor's door table.
         from prepare_story import door_objects, extract_doors
         rel = member(commons["common.fsys"], common_rel(commons["common.fsys"]))
-        profile = dict(profile, door_objects=door_objects(profile, extract_doors(rel, {profile["floor"]})))
+        rows = extract_doors(rel, {profile["floor"]})
+        objects = door_objects(profile, rows)
+        # floorEventCtrlElevator moves the party to GSmodelGetPart(model,
+        # partIndex) of an elevator row (door type 2): that part is kept as
+        # the object pack's last sampled bone (prepare_story.py records it).
+        parts = {objects[row["index"]]: row["part_index"] for row in rows
+                 if row["door_type"] == 2 and row["index"] in objects}
+        profile = dict(profile, door_objects=objects, elevator_parts=parts)
     output.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=".floor-", dir=output.parent) as temporary:
         stage = Path(temporary) / "stage"
@@ -421,7 +441,8 @@ def prepare(disc, output, parser, floor="phenac"):
                 "Targetless HSD IK chains keep FK joint matrices and place only the effector, as resolveIKJoint1/2 do without an effector JObj reference.",
                 "Geometry is sampled at 60 Hz; the slow sky uses 1001 samples across its original loop.",
                 "GX filtering, lighting and blending use the native PICA material subset."]}
-        if profile.get("scene") == "interior":
+        # Surveyed floors get the interior geometry of auto_geometry too.
+        if profile.get("scene") == "interior" or profile.get("auto"):
             # The C3F only implies an object count from its walk/wall rows;
             # doorway surfaces may sit on later CCD objects.
             extras["ccd_objects"] = u32(member(archive, profile["collision"]), 4)

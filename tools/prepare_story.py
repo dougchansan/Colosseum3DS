@@ -373,6 +373,27 @@ def door_objects(profile, doors):
             if row["floor"] == profile["floor"] and int(row["resource_id"], 16) & ~0xFFF == base}
 
 
+def retained_parts(manifests):
+    """Object pack file -> {source part: sampled bone} from prepare_floor.py
+    manifests (object packs that keep an elevator part as a bone)."""
+    out = {}
+    for path in manifests:
+        manifest = json.loads(Path(path).read_text(encoding="utf-8"))
+        for record in manifest.get("objects", ()):
+            parts = {int(part): bone for part, bone in record.get("retained_parts", {}).items()}
+            if parts:
+                out[record["file"]] = parts
+    return out
+
+
+def elevator_bone(row, file, retained):
+    """An elevator row (door type 2) with a named object pack that keeps its
+    part (GSmodelGetPart(model, partIndex)) records that sampled bone + 1
+    (C3D part_bone_plus_one; src/field_story.c native C5 reads it)."""
+    bone = retained.get(file, {}).get(row["part_index"]) if row["door_type"] == 2 and file else None
+    return {**row, "part_bone_plus_one": bone + 1} if bone is not None else row
+
+
 # C3D row index of a map object without a door-table row (src/area.h
 # C3_AREA_MAP_OBJECT_ROW | model): after every door row, never a native 60 index.
 MAP_OBJECT_ROW = 0x80000000
@@ -407,7 +428,8 @@ def encode_door_pack(floor, rows, files=None):
     for row in rows:
         anims = [row[key] for key in ("open_anim", "close_anim", "open_end_anim", "close_end_anim",
                                       "alternate_anim_a", "alternate_anim_b")]
-        if any(not -1 <= value < 64 for value in anims) or row["collision_id"] < -1:
+        if (any(not -1 <= value < 64 for value in anims) or row["collision_id"] < -1 or
+                not 0 <= row.get("part_bone_plus_one", 0) <= 64):
             raise ValueError("Door row %d exceeds the runtime pack" % row["index"])
         if row["index"] & MAP_OBJECT_ROW and (
                 row["door_type"] or any(value != -1 for value in anims) or row["collision_id"] != -1 or
@@ -418,7 +440,7 @@ def encode_door_pack(floor, rows, files=None):
         if len(name) >= 40 or not all(c in b"abcdefghijklmnopqrstuvwxyz0123456789_." for c in name):
             raise ValueError("Door object pack name is not a runtime file name")
         body += struct.pack("<I6b2BhHHHI40s", row["index"], *anims, row["door_type"], row["part_index"],
-                            row["collision_id"], row["open_flag"], row["close_flag"], 0,
+                            row["collision_id"], row["open_flag"], row["close_flag"], row.get("part_bone_plus_one", 0),
                             int(row["resource_id"], 16), name)
     header = struct.pack("<4s5I8x", b"C3D1", 1, 32 + len(body), floor, len(rows), 64)
     return header + bytes(body)
@@ -472,6 +494,8 @@ def main():
                         help="Floor profile to prepare (repeatable; default: outskirt and shop)")
     parser.add_argument("--doors-only", action="store_true",
                         help="Write only area-doors.json for the selected floors")
+    parser.add_argument("--floor-manifest", action="append", type=Path, default=[],
+                        help="prepare_floor.py manifest whose object packs retain elevator parts (repeatable)")
     args = parser.parse_args()
     try:
         names = tuple(dict.fromkeys(args.floor or DEFAULT_FLOORS))
@@ -486,6 +510,7 @@ def main():
             output.mkdir(parents=True, exist_ok=True)
             (output / "area-doors.json").write_bytes(encoded)
             packs = {}
+            retained = retained_parts(args.floor_manifest)
             rows_by_floor = {story_floors()[n]["floor"]: story_floors()[n] for n in names}
             for floor, (_archive, _script, _messages, story_pack) in areas.items():
                 profile = rows_by_floor[floor]
@@ -495,8 +520,9 @@ def main():
                     name = prefix + ".c3d"
                     objects = {**door_objects(profile, doors),
                                **{MAP_OBJECT_ROW | model: model for model in profile.get("map_objects", ())}}
-                    pack = encode_door_pack(floor, own, {row: "%s_obj%d.c3t" % (prefix, model)
-                                                         for row, model in objects.items()})
+                    files = {row: "%s_obj%d.c3t" % (prefix, model) for row, model in objects.items()}
+                    own = [elevator_bone(row, files.get(row["index"]), retained) for row in own]
+                    pack = encode_door_pack(floor, own, files)
                     (output / name).write_bytes(pack)
                     packs[name] = {"rows": len(own), "sha256": hashlib.sha256(pack).hexdigest()}
                 found = [row for row in treasure if row["floor"] == floor]

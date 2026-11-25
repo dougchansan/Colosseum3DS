@@ -1,0 +1,50 @@
+# Pyrite Building elevator (native C5) for build/test_story_route, from the
+# Colosseum checkpoint (private/pyrite/saves/pyrite-2-colosseum.gci, floor
+# 0x78). The building is one-way (docs/pyrite-story.md): 1F stairs, 2F
+# stairs to 3F's hall; 3F door row 34 and the outside ramp to the town
+# walkway; the walkway door to 4F. 4F's stairs lead to 3F's elevator room,
+# which holds the up-ramp; its elevator (row 140) goes down to 1F's
+# elevator room (row 138), whose gate (1F function 12) lets Wes out.
+floor 0x78 0
+expect 0x409 1
+door 2
+at 35 -339
+expect 0x40a 1
+expect 0x40b 1
+expect_floor 0x19
+door 6
+door 5
+expect_floor 0x1b
+expect_near -2 -90 12
+# 3F hall to the outside ramp (door row 34, surface 6, then surface 10):
+# its people stand in the corridors, so this step teleports.
+door 10
+expect_floor 0x0f
+door 6
+expect_floor 0x1c
+door 4
+expect_floor 0x1b
+expect_near -22 -130 12
+walk -13 -130
+walk -10 -146
+# Down: the arrival must leave Wes in 1F's elevator room, not at entrance 0.
+touch 9
+expect_floor 0x19
+expect_near 3 -51 12
+# Up again: 3F's elevator room, then the ramp to 4F.
+touch 4
+expect_floor 0x1b
+expect_near -10 -150 12
+walk -20 -140
+walk -20 -118
+door 7
+expect_floor 0x1c
+# Down once more and out through 1F's gate (function 12, door row 164).
+door 4
+expect_floor 0x1b
+walk -13 -130
+walk -10 -146
+touch 9
+expect_floor 0x19
+touch 11
+expect_near 2 7 12

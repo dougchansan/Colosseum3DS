@@ -228,5 +228,8 @@ int c3_title_instance(C3Title *instance, const C3Title *owner, char *error, size
  * An enabled placement with a nonfinite or excessive matrix also fails
  * without changing the pose. Uses static scratch storage: not reentrant. */
 int c3_title_animate(C3Title *title, uint32_t clip, float seconds);
+/* One sampled bone of a clip at seconds, as c3_title_animate would sample
+ * it (row-major 3x4, unplaced); the pose is not changed. 1 on success. */
+int c3_title_sample_bone(const C3Title *title, uint32_t clip, float seconds, uint32_t bone, float out[12]);
 
 #endif

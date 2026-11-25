@@ -806,6 +806,27 @@ static int animate(C3Title *title, uint32_t clip_index, float seconds)
     return 1;
 }
 
+int c3_title_sample_bone(const C3Title *title, uint32_t clip_index, float seconds, uint32_t bone, float out[12])
+{
+    const C3TitleClip *clip;
+    const uint8_t *first,*last;
+    double frame;
+    uint32_t index,next,i;
+    if (!title || !title->file_data || !out || clip_index>=title->clip_count || bone>=title->bone_count || !isfinite(seconds)) return 0;
+    clip=title->clips+clip_index;
+    if (!clip->frame_count) return 0;
+    /* The frame choice of animate(), for one sampled bone. */
+    frame=seconds>0 ? (double)seconds*(double)title->fps : 0.0;
+    if (clip->loop && clip->frame_count>1u) frame=fmod(frame,(double)(clip->frame_count-1u));
+    else if (frame>(double)(clip->frame_count-1u)) frame=(double)(clip->frame_count-1u);
+    index=(uint32_t)frame;
+    next=index+1u<clip->frame_count ? index+1u : index;
+    first=title->file_data+title->frame_offset+(clip->first_frame+index)*title->frame_bytes+bone*48u;
+    last=title->file_data+title->frame_offset+(clip->first_frame+next)*title->frame_bytes+bone*48u;
+    for (i=0;i<12;++i) out[i]=interpolate(first,last,i,(float)(frame-(double)index));
+    return 1;
+}
+
 int c3_title_animate(C3Title *title, uint32_t clip_index, float seconds)
 {
     uint64_t started=perf_clock ? perf_clock() : 0;
