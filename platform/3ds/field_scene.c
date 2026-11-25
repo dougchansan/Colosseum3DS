@@ -502,6 +502,9 @@ static int play_story_battle(C3FieldStory *story,C3GameState *state,uint32_t enc
         else if(!problem[0])snprintf(problem,sizeof problem,"The party could not be read for the battle.");
         if(ok){
             int scene=-1;char why[192]="";
+            /* The action menu's entries in the game's own text (common messages). */
+            for(unsigned k=0;k<C3_GUI_ACTIONS;++k){char label[24];
+                if(c3_field_story_text(story,c3_general_ui_action_message(k),"",label,sizeof label))c3_general_ui_set_action_label(k,label);}
 #ifdef C3_ROUNDTRIP_PROBE
             {char prefix[32];snprintf(prefix,sizeof prefix,"probe/battle_%lu",(unsigned long)encounter);
              mkdir("sdmc:/3ds/Colosseum3DS/probe",0777);c3_battle_general_3d_set_autoplay(1,prefix);}
