@@ -1,6 +1,7 @@
 #ifndef C3_BATTLE_GENERAL_SCENE_H
 #define C3_BATTLE_GENERAL_SCENE_H
 #include "colosseum3ds/battle_general.h"
+#include "colosseum3ds/press_gate.h"
 #include <stdio.h>
 
 #define C3_BATTLE_PACK_PATH "sdmc:/3ds/Colosseum3DS/boot/battles.c3x"
@@ -34,10 +35,18 @@ typedef struct {
      * 2) instead of running the turn here. */
     unsigned control_mask;
     int defer;
+    /* colosseum3ds/press_gate.h: a command page opened (or advanced) by a
+     * press acts only on the next press. */
+    C3PressGate gate;
 } C3GeneralUi;
 /* Start choosing the hero's commands for the next turn. Returns 0 when
  * none of the controlled positions has a Pokemon able to act. */
 int c3_general_ui_commands(C3GeneralUi *ui, const C3GeneralBattle *b);
+/* This frame's edges that the current page may act on (call every frame,
+ * before c3_general_ui_press). A page opened by c3_general_ui_commands, a
+ * result page and every page a press advances ignore the buttons down when
+ * they appeared until those are released and pressed again. */
+uint16_t c3_general_ui_input(C3GeneralUi *ui, uint16_t held, uint16_t pressed);
 /* A press on a command page. Returns 1 when the commands were complete and
  * the turn ran (its events are in b->events), 2 when they are complete and
  * deferred (ui->defer), 0 otherwise; an engine error is shown on the page

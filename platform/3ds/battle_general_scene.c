@@ -148,12 +148,19 @@ int c3_general_ui_commands(C3GeneralUi *ui, const C3GeneralBattle *b)
     int p = next_position(ui, b, 0);
     ui->position = p < 0 ? 0 : (unsigned)p;
     ui->cursor = 0; ui->page = C3_GUI_MOVES;
+    c3_press_gate_close(&ui->gate); /* the press that ended the log is not a command */
     return p >= 0;
+}
+
+uint16_t c3_general_ui_input(C3GeneralUi *ui, uint16_t held, uint16_t pressed)
+{
+    return c3_press_gate_take(&ui->gate, held, pressed);
 }
 
 int c3_general_ui_press(C3GeneralUi *ui, const C3BattlePack *pack, C3GeneralBattle *b, uint16_t pressed, FILE *trace)
 {
     if (!pressed || ui->page == C3_GUI_EVENTS || ui->page == C3_GUI_RESULT) return 0;
+    c3_press_gate_consume(&ui->gate, pressed); /* this press acts on this page only */
     ui->error[0] = 0;
     int submit = 0;
     if (ui->page == C3_GUI_MOVES) {
@@ -261,7 +268,7 @@ int c3_battle_general_scene_run(const C3BattlePack *pack, C3GeneralBattle *b, FI
 #ifdef C3_AGENT_HARNESS
         c3_agent_link_battle(b, (uint8_t)ui.page);
 #endif
-        uint16_t pressed = input.pressed;
+        uint16_t pressed = input.pressed, page_pressed = c3_general_ui_input(&ui, input.held, input.pressed);
         uint64_t now = c3_n3ds_time_us();
         if (ui.page == C3_GUI_EVENTS) {
             /* The partner's page (the Shadow notice) waits for A. */
@@ -269,7 +276,7 @@ int c3_battle_general_scene_run(const C3BattlePack *pack, C3GeneralBattle *b, FI
             if ((pressed & C3_PAD_A) || (!hold && now - event_start >= EVENT_MS * 1000u)) {
                 ++event; event_start = now; dirty = 1;
                 if (event >= b->event_count) {
-                    if (b->outcome != C3_GB_RUNNING) ui.page = C3_GUI_RESULT;
+                    if (b->outcome != C3_GB_RUNNING) { ui.page = C3_GUI_RESULT; c3_press_gate_close(&ui.gate); }
                     else {
                         c3_general_ui_commands(&ui, b);
                         if (trace) { fprintf(trace, "general_battle_commands turn=%lu after_events=%lu last_kind=%u last_special=0x%x scene=2d\n", (unsigned long)b->turn,
@@ -279,7 +286,7 @@ int c3_battle_general_scene_run(const C3BattlePack *pack, C3GeneralBattle *b, FI
                 }
             }
         } else if (ui.page == C3_GUI_RESULT) {
-            if ((pressed & C3_PAD_A) || c3_battle_general_autoplaying()) {
+            if ((page_pressed & C3_PAD_A) || c3_battle_general_autoplaying()) {
                 if (trace) { fprintf(trace, "general_battle_end encounter=%lu outcome=%d turns=%lu\n",
                     (unsigned long)b->encounter, (int)b->outcome, (unsigned long)b->turn); fflush(trace); }
                 c3_battle_music_end(&music);
@@ -296,9 +303,9 @@ int c3_battle_general_scene_run(const C3BattlePack *pack, C3GeneralBattle *b, FI
             if (trace) { fprintf(trace, "general_battle_turn turn=%lu events=%lu outcome=%d autoplay=1 scene=2d\n",
                 (unsigned long)b->turn, (unsigned long)b->event_count, (int)b->outcome); fflush(trace); }
             ui.page = C3_GUI_EVENTS; event = 0; event_start = now; dirty = 1;
-        } else if (pressed) {
+        } else if (page_pressed) {
             dirty = 1;
-            if (c3_general_ui_press(&ui, pack, b, pressed, trace)) { event = 0; event_start = now; }
+            if (c3_general_ui_press(&ui, pack, b, page_pressed, trace)) { event = 0; event_start = now; }
         }
         if (dirty) { c3_general_ui_draw(pack, b, &ui, event < b->event_count ? &b->events[event] : NULL); dirty = 0; }
     }

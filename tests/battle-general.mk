@@ -24,9 +24,14 @@ all: build/test_move_forget
 build/test_battle_hyper: tests/test_battle_hyper.c $(BATTLE_GENERAL_SOURCES) include/colosseum3ds/battle_general.h build/battle_rng_source.h $(HEADERS) $(UPSTREAM)
 	$(CC) $(CPPFLAGS) -Ibuild -Isrc $(CFLAGS) tests/test_battle_hyper.c $(BATTLE_GENERAL_SOURCES) $(LDFLAGS) -lm -o $@
 all: build/test_battle_hyper
+# One press per battle UI layer: the command pages ignore the press that ended the log (synthetic).
+build/test_battle_command_input: tests/test_battle_command_input.c platform/3ds/battle_general_scene.c platform/3ds/battle_general_scene.h src/bottom_ui.c $(BATTLE_GENERAL_SOURCES) include/colosseum3ds/press_gate.h include/colosseum3ds/battle_general.h build/battle_rng_source.h $(HEADERS) $(UPSTREAM)
+	$(CC) $(CPPFLAGS) -Iplatform/3ds -Ibuild -Isrc $(CFLAGS) tests/test_battle_command_input.c platform/3ds/battle_general_scene.c src/bottom_ui.c $(BATTLE_GENERAL_SOURCES) $(LDFLAGS) -lm -o $@
+all: build/test_battle_command_input
 .PHONY: battle-general-check
-battle-general-check: build/test_battle_general build/test_battle_turn_rules build/test_battle_trainer_ai build/test_move_forget build/test_battle_hyper build/test_battle3d_index build/test_wzx_player
+battle-general-check: build/test_battle_general build/test_battle_turn_rules build/test_battle_trainer_ai build/test_move_forget build/test_battle_hyper build/test_battle3d_index build/test_wzx_player build/test_battle_command_input
 	./build/test_battle_general
+	./build/test_battle_command_input
 	./build/test_battle_turn_rules
 	./build/test_battle_trainer_ai
 	./build/test_move_forget

@@ -241,7 +241,7 @@ static int run(const C3BattlePack *pack, C3GeneralBattle *b, C3BattleLinkHooks *
                 }
                 if (!c3_battle_general_stage_submit(stage, batch, n)) { snprintf(error, sizeof error, "Invalid battle event batch."); goto done; }
                 count = n; dirty = 1;
-            } else if (b->outcome != C3_GB_RUNNING) { ui.page = C3_GUI_RESULT; dirty = 1; }
+            } else if (b->outcome != C3_GB_RUNNING) { ui.page = C3_GUI_RESULT; c3_press_gate_close(&ui.gate); dirty = 1; }
             else {
                 int any = c3_general_ui_commands(&ui, b); dirty = 1;
                 /* The command phase opens only after the whole log has played
@@ -252,7 +252,9 @@ static int run(const C3BattlePack *pack, C3GeneralBattle *b, C3BattleLinkHooks *
                 if (hooks && !any) { C3GeneralCommand none[2]; memset(none, 0, sizeof none); link_submit(hooks, &ui, none); }
             }
         }
-        uint16_t pressed = input.pressed;
+        /* The page that opened at the top of this frame has not been shown
+         * yet: it takes only presses made after it appeared. */
+        uint16_t pressed = input.pressed, page_pressed = c3_general_ui_input(&ui, input.held, input.pressed);
         /* Hold A or B to hurry the messages along. */
         stage->message_ms = (input.held & (C3_PAD_A | C3_PAD_B)) && ui.page == C3_GUI_EVENTS ? 300 : 1100;
         int hold_command = 0;
@@ -285,10 +287,10 @@ static int run(const C3BattlePack *pack, C3GeneralBattle *b, C3BattleLinkHooks *
             ui.page = C3_GUI_EVENTS; c3_general_view_restart(&view, b); count = 0; dirty = 1;
         }
         if (ui.page == C3_GUI_RESULT) {
-            if ((pressed & C3_PAD_A) || (autoplay && ++autoplay > 120)) { ended = 1; result = 0; break; }
-        } else if (ui.page != C3_GUI_EVENTS && ui.page != C3_GUI_WAIT && pressed) {
+            if ((page_pressed & C3_PAD_A) || (autoplay && ++autoplay > 120)) { ended = 1; result = 0; break; }
+        } else if (ui.page != C3_GUI_EVENTS && ui.page != C3_GUI_WAIT && page_pressed) {
             dirty = 1;
-            int pr = c3_general_ui_press(&ui, pack, b, pressed, trace);
+            int pr = c3_general_ui_press(&ui, pack, b, page_pressed, trace);
             if (pr == 2 && hooks) link_submit(hooks, &ui, ui.commands);
             else if (pr) { c3_general_view_restart(&view, b); count = 0; }
         }
