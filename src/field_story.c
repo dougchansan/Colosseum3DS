@@ -548,9 +548,12 @@ static int tv_setup(Impl *s,char *error)
         if(!flag(s,later[i],&value,error))return 0;
         /* A later report needs its own model, camera and message, which are
          * not prepared: the screen stays off instead of showing the first. */
-        if(value){note_presentation(s,0xd3,"later_tv_report_unrendered");s->view.tv_enabled=0;return 1;}
+        if(value){note_presentation(s,0xd3,"later_tv_report_unrendered");s->view.tv_enabled=0;
+            if(s->view.tv_entry!=UINT32_MAX){s->view.tv_entry=UINT32_MAX;++s->view.tv_serial;}return 1;}
     }
     if(!set_flag(s,0x0A05,1,error))return 0;
+    /* fn_801C9F5C: the first report is fn_80117AE4(0). */
+    if(s->view.tv_entry!=0){s->view.tv_entry=0;++s->view.tv_serial;}
     s->view.tv_enabled=1;return 1;
 }
 /* ---- Native C5: elevators (floor_event.c floorEventCtrlElevator and
@@ -1018,8 +1021,13 @@ static int run_native(Impl *s,RunTask *t,char *error)
         if(c->argc>7&&a[7]){float dx=px-cx,dz=pz-cz,d=hypotf(dx,dz);
             if(d>0){q->position[0]=cx+dx/d*(reach+0.0001f);q->position[2]=cz+dz/d*(reach+0.0001f);}}
     }break;
-    /* fn_80117AE4: texture-change animation of the floor's screens. */
-    case 0xab:note_presentation(s,0xab,"texture_change_animation");value=1;break;
+    /* fn_80117AE4: select the floor's field-camera texture entry a[0]
+     * (colosseum3ds/field_tv.h); the scene draws it into the screen. The
+     * current id changes nothing; another restarts that entry's clip. */
+    case 0xab:
+        if(s->view.tv_entry!=a[0]){s->view.tv_entry=a[0];++s->view.tv_serial;}
+        log_line(s,"story_tv entry=%lu serial=%lu",(unsigned long)a[0],(unsigned long)s->view.tv_serial);
+        value=1;break;
     /* mailMainSendByScrpt: deliver mail once (mailAddMailbox). The scene
      * starts the new-mail tone and envelope (mailMainStartSe) when
      * view.mail_received changes. */
@@ -2567,6 +2575,7 @@ int c3_field_story_load(C3FieldStory *story,const char *path,C3GameState *game,
     s->game=game;s->map=map;s->area=area;s->hero=hero;s->hero_model=hero_model;
     s->camera_track=camera;s->trace=trace;s->previous_floor=summary.previous_floor;s->arrival_spawn=summary.spawn;
     s->view.fade=1;s->view.camera=map->camera;s->camera_rate=1;
+    s->view.tv_entry=0; /* fn_80117E58 selects entry 0 when the floor starts */
     snprintf(s->hero_name,sizeof s->hero_name,"%s",summary.name);
     s->hero_actor.public.model=hero_model;s->hero_actor.public.index=100;
     s->hero_actor.public.visible=1;s->hero_actor.public.loop=1;s->hero_actor.public.playing=1;

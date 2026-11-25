@@ -43,6 +43,11 @@ typedef struct C3FieldStoryView {
     uint32_t battle_refused; /* the waiting encounter the scene could not play (c3_field_story_battle_refuse) */
     uint32_t mail_received; /* native AD deliveries so far (mailMainSendByScrpt): a change
                              * starts the scene's new-mail alert (colosseum3ds/mail_alert.h) */
+    /* Field-camera texture entry (colosseum3ds/field_tv.h): the floor start
+     * selects id 0 (fn_80117E58), native AB another (fn_80117AE4); NONE
+     * after a later D3 report. tv_serial counts selections that restart the
+     * entry's clip (selecting the current id again restarts nothing). */
+    uint32_t tv_entry, tv_serial;
     float fade, camera_seconds;
     C3TitleCamera camera;
 } C3FieldStoryView;

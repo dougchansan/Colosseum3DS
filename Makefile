@@ -111,6 +111,14 @@ floor-names-check: build/test_floor_names tools/prepare_place_names.py
 	  ./build/test_floor_names "$$dir/place_names.c3pn"; status=$$?; rm -rf "$$dir"; exit $$status; \
 	else echo "floor names: no disc at $(PLACE_NAMES_DISC); original pack not checked"; fi
 test: floor-names-check
+# Field television binding (<prefix>.c3v, tools/field_tv.py).
+build/test_field_tv: tests/test_field_tv.c src/field_tv.c include/colosseum3ds/field_tv.h | build
+	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_field_tv.c src/field_tv.c $(LDFLAGS) -o $@
+all: build/test_field_tv
+.PHONY: field-tv-check
+field-tv-check: build/test_field_tv
+	./build/test_field_tv
+test: field-tv-check
 WORLD_BATTLE_SOURCES = src/inventory.c src/pda.c src/battle_general.c src/battle_story.c src/battle_rng.c src/decomp_rng.c
 # C3_ROUTE_BATTLES=<battles.c3x> plays Willie's encounter 10 on the general engine.
 build/test_field_story: tests/test_field_story.c tests/route_battles.c tests/route_battles.h $(FIELD_STORY_SOURCES) $(WORLD_BATTLE_SOURCES) build/battle_rng_source.h $(HEADERS) $(UPSTREAM)

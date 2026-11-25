@@ -292,6 +292,110 @@ def common_rel(archive):
     return found
 
 
+def archive_members(archive):
+    table = u32(archive, u32(archive, 24))
+    return {u32(archive, u32(archive, table + index * 4)) for index in range(u32(archive, 12))}
+
+
+def television_screen(prefix, map_reports, address):
+    """(map pack, texture index) of the screen model's one map batch, or
+    None. The stage renderer binds a texture that exactly one batch of its
+    pack uses (c3_stage_renderer_set_tv)."""
+    found = []
+    for report in map_reports:
+        name = report["file"]
+        if not (name.startswith(prefix + "_map") and name.endswith(".c3t")):
+            continue
+        number = name[len(prefix) + 4:-4]
+        if not number.isdigit():
+            continue
+        textures = [mesh["texture_index"] for mesh in report["source_meshes"]]
+        for mesh in report["source_meshes"]:
+            if mesh["hsd_root_address"] == address:
+                found.append((int(number), mesh["texture_index"], textures.count(mesh["texture_index"])))
+    if len(found) != 1 or found[0][2] != 1:
+        return None
+    return found[0][:2]
+
+
+def prepare_television(archive, profile, reports, output):
+    """The floor's field-camera texture entries (tools/field_tv.py).
+
+    fn_80117E58 selects entry 0 when the floor starts and natives AB/D3
+    select others; fn_80117D14 draws the entry's model with its camera into
+    a 256x256 texture that replaces the screen model's placeholder. Each
+    (model, camera) pair the floor can show becomes <prefix>_tv<N>.c3t with
+    the entries' clips, looping (GSmodelStartAnimation), sampled at 60 Hz
+    with the entry camera; <prefix>.c3v binds them to the screen batch.
+    Returns the manifest record, or None when the floor has no table. A
+    screen or model the packs cannot represent leaves the placeholder
+    (record "skipped") instead of failing the floor."""
+    import field_tv
+    from gsvm_disasm import disassemble
+    from prepare_field_geometry import (load_scene, Model, build_mesh, expand_image_swaps, instance_meshes,
+                                        prepare_pack_set, fixed_lights, sample_sequence)
+    if "rel" not in profile or "map" not in profile:
+        return None
+    rows = field_tv.texture_table(member(archive, profile["rel"]), archive_members(archive), profile["map"])
+    if not rows:
+        return None
+    wanted = (field_tv.script_entry_ids(disassemble(member(archive, profile["script"])))
+              if profile.get("script") else {0})
+    packs, entries, omitted = field_tv.plan(rows, wanted)
+    record = {"screen_resource": "%08x" % rows[0]["screen"],
+              "table": [{"id": row["id"], "model_resource": "%08x" % row["model"], "clip": row["clip"],
+                         "camera_resource": "%08x" % row["camera"], "width": row["width"],
+                         "height": row["height"]} for row in rows],
+              "selectable_ids": sorted(wanted & {row["id"] for row in rows}), "omitted_ids": omitted}
+    prefix, version = profile["prefix"], profile.get("pack_format", 2)
+    _data, raw, _scene = load_scene(archive, profile["map"])
+    screen_model = rows[0]["screen"] & 255
+    if screen_model >= len(raw.models):
+        raise ValueError("Texture-change screen names a model the floor scene lacks")
+    screen = television_screen(prefix, reports, raw.models[screen_model].root_joint.address)
+    if screen is None or not packs:
+        record["skipped"] = ("The screen model is not one map batch with its own texture." if packs else
+                             "No entry is selectable.")
+        return record
+    written = []
+    try:
+        for index, pack in enumerate(packs):
+            data, raw_model, scene = load_scene(archive, pack["model_member"])
+            _camera_data, _camera_raw, camera_scene = load_scene(archive, pack["camera"])
+            if pack["model_index"] >= len(scene.models) or len(camera_scene.cameras) != 1:
+                raise ValueError("Television model or camera topology is unsupported")
+            fixed = title.camera_values(camera_scene.cameras[0], 0)
+            model = Model(scene.models[pack["model_index"]], raw_model.models[pack["model_index"]],
+                          allow_image_swaps=True, allow_instances=True, allow_paths=True,
+                          frozen_material_colors=True)
+            if any(clip >= max(len(model.ends), 1) for clip in pack["clips"]):
+                raise ValueError("Television entry names a clip its model lacks")
+            meshes = expand_image_swaps([build_mesh(model, i) for i in range(len(model.meshes))])
+            meshes += instance_meshes(model, meshes)
+            schedules = [(clip, sample_sequence(model.ends[clip]) if model.ends and model.ends[clip] else [0.], True)
+                         for clip in pack["clips"]]
+            samples = sum(len(sequence) for _clip, sequence, _loop in schedules)
+            group = prepare_pack_set(meshes, schedules, 60, [fixed] * samples, fixed_lights(raw_model, data),
+                                     profile["sha256"], output, field_tv.tv_pack_name(prefix, index)[:-4],
+                                     expected_count=1, format_version=version, gpu_textures=True)
+            group[0].update(sampling="television", source_resource="%08x" % pack["model"],
+                            camera_resource="%08x" % pack["camera"], source_clips=pack["clips"])
+            written += group
+    except ValueError as error:
+        for report in written:
+            (output / report["file"]).unlink()
+        record["skipped"] = str(error)
+        return record
+    binding = field_tv.encode(screen[0], screen[1], len(packs), entries)
+    name = field_tv.sidecar_name(prefix)
+    (output / name).write_bytes(binding)
+    record.update(file=name, bytes=len(binding), sha256=hashlib.sha256(binding).hexdigest(),
+                  screen_pack=screen[0], screen_texture=screen[1],
+                  entries=[{"id": ident, "pack": pack, "clip": clip} for ident, pack, clip in entries],
+                  packs=written)
+    return record
+
+
 def interior_manifest(manifest, profile, extras):
     """Story-floor manifest: what the interior packs hold and what they omit."""
     limitations = [
@@ -299,7 +403,9 @@ def interior_manifest(manifest, profile, extras):
         "Object packs keep every source clip at its own index without looping; the door and event natives that play them are runtime work.",
         "HSD instance joints are expanded into additional sampled draws of their shared subtrees.",
         "Geometry is sampled at 60 Hz. GX filtering, lighting and blending use the native PICA material subset.",
-        "Television screen quads keep their original texture; the field-camera television pass is not prepared here."]
+        ("Field-camera texture entries are rendered by the television pass (<prefix>.c3v, <prefix>_tv<N>.c3t; see television)."
+         if extras.get("television", {}).get("file") else
+         "Television screen quads keep their original texture; the field-camera television pass is not prepared here.")]
     if extras["frozen_material_tracks"]:
         limitations.append("Animated material RGB tracks cannot be sampled by the pack format: those colours keep their first-clip frame-zero value (frozen_material_tracks).")
     if extras["path_joints"]:
@@ -318,6 +424,8 @@ def interior_manifest(manifest, profile, extras):
                     frozen_material_tracks=extras["frozen_material_tracks"],
                     path_joints=extras["path_joints"], omitted_meshes=extras["omitted_meshes"],
                     ccd_objects=extras["ccd_objects"], limitations=limitations)
+    if "television" in extras:
+        manifest["television"] = extras["television"]
     return manifest
 
 
@@ -401,6 +509,10 @@ def prepare(disc, output, parser, floor="phenac"):
         stage.mkdir()
         packs, camera, actor_vertices, map_packs, instances, extras = prepare_floor_geometry(
             archive, commons["field_common.fsys"], profile, stage)
+        television = prepare_television(archive, profile, packs, stage)
+        if television is not None:
+            extras["television"] = television
+            packs = packs + television.get("packs", [])
         rel_id = common_rel(commons["common.fsys"])
         field, metadata = field_metadata(
             member(archive, profile["rel"]), member(commons["common.fsys"], rel_id),

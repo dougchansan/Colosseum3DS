@@ -24,7 +24,7 @@ class FieldBattleHandoffTests(unittest.TestCase):
                 (release, ['C3_RECOVER_DRAIN', 'npc_stream_attach(h->npc,1,',
                            'release_field_models(h->storage,h->count)', 'c3_pack_cache_clear()']),
                 (restore, ['"battle-to-field"', 'restore_field_models(', 'field_renderer_init(',
-                           'c3_stage_renderer_set_tv(']),
+                           'field_tv_bind(']),
                 (play, ['c3_general_battle_begin(', 'field_battle_release(host,',
                         'c3_battle_general_3d_run(', 'field_battle_restore(host,',
                         'c3_battle_story_apply('])):

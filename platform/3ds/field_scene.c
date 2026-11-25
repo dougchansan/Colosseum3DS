@@ -20,6 +20,7 @@
 #include "stage_renderer.h"
 #include "colosseum3ds/field.h"
 #include "colosseum3ds/field_story.h"
+#include "colosseum3ds/field_tv.h"
 #include "colosseum3ds/first_person.h"
 #include "colosseum3ds/orbit_camera.h"
 #include "colosseum3ds/floor_profile.h"
@@ -384,6 +385,54 @@ static void load_progress(size_t done,size_t total)
 static int field_renderer_init(C3Title *storage,const C3Title *const *models,uint32_t count,
                                uint64_t actors,char *error,size_t capacity);
 static uint32_t field_map_packs; /* the leading map packs of the current floor */
+/* The floor's television (field-camera texture entries): the shop's reviewed
+ * C3_FLOOR_TV pack (one model, screen pack 1 texture 1, clip 0, shown while
+ * native D3 enables it), or a prepared <prefix>.c3v binding
+ * (colosseum3ds/field_tv.h) whose packs <prefix>_tv<N>.c3t are models
+ * [first, first+count). With a binding the story's selected entry
+ * (view.tv_entry) chooses the pack and clip; no entry leaves the screen
+ * its own placeholder texture, as fn_80117AE4 does. */
+static struct {
+    uint32_t first, count, active, serial; int table; float start;
+    C3FieldTV binding; const C3FieldStoryView *view;
+} field_tv; /* first is UINT32_MAX without a television (run_area) */
+static int field_tv_slot(uint32_t model)
+{
+    return field_tv.first!=UINT32_MAX&&model>=field_tv.first&&model-field_tv.first<field_tv.count;
+}
+static const C3FieldTVEntry *field_tv_selected(void)
+{
+    return c3_field_tv_entry(&field_tv.binding,field_tv.view?field_tv.view->tv_entry:0);
+}
+/* enabled: the shop's native D3 state; a binding uses its selected entry. */
+static int field_tv_bind(int enabled,char *error,size_t capacity)
+{
+    if(field_tv.first==UINT32_MAX)return 1;
+    if(!field_tv.table)return c3_stage_renderer_set_tv(field_tv.first,1,1,enabled,error,capacity);
+    const C3FieldTVEntry *entry=field_tv_selected();
+    if(entry)field_tv.active=entry->pack;
+    return c3_stage_renderer_set_tv(field_tv.first+field_tv.active,field_tv.binding.screen_pack,
+                                    field_tv.binding.screen_texture,entry!=NULL,error,capacity);
+}
+/* Pose the selected entry's pack on its clip (restarted by each new
+ * selection, GSmodelStartAnimation) and hide the other packs. */
+static int field_tv_sample(C3Title *storage,float elapsed,FILE *trace)
+{
+    if(field_tv.first==UINT32_MAX)return 1;
+    if(!field_tv.table)return c3_title_animate(storage+field_tv.first,0,elapsed);
+    const C3FieldTVEntry *entry=field_tv_selected();
+    uint32_t serial=field_tv.view?field_tv.view->tv_serial:0;
+    if(serial!=field_tv.serial){
+        field_tv.serial=serial;field_tv.start=elapsed;
+        if(trace){fprintf(trace,"field_tv entry=%ld pack=%ld clip=%ld\n",entry?(long)entry->id:-1L,
+                          entry?(long)entry->pack:-1L,entry?(long)entry->clip:-1L);fflush(trace);}
+    }
+    for(uint32_t i=0;i<field_tv.count;++i)if(!entry||i!=entry->pack){
+        C3Title *model=storage+field_tv.first+i;
+        for(uint32_t j=0;j<model->batch_count;++j)model->pose.materials[j].visible=0;
+    }
+    return !entry||c3_title_animate(storage+field_tv.first+entry->pack,entry->clip,elapsed-field_tv.start);
+}
 typedef struct {
     C3PackJob *jobs; C3PackStream *stream;
     uint32_t first,count,area_index[C3_AREA_MAX_ACTORS];
@@ -413,7 +462,7 @@ static int npc_stream_attach(NpcStream *npc,int wait,C3Title *storage,const C3Ti
     free(npc->jobs);npc->jobs=NULL;
     if(c3_render_recover(trace,"people-stream",frames,C3_RECOVER_DRAIN)==C3_RECOVERY_EXIT){snprintf(error,capacity,"Renderer recovery requested an exit.");return 0;}
     if(field_renderer_init(storage,models,count,skin,error,capacity))return 0;
-    if(tv_index!=UINT32_MAX&&!c3_stage_renderer_set_tv(tv_index,1,1,tv_enabled,error,capacity))return 0;
+    if(tv_index!=UINT32_MAX&&!field_tv_bind(tv_enabled,error,capacity))return 0;
     npc->attached=1;
     if(trace){fprintf(trace,"field_people_stream count=%lu us=%llu\n",(unsigned long)npc->count,
                       (unsigned long long)(c3_n3ds_time_us()-npc->start_us));
@@ -456,7 +505,7 @@ static int field_battle_restore(FieldBattleHost *h,int exiting,FILE *trace,char 
     c3_n3ds_log_memory(trace,"field_battle_before_restore");
     if(!restore_field_models(h->storage,h->count,h->paths,h->story,h->elapsed,error,capacity))return 0;
     if(field_renderer_init(h->storage,h->models,h->count,h->skin,error,capacity))return 0;
-    if(h->tv_index!=UINT32_MAX&&!c3_stage_renderer_set_tv(h->tv_index,1,1,h->tv_enabled,error,capacity))return 0;
+    if(h->tv_index!=UINT32_MAX&&!field_tv_bind(h->tv_enabled,error,capacity))return 0;
     c3_n3ds_log_memory(trace,"field_battle_restored");
     return 1;
 }
@@ -928,7 +977,27 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
             heal_balls[heal_count++]=record[0x0f];}
         count+=heal_count;
     }
-    if(profile->features&C3_FLOOR_TV)tv_index=count++;
+    memset(&field_tv,0,sizeof field_tv);field_tv.first=UINT32_MAX;
+    if(profile->features&C3_FLOOR_TV){tv_index=count++;field_tv.first=tv_index;field_tv.count=1;}
+    else{
+        /* A prepared television binding and every pack it names; a missing
+         * or invalid one leaves the screen its placeholder texture. */
+        char tv_error[96];int usable=0;
+        snprintf(path,sizeof path,BOOT_ROOT "%s.c3v",prefix);
+        if(exists(path)){
+            usable=c3_field_tv_load(&field_tv.binding,path,map.map_pack_count,tv_error,sizeof tv_error);
+            for(uint32_t i=0;usable&&i<field_tv.binding.pack_count;++i){
+                snprintf(path,sizeof path,BOOT_ROOT "%s_tv%lu.c3t",prefix,(unsigned long)i);
+                if(!exists(path)){usable=0;snprintf(tv_error,sizeof tv_error,"%s_tv%lu.c3t is missing",prefix,(unsigned long)i);}
+            }
+            if(trace){fprintf(trace,"field_tv_binding floor=%lu ok=%d packs=%lu entries=%lu screen=%lu,%lu%s%s\n",
+                              (unsigned long)map.floor,usable,(unsigned long)field_tv.binding.pack_count,
+                              (unsigned long)field_tv.binding.entry_count,(unsigned long)field_tv.binding.screen_pack,
+                              (unsigned long)field_tv.binding.screen_texture,usable?"":" reason=",usable?"":tv_error);fflush(trace);}
+        }
+        if(usable){tv_index=count;count+=field_tv.binding.pack_count;
+            field_tv.first=tv_index;field_tv.count=field_tv.binding.pack_count;field_tv.table=1;}
+    }
     /* The partner's pack (person 0,101), loaded with the room. The lookup
      * goes through the boot index, which also answers boot/packs/<group>/.
      * With the partner in the party and no pack she would follow unseen
@@ -1065,13 +1134,15 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
             }
         }
     }
-    if(profile->features&C3_FLOOR_TV){
-        snprintf(path,sizeof path,BOOT_ROOT "%s_tv.c3t",prefix);
-        if(!c3_title_load(storage+tv_index,path,error,capacity))goto done;
-        snprintf(model_paths[tv_index],sizeof model_paths[tv_index],"%s",path);
-        models[opened++]=storage+tv_index;
-        if(!c3_title_animate(storage+tv_index,0,0))goto done;
+    for(uint32_t i=0;i<field_tv.count;++i){
+        if(field_tv.table)snprintf(path,sizeof path,BOOT_ROOT "%s_tv%lu.c3t",prefix,(unsigned long)i);
+        else snprintf(path,sizeof path,BOOT_ROOT "%s_tv.c3t",prefix);
+        if(!c3_title_load(storage+tv_index+i,path,error,capacity))goto done;
+        snprintf(model_paths[tv_index+i],sizeof model_paths[tv_index+i],"%s",path);
+        models[opened++]=storage+tv_index+i;
+        if(!c3_title_animate(storage+tv_index+i,0,0))goto done;
     }
+    if(field_tv.table&&!field_tv_sample(storage,0,trace))goto done;
     if(partner_index!=UINT32_MAX){
         snprintf(path,sizeof path,BOOT_ROOT "%s_partner.c3t",prefix);
         if(!c3_title_load(storage+partner_index,path,error,capacity))goto done;
@@ -1107,12 +1178,12 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         fflush(trace);
     }
     skin_actors=UINT64_C(1)<<wes_index;
-    for(uint32_t i=arrival_index+arrival_count;i<count&&i<64u;++i)if(i!=tv_index)skin_actors|=UINT64_C(1)<<i;
+    for(uint32_t i=arrival_index+arrival_count;i<count&&i<64u;++i)if(!field_tv_slot(i))skin_actors|=UINT64_C(1)<<i;
     trace_stage(trace,"cameras_lights",-1,load_start_us,&fs_base);
     /* Room and people together: one renderer start, no mid-scene restart. */
     if(field_renderer_init(storage,models,count,skin_actors,error,capacity))goto done;
     trace_stage(trace,"renderer",-1,load_start_us,&fs_base);
-    if(tv_index!=UINT32_MAX&&!c3_stage_renderer_set_tv(tv_index,1,1,true,error,capacity))goto done;
+    if(tv_index!=UINT32_MAX&&!field_tv_bind(true,error,capacity))goto done;
     snprintf(path,sizeof path,"%s_ready",prefix);
     c3_n3ds_log_memory(trace,path);
     snprintf(path,sizeof path,BOOT_ROOT "%s",profile->story);
@@ -1169,7 +1240,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
         c3_field_story_set_auto_event(&story,carried_auto_event);memset(carried_auto_event,0,sizeof carried_auto_event);
     }
     if(!c3_field_story_prepare(&story,story_error))goto story_failed;
-    view=c3_field_story_view(&story);
+    view=c3_field_story_view(&story);field_tv.view=view;
     if(trace){fprintf(trace,"field_begin floor=%lu previous=%lu spawn=%u new=%d maps=%lu npcs=%lu models=%lu arrival=%d duration=%.3f\n",
         (unsigned long)map.floor,(unsigned long)summary.previous_floor,summary.spawn,new_game,(unsigned long)map.map_pack_count,
         (unsigned long)area.actor_count,(unsigned long)count,arrival!=NULL,(double)arrival_seconds);fflush(trace);}
@@ -1840,7 +1911,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                     if(!c3_pda_preview_close(&pda_preview)){snprintf(error,capacity,"PDA renderer still owns its model.");result=-1;break;}
                     ingame->preview=0;ingame->dirty=1;input.pressed&=(uint16_t)~C3_PAD_B;
                     if(field_renderer_init(storage,models,count,skin_actors,error,capacity)||
-                       (tv_index!=UINT32_MAX&&!c3_stage_renderer_set_tv(tv_index,1,1,view->tv_enabled,error,capacity))){result=-1;break;}
+                       (tv_index!=UINT32_MAX&&!field_tv_bind(view->tv_enabled,error,capacity))){result=-1;break;}
                     previous=c3_n3ds_active_time_us();
                 }
                 C3IngameEvent event=c3_ingame_update(ingame,state,&input,delta);
@@ -1849,7 +1920,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                     if(!c3_pda_preview_close(&pda_preview)){snprintf(error,capacity,"PDA renderer still owns its model.");result=-1;break;}
                     ingame->preview=0;ingame->dirty=1;
                     if(field_renderer_init(storage,models,count,skin_actors,error,capacity)||
-                       (tv_index!=UINT32_MAX&&!c3_stage_renderer_set_tv(tv_index,1,1,view->tv_enabled,error,capacity))){result=-1;break;}
+                       (tv_index!=UINT32_MAX&&!field_tv_bind(view->tv_enabled,error,capacity))){result=-1;break;}
                     if(event.kind==C3_INGAME_PREVIEW)event.kind=C3_INGAME_NONE;
                     previous=c3_n3ds_active_time_us();
                 }
@@ -1872,7 +1943,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
                                 if(!c3_pda_preview_close(&pda_preview)){result=-1;break;}
                             }
                             if(field_renderer_init(storage,models,count,skin_actors,error,capacity)||
-                               (tv_index!=UINT32_MAX&&!c3_stage_renderer_set_tv(tv_index,1,1,view->tv_enabled,error,capacity))){result=-1;break;}
+                               (tv_index!=UINT32_MAX&&!field_tv_bind(view->tv_enabled,error,capacity))){result=-1;break;}
                             c3_ingame_error(ingame,preview_error);
                         }
                         previous=c3_n3ds_active_time_us();
@@ -1936,13 +2007,13 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
             sampled&=c3_title_animate(arrival,0,fmaxf(0,arrival_seconds-.1f/30.0f));arrival_end_sampled=1;
         }
         if(tv_index!=UINT32_MAX){
-            sampled&=c3_title_animate(storage+tv_index,0,elapsed);
-            if(!pda_preview&&!c3_stage_renderer_set_tv(tv_index,1,1,view->tv_enabled,error,capacity)){result=-1;break;}
+            sampled&=field_tv_sample(storage,elapsed,trace);
+            if(!pda_preview&&!field_tv_bind(view->tv_enabled,error,capacity)){result=-1;break;}
         }
         /* The tail slots belong to the asynchronous people loader. Until
          * attach completes they are zeroed or being written by that thread;
          * sample only the same admitted models the renderer can draw. */
-        if(lights_loaded)for(uint32_t i=0;i<(npc.attached?count:npc.first);++i)if(i!=tv_index)
+        if(lights_loaded)for(uint32_t i=0;i<(npc.attached?count:npc.first);++i)if(!field_tv_slot(i))
             sampled&=c3_area_lights_apply(&lights,elapsed,storage+i);
         if(!sampled){snprintf(error,capacity,"An original area animation or light sample failed.");result=-1;break;}
         if(phase==FIELD_SETUP){fade=0;c3_field_camera(&map,&player,&camera);}
@@ -2224,6 +2295,7 @@ done:
     if(result<0)c3_n3ds_log_memory(trace,"field_failed");
     if(c3_render_recover(trace,"field",frames,result==1?C3_RECOVER_EXIT:C3_RECOVER_DRAIN)==C3_RECOVERY_EXIT)result=1;
     c3_pda_preview_close(&pda_preview);
+    field_tv.view=NULL;
     c3_field_story_close(&story);
     for(uint32_t i=0;i<opened;++i)c3_title_close(storage+i);
     free(storage);c3_area_lights_close(&lights);c3_area_camera_close(&room_camera);

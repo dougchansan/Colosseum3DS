@@ -621,6 +621,10 @@ def pixel_engine_flags(pe, flags):
              (25,1,4,5,3):title.TRANSLUCENT,
              (49,1,4,5,3):title.TRANSLUCENT,
              (57,0,4,5,3):0,
+             # Source-alpha blend with flags 0x39: the 0x31 translucent state
+             # plus bit 0x08 (early versus late depth test only). The field
+             # television models (0x1C 10330400) use it.
+             (57,1,4,5,3):title.TRANSLUCENT,
              # ONE/ONE addition with flags 0x39: bit 0x20 keeps depth writes,
              # as the reviewed 0x31 translucent interior state does.
              (57,1,1,1,3):ADDITIVE_ONE | title.TRANSLUCENT}

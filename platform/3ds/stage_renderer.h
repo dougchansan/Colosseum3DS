@@ -74,11 +74,13 @@ int c3_stage_renderer_validate(const C3Title *title, char *error, size_t capacit
  * (colosseum3ds/skin_uniforms.h). A caller may copy it into that retained
  * title's gpu_batches; zero when nothing qualifies. */
 uint64_t c3_stage_renderer_gpu_skin_mask(size_t model);
-/* Source field-camera texture entry0, fixed 256x256 RGBA8 plus depth. Call
+/* Source field-camera texture entry, fixed 256x256 RGBA8 plus depth. Call
  * after init and before the first draw. The TV model stays excluded from the
- * main camera even when disabled. Repeated calls may toggle enabled but may
- * not change identities. The model's sampled camera drives the offscreen
- * pass. Returns 1 on success, 0 on failure; failure preserves prior binding. */
+ * main camera even when disabled. Repeated calls may toggle enabled and may
+ * move the binding to another model (another entry's pack: hide the previous
+ * model first, it returns to the main pass), but may not change the screen
+ * model or texture. The model's sampled camera drives the offscreen pass.
+ * Returns 1 on success, 0 on failure; failure preserves prior binding. */
 int c3_stage_renderer_set_tv(size_t model_index, size_t screen_model_index,
                              uint32_t screen_texture_index, bool enabled,
                              char *error, size_t capacity);

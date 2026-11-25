@@ -401,11 +401,15 @@ int c3_stage_renderer_set_tv(size_t model, size_t screen_model, uint32_t texture
         fail(error, capacity, "Invalid television model or screen texture binding."); return 0;
     }
     if (tv.configured) {
-        if (tv.model != model || tv.screen_model != screen_model || tv.texture != texture) {
+        if (tv.screen_model != screen_model || tv.texture != texture) {
             fail(error, capacity, "Television binding cannot change during an owned scene."); return 0;
         }
-        if(tv.enabled!=enabled)for(size_t i=0;i<scene_count;++i)c3_stage_cache_reset(&vertex_cache[i]);
+        /* Another field-camera texture entry may use another model pack
+         * (fn_80117AE4 opens that entry's model). The caller hides the
+         * previous one; the target and screen stay bound. */
+        if(tv.enabled!=enabled||tv.model!=model)for(size_t i=0;i<scene_count;++i)c3_stage_cache_reset(&vertex_cache[i]);
         tv.enabled = enabled;
+        tv.model = model;
         if (error && capacity) error[0] = '\0';
         return 1;
     }

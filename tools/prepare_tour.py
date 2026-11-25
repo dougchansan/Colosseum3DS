@@ -66,7 +66,7 @@ def prepare_tour(disc, boot, parser, names=None, approximate_all=False):
                 continue
             for directory in (stage / "floor", area_dir):
                 for item in directory.iterdir():
-                    if item.suffix in (".c3t", ".c3f", ".c3c"):
+                    if item.suffix in (".c3t", ".c3f", ".c3c", ".c3v"):
                         shutil.copyfile(item, boot / item.name)
             for file, data in files.items():
                 if file.endswith(".c3a"):
