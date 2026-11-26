@@ -387,7 +387,7 @@ static int field_renderer_init(C3Title *storage,const C3Title *const *models,uin
 static uint32_t field_map_packs; /* the leading map packs of the current floor */
 /* The floor's television (field-camera texture entries): the shop's reviewed
  * C3_FLOOR_TV pack (one model, screen pack 1 texture 1, clip 0, shown while
- * native D3 enables it), or a prepared <prefix>.c3v binding
+ * the story selects entry 0), or a prepared <prefix>.c3v binding
  * (colosseum3ds/field_tv.h) whose packs <prefix>_tv<N>.c3t are models
  * [first, first+count). With a binding the story's selected entry
  * (view.tv_entry) chooses the pack and clip; no entry leaves the screen
@@ -404,7 +404,7 @@ static const C3FieldTVEntry *field_tv_selected(void)
 {
     return c3_field_tv_entry(&field_tv.binding,field_tv.view?field_tv.view->tv_entry:0);
 }
-/* enabled: the shop's native D3 state; a binding uses its selected entry. */
+/* enabled: the shop's entry 0 is selected; a binding uses its selected entry. */
 static int field_tv_bind(int enabled,char *error,size_t capacity)
 {
     if(field_tv.first==UINT32_MAX)return 1;

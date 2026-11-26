@@ -19,7 +19,7 @@
 #define MAX_WAYPOINTS 64u /* Phenac actor 24 allocates 36 points (bank 013E0E00 fn 34). */
 
 typedef enum { W_NONE, W_SECONDS, W_TASK, W_MOTION, W_MOVE, W_CAMERA,
-               W_CAMERA_MOVE, W_FADE, W_MESSAGE, W_CHOICE, W_TV, W_BATTLE, W_NAME, W_ITEM, W_DOOR, W_SHOP, W_MENU_FLOOR, W_JINGLE, W_DIALOG,
+               W_CAMERA_MOVE, W_FADE, W_MESSAGE, W_CHOICE, W_BATTLE, W_NAME, W_ITEM, W_DOOR, W_SHOP, W_MENU_FLOOR, W_JINGLE, W_DIALOG,
                W_RELIVE, W_FALL, W_ITEM_MENU, W_OBJECT, W_HEAL, W_LIFT } Wait;
 typedef struct {
     uint16_t key, child;
@@ -538,23 +538,44 @@ static void aim_camera(Impl *s,float x,float y)
     s->view.camera.target[2]=s->view.camera.eye[2]-cosf(y)*cosf(x);
     for(unsigned i=0;i<3;++i)s->camera_direction[i]=s->view.camera.target[i]-s->view.camera.eye[i];
 }
-static int tv_setup(Impl *s,char *error)
+/* fn_80117AE4: select the floor's field-camera texture entry id
+ * (colosseum3ds/field_tv.h); the scene draws it into the screen. The
+ * current id changes nothing; another restarts that entry's clip. The
+ * shop's reviewed television (C3_FLOOR_TV) holds entry 0 only. */
+static void tv_select(Impl *s,uint32_t id)
 {
-    /* Native D3 selects later reports from source story flags. This adapter
-     * admits the first report only; later saves cannot silently select it. */
-    static const uint32_t later[]={0x0ADA,0x0ADB,0x042C,0x0AD3,0x0AD0,0x0ACF};
+    if(s->view.tv_entry!=id){s->view.tv_entry=id;++s->view.tv_serial;}
+    s->view.tv_enabled=id==0;
+    log_line(s,"story_tv entry=%lu serial=%lu",(unsigned long)id,(unsigned long)s->view.tv_serial);
+}
+/* The news reports in story order (gs_range_801C766C.c fn_801C9F5C and
+ * fn_801CA358 test them in this order): the story flag that makes a report
+ * current, the flag native B6 sets once it has been watched, and the
+ * entries fn_801CA358 selects before and after that. */
+static const struct {uint16_t story,watched;uint8_t unwatched,seen;} tv_reports[]={
+    {0x0ADA,0x0A0F,11,12},{0x0ADB,0x0483,11,12},{0x042C,0x042D,3,4},
+    {0x0AD3,0x0A08,3,4},{0x0AD0,0x0A07,3,4},{0x0ACF,0x0A06,1,2}};
+#define TV_REPORTS (sizeof tv_reports/sizeof tv_reports[0])
+/* Index of the current report in tv_reports, TV_REPORTS for none. */
+static int tv_current(Impl *s,unsigned *index,char *error)
+{
     uint32_t value;
-    for(unsigned i=0;i<sizeof later/sizeof later[0];++i){
-        if(!flag(s,later[i],&value,error))return 0;
-        /* A later report needs its own model, camera and message, which are
-         * not prepared: the screen stays off instead of showing the first. */
-        if(value){note_presentation(s,0xd3,"later_tv_report_unrendered");s->view.tv_enabled=0;
-            if(s->view.tv_entry!=UINT32_MAX){s->view.tv_entry=UINT32_MAX;++s->view.tv_serial;}return 1;}
+    for(*index=0;*index<TV_REPORTS;++*index){
+        if(!flag(s,tv_reports[*index].story,&value,error))return 0;
+        if(value)return 1;
     }
-    if(!set_flag(s,0x0A05,1,error))return 0;
-    /* fn_801C9F5C: the first report is fn_80117AE4(0). */
-    if(s->view.tv_entry!=0){s->view.tv_entry=0;++s->view.tv_serial;}
-    s->view.tv_enabled=1;return 1;
+    return 1;
+}
+/* fn_801CA358 (native D3): select the current report's entry, the
+ * watched one once its flag is set; with no report it sets 0A05 and
+ * selects entry 0. */
+static int tv_report(Impl *s,char *error)
+{
+    unsigned i;uint32_t value;
+    if(!tv_current(s,&i,error))return 0;
+    if(i==TV_REPORTS){if(!set_flag(s,0x0A05,1,error))return 0;tv_select(s,0);return 1;}
+    if(!flag(s,tv_reports[i].watched,&value,error))return 0;
+    tv_select(s,value?tv_reports[i].seen:tv_reports[i].unwatched);return 1;
 }
 /* ---- Native C5: elevators (floor_event.c floorEventCtrlElevator and
  * gs_range_801C766C.c fn_801C8E14, chosen by fn_801C9B6C). Offsets are
@@ -1021,13 +1042,8 @@ static int run_native(Impl *s,RunTask *t,char *error)
         if(c->argc>7&&a[7]){float dx=px-cx,dz=pz-cz,d=hypotf(dx,dz);
             if(d>0){q->position[0]=cx+dx/d*(reach+0.0001f);q->position[2]=cz+dz/d*(reach+0.0001f);}}
     }break;
-    /* fn_80117AE4: select the floor's field-camera texture entry a[0]
-     * (colosseum3ds/field_tv.h); the scene draws it into the screen. The
-     * current id changes nothing; another restarts that entry's clip. */
-    case 0xab:
-        if(s->view.tv_entry!=a[0]){s->view.tv_entry=a[0];++s->view.tv_serial;}
-        log_line(s,"story_tv entry=%lu serial=%lu",(unsigned long)a[0],(unsigned long)s->view.tv_serial);
-        value=1;break;
+    /* fn_80117AE4: select the floor's field-camera texture entry a[0]. */
+    case 0xab:tv_select(s,a[0]);value=1;break;
     /* mailMainSendByScrpt: deliver mail once (mailAddMailbox). The scene
      * starts the new-mail tone and envelope (mailMainStartSe) when
      * view.mail_received changes. */
@@ -1731,13 +1747,15 @@ static int run_native(Impl *s,RunTask *t,char *error)
         s->return_duration=as_float(a[0]);s->return_time=0;s->camera_returning=1;s->view.camera_active=1;
         s->target_moving=0;s->camera_move_time=s->camera_move_duration;
         if(a[1]){t->wait=W_CAMERA_MOVE;return 1;}break;
+    /* fn_801C9F5C: the news event of the television check (common bank
+     * 0596 function 19), a program of this task (program_step 0xb6). */
     case 0xb6:
-        if(!tv_setup(s,error))return 0;
-        ++s->event_depth;t->wait=W_TV;t->stage=0;t->remaining=3.0f;return 1;
+        ++s->event_depth;t->program=0xb6;t->prog_state=0;t->prog_asking=0;t->stage=0;
+        return program_step(s,t,0,error);
     case 0xd1:
         if(!start(s,a[0],a+1,4,&t->child,error))return 0;
         t->child_finished=0;t->wait=W_TASK;return 1;
-    case 0xd3:if(!tv_setup(s,error))return 0;value=1;break;
+    case 0xd3:if(!tv_report(s,error))return 0;value=1;break;
     case 0xe4:value=s->sound_id;break;
     default:return fail(error,"Unported native %02lx in GSVM %08lx at %08lx",(unsigned long)c->native,(unsigned long)c->script_id,(unsigned long)c->pc);
     }
@@ -1787,10 +1805,48 @@ static int program_step(Impl *s,RunTask *t,uint32_t answer,char *error)
             s->treasure_active=0;t->key=0;log_line(s,"story_treasure_end");return 1;
         }
         if(st==END){
+            /* fn_801C9F5C ends with heroMoveTermEvent and returns 1. */
+            uint32_t result=t->program==0xb6;
+            if(result){close_message(s);if(s->event_depth)--s->event_depth;}
             t->program=0;s->view.dialogue=0;s->dialog_owner=0;t->wait=W_NONE;
-            return c3_story_resume(&s->vm,t->key,0)||fail(error,"Cannot resume original story task %u",t->key);
+            return c3_story_resume(&s->vm,t->key,result)||fail(error,"Cannot resume original story task %u",t->key);
         }
         switch(t->program){
+        /* fn_801C9F5C (gs_range_801C766C.c), entered with heroMoveInitEvent.
+         * t->stage: the special report (0 ADA, 1 ADB) or the closing message
+         * mode (0x426E + mode). Each wait is 3 seconds (lbl_8047E11C); each
+         * message is winMsgOpenFieldWithSE(id, 1, 0, 5) then
+         * winMsgCloseField(1). */
+        case 0xb6:
+            if(st==2||st==3)close_message(s); /* after 439F/439D and 43A0/439E */
+            switch(st){
+            case 0:{
+                unsigned i;uint32_t value;
+                note_presentation(s,0xb6,"message_sound_effect_silent");
+                /* fn_801EEAD0(0x43): Shadow data row 0x43's flag +0x12
+                 * (common REL125 data+0x1439D8, 0x0890 = 0x084E + 0x43 - 1;
+                 * tools/prepare_game_state.py checks it) gives mode 4 and
+                 * sets no watched flag. */
+                if(!flag(s,0x0890,&value,error))return 0;
+                if(value)t->stage=4;
+                else{
+                    if(!tv_current(s,&i,error))return 0;
+                    if(!set_flag(s,i<TV_REPORTS?tv_reports[i].watched:0x0A05,1,error))return 0;
+                    if(i<2){ /* the special report: entry 12, then 15 (ADA) or 14 (ADB) */
+                        t->stage=(int)i;tv_select(s,12);
+                        t->prog_state=1;t->wait=W_SECONDS;t->remaining=3.0f;return 1;
+                    }
+                    t->stage=(int)(TV_REPORTS-i); /* 42C 4, AD3 3, AD0 2, ACF 1, none 0 */
+                }
+                if(!tv_report(s,error))return 0;
+                t->prog_state=4;t->wait=W_SECONDS;t->remaining=3.0f;return 1;}
+            case 1:t->prog_state=2;return message_when_free(s,t,t->stage?0x439D:0x439F,"",error);
+            case 2:tv_select(s,t->stage?14:15);
+                t->prog_state=3;return message_when_free(s,t,t->stage?0x439E:0x43A0,"",error);
+            case 3:if(!tv_report(s,error))return 0;
+                t->prog_state=END;continue;
+            default:t->prog_state=END;return message_when_free(s,t,0x426E + (uint32_t)t->stage,"",error);
+            }
         case 0xb2:{
             Person *fall=person(s,t->call.args[0],t->call.args[1]);
             if(st==0){t->prog_state=1;
@@ -2006,23 +2062,12 @@ static int wait_task(Impl *s,RunTask *t,float seconds,uint16_t *pressed,char *er
     case W_DIALOG:
         if(s->dialog_owner&&s->dialog_owner!=t->key)return 1;
         return message(s,t,t->pending_message,t->pending_speaker,error);
-    case W_TV:
-        if(!t->stage){
-            /* The shared window is busy with another script's message: wait. */
-            if(s->dialog_owner&&s->dialog_owner!=t->key)return 1;
-            t->remaining-=seconds;if(t->remaining>0)return 1;
-            if(!message(s,t,0x426e,"",error))return 0;
-            t->wait=W_TV;t->stage=1;return 1;
-        }
-        /* Same original blocking window service, with TV-native cleanup. */
-        /* fall through */
     case W_MESSAGE:
         t->remaining-=seconds;if(t->remaining>0||!(*pressed&(PAD_A|PAD_B)))return 1;
         *pressed&=~(PAD_A|PAD_B);
         if(s->full_message[s->page_end]=='\f'){
             s->page_start=s->page_end+1;page(s);t->remaining=.12f;return 1;
         }
-        if(t->wait==W_TV){close_message(s);if(s->event_depth)--s->event_depth;return resume(s,t,1,error);}
         /* Keep the last page visible through a following choice. */
         s->view.dialogue=0;s->dialog_owner=0;
         return resume(s,t,0,error);
@@ -2108,7 +2153,7 @@ void c3_field_story_close(C3FieldStory *story)
 void c3_field_story_describe_waits(const C3FieldStory *story,char *out,size_t capacity)
 {
     static const char *const names[]={"none","seconds","task","motion","move","camera","camera_move",
-        "fade","message","choice","tv","battle","name","item","door","shop","dialog","relive"};
+        "fade","message","choice","battle","name","item","door","shop","dialog","relive"};
     const Impl *s=story?story->impl:NULL;size_t used=0;
     if(!out||!capacity)return;
     out[0]=0;if(!s)return;

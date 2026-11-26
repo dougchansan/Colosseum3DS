@@ -29,7 +29,7 @@ static size_t binding(unsigned char *d, uint32_t screen_pack, uint32_t packs, co
 int main(void)
 {
     static const uint32_t f01c[3][3] = {{0, 0, 0}, {1, 0, 1}, {2, 1, 0}};
-    unsigned char d[256];
+    unsigned char d[512];
     char error[128];
     C3FieldTV tv;
     size_t size = binding(d, 0, 2, f01c, 3);
@@ -69,6 +69,28 @@ int main(void)
     size = binding(d, 0, 2, f01c, 0);
     assert(!c3_field_tv_parse(&tv, d, size, 2, error, sizeof error));
     assert(!memcmp(&tv, &kept, sizeof tv));
+
+    /* A house floor (0x13, Phenac 0x05-0x08, 0x29, 0x2C): every news report
+     * natives D3 and B6 select, four packs (tests/test_field_tv.py). */
+    static const uint32_t house[9][3] = {{0, 0, 0}, {1, 1, 0}, {2, 1, 1}, {3, 2, 0}, {4, 2, 1},
+                                         {11, 3, 0}, {12, 3, 1}, {14, 3, 2}, {15, 3, 3}};
+    size = binding(d, 0, 4, house, 9);
+    assert(size == 136);
+    assert(c3_field_tv_parse(&tv, d, size, 1, error, sizeof error));
+    assert(tv.pack_count == 4 && tv.entry_count == 9);
+    /* After Silva's rescue in Pyrite (0AD0 and 0ACF set, 0A07 clear): D3
+     * selects entry 3, model 108E1000 clip 0; the news event then 4. */
+    entry = c3_field_tv_entry(&tv, 3);
+    assert(entry && entry->pack == 2 && entry->clip == 0);
+    entry = c3_field_tv_entry(&tv, 12);
+    assert(entry && entry->pack == 3 && entry->clip == 1);
+    /* B6's special report shows 15 (0ADA) or 14 (0ADB); 13 is unreachable. */
+    entry = c3_field_tv_entry(&tv, 15);
+    assert(entry && entry->pack == 3 && entry->clip == 3);
+    assert(!c3_field_tv_entry(&tv, 13) && !c3_field_tv_entry(&tv, 5));
+    static const uint32_t five[5][3] = {{0, 0, 0}, {1, 1, 0}, {3, 2, 0}, {5, 3, 0}, {11, 4, 0}};
+    size = binding(d, 0, C3_FIELD_TV_MAX_PACKS, five, 5);
+    assert(C3_FIELD_TV_MAX_PACKS == 5u && c3_field_tv_parse(&tv, d, size, 1, error, sizeof error));
     printf("field tv: ok\n");
     return 0;
 }

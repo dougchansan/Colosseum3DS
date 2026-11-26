@@ -290,6 +290,18 @@ The first TV report renders animated model `0D561000`, animation 0, using camera
 static photograph. The source implementation is
 [field_camera_exact_80117AE4.c](https://github.com/Count-Sheep/pkmn-colosseum/blob/51bfe4314a218dfaf9592fc80723c50498d0ee55/src/game/field_camera_exact_80117AE4.c).
 
+Later reports follow the story flags, tested in this order: `0ADA`, `0ADB`,
+`042C`, `0AD3`, `0AD0`, `0ACF`. `D3` (`fn_801CA358`) selects entry 11/12
+(`0ADA`/`0ADB`; 12 once `0A0F`/`0483` is set), 3/4 (`042C`, `0AD3`, `0AD0`;
+4 once `042D`/`0A08`/`0A07` is set), 1/2 (`0ACF`; 2 once `0A06` is set) or,
+with none, sets `0A05` and selects 0. `B6` (`fn_801C9F5C`, run by common
+function 19, the television check of floors 02, 05-08, 13, 29 and 2C) sets
+the watched flag, lets `D3` select, waits three seconds and shows `426E`
+plus the mode (0-4). For `0ADA`/`0ADB` it instead selects 12, waits, shows
+`439F`/`439D`, selects 15/14, shows `43A0`/`439E`, then lets `D3` select.
+With Shadow row `43`'s flag `0890` set (Togetic), the mode is 4 and no
+watched flag is set.
+
 ### Names, NPC behavior, and collision event IDs
 
 Willie is interior actor 4 and exterior actor 3, using PeopleInfo index `58`.

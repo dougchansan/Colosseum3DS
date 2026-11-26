@@ -55,10 +55,34 @@ class TextureTableTests(unittest.TestCase):
 
     def test_script_ids_are_floor_start_and_literal_native_ab(self):
         lines = ["00d3: native words=2  ; native ab(0x1)", "0614: native words=2  ; native ab(0x0)",
-                 "2a76: native words=2  ; native ab(0x2)", "1000: native words=2  ; native ab(local[0x0])",
-                 "2000: native words=1  ; native d3()"]
+                 "2a76: native words=2  ; native ab(0x2)", "1000: native words=2  ; native ab(local[0x0])"]
         self.assertEqual(field_tv.script_entry_ids(lines), {0, 1, 2})
         self.assertEqual(field_tv.script_entry_ids([]), {0})
+
+    def test_native_d3_admits_every_report_of_fn_801ca358(self):
+        # 0 (none), 1/2 (ACF), 3/4 (AD0, AD3, 42C), 11/12 (ADA, ADB).
+        lines = ["00da: native words=1  ; native d3()"]
+        self.assertEqual(field_tv.script_entry_ids(lines), {0, 1, 2, 3, 4, 11, 12})
+
+    def test_news_event_b6_adds_the_special_report_entries(self):
+        # fn_801C9F5C shows 12 and then 15 (ADA) or 14 (ADB); 5-10 and 13
+        # are selected by neither native.
+        news = {0, 1, 2, 3, 4, 11, 12, 14, 15}
+        self.assertEqual(field_tv.script_entry_ids(["1cde: native words=2  ; native b6(local[0x1])"]), news)
+        self.assertEqual(field_tv.script_entry_ids(["00da: native words=1  ; native d3()"], tv_check=True), news)
+        self.assertEqual(field_tv.script_entry_ids([], tv_check=True), news)
+
+    def test_tv_check_floors_reads_the_common_event_table(self):
+        rows, count_at, stride = field_tv.EVENTS
+        data = bytearray(count_at + 4)
+        struct.pack_into(">I", data, count_at, 594)
+        for index, (floor, script) in enumerate(((0x13, field_tv.TV_CHECK_SCRIPT), (0x1C, 0x05960012),
+                                                 (0x05, field_tv.TV_CHECK_SCRIPT))):
+            struct.pack_into(">BBHII", data, rows + index * stride, 3, 0, floor, 0, script)
+        self.assertEqual(field_tv.tv_check_floors(bytes(data)), {0x05, 0x13})
+        struct.pack_into(">I", data, count_at, 593)
+        with self.assertRaises(ValueError):
+            field_tv.tv_check_floors(bytes(data))
 
     def test_floor_1c_plan_binds_the_presenter_and_nascour_packs(self):
         rows = field_tv.texture_table(rel_with(F01C_ROWS), F01C_MEMBERS, 0x00A90200)
@@ -76,11 +100,34 @@ class TextureTableTests(unittest.TestCase):
 
     def test_pack_bound_keeps_entry_zero_first(self):
         rows = [dict(offset=i * 24, id=i, model=0x10000000 + (i << 16) | 0x1000, camera=0x18001800 + (i << 16),
-                     model_member=0x10000400 + (i << 16), model_index=0, clip=0) for i in range(4)]
-        packs, entries, omitted = field_tv.plan(rows, {3, 2, 1, 0})
+                     model_member=0x10000400 + (i << 16), model_index=0, clip=0) for i in range(7)]
+        packs, entries, omitted = field_tv.plan(rows, {6, 5, 4, 3, 2, 1, 0})
         self.assertEqual(len(packs), field_tv.MAX_PACKS)
-        self.assertEqual([entry[0] for entry in entries], [0, 1])
-        self.assertEqual(omitted, [2, 3])
+        self.assertEqual([entry[0] for entry in entries], [0, 1, 2, 3, 4])
+        self.assertEqual(omitted, [5, 6])
+
+    def test_house_floor_plan_binds_every_news_report(self):
+        # The 16-row table of every house floor (on 0x13 entry 0 uses camera
+        # 105A1800, in the Phenac houses 0D571800).
+        groups = ((0x0D561000, 0x105A1800, 1), (0x108C1000, 0x108B1800, 2), (0x108E1000, 0x108D1800, 2),
+                  (0x105B1000, 0x105A1800, 6), (0x11191000, 0x11181800, 5))
+        rows, ident = [], 0
+        for model, camera, clips in groups:
+            for clip in range(clips):
+                rows.append(dict(offset=ident * 24, id=ident, model=model, camera=camera, clip=clip,
+                                 model_member=(model & 0xFFFF0000) | 0x0400, model_index=0))
+                ident += 1
+        wanted = field_tv.script_entry_ids(["00da: native words=1  ; native d3()"], tv_check=True)
+        packs, entries, omitted = field_tv.plan(rows, wanted)
+        self.assertEqual([(pack["model"], pack["clips"]) for pack in packs],
+                         [(0x0D561000, [0]), (0x108C1000, [0, 1]), (0x108E1000, [0, 1]),
+                          (0x11191000, [0, 1, 3, 4])])
+        self.assertEqual(entries, [(0, 0, 0), (1, 1, 0), (2, 1, 1), (3, 2, 0), (4, 2, 1),
+                                   (11, 3, 0), (12, 3, 1), (14, 3, 2), (15, 3, 3)])
+        self.assertEqual(omitted, [])
+        data = field_tv.encode(0, 4, len(packs), entries)
+        # tests/test_field_tv.c parses this binding.
+        self.assertEqual(struct.unpack_from("<6I", data, 4), (1, 136, 0, 4, 4, 9))
 
     def test_encode_refuses_a_missing_pack(self):
         with self.assertRaises(ValueError):

@@ -318,11 +318,11 @@ def television_screen(prefix, map_reports, address):
     return found[0][:2]
 
 
-def prepare_television(archive, profile, reports, output):
+def prepare_television(archive, profile, reports, output, tv_check_floors=frozenset()):
     """The floor's field-camera texture entries (tools/field_tv.py).
 
-    fn_80117E58 selects entry 0 when the floor starts and natives AB/D3
-    select others; fn_80117D14 draws the entry's model with its camera into
+    fn_80117E58 selects entry 0 when the floor starts and natives AB, B6
+    and D3 select others; fn_80117D14 draws the entry's model with its camera into
     a 256x256 texture that replaces the screen model's placeholder. Each
     (model, camera) pair the floor can show becomes <prefix>_tv<N>.c3t with
     the entries' clips, looping (GSmodelStartAnimation), sampled at 60 Hz
@@ -339,14 +339,18 @@ def prepare_television(archive, profile, reports, output):
     rows = field_tv.texture_table(member(archive, profile["rel"]), archive_members(archive), profile["map"])
     if not rows:
         return None
-    wanted = (field_tv.script_entry_ids(disassemble(member(archive, profile["script"])))
-              if profile.get("script") else {0})
+    # tv_check_floors: floors that bind the common television check event
+    # (field_tv.tv_check_floors), whose news event B6 selects more reports.
+    tv_check = profile.get("floor") in tv_check_floors
+    wanted = (field_tv.script_entry_ids(disassemble(member(archive, profile["script"])), tv_check)
+              if profile.get("script") else ({0} | field_tv.NEWS_IDS if tv_check else {0}))
     packs, entries, omitted = field_tv.plan(rows, wanted)
     record = {"screen_resource": "%08x" % rows[0]["screen"],
               "table": [{"id": row["id"], "model_resource": "%08x" % row["model"], "clip": row["clip"],
                          "camera_resource": "%08x" % row["camera"], "width": row["width"],
                          "height": row["height"]} for row in rows],
-              "selectable_ids": sorted(wanted & {row["id"] for row in rows}), "omitted_ids": omitted}
+              "selectable_ids": sorted(wanted & {row["id"] for row in rows}), "omitted_ids": omitted,
+              "tv_check_event": tv_check}
     prefix, version = profile["prefix"], profile.get("pack_format", 2)
     _data, raw, _scene = load_scene(archive, profile["map"])
     screen_model = rows[0]["screen"] & 255
@@ -514,7 +518,10 @@ def prepare(disc, output, parser, floor="phenac"):
         stage.mkdir()
         packs, camera, actor_vertices, map_packs, instances, extras = prepare_floor_geometry(
             archive, commons["field_common.fsys"], profile, stage)
-        television = prepare_television(archive, profile, packs, stage)
+        from prepare_outskirt import rel_data
+        import field_tv
+        checks = field_tv.tv_check_floors(rel_data(member(commons["common.fsys"], common_rel(commons["common.fsys"])), 125))
+        television = prepare_television(archive, profile, packs, stage, checks)
         if television is not None:
             extras["television"] = television
             packs = packs + television.get("packs", [])

@@ -179,6 +179,9 @@ def make_pack(disc):
         flag = u16(rel, data_base+0x1439D8+i*0x38+0x14)
         if flag != 0x4EE+i-1:
             raise SystemExit(f"Shadow table row {i:#x} purify flag {flag:#x} differs from src/relive.c")
+    # fn_801EEAD0 reads +0x12; src/field_story.c native B6 tests row 0x43's.
+    if u16(rel, data_base+0x1439D8+0x43*0x38+0x12) != 0x0890:
+        raise SystemExit("Shadow table row 0x43 flag +0x12 differs from src/field_story.c")
 
     starters = bytearray()
     for species, level, experience, moves in STARTERS:

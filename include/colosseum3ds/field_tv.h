@@ -5,14 +5,14 @@
 
 /* A floor's field-camera texture entries (the original field televisions,
  * field_camera fn_80117E58 / fn_80117AE4 / fn_80117D14). The floor start
- * selects entry id 0; natives AB and D3 select another id. The selected
+ * selects entry id 0; natives AB, B6 and D3 select another id. The selected
  * entry's model is drawn with its camera into a 256x256 texture that
  * replaces the screen model's placeholder texture (8x8 red on 0x1C).
  *
  * <prefix>.c3v (tools/field_tv.py, little-endian): "C3TV", version 1,
  * file size, screen map pack, screen texture index, pack count, entry
  * count, then per entry u32 id, pack (<prefix>_tv<pack>.c3t) and clip. */
-#define C3_FIELD_TV_MAX_PACKS 2u
+#define C3_FIELD_TV_MAX_PACKS 5u /* the house floors' tables name 5 models */
 #define C3_FIELD_TV_MAX_ENTRIES 16u
 #define C3_FIELD_TV_NONE UINT32_MAX
 

@@ -2,6 +2,7 @@
 #include "colosseum3ds/field_story.h"
 #include "colosseum3ds/save.h"
 #include "route_battles.h"
+#include "save_codec.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -217,10 +218,18 @@ static unsigned bank(uint8_t *out,unsigned id,const Program programs[8])
     for(unsigned i=0;i<8;++i){be32(out+24+4*i,size);memcpy(out+size,programs[i].data,programs[i].size);size+=programs[i].size;out[size++]=5;}
     return size;
 }
+/* Message ids of group 0 the next write_programs adds (one glyph each). */
+static const uint32_t *synthetic_messages;static unsigned synthetic_message_count;
 static void write_programs(const char *file,const Program programs[8],uint32_t floor)
 {
-    uint8_t bytes[16384]={0},common[256]={0};
-    unsigned a=bank(bytes+96,0x100,programs),b=64;
+    uint8_t bytes[16384]={0},common[256]={0},group[512]={0};
+    unsigned groups=synthetic_message_count?1u:0u,dir=96+16*groups,g=0;
+    unsigned a=bank(bytes+dir,0x100,programs),b=64;
+    if(groups){
+        g=16+8*synthetic_message_count;be16(group+4,synthetic_message_count);
+        for(unsigned i=0;i<synthetic_message_count;++i){
+            be32(group+16+8*i,synthetic_messages[i]);be32(group+20+8*i,g);be16(group+g,'A'+i);g+=4;}
+    }
     be16(common,0x596);be16(common+4,10);be32(common+16,64);
     /* Source common8 entry fade and common9 departure fade. */
     for(unsigned i=0;i<10;++i){
@@ -231,21 +240,44 @@ static void write_programs(const char *file,const Program programs[8],uint32_t f
             memcpy(common+b,fade.data,fade.size);b+=fade.size;}
         common[b++]=5;
     }
-    CHECK(96+a+b<=sizeof bytes);memcpy(bytes+96+a,common,b);
-    memcpy(bytes,"C3S1",4);le32(bytes+4,1);le32(bytes+8,96+a+b);le32(bytes+12,floor);
-    le32(bytes+16,2);le32(bytes+24,64);le32(bytes+28,96);
-    le32(bytes+64,0x100);le32(bytes+68,96);le32(bytes+72,a);
-    le32(bytes+80,0x596);le32(bytes+84,96+a);le32(bytes+88,b);
-    FILE *f=fopen(file,"wb");CHECK(f);CHECK(fwrite(bytes,1,96+a+b,f)==96+a+b);CHECK(!fclose(f));
+    CHECK(dir+a+b+g<=sizeof bytes);memcpy(bytes+dir+a,common,b);memcpy(bytes+dir+a+b,group,g);
+    memcpy(bytes,"C3S1",4);le32(bytes+4,1);le32(bytes+8,dir+a+b+g);le32(bytes+12,floor);
+    le32(bytes+16,2);le32(bytes+20,groups);le32(bytes+24,64);le32(bytes+28,96);
+    le32(bytes+64,0x100);le32(bytes+68,dir);le32(bytes+72,a);
+    le32(bytes+80,0x596);le32(bytes+84,dir+a);le32(bytes+88,b);
+    if(groups){le32(bytes+96,0);le32(bytes+100,dir+a+b);le32(bytes+104,g);}
+    FILE *f=fopen(file,"wb");CHECK(f);CHECK(fwrite(bytes,1,dir+a+b+g,f)==dir+a+b+g);CHECK(!fclose(f));
 }
-static void synthetic_game(C3GameState *game)
+/* A synthetic prepared game pack (the layout of tests/test_game_state.c's
+ * synthetic_pack) whose 3593 story flags are one bit each, so flag natives
+ * work on a synthetic game. */
+static void synthetic_flag_pack(const char *file)
+{
+    enum {SIZE=176722u,BODY=128u,PREFIX=122960u,STARTERS=147600u,NATURES=147728u,FLAGS=147978u};
+    static const uint32_t fields[]={1,SIZE,BODY,C3_SAVE_BODY_SIZE,PREFIX,0x6040,STARTERS,2,64,NATURES,25,10,FLAGS,3593,8};
+    static const uint8_t pin[]={0x51,0xbf,0xe4,0x31,0x4a,0x21,0x8d,0xfa,0xf9,0x59,0x2f,0xc8,0x07,0x23,0xc5,0x04,0x98,0xd0,0xee,0x55};
+    uint8_t *p=calloc(1,SIZE);CHECK(p);memcpy(p,"C3GS",4);memcpy(p+84,pin,20);be32(p+104,1);
+    for(unsigned i=0;i<15;++i)be32(p+4+i*4,fields[i]);
+    for(unsigned i=0;i<2;++i){uint8_t *q=p+STARTERS+i*64;
+        be16(q,i?196:197);q[2]=(uint8_t)(i?25:26);q[3]=31;be32(q+4,i?0x3ff4:0x4a6f);be16(q+8,220);
+        for(unsigned j=0;j<6;++j)be16(q+10+j*2,100);
+        for(unsigned j=0;j<4;++j){be16(q+22+j*3,1+j);q[24+j*3]=10;}
+        be16(q+34,'S');q[56]=1;}
+    for(unsigned i=0;i<25*5;++i)p[NATURES+i*2]=p[NATURES+i*2+1]=100;
+    for(unsigned i=0;i<3593;++i){p[FLAGS+i*8]=0xc1;be16(p+FLAGS+i*8+4,i);}
+    c3_save_codec_sha1(p+64,p+128,SIZE-128);
+    FILE *f=fopen(file,"wb");CHECK(f);CHECK(fwrite(p,1,SIZE,f)==SIZE);CHECK(!fclose(f));free(p);
+}
+static void synthetic_game_with(C3GameState *game,const char *pack);
+static void synthetic_game(C3GameState *game){synthetic_game_with(game,NULL);}
+static void synthetic_game_with(C3GameState *game,const char *pack)
 {
     uint8_t *body=calloc(1,C3_SAVE_BODY_SIZE),*image=calloc(1,C3_SAVE_GCI_SIZE),random[20]={0};CHECK(body&&image);
     memcpy(body,"\x0b\x03\x02\x02",4);be32(body+0x1c,1);be16(body+0x70,'T');
     be16(body+0xa0,1);memset(body+0xa8,1,4);body[0x100]=1;be16(body+0x12a,10);be16(body+0x12c,10);
     memcpy(image,"GC6E01",6);memcpy(image+8,"pokemon_colosseum",18);be16(image+0x38,48);
     for(unsigned i=0;i<3;++i)CHECK(c3_save_encode_slot(body,C3_SAVE_BODY_SIZE,i+1,random,image+0x6040+i*C3_SAVE_SLOT_SIZE,C3_SAVE_SLOT_SIZE)==C3_SAVE_OK);
-    CHECK(c3_game_state_decode(game,image,C3_SAVE_GCI_SIZE,NULL,error));free(image);free(body);
+    CHECK(c3_game_state_decode(game,image,C3_SAVE_GCI_SIZE,pack,error));free(image);free(body);
 }
 static void synthetic_model(C3Title *model)
 {
@@ -1157,9 +1189,99 @@ static void pause_menu_regressions(void)
     close_scene(s);free(s);c3_game_state_free(&game);CHECK(!unlink(file));CHECK(!rmdir(directory));
     puts("field-story pause menu key item regressions passed");
 }
+/* Natives D3 (fn_801CA358) and B6 (fn_801C9F5C, the television check's
+ * news event): the report each picks from the story flags, the watched
+ * flag B6 sets, its 3-second waits and messages, and the entries it shows. */
+static void tv_flags(C3GameState *game,const uint32_t *set,unsigned count)
+{
+    static const uint32_t all[]={0x0ADA,0x0ADB,0x042C,0x0AD3,0x0AD0,0x0ACF,0x0A0F,0x0483,0x042D,0x0A08,0x0A07,0x0A06,0x0A05,0x0890};
+    for(unsigned i=0;i<sizeof all/sizeof all[0];++i)CHECK(c3_game_state_set_flag(game,all[i],0));
+    for(unsigned i=0;i<count;++i)CHECK(c3_game_state_set_flag(game,set[i],1));
+}
+/* Runs B6 in the main script; records each entry it selects and each
+ * message, pressing A once a message has shown for a while. */
+static unsigned tv_news(Scene *s,C3GameState *game,const char *file,uint32_t *entries,uint32_t *messages,unsigned *message_count,float *first_wait)
+{
+    Program code[8]={0};uint32_t args[1]={1};native(code+3,0xb6,1,args,1);
+    synthetic_load(s,game,file,code,0,0,0x1000003);CHECK(c3_field_story_enter(&s->story,error));
+    const C3FieldStoryView *v=c3_field_story_view(&s->story);
+    unsigned entry_count=0;uint32_t serial=v->tv_serial,shown=0;float elapsed=0;*message_count=0;*first_wait=-1;
+    for(unsigned frame=0;frame<900;++frame){
+        if(v->tv_serial!=serial){serial=v->tv_serial;CHECK(entry_count<8);entries[entry_count++]=v->tv_entry;}
+        uint32_t id=v->dialogue?v->message_id:0;
+        if(id&&id!=shown){if(*first_wait<0)*first_wait=elapsed;CHECK(*message_count<8);messages[(*message_count)++]=id;}
+        shown=id;
+        uint16_t pressed=v->dialogue&&frame%15==14?0x100:0;
+        CHECK(c3_field_story_tick(&s->story,1.0f/60.0f,pressed,error));elapsed+=1.0f/60.0f;
+    }
+    CHECK(!v->dialogue&&!v->message_id&&!v->blocked[0]); /* the event ended (winMsgCloseField) */
+    return entry_count;
+}
+static void tv_regressions(void)
+{
+    char directory[]="/tmp/c3-field-story-tv-XXXXXX",file[1024];CHECK(mkdtemp(directory));path(file,directory,"unit.c3s");
+    static const uint32_t news[]={0x426E,0x426F,0x4270,0x4271,0x4272,0x439D,0x439E,0x439F,0x43A0};
+    synthetic_messages=news;synthetic_message_count=sizeof news/sizeof news[0];
+    char pack[1024];path(pack,directory,"game.c3g");synthetic_flag_pack(pack);
+    C3GameState game={0};synthetic_game_with(&game,pack);Scene *s=calloc(1,sizeof(*s));CHECK(s);
+    /* D3 in story order: the first set story flag wins; its watched flag
+     * picks the second entry; with none, 0A05 is set and entry 0 shows. */
+    static const struct {uint32_t set[3];unsigned count;uint32_t entry;} reports[]={
+        {{0},0,0},{{0x0ACF},1,1},{{0x0ACF,0x0A06},2,2},{{0x0AD0},1,3},{{0x0AD0,0x0A07},2,4},
+        {{0x0AD3,0x0A08},2,4},{{0x042C},1,3},{{0x042C,0x042D},2,4},{{0x0ADB},1,11},{{0x0ADB,0x0483},2,12},
+        {{0x0ADA,0x0A0F},2,12},{{0x0ADA,0x0483},2,11}, /* ADA reads its own watched flag A0F */
+        {{0x0ADB,0x0ACF,0x0A06},3,11},                  /* ADB outranks ACF */
+        {{0x0AD0,0x0ACF},2,3}};                         /* the save after Silva's rescue */
+    for(unsigned r=0;r<sizeof reports/sizeof reports[0];++r){
+        Program code[8]={0};native(code+3,0xd3,0,NULL,1);
+        tv_flags(&game,reports[r].set,reports[r].count);
+        synthetic_load(s,&game,file,code,0,0,0x1000003);
+        CHECK(c3_field_story_view(&s->story)->tv_entry==0); /* fn_80117E58 */
+        CHECK(c3_field_story_enter(&s->story,error));CHECK(c3_field_story_tick(&s->story,0,0,error));
+        const C3FieldStoryView *v=c3_field_story_view(&s->story);
+        CHECK(v->tv_entry==reports[r].entry&&v->tv_enabled==(reports[r].entry==0)&&!v->dialogue);
+        CHECK(flag(&game,0x0A05)==(reports[r].count==0));
+        close_scene(s);
+    }
+    /* B6 with no report: 0A05, entry 0, 3 seconds, then message 426E. */
+    uint32_t entries[8],messages[8];unsigned count;float wait;
+    tv_flags(&game,NULL,0);
+    unsigned selected=tv_news(s,&game,file,entries,messages,&count,&wait);
+    CHECK(selected==0&&c3_field_story_view(&s->story)->tv_entry==0&&count==1&&messages[0]==0x426E);
+    CHECK(wait>2.95f&&wait<3.1f&&flag(&game,0x0A05)==1);close_scene(s);
+    /* Story flags give modes 1-4 and set their watched flags first, so the
+     * report shown is the watched one. */
+    static const struct {uint32_t story,watched,entry,message;} modes[]={
+        {0x0ACF,0x0A06,2,0x426F},{0x0AD0,0x0A07,4,0x4270},{0x0AD3,0x0A08,4,0x4271},{0x042C,0x042D,4,0x4272}};
+    for(unsigned m=0;m<4;++m){
+        tv_flags(&game,&modes[m].story,1);
+        selected=tv_news(s,&game,file,entries,messages,&count,&wait);
+        CHECK(selected==1&&entries[0]==modes[m].entry&&count==1&&messages[0]==modes[m].message);
+        CHECK(flag(&game,modes[m].watched)==1&&flag(&game,0x0A05)==0);close_scene(s);
+    }
+    /* Togetic snagged (Shadow row 0x43, flag 0890): mode 4 with no flag set. */
+    {uint32_t set[2]={0x0890,0x0ACF};tv_flags(&game,set,2);}
+    selected=tv_news(s,&game,file,entries,messages,&count,&wait);
+    CHECK(selected==1&&entries[0]==1&&count==1&&messages[0]==0x4272&&flag(&game,0x0A06)==0);close_scene(s);
+    /* The special report (0ADB): 0483, entry 12, 3 seconds, 439D, entry 14,
+     * 439E, then fn_801CA358 selects 12 again. 0ADA: 0A0F, 15. */
+    {uint32_t set[1]={0x0ADB};tv_flags(&game,set,1);}
+    selected=tv_news(s,&game,file,entries,messages,&count,&wait);
+    CHECK(selected==3&&entries[0]==12&&entries[1]==14&&entries[2]==12);
+    CHECK(count==2&&messages[0]==0x439D&&messages[1]==0x439E&&wait>2.95f&&wait<3.1f);
+    CHECK(flag(&game,0x0483)==1&&flag(&game,0x0A05)==0);close_scene(s);
+    {uint32_t set[1]={0x0ADA};tv_flags(&game,set,1);}
+    selected=tv_news(s,&game,file,entries,messages,&count,&wait);
+    CHECK(selected==3&&entries[0]==12&&entries[1]==15&&entries[2]==12);
+    CHECK(count==2&&messages[0]==0x439F&&messages[1]==0x43A0&&flag(&game,0x0A0F)==1);close_scene(s);
+    synthetic_messages=NULL;synthetic_message_count=0;
+    free(s);c3_game_state_free(&game);CHECK(!unlink(file));CHECK(!unlink(pack));CHECK(!rmdir(directory));
+    puts("field-story television report regressions passed");
+}
 int main(int argc,char **argv)
 {
     synthetic_regressions();
+    tv_regressions();
     dna_regressions();
     mail_regressions();
     pause_menu_regressions();

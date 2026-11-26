@@ -44,8 +44,10 @@ typedef struct C3FieldStoryView {
     uint32_t mail_received; /* native AD deliveries so far (mailMainSendByScrpt): a change
                              * starts the scene's new-mail alert (colosseum3ds/mail_alert.h) */
     /* Field-camera texture entry (colosseum3ds/field_tv.h): the floor start
-     * selects id 0 (fn_80117E58), native AB another (fn_80117AE4); NONE
-     * after a later D3 report. tv_serial counts selections that restart the
+     * selects id 0 (fn_80117E58), natives AB, B6 and D3 another
+     * (fn_80117AE4; D3 and B6 pick the news report from story flags).
+     * tv_enabled: the shop's reviewed television, entry 0 selected.
+     * tv_serial counts selections that restart the
      * entry's clip (selecting the current id again restarts nothing). */
     uint32_t tv_entry, tv_serial;
     float fade, camera_seconds;
