@@ -809,13 +809,14 @@ static void private_sweep(const char *pack_path, const char *newgame_dir, const 
         CHECK(c3_general_battle_begin(&b, &pack, e, party, 0x2000u + e, error));
         b.snag = 1; b.balls[2] = 99;
         while (b.outcome == C3_GB_RUNNING) {
-            C3GeneralCommand c[2] = {{0}};
+            C3GeneralCommand c[2] = {{0}}; int ball_this_turn = 0;   /* one ball a turn */
             for (unsigned a = 0; a < b.active_count; ++a) {
                 if (b.active[0][a] == 255 || !b.party[0][b.active[0][a]].hp) continue;
                 int thrown = 0;
-                for (unsigned t = 2; t < 2u + b.active_count && !thrown; ++t)
+                for (unsigned t = 2; t < 2u + b.active_count && !thrown && !ball_this_turn; ++t)
                     if (c3_general_battle_can_snag(&b, &pack, a, 2, t)) { c[a].kind = 2; c[a].slot = 2; c[a].target = (uint8_t)t; thrown = 1; }
                 if (!thrown) CHECK(c3_general_battle_choose(&b, &pack, a, &c[a]));
+                ball_this_turn |= thrown;
             }
             CHECK(c3_general_battle_turn(&b, &pack, c, error));
         }
@@ -830,12 +831,12 @@ static void private_sweep(const char *pack_path, const char *newgame_dir, const 
             CHECK(c3_battle_pack_shadow(&pack, m->shadow, &sh) && sh.species == m->species);
             CHECK(c3_general_snag_record(&pack, &b, rw.caught[k], &owner, sh.gauge, e, rec));
             CHECK(g16(rec) == m->species && g16(rec + 0xd8) == m->shadow && g32(rec + 0xdc) == sh.gauge * 100u);
-            CHECK(g16(rec + 0x8a) == g16(rec + 0x8c) && rec[0x60] == m->level);
+            CHECK(g16(rec + 0x8a) == b.caught_hp[rw.caught[k]] && g16(rec + 0x8a) && g16(rec + 0x8a) <= g16(rec + 0x8c) && rec[0x60] == m->level);
             ++snagged;
             if (!c3_game_state_receive_pokemon(&game, rec, rec, &where)) { ++full; continue; }
             if (where < 6) ++stored_party; else ++stored_box;
-            printf("snag encounter=%lu species=%u shadow=%u level=%u rate=%u gauge=%u stored=%u\n", (unsigned long)e,
-                   m->species, m->shadow, m->level, sh.catch_rate, sh.gauge, where);
+            printf("snag encounter=%lu species=%u shadow=%u level=%u rate=%u gauge=%u hp=%u/%u stored=%u\n", (unsigned long)e,
+                   m->species, m->shadow, m->level, sh.catch_rate, sh.gauge, g16(rec + 0x8a), g16(rec + 0x8c), where);
         }
     }
     printf("battle-general: snag sweep %u Shadow battles (%u Shadow Pokemon): %u snagged, %u to the party, %u to boxes, %u with no room\n",

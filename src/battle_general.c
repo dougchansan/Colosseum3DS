@@ -1407,6 +1407,7 @@ static int throw_ball(C3GeneralBattle *b,const C3BattlePack *p,unsigned a,C3Gene
     }
     if(shakes<4)return say(b,C3_GB_EVENT_MESSAGE,a,t,0,"%s",broke[shakes]);
     unsigned index=b->active[t/2][t%2];
+    b->caught_hp[index]=y->hp;
     y->ball=(uint8_t)ball;y->hp=0;y->participated=0;b->caught[index]=(uint8_t)ball;
     return say(b,C3_GB_EVENT_FAINT,t,t,0,"Gotcha! %s was snagged!",y->name);
 }
@@ -1923,13 +1924,19 @@ int c3_general_battle_writeback(const C3GeneralBattle *b,const C3BattlePack *p,
 }
 
 /* pokemonCreate's PokemonBios for a snagged opponent, then
- * pokemonSetDarkPokemonStatus (pokemon_range_8011F77C.c). */
+ * pokemonSetDarkPokemonStatus (pokemon_range_8011F77C.c). heroCatchPokemon
+ * copies the battle PokemonBios as it is at the throw (pokemonBiosCopy, then
+ * pokemonSetCatchStatus writes only the catch fields 0x71-0x76), so the record
+ * keeps the HP at the throw, the persistent condition and the current PP;
+ * fn_80213A78 zeroes HP (status 0x83) and runs pokemonInitJoutai only on the
+ * battle copy afterwards. Stat stages and volatile conditions are not in a
+ * PokemonBios. */
 int c3_general_snag_record(const C3BattlePack *p,const C3GeneralBattle *b,unsigned index,
                            const C3SnagOwner *o,uint16_t gauge,uint32_t seed,uint8_t r[C3_GB_POKEMON_SIZE])
 {
     if(!p||!b||!o||!r||b->magic!=MAGIC||index>=b->party_count[1]||!b->caught[index])return 0;
     const C3GeneralMon *m=&b->party[1][index];
-    if(!species_row(p,m->species)||!m->shadow)return 0;
+    if(!species_row(p,m->species)||!m->shadow||!b->caught_hp[index]||b->caught_hp[index]>m->max_hp)return 0;
     memset(r,0,C3_GB_POKEMON_SIZE);
     C3BattleRng rng;c3_battle_rng_init(&rng,seed);uint32_t pid=0;
     for(unsigned tries=0;tries<4096;++tries){uint16_t hi,lo;
@@ -1946,7 +1953,7 @@ int c3_general_snag_record(const C3BattlePack *p,const C3GeneralBattle *b,unsign
     for(unsigned j=0;j<4;++j)if(m->own_moves[j]){put16(r+0x78+4*j,m->own_moves[j]);r[0x7a+4*j]=own_pp(m,j);}
     put16(r+0x88,m->held_item);
     put16(r+0x8c,m->max_hp);for(unsigned j=1;j<6;++j)put16(r+0x8c+2*j,m->stats[j]);
-    put16(r+0x8a,m->max_hp);
+    put16(r+0x8a,b->caught_hp[index]);
     for(unsigned j=0;j<6;++j){put16(r+0x98+2*j,m->evs[j]);put16(r+0xa4+2*j,m->ivs[j]);}
     put16(r+0xb0,m->friendship);
     put16(r+0xd8,m->shadow);put32(r+0xdc,(uint32_t)gauge*100u);put32(r+0xe0,0);

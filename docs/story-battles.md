@@ -160,6 +160,18 @@ script with result 3, as the original does.
   empty party slot or the first free PC box entry (`pcboxAddPokemon`: body
   +0xB88, three boxes 0x24A4 apart, restored), sets the Shadow row's snag
   flag (+0x12, the one the P*DA reads) and takes the balls from the bag.
+- What the record keeps from the battle: `fn_80213A78` calls
+  `heroCatchPokemon`, which copies the target's battle PokemonBios as it is
+  at the throw (`pokemonBiosCopy`; `pokemonSetCatchStatus` writes only the
+  catch fields, statuses 0x71-0x76). Only then does `fn_80213A78` set the
+  battle copy's HP (status 0x83) to 0 and run `pokemonInitJoutai` on it. So
+  the snagged Pokemon keeps its HP left at the throw (+0x8A, held in
+  `caught_hp[]`; max HP +0x8C), its persistent condition (+0x64, the
+  writeback's ids) and its current PP (the own moves' PP behind Shadow Rush
+  and "????"). Stat stages and volatile conditions are not in a PokemonBios
+  and are not kept. In the party it stays that way until healed; a snag
+  that goes to a PC box is healed there (`pcboxAddPokemon` runs
+  `pokemonAllKaihuku`: full HP, no condition, full PP).
 
 Approximations in the record: the personality is drawn until it gives the
 trainer row's nature (gender and ability fit are not drawn as
