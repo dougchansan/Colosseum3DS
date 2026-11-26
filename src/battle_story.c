@@ -187,3 +187,47 @@ done:
     free(b);
     return ok;
 }
+
+/* GSmsgGetGSchar from the P*DA's common messages (plain GSchar only). */
+static int gift_message(void *context, uint32_t id, uint8_t text[0x16])
+{
+    size_t size = 0; const uint8_t *d = context ? c3_pda_entry(context, 1, id, &size) : NULL;
+    if (!d || size < 2) return 0;
+    memset(text, 0, 0x16);
+    for (size_t i = 0; i + 1 < size && i < 0x14; i += 2) {
+        uint16_t c = rd16(d + i);
+        if (!c) break;
+        if (c == 0xffff) return 0;
+        text[i] = d[i]; text[i + 1] = d[i + 1];
+    }
+    return 1;
+}
+
+int c3_battle_story_gift(C3GameState *state, const C3BattlePack *pack, const C3PdaAssets *assets,
+                         unsigned kind, uint16_t *species, unsigned *where)
+{
+    size_t bytes = 0; const uint8_t *body = c3_game_state_body(state, &bytes);
+    uint8_t record[C3_GB_POKEMON_SIZE], slot[C3_GB_POKEMON_SIZE];
+    C3GiftHero hero; C3GiftInfo info;
+    if (!body || bytes < 0x70u + 0xA81u || !pack) return -3;
+    /* Hero (save body +0x70): name +0, trainer ID +0x2C, sex +0xA80; the
+     * gamedata attest is the body's first word. */
+    memcpy(hero.name, body + 0x70, sizeof hero.name);
+    hero.trainer_id = rd32(body + 0x70 + 0x2c);
+    hero.sex = body[0x70 + 0xa80];
+    memcpy(hero.attest, body, 4);
+    if (!c3_battle_pack_gift_record(pack, kind, &hero, gift_message, (void *)assets,
+                                    c3_game_state_random16, state, record, &info)) return -3;
+    if (info.memo && c3_game_state_memo_add(state, record) < 0) return -3;
+    if (!info.box) {
+        unsigned free_slot = 6;
+        for (unsigned i = 0; i < 6 && free_slot == 6; ++i)
+            if (c3_game_state_pokemon(state, i, slot) && !rd16(slot)) free_slot = i;
+        if (free_slot == 6) return -2;
+    }
+    unsigned stored = 0;
+    if (!c3_game_state_receive_pokemon(state, record, record, &stored)) return -2;
+    if (species) *species = info.species;
+    if (where) *where = stored;
+    return stored < 6 ? (int)stored : -1;
+}

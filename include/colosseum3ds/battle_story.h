@@ -41,4 +41,16 @@ int c3_battle_story_autoplay(C3FieldStory *story, C3GameState *state,
                              const C3BattlePack *pack, uint32_t encounter, uint32_t seed,
                              int (*restore_party)(void *context),
                              C3GeneralRewards *rewards, unsigned *turns, char *error);
+
+/* Script native D9 (fn_801CADA8): gift Pokemon `kind` (1..6) from
+ * c3_battle_pack_gift_record, drawn from the save's random generator, its
+ * names from the P*DA messages (assets may be NULL: then only kinds 1 and 2,
+ * which carry the hero's name, can be built). Kinds 3..6 enter the Strategy
+ * Memo (memoDataSet) and go to the party, else a PC box (heroGetPokemon);
+ * kinds 1 and 2 go to the party only (heroCatchPokemon without the box).
+ * Returns what fn_801CADA8 returns: the party slot 0..5, -1 when it went to
+ * a PC box, -2 when there was no room; -3 when the gift could not be built.
+ * species and where (0..5, or 100 + box*30 + entry) are set when stored. */
+int c3_battle_story_gift(C3GameState *state, const C3BattlePack *pack, const C3PdaAssets *assets,
+                         unsigned kind, uint16_t *species, unsigned *where);
 #endif

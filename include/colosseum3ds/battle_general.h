@@ -393,4 +393,36 @@ void c3_general_battle_mirror(const C3GeneralBattle *in, C3GeneralBattle *out);
 /* Whether the general engine models this move's effect exactly as listed
  * (1) or substitutes a plain hit / no effect (0). */
 int c3_general_effect_modelled(uint16_t effect);
+
+/* The gift Pokemon of fn_801CADA8 (script native D9) kind 1..6, built as
+ * heroPokemonGet* (hero_pokemon.c, retail 80130660..80130CD8) does:
+ * pokemonCreate (pokemonInit's defaults, species, personality, attest,
+ * nickname, level, IVs, experience, base friendship, ability coin, the
+ * level-up moves), the gift's own fields, pokemonCreateRndFit and
+ * pokemonResetBasisStatus. random16 is fn_800E0C54, drawn in the original
+ * order. message gives a message's GSchar text (GSmsgGetGSchar: the
+ * species name, the original trainer's name); the nickname falls back to
+ * the pack's species name. Kinds 1 and 2 (Umbreon, Espeon) are caught by
+ * the hero (heroCatchPokemon: hero name/ID/sex, PC box not allowed); 3
+ * (Plusle, Duking) and the bonus-disc kinds 4..6 (Ho-Oh, Pikachu, Celebi)
+ * keep their own trainer and go to the Strategy Memo and, with a full
+ * party, a PC box (heroGetPokemon). Returns 0 for any other kind or
+ * missing data. */
+typedef struct C3GiftHero {
+    uint8_t name[0x16];  /* hero +0, GSchar */
+    uint32_t trainer_id; /* hero +0x2C */
+    uint8_t sex;         /* hero +0xA80 (heroGetStatus 0xB) */
+    uint8_t attest[4];   /* gamedataGetStatus(0,1): save body +0 */
+} C3GiftHero;
+typedef struct C3GiftInfo {
+    uint16_t species;
+    uint8_t level;
+    uint8_t memo;   /* memoDataSet before it is stored */
+    uint8_t box;    /* a full party sends it to a PC box */
+} C3GiftInfo;
+typedef int (*C3GiftMessage)(void *context, uint32_t id, uint8_t text[0x16]);
+int c3_battle_pack_gift_record(const C3BattlePack *pack, unsigned kind, const C3GiftHero *hero,
+                               C3GiftMessage message, void *message_context,
+                               uint16_t (*random16)(void *context), void *random_context,
+                               uint8_t record[C3_GB_POKEMON_SIZE], C3GiftInfo *info);
 #endif

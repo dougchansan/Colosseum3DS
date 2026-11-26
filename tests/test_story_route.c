@@ -1,4 +1,5 @@
 #define _POSIX_C_SOURCE 200809L
+#include "colosseum3ds/battle_story.h"
 #include "colosseum3ds/ending.h"
 #include "colosseum3ds/field_story.h"
 #include "colosseum3ds/floor_profile.h"
@@ -50,6 +51,10 @@
  *   expect <flag> <value>     fail unless the flag holds the value
  *   expect_floor <floor>      fail unless the scene is on that floor
  *   expect_item <item> <n>    fail unless the bag holds n of the item
+ *   expect_pokemon <species>  with a battle pack (C3_ROUTE_GIFT_PACK, else
+ *                             C3_ROUTE_BATTLES) and C3_ROUTE_PDA, native D9's gift
+ *                             service is bound: fail unless the party or a PC box
+ *                             holds the species; without them reported as skipped
  *   save <path>               write the game state as a card file (a chapter-point
  *                             save for emulator checks; keep it private)
  *   talkall                   talk to every present person with a talk script, one
@@ -122,6 +127,7 @@ static uint32_t result_id = 2, last_message, use_item;
 static Scene *scene;
 static C3PdaAssets pda;
 static uint8_t *pda_data;
+static C3BattlePack gift_pack;            /* species rows for native D9 */
 static char clear_save[1024];
 static C3Story staffroll_story;
 static uint32_t last_floor;
@@ -141,6 +147,15 @@ static int receive(void *c, uint32_t item, uint32_t count, char *name, size_t ca
     snprintf(name, capacity, "ITEM"); return result;
 }
 static int clear_poison(void *c) { return c3_inventory_clear_party_poison(c); }
+/* Native D9 as the console runs it (field_scene.c gift_pokemon), bound when
+ * the battle pack and the PDA names are available. */
+static int gift(void *c, uint32_t kind, uint16_t *species, unsigned *where)
+{
+    (void)c; int result = c3_battle_story_gift(&game, &gift_pack, &pda, kind, species, where);
+    fprintf(report, "route_gift kind=%lu result=%d species=%u where=%u\n", (unsigned long)kind, result,
+            (unsigned)*species, *where);
+    return result;
+}
 /* With real battles the party service heals (pokemonAllKaihuku). */
 static int restore(void *c) { (void)c; return route_battles_enabled() ? route_battles_heal(&game) : 6; }
 static int item_change(void *c, uint32_t item, int32_t count)
@@ -286,6 +301,7 @@ static int load(uint32_t floor, uint32_t entrance, uint32_t previous)
     c3_field_story_enable_name_entry(&scene->story, 1);
     c3_field_story_set_item_service(&scene->story, receive, NULL);
     c3_field_story_set_party_service(&scene->story, restore, NULL);
+    if (gift_pack.bytes && pda_data) c3_field_story_set_gift_service(&scene->story, gift, NULL);
     c3_field_story_set_poison_service(&scene->story, clear_poison, &game);
     c3_field_story_set_item_change_service(&scene->story, item_change, NULL);
     c3_field_story_set_namer(&scene->story, namer, NULL);
@@ -491,6 +507,19 @@ static int step(char *line)
         unsigned total = bag_count((uint32_t)a);
         fprintf(report, "route_bag item=%03lx count=%u\n", a, total);
         if (total != b) { snprintf(error, sizeof error, "item %03lx count is %u, expected %lu", a, total, b); return 0; }
+        return 1;
+    }
+    if (!strcmp(word, "expect_pokemon")) {
+        CHECK(sscanf(line, "%li", (long *)&a) == 1);
+        if (!gift_pack.bytes || !pda_data) { fprintf(report, "route_pokemon species=%lu skipped=1\n", a); return 1; }
+        uint8_t r[0x138]; int found = -1;
+        for (unsigned i = 0; i < 6 && found < 0; ++i)
+            if (c3_game_state_pokemon(&game, i, r) && (unsigned long)(r[0] << 8 | r[1]) == a) found = (int)i;
+        for (unsigned b = 0; b < 3 && found < 0; ++b)
+            for (unsigned i = 0; i < 30 && found < 0; ++i)
+                if (c3_game_state_box_pokemon(&game, b, i, r) && (unsigned long)(r[0] << 8 | r[1]) == a) found = (int)(100 + b * 30 + i);
+        fprintf(report, "route_pokemon species=%lu where=%d\n", a, found);
+        if (found < 0) { snprintf(error, sizeof error, "species %lu is not in the party or a PC box", a); return 0; }
         return 1;
     }
     if (!strcmp(word, "expect_floor")) {
@@ -757,6 +786,9 @@ int main(int argc, char **argv)
         fclose(f); CHECK(c3_pda_assets_open(&pda, pda_data, (size_t)size));
     }
     CHECK(route_battles_open(error, sizeof error));
+    {   const char *battles = getenv("C3_ROUTE_GIFT_PACK");
+        if (!battles || !*battles) battles = getenv("C3_ROUTE_BATTLES");
+        if (battles && *battles) CHECK(c3_battle_pack_load(&gift_pack, battles, error)); }
     FILE *route = fopen(argv[4], "r"); CHECK(route);
     for (unsigned number = 1; fgets(line, sizeof line, route); ++number) {
         char *hash = strchr(line, '#'); if (hash) *hash = 0;
@@ -772,7 +804,7 @@ int main(int argc, char **argv)
         if (!ok) { ++failures; break; }
     }
     fclose(route);
-    unload(); free(scene); c3_game_state_free(&game); free(pda_data);
+    unload(); free(scene); c3_game_state_free(&game); free(pda_data); c3_battle_pack_free(&gift_pack);
     failures += route_battles_close(report);
     printf("story-route: steps=%u failures=%u\n", steps, failures);
     if (report != stdout) fclose(report);

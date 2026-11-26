@@ -242,10 +242,26 @@ static void record_nickname(const uint8_t *r,char *out,size_t capacity)
 {
     c3_game_text_ascii(r+0x2e,11,out,capacity);
 }
+static FILE *purify_trace; /* the boot trace, for natives C2 and D9 */
+/* Native D9 (fn_801CADA8): the gift Pokemon from the battle pack's species
+ * rows and the P*DA's names, stored in the game state (src/battle_story.c);
+ * the next save writes it. */
+static int gift_pokemon(void *context,uint32_t kind,uint16_t *species,unsigned *where)
+{
+    C3BattlePack pack;char problem[C3_GB_ERROR_SIZE]="";C3PdaAssets assets={0};
+    memset(&pack,0,sizeof pack);
+    if(!c3_battle_pack_load(&pack,C3_BATTLE_PACK_PATH,problem)){
+        if(purify_trace){fprintf(purify_trace,"story_gift_pokemon kind=%lu status=no_pack reason=%s\n",(unsigned long)kind,problem);fflush(purify_trace);}
+        return -3;
+    }
+    uint8_t *data=open_pda(&assets);
+    int got=c3_battle_story_gift(context,&pack,data?&assets:NULL,kind,species,where);
+    free(data);c3_battle_pack_free(&pack);
+    return got;
+}
 /* Native C2 (preReliveMain -> reliveCeremonyAll): purify party `slot` with
  * the original rules (src/relive_purify.c) in the game state; the next save
  * writes it. The battle pack supplies growth, stats and level-up moves. */
-static FILE *purify_trace;
 static int purify_party(void *context,unsigned slot,int forced,C3FieldStoryPurified *out)
 {
     C3GameState *state=context;C3BattlePack pack;char problem[C3_GB_ERROR_SIZE]="";
@@ -1226,6 +1242,7 @@ static int run_area(C3GameState *state,int new_game,const char *save_path,
     c3_field_story_set_party_service(&story,restore_party,state);
     c3_field_story_set_poison_service(&story,clear_party_poison,state);
     purify_trace=trace;c3_field_story_set_purify_service(&story,purify_party,state);
+    c3_field_story_set_gift_service(&story,gift_pokemon,state);
     c3_field_story_set_audio_service(&story,story_audio,NULL);
     {   /* An event scene's scripted models (C3SM rows: the subway train)
          * are part of the scene its init script drives at once, so their

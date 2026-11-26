@@ -126,6 +126,14 @@ build/test_field_story: tests/test_field_story.c tests/route_battles.c tests/rou
 build/test_phenac_events: tests/test_phenac_events.c tests/route_battles.c tests/route_battles.h src/floor_profile.c $(FIELD_STORY_SOURCES) $(WORLD_BATTLE_SOURCES) build/battle_rng_source.h $(HEADERS) $(UPSTREAM)
 	$(CC) $(CPPFLAGS) -Ibuild -Isrc $(CFLAGS) tests/test_phenac_events.c tests/route_battles.c src/floor_profile.c $(FIELD_STORY_SOURCES) $(WORLD_BATTLE_SOURCES) $(LDFLAGS) -lm -o $@
 
+# Native D9 gift Pokemon; C3_GIFT_NEWGAME/C3_GIFT_PACK/C3_GIFT_PDA (private) or skipped.
+build/test_story_gift: tests/test_story_gift.c $(FIELD_STORY_SOURCES) $(WORLD_BATTLE_SOURCES) build/battle_rng_source.h $(HEADERS) $(UPSTREAM)
+	$(CC) $(CPPFLAGS) -Ibuild -Isrc $(CFLAGS) tests/test_story_gift.c $(FIELD_STORY_SOURCES) $(WORLD_BATTLE_SOURCES) $(LDFLAGS) -lm -o $@
+.PHONY: story-gift-check
+story-gift-check: build/test_story_gift
+	./build/test_story_gift
+test: story-gift-check
+
 build/test_world_story: tests/test_world_story.c $(FIELD_STORY_SOURCES) $(WORLD_BATTLE_SOURCES) build/battle_rng_source.h $(HEADERS) $(UPSTREAM)
 	$(CC) $(CPPFLAGS) -Ibuild -Isrc $(CFLAGS) tests/test_world_story.c $(FIELD_STORY_SOURCES) $(WORLD_BATTLE_SOURCES) $(LDFLAGS) -lm -o $@
 
