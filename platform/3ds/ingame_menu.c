@@ -571,7 +571,7 @@ void c3_ingame_draw_to(C3IngameMenu *m,const C3GameState *state,C3BottomUi *ui)
             uint32_t progress,range;C3PdaHeart heart;if(c3_pda_experience(&m->assets,p,&progress,&range)){
                 c3_ui_text(ui,61,y+10,32,1,"EXP",C3_UI_GOLD);c3_ui_experience(ui,96,y+17,187,progress,range);
             }else if(c3_pda_heart(state,p,&heart)){ /* menuSub's party bar: the heart gauge for a Shadow Pokemon */
-                c3_ui_text(ui,61,y+10,34,1,"HEART",heart.state==2?0xff6a6au:0xc98bffu);c3_ui_heart_gauge(ui,98,y+16,185,heart.progress,heart.range);
+                c3_ui_text(ui,61,y+10,46,1,"HEART",heart.state==2?0xff6a6au:0xc98bffu);c3_ui_heart_gauge(ui,110,y+16,173,heart.progress,heart.range);
             }
         }footer(ui,"A: summary   X: actions   B: back");break;
     case C3_GAME_ITEMS:{
@@ -606,7 +606,7 @@ void c3_ingame_draw_to(C3IngameMenu *m,const C3GameState *state,C3BottomUi *ui)
             uint32_t progress,range;if(c3_pda_experience(&m->assets,p,&progress,&range)){
                 c3_ui_text(ui,36,185,32,1,"EXP",C3_UI_GOLD);c3_ui_experience(ui,71,192,212,progress,range);
             }else if(shadow){
-                c3_ui_text(ui,36,184,34,1,"HEART",heart.state==2?0xff6a6au:0xc98bffu);c3_ui_heart_gauge(ui,73,190,210,heart.progress,heart.range);
+                c3_ui_text(ui,36,184,46,1,"HEART",heart.state==2?0xff6a6au:0xc98bffu);c3_ui_heart_gauge(ui,85,190,198,heart.progress,heart.range);
             }
         }else if(m->tab==1){
             const char *labels[]={"HP","ATTACK","DEFENSE","SP. ATK","SP. DEF","SPEED"};
