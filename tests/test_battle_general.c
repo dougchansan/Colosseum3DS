@@ -159,7 +159,11 @@ static void synthetic(void)
     /* Won: two level-50 heroes against two level-5 foes. */
     CHECK(c3_general_battle_begin(&b, &pack, 0, party, 7, error));
     CHECK(b.active_count == 2 && b.party_count[0] == 2 && b.party_count[1] == 2 && b.event_count >= 3);
-    CHECK(b.party[1][0].moves[0] == 1 && b.party[1][0].pp[0] == 35 && b.party[1][0].shadow);
+    /* The opposing Shadow FOE shows Shadow Rush in slot 0 over its own
+     * TACKLE (pokemonBiosGetPokemonWazaPtr: a trainer's Pokemon), and its
+     * second move as it is. */
+    CHECK(b.party[1][0].moves[0] == 0x164 && b.party[1][0].own_moves[0] == 1 && b.party[1][0].own_pp[0] == 35 && b.party[1][0].shadow);
+    CHECK(b.party[1][0].trainer && b.party[1][0].hidden == 1 && b.party[1][0].moves[1] == b.party[1][0].own_moves[1]);
     again = b;
     unsigned turns = 0, turns_again = 0;
     CHECK(play(&b, &pack, &turns) == C3_GB_WON);

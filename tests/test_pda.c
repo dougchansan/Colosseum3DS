@@ -165,6 +165,26 @@ int main(int argc,char **argv)
         CHECK(!memcmp(original,c3_game_state_body(&state,NULL),C3_SAVE_BODY_SIZE));
         for(unsigned i=0;i<32;++i)CHECK(pixels[320u*240u*3u+i]==0xa5);
     }
+    {   /* A Shadow Pokemon on the party/summary pages (pokemonToMenuPokemonStatus):
+         * the heart gauge from the runtime table's full gauge, and the slots it
+         * shows (Shadow Rush, then a move opened under 80%, then "????"). */
+        uint8_t shadow[312];uint8_t *bd=(uint8_t*)c3_game_state_body(&state,NULL);
+        if(!c3_game_state_pokemon(&state,0,shadow)||!c3_pda_be16(shadow)){memset(shadow,0,sizeof shadow);w16(shadow,1);shadow[0x60]=5;w16(shadow+0x8c,20);}
+        w16(shadow+0x78,33);w16(shadow+0x7c,45);w16(shadow+0x80,0);w16(shadow+0x84,0);w16(shadow+0xd6,0);w16(shadow+0xd8,5);w32(shadow+0xdc,2000);
+        w16(bd+0x1b014+0x4a6+5*0x18,30);
+        C3PdaHeart heart;uint32_t progress,range;
+        CHECK(c3_pda_heart(&state,shadow,&heart)&&heart.range==3000&&heart.progress==2000&&heart.state==1&&heart.level==2);
+        CHECK(c3_pda_shown_move(&state,shadow,0)==0x164&&c3_pda_shown_move(&state,shadow,1)==45&&c3_pda_shown_move(&state,shadow,2)==0x165&&c3_pda_shown_move(&state,shadow,3)==0x165);
+        CHECK(!c3_pda_experience(&assets,shadow,&progress,&range));
+        w16(shadow+0xe8,0x3e);CHECK(c3_pda_heart(&state,shadow,&heart)&&heart.state==2);w16(shadow+0xe8,0);
+        if(c3_game_state_set_pokemon(&state,0,shadow)){
+            static const C3IngamePage pages[]={C3_GAME_PARTY,C3_GAME_POKEMON,C3_GAME_POKEMON,C3_GAME_POKEMON};
+            for(unsigned k=0;k<4;++k){menu.page=pages[k];menu.tab=k?k-1u:0;menu.selection=0;menu.detail=0;menu.count=1;menu.order[0]=0;
+                c3_ui_begin(&ui,pixels,0,NULL,NULL);c3_ingame_draw_to(&menu,&state,&ui);for(unsigned i=0;i<32;++i)CHECK(pixels[320u*240u*3u+i]==0xa5);}
+        }
+        w32(shadow+0xdc,0xffffff9cu);   /* purified: -100 */
+        CHECK(!c3_pda_heart(&state,shadow,&heart)&&c3_pda_shown_move(&state,shadow,0)==33&&c3_pda_shown_move(&state,shadow,2)==0);
+    }
     snprintf(save_path,sizeof save_path,"%s/read.gci",directory);CHECK(c3_game_state_save(&state,save_path,error));CHECK(c3_game_state_load(&reload,save_path,pack_path,error));
     CHECK(c3_game_state_mail(&reload,0,&mail)&&mail.read);CHECK(c3_game_state_get_flag(&reload,1501,&value)&&value==3);CHECK(c3_game_state_mail_settings(&reload,&sort,&tone)&&sort==1&&tone==1);
     /* Malformed list counts are rejected, never silently turned into empties. */

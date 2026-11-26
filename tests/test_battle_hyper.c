@@ -48,13 +48,16 @@ static uint8_t *make_hyper_pack(size_t *size)
 
 static C3BattlePack pack;
 static uint8_t party[6][0x138];
-/* One level-50 Shadow HERO (Shadow ID 1, full gauge 30 -> 3000) with
- * TACKLE, the Fire hit and Shadow Rush, against two level-5 foes. */
+/* One level-50 Shadow HERO (Shadow ID 1, full gauge 30 -> 3000) knowing
+ * TACKLE and the Fire hit, against two level-5 foes. As in the original its
+ * slot 0 shows Shadow Rush and the Fire hit (slot 1) shows "????" until the
+ * gauge is under 80% (include/colosseum3ds/shadow_moves.h): OPEN (2200,
+ * 2100 = 70% after the send-out drop) opens it. */
+enum { OPEN = 2200 };
 static void hero(unsigned nature, int32_t dp)
 {
     make_party(party, 1, 50, 1, 1);
     p32(party[0] + 4, nature); p32(party[0] + 0xdc, (uint32_t)dp);
-    p16(party[0] + 0x80, SHADOW_RUSH); party[0][0x82] = 5;
 }
 static int has(const C3GeneralBattle *b, const char *text)
 { for (uint32_t i = 0; i < b->event_count; ++i) if (strstr(b->events[i].text, text)) return 1; return 0; }
@@ -84,16 +87,21 @@ int main(void)
     CHECK(c3_general_battle_begin(&b, &pack, 0, party, 1, error));
     CHECK(b.party[0][0].dp_max == 3000 && b.party[0][0].dp == 2900 && b.party[0][0].gauge_dropped);
     for (unsigned i = 0; i < b.party_count[1]; ++i) b.party[1][i].hp = b.party[1][i].max_hp = 999;  /* nobody faints */
-    /* TACKLE never enters; Shadow Rush does (nature 0: 100 at every level). */
-    turn(&b, 0, 0);
+    CHECK(b.party[0][0].moves[0] == SHADOW_RUSH && b.party[0][0].moves[1] == 0x165 && b.party[0][0].own_moves[0] == 1);
+    /* The Fire hit never enters; Shadow Rush does (nature 0: 100 at every level). */
+    hero(0, OPEN);
+    CHECK(c3_general_battle_begin(&b, &pack, 0, party, 1, error));
+    for (unsigned i = 0; i < b.party_count[1]; ++i) b.party[1][i].hp = b.party[1][i].max_hp = 999;
+    CHECK(b.party[0][0].dp == 2100 && b.party[0][0].moves[1] == 3);
+    turn(&b, 0, 1);
     CHECK(!b.party[0][0].hyper && !has(&b, "Hyper Mode"));
-    turn(&b, 0, 2);
+    turn(&b, 0, 0);
     CHECK(b.party[0][0].hyper && has(&b, "went into Hyper Mode!"));
     { int flagged = 0; for (uint32_t i = 0; i < b.event_count; ++i) flagged |= b.events[i].hyper; CHECK(flagged); }
     CHECK(has(&b, "is in Hyper Mode!"));      /* end-of-turn reminder */
     /* Nature 4 never enters; a foe's Shadow Pokemon never does. */
     hero(4, 3000); CHECK(c3_general_battle_begin(&b, &pack, 0, party, 2, error));
-    for (unsigned t = 0; t < 3 && b.outcome == C3_GB_RUNNING; ++t) turn(&b, 0, 2);
+    for (unsigned t = 0; t < 3 && b.outcome == C3_GB_RUNNING; ++t) turn(&b, 0, 0);
     CHECK(!b.party[0][0].hyper);
     for (unsigned i = 0; i < b.party_count[1]; ++i) CHECK(!b.party[1][i].hyper);
     /* Without the fight kind's Hyper Mode flag nothing happens. */
@@ -101,26 +109,26 @@ int main(void)
         k.bytes[k.entries_at + 110] = 0;
         hero(0, 3000); CHECK(c3_general_battle_begin(&b, &k, 0, party, 3, error));
         CHECK(b.party[0][0].dp == 3000);
-        C3GeneralCommand c[2] = {{0, 2, 2}, {0}}; CHECK(c3_general_battle_turn(&b, &k, c, error));
+        C3GeneralCommand c[2] = {{0, 0, 2}, {0}}; CHECK(c3_general_battle_turn(&b, &k, c, error));
         CHECK(!b.party[0][0].hyper);
         free(k.bytes);
     }
     /* Misbehaviour in Hyper Mode with a move other than Shadow Rush. */
-    hero(1, 3000); CHECK(c3_general_battle_begin(&b, &pack, 0, party, 4, error));
-    b.party[0][0].hyper = 1; turn(&b, 0, 0);
+    hero(1, OPEN); CHECK(c3_general_battle_begin(&b, &pack, 0, party, 4, error));
+    b.party[0][0].hyper = 1; turn(&b, 0, 1);
     CHECK(has(&b, "acted on its own") && moves_by(&b, 0) == 1);
-    hero(2, 3000); CHECK(c3_general_battle_begin(&b, &pack, 0, party, 5, error));
-    b.party[0][0].hyper = 1; turn(&b, 0, 0);
+    hero(2, OPEN); CHECK(c3_general_battle_begin(&b, &pack, 0, party, 5, error));
+    b.party[0][0].hyper = 1; turn(&b, 0, 1);
     CHECK(has(&b, "ignoring your orders") && moves_by(&b, 0) == 0);
-    hero(3, 3000); CHECK(c3_general_battle_begin(&b, &pack, 0, party, 6, error));
-    b.party[0][0].hyper = 1; { unsigned before = b.party[0][0].hp; turn(&b, 0, 0);
+    hero(3, OPEN); CHECK(c3_general_battle_begin(&b, &pack, 0, party, 6, error));
+    b.party[0][0].hyper = 1; { unsigned before = b.party[0][0].hp; turn(&b, 0, 1);
         CHECK(has(&b, "hit itself") && moves_by(&b, 0) == 0 && b.party[0][0].hp < before); }
     /* Shadow Rush in Hyper Mode obeys, and is a critical hit about 90% of the time. */
     {   unsigned crits = 0, uses = 0;
         for (uint32_t seed = 0; seed < 100; ++seed) {
             hero(0, 3000); CHECK(c3_general_battle_begin(&b, &pack, 0, party, seed, error));
             b.party[0][0].hyper = 1; b.party[0][0].stats[5] = 999;
-            turn(&b, 0, 2);
+            turn(&b, 0, 0);
             uses += moves_by(&b, 0); crits += has(&b, "critical hit");
         }
         printf("battle-hyper: Shadow Rush in Hyper Mode: %u critical hits in %u uses\n", crits, uses);
@@ -130,7 +138,7 @@ int main(void)
     {   unsigned cleared = 0;
         for (uint32_t seed = 0; seed < 1500; ++seed) {
             hero(0, 3000); CHECK(c3_general_battle_begin(&b, &pack, 0, party, seed, error));
-            b.party[0][0].hyper = 1; b.party[0][0].stats[5] = 999; turn(&b, 0, 2);
+            b.party[0][0].hyper = 1; b.party[0][0].stats[5] = 999; turn(&b, 0, 0);
             cleared += !b.party[0][0].hyper && has(&b, "came to its senses");
         }
         printf("battle-hyper: %u of 1500 actions snapped out by themselves\n", cleared);

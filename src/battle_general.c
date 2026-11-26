@@ -1,4 +1,5 @@
 #include "colosseum3ds/battle_general.h"
+#include "colosseum3ds/shadow_moves.h"
 #include "save_codec.h"
 #include <stdarg.h>
 #include <stdio.h>
@@ -189,6 +190,29 @@ static void species_fields(const C3BattlePack *p,C3GeneralMon *m)
  * picks the second only when the species has one (pokemonSetTokuseiFlag). */
 static uint8_t species_ability(const C3BattlePack *p,uint16_t species,unsigned flag)
 {const uint8_t *s=species_row(p,species);return s?s[0x32+(flag&&s[0x33]?1:0)]:0;}
+/* The moves just read are the Pokemon's own (pokemonBiosGetPokemonWazaPtr
+ * mode 0); c3_general_shadow_moves then decides what each slot shows. */
+static void own_moves_from_shown(C3GeneralMon *m)
+{
+    memcpy(m->own_moves,m->moves,sizeof m->own_moves);memcpy(m->own_pp,m->pp,sizeof m->own_pp);
+    memcpy(m->own_pp_max,m->pp_max,sizeof m->own_pp_max);m->hidden=0;
+}
+/* A slot's own PP as the record should keep it (the live PP while shown). */
+static uint8_t own_pp(const C3GeneralMon *m,unsigned j){return m->hidden>>j&1u?m->own_pp[j]:m->pp[j];}
+void c3_general_shadow_moves(C3GeneralMon *m)
+{
+    if(!m)return;
+    int shadow=m->shadow!=0;
+    unsigned level=c3_shadow_level(shadow,m->dp,m->dp_max>0?(uint32_t)(m->dp_max/100):0u);
+    for(unsigned i=0;i<4;++i){
+        uint8_t bit=(uint8_t)(1u<<i);
+        if(!(m->hidden&bit))m->own_pp[i]=m->pp[i];
+        uint16_t shown=c3_shadow_shown_move(m->own_moves[i],i,shadow,m->trainer,level);
+        m->moves[i]=shown;
+        if(shown!=m->own_moves[i]){m->pp[i]=m->pp_max[i]=C3_SHADOW_STAND_IN_PP;m->hidden|=bit;}
+        else{m->pp[i]=m->own_pp[i];m->pp_max[i]=m->own_pp_max[i];m->hidden&=(uint8_t)~bit;}
+    }
+}
 static int mon_from_trainer(const C3BattlePack *p,C3GeneralMon *m,const uint8_t *r)
 {
     memset(m,0,sizeof *m);
@@ -220,6 +244,8 @@ static int mon_from_trainer(const C3BattlePack *p,C3GeneralMon *m,const uint8_t 
         }
         for(unsigned k=0;k<count;++k)m->pp[k]=m->pp_max[k]=(uint8_t)move_pp(p,m->moves[k],0);
     }
+    /* fightTrainerPokemonDataId (status 0xC9) is the trainer row's id. */
+    m->trainer=1;own_moves_from_shown(m);c3_general_shadow_moves(m);
     return 1;
 }
 /* PokemonBios condition record (+0x64): its first halfword is the
@@ -242,7 +268,9 @@ static int mon_from_party(const C3BattlePack *p,C3GeneralMon *m,const uint8_t *r
     if(!species_row(p,m->species)||!m->level||m->level>100||r[0xcb])return 0;
     species_fields(p,m);
     m->party_slot=(uint8_t)slot;m->exp=be32(r+0x5c);m->held_item=be16(r+0x88);
-    m->hp=be16(r+0x8a);m->friendship=be16(r+0xb0);m->shadow=be16(r+0xd8)!=0;m->nature=(uint8_t)(be32(r+4)%25u);
+    /* pokemonBiosGetDarkFlag (status 0xC2): a Shadow data ID and a gauge
+     * that is not negative (purification writes -100). */
+    m->hp=be16(r+0x8a);m->friendship=be16(r+0xb0);m->shadow=(uint8_t)c3_shadow_record_is_shadow(r);m->nature=(uint8_t)(be32(r+4)%25u);
     m->ability=species_ability(p,m->species,r[0xcc]); /* PokemonBios tokuseiFlag */
     for(unsigned j=0;j<6;++j){m->stats[j]=be16(r+0x8c+2*j);m->ivs[j]=(uint8_t)be16(r+0xa4+2*j);m->evs[j]=be16(r+0x98+2*j);}
     m->max_hp=m->stats[0];
@@ -254,6 +282,7 @@ static int mon_from_party(const C3BattlePack *p,C3GeneralMon *m,const uint8_t *r
     for(unsigned j=0;j<4;++j){uint16_t id=be16(r+0x78+4*j);
         if(id&&id<p->moves){m->moves[j]=id;m->pp[j]=r[0x7a+4*j];m->pp_max[j]=(uint8_t)move_pp(p,id,r[0x7b+4*j]);
             if(m->pp[j]>m->pp_max[j])m->pp[j]=m->pp_max[j];}}
+    m->trainer=be16(r+0xd6)!=0;own_moves_from_shown(m);c3_general_shadow_moves(m);
     return 1;
 }
 
@@ -663,6 +692,7 @@ static void gauge_filter(const C3BattlePack *p,C3GeneralMon *m,unsigned filter)
     if(filter>=p->dp_filter_count)return;
     int32_t v=(int8_t)p->bytes[p->dp_filter_at+filter]*100;
     m->dp=m->dp+v<0?0:m->dp+v;
+    c3_general_shadow_moves(m); /* a move the drop opens shows at once */
 }
 /* fn_8022E6F0: the send-out drop, once per battle (flag 0xD1). */
 static void sent_out(C3GeneralBattle *b,const C3BattlePack *p,unsigned side,unsigned index)
@@ -825,7 +855,12 @@ static int use_move(C3GeneralBattle *b,const C3BattlePack *p,unsigned a,C3Genera
     uint16_t id=c.slot==4?STRUGGLE:x->moves[c.slot];
     const uint8_t *mv=move_row(p,id);
     if(!mv)return 0;
-    if(c.slot<4){if(!x->pp[c.slot])id=STRUGGLE,mv=move_row(p,id);else --x->pp[c.slot];}
+    /* A stand-in slot reads its 5 PP again next time: the decrement lands
+     * in the Pokemon's own slot (pokemonBiosSetPokemonWazaPp, mode 0, at
+     * most that move's maximum). */
+    if(c.slot<4){if(!x->pp[c.slot])id=STRUGGLE,mv=move_row(p,id);
+        else if(x->hidden>>c.slot&1u){unsigned left=x->pp[c.slot]-1u;x->own_pp[c.slot]=(uint8_t)(left<x->own_pp_max[c.slot]?left:x->own_pp_max[c.slot]);}
+        else --x->pp[c.slot];}
     char name[C3_GB_NAME];c3_battle_pack_move_name(p,id,name);
     if(!say(b,C3_GB_EVENT_MOVE,a,c.target,id,"%s used %s!",who(b,a),name))return 0;
     uint16_t effect=be16(mv+26);unsigned range=mv[3],power=(unsigned)(int16_t)be16(mv+22);
@@ -965,7 +1000,9 @@ uint8_t c3_general_battle_legal_moves(const C3GeneralBattle *b,const C3BattlePac
 {
     const C3GeneralMon *m=b&&b->magic==MAGIC?cat(b,pos):NULL;uint8_t mask=0;
     if(!m||!m->hp)return 0;
-    for(unsigned i=0;i<4;++i)if(m->moves[i]&&m->pp[i]&&move_row(p,m->moves[i]))mask|=(uint8_t)(1u<<i);
+    /* "????" (0x165) and 0x163 are never chosen (fightPokemonCountOutOkWaza). */
+    for(unsigned i=0;i<4;++i)if(m->moves[i]&&m->pp[i]&&m->moves[i]!=C3_SHADOW_HIDDEN_MOVE&&m->moves[i]!=0x163&&move_row(p,m->moves[i]))
+        mask|=(uint8_t)(1u<<i);
     return mask;
 }
 int c3_general_battle_choose_with(const C3GeneralBattle *cb,const C3BattlePack *p,unsigned pos,C3BattleRng *rng,C3GeneralCommand *c)
@@ -1207,7 +1244,7 @@ static int32_t ai_type_score(const C3BattlePack *p,const uint8_t *ai,const C3Gen
     return v;
 }
 static unsigned mon_moves(const C3BattlePack *p,const C3GeneralMon *m,uint16_t ids[4])
-{unsigned n=0;for(unsigned k=0;k<4;++k)if(m->moves[k]&&m->pp[k]&&move_row(p,m->moves[k]))ids[n++]=m->moves[k];return n;}
+{unsigned n=0;for(unsigned k=0;k<4;++k)if(m->moves[k]&&m->pp[k]&&m->moves[k]!=C3_SHADOW_HIDDEN_MOVE&&m->moves[k]!=0x163&&move_row(p,m->moves[k]))ids[n++]=m->moves[k];return n;}
 static int ai_can_hit(const C3BattlePack *p,const uint8_t *ai,uint16_t id,const C3GeneralMon *y)
 {
     const uint8_t *mv=move_row(p,id);
@@ -1847,7 +1884,7 @@ int c3_general_battle_writeback(const C3GeneralBattle *b,const C3BattlePack *p,
         const C3GeneralMon *m=&b->party[0][i];uint8_t *r=party[m->party_slot];unsigned slot=m->party_slot;
         uint32_t before=be32(r+0x5c),gain=m->exp>before?m->exp-before:0;
         put16(r+0x8a,m->hp);
-        for(unsigned j=0;j<4;++j)if(m->moves[j])r[0x7a+4*j]=m->pp[j];
+        for(unsigned j=0;j<4;++j)if(m->own_moves[j])r[0x7a+4*j]=own_pp(m,j);
         /* Persistent condition: a fainted Pokemon keeps none. */
         {unsigned id=m->hp?status_to_record(m->status):0;
          if(id!=be16(r+0x64)){memset(r+0x64,0,7);memset(r+0x6c,0,6);put16(r+0x64,id);}}
@@ -1904,7 +1941,9 @@ int c3_general_snag_record(const C3BattlePack *p,const C3GeneralBattle *b,unsign
     for(unsigned i=0;i<10&&m->name[i]&&m->name[i]!='?';++i){put16(r + 0x2e + (2*i),(uint8_t)m->name[i]);put16(r + 0x44 + (2*i),(uint8_t)m->name[i]);}
     put32(r+0x5c,exp_for(p,m->growth,m->level));r[0x60]=m->level;
     {unsigned id=status_to_record(m->status);if(id)put16(r+0x64,id);}
-    for(unsigned j=0;j<4;++j)if(m->moves[j]){put16(r+0x78+4*j,m->moves[j]);r[0x7a+4*j]=m->pp[j];}
+    /* The record keeps the Pokemon's own moves (the snag only clears
+     * fightTrainerPokemonDataId); Shadow Rush and "????" are what it shows. */
+    for(unsigned j=0;j<4;++j)if(m->own_moves[j]){put16(r+0x78+4*j,m->own_moves[j]);r[0x7a+4*j]=own_pp(m,j);}
     put16(r+0x88,m->held_item);
     put16(r+0x8c,m->max_hp);for(unsigned j=1;j<6;++j)put16(r+0x8c+2*j,m->stats[j]);
     put16(r+0x8a,m->max_hp);

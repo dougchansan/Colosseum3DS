@@ -79,6 +79,9 @@ void c3_ui_footer(C3BottomUi *ui,const char *text);
 void c3_ui_choices(C3BottomUi *ui,int yes);
 void c3_ui_hp(C3BottomUi *ui,int x,int y,int width,const char *name,unsigned hp,unsigned maximum);
 void c3_ui_experience(C3BottomUi *ui,int x,int y,int width,uint32_t progress,uint32_t range);
+/* A Shadow Pokemon's heart gauge in place of the EXP bar: five segments
+ * (the dark levels' 20% steps), filled with the gauge left. */
+void c3_ui_heart_gauge(C3BottomUi *ui,int x,int y,int width,uint32_t progress,uint32_t range);
 /* A/B edges page through the UI before reaching the original state machine.
  * identity distinguishes equal consecutive script/event messages. */
 void c3_ui_pager_sync(C3UiPager *pager,uint32_t identity);

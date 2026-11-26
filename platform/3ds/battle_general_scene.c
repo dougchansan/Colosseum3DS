@@ -230,7 +230,11 @@ void c3_general_ui_draw(const C3BattlePack *pack, const C3GeneralBattle *b, cons
         uint8_t legal = c3_general_battle_legal_moves(b, pack, ui->position);
         for (unsigned i = 0; i < 4 && m; ++i) {
             char name[C3_GB_NAME] = "-", pp[16] = "";
-            if (m->moves[i]) { c3_battle_pack_move_name(pack, m->moves[i], name); snprintf(pp, sizeof pp, "%u/%u", m->pp[i], m->pp_max[i]); }
+            /* A Shadow Pokemon's stand-ins (Shadow Rush, "????") show no PP:
+             * theirs never runs down (include/colosseum3ds/shadow_moves.h). */
+            if (m->moves[i]) { c3_battle_pack_move_name(pack, m->moves[i], name);
+                if (m->hidden >> i & 1u) snprintf(pp, sizeof pp, "--");
+                else snprintf(pp, sizeof pp, "%u/%u", m->pp[i], m->pp_max[i]); }
             c3_ui_row_value(s, 148 + (int)i * 19, name, pp, ui->cursor == i, !(legal >> i & 1u));
         }
         c3_ui_footer(s, "A: use  B: back");

@@ -169,6 +169,48 @@ condition entry 0x3E (`fn_8011B950`) is not added. Hyper Mode
 (`darkpokemonHypermodeFlag`) is modelled in battle for the hero's Shadow
 Pokemon ([battle-rules-lane.md](battle-rules-lane.md)).
 
+## A Shadow Pokemon's moves
+
+The record keeps the Pokemon's own four moves; what a slot shows is decided
+on every read (`pokemonBiosGetPokemonWazaPtr` in `pokemon_data.c`, mode 1,
+behind `pokemonGetStatus` 0x7F/0x80 with a slot 0..3). Mode 0 (slot + 4, and
+every setter) reaches the own moves. The rule is in
+`include/colosseum3ds/shadow_moves.h`:
+
+- Shadow: `darkpokemonDataId` (+0xD8) set and dp (+0xDC) not negative
+  (`pokemonBiosGetDarkFlag`, status 0xC2). Purification writes dp = -100.
+- Slot 0 shows Shadow Rush (0x164; the stand-in `lbl_80478B58` reads 5 PP)
+  for every Shadow Pokemon, the opposing trainer's too
+  (`fightTrainerPokemonDataId` +0xD6 set). A trainer's Pokemon shows its own
+  moves in slots 1..3.
+- The hero's (the snag, `fn_80213A78`, clears +0xD6 with
+  `pokemonSetStatus(0xC9, 0)` before `heroCatchPokemon`)
+  shows "????" (0x165, `lbl_80478B5C`, 5 PP) in slot 1 while the dark level
+  (`pokemonGetDarkPokemonLevel`: dp against the full gauge from the save's
+  runtime table) is under 2, slot 2 under 4 and slot 3 under 5. The moves
+  open when the gauge falls under 80%, 40% and 20%. "????" shows even over
+  an empty slot.
+- The battle never selects "????" (`_fightMenuFightTrainerGcHeroOpenMenuSubWaza`
+  ignores it, `fightPokemonCountOutOkWaza` does not count it). The trainer
+  AI, Hyper Mode's own-choice move and the legal-move mask see the same
+  shown slots. A stand-in's 5 PP is read again every time: a use writes 4
+  (at most the own move's maximum) into the own slot, as
+  `pokemonBiosSetPokemonWazaPp` does. A gauge drop in battle (send-out,
+  Call) opens a move at once.
+- The snag record and the writeback store the own moves and PP.
+- The P*DA party list and summary show the heart gauge in place of the EXP
+  bar (`pokemonToMenuPokemonStatusSubBar`: the full gauge from the runtime
+  table, the gauge left from +0xDC), in five 20% segments, with
+  "SHADOW POKEMON" on the summary (darkState 2, "HYPER MODE", when the
+  record's status entry holds 0x3E). The MOVES tab shows the shown slots.
+
+Not matched: the original menu fills a stand-in's PP from the own move's
+maximum (`pokemonToMenuWazaStatus`); the 3DS battle menu and summary show
+"--" instead. Choosing "????" says "That move cannot be used." where the
+original menu does nothing. Purification itself (`reliveCeremonyAll`) is
+the relive lane's (`src/relive_purify.c`). The battle HUD does not draw the
+heart gauge. Hyper Mode is still not written back to the record.
+
 ## Colosseum and Mt. Battle runs
 
 The story colosseums (Phenac Stadium kinds 6/7 on battle floor 33, Pyrite

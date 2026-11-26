@@ -719,6 +719,16 @@ void c3_ui_experience(C3BottomUi *ui,int x,int y,int width,uint32_t progress,uin
     c3_ui_rect(ui,x+1,y+1,(int)filled,1,0x8883efu);
 }
 
+void c3_ui_heart_gauge(C3BottomUi *ui,int x,int y,int width,uint32_t progress,uint32_t range)
+{
+    if(width<12||width>310||x < -310||x>320||y < -5||y>240)return;
+    c3_ui_rect(ui,x,y,width,5,0x8c6aa8u);
+    c3_ui_rect(ui,x+1,y+1,width-2,3,0x1c1026u);
+    unsigned inner=(unsigned)(width-2),filled=range?(unsigned)((uint64_t)(progress>range?range:progress)*inner/range):0;
+    c3_ui_rect(ui,x+1,y+1,(int)filled,3,0xa04ce0u);
+    for(unsigned k=1;k<5;++k)c3_ui_rect(ui,x+1+(int)(inner*k/5u),y+1,1,3,0x8c6aa8u);
+}
+
 void c3_ui_pager_sync(C3UiPager *pager,uint32_t identity)
 {
     if(pager&&pager->identity!=identity){*pager=(C3UiPager){0};pager->identity=identity;}

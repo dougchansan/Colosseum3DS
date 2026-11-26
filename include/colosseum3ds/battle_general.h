@@ -99,6 +99,16 @@ typedef struct C3GeneralMon {
      * records at +0xCC. key_player / part: trainer record +5 / +6
      * (fightTrainerPokemonData KeyPlayerFlag, PartDataId), 0 for the hero's. */
     uint8_t ability, key_player, part;
+    /* A Shadow Pokemon's slots (include/colosseum3ds/shadow_moves.h):
+     * moves/pp/pp_max above are what the battle, its menu and the AI see
+     * (Shadow Rush, "????" or the Pokemon's own move); own_* are the
+     * record's own moves (pokemonBiosGetPokemonWazaPtr mode 0), which the
+     * writeback and the snag record store. trainer: fightTrainerPokemonDataId
+     * is set (a trainer's Pokemon: only slot 0 is Shadow Rush). hidden: bit
+     * per slot showing a stand-in. The shown slots follow the heart gauge
+     * during the battle (a drop that opens a move shows it at once). */
+    uint16_t own_moves[4];
+    uint8_t own_pp[4], own_pp_max[4], trainer, hidden;
 } C3GeneralMon;
 
 typedef struct C3GeneralCommand {
@@ -266,6 +276,10 @@ int c3_battle_pack_shadow(const C3BattlePack *pack, unsigned id, C3ShadowInfo *i
 const char *c3_general_ball_name(unsigned ball);
 /* pokemonGetDarkPokemonLevel: 0 (gauge full) .. 6 (empty), 7 not Shadow. */
 unsigned c3_general_dark_level(const C3GeneralMon *mon);
+/* Re-derive a Pokemon's shown slots from own_moves and its heart gauge
+ * (shadow_moves.h). The battle calls it when a Pokemon is built and after
+ * every gauge change; a caller that edits dp/shadow/own_* calls it too. */
+void c3_general_shadow_moves(C3GeneralMon *mon);
 /* Whether the hero may Call the Pokemon at `position` (always for the
  * hero's own side outside link battles; it snaps a Shadow Pokemon out of
  * Hyper Mode or wakes a sleeper). */

@@ -1,4 +1,5 @@
 #include "ingame_menu.h"
+#include "colosseum3ds/shadow_moves.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -567,8 +568,10 @@ void c3_ingame_draw_to(C3IngameMenu *m,const C3GameState *state,C3BottomUi *ui)
             decoded_name(p+0x2e,name,sizeof name);if(!name[0])species_name(m,&s,c3_pda_be16(p),name,sizeof name);
             snprintf(label,sizeof label,"%s Lv.%u",name,p[0x60]);snprintf(value,sizeof value,"%u/%u HP",c3_pda_be16(p+0x8a),c3_pda_be16(p+0x8c));
             int y=62+(int)i*25;c3_ui_row_value(ui,y,label,value,i==m->selection,0);
-            uint32_t progress,range;if(c3_pda_experience(&m->assets,p,&progress,&range)){
+            uint32_t progress,range;C3PdaHeart heart;if(c3_pda_experience(&m->assets,p,&progress,&range)){
                 c3_ui_text(ui,61,y+10,32,1,"EXP",C3_UI_GOLD);c3_ui_experience(ui,96,y+17,187,progress,range);
+            }else if(c3_pda_heart(state,p,&heart)){ /* menuSub's party bar: the heart gauge for a Shadow Pokemon */
+                c3_ui_text(ui,61,y+10,34,1,"HEART",heart.state==2?0xff6a6au:0xc98bffu);c3_ui_heart_gauge(ui,98,y+16,185,heart.progress,heart.range);
             }
         }footer(ui,"A: summary   X: actions   B: back");break;
     case C3_GAME_ITEMS:{
@@ -597,18 +600,27 @@ void c3_ingame_draw_to(C3IngameMenu *m,const C3GameState *state,C3BottomUi *ui)
                 unsigned slot=p[0xcc]?1u:0u;const uint8_t *ability=c3_pda_entry(&m->assets,12,species.abilities[slot],&n);
                 if(ability){text(m,&s,c3_pda_be32(ability+4),"--",label,sizeof label);strncat(m->text,"\nAbility: ",sizeof m->text-strlen(m->text)-1u);strncat(m->text,label,sizeof m->text-strlen(m->text)-1u);}
             }
+            C3PdaHeart heart;int shadow=c3_pda_heart(state,p,&heart);
+            if(shadow)strncat(m->text,heart.state==2?"\nSHADOW POKEMON  (HYPER MODE)":"\nSHADOW POKEMON",sizeof m->text-strlen(m->text)-1u);
             body(m,ui,m->text);
             uint32_t progress,range;if(c3_pda_experience(&m->assets,p,&progress,&range)){
                 c3_ui_text(ui,36,185,32,1,"EXP",C3_UI_GOLD);c3_ui_experience(ui,71,192,212,progress,range);
+            }else if(shadow){
+                c3_ui_text(ui,36,184,34,1,"HEART",heart.state==2?0xff6a6au:0xc98bffu);c3_ui_heart_gauge(ui,73,190,210,heart.progress,heart.range);
             }
         }else if(m->tab==1){
             const char *labels[]={"HP","ATTACK","DEFENSE","SP. ATK","SP. DEF","SPEED"};
             for(unsigned i=0;i<6;++i){snprintf(value,sizeof value,"%u",c3_pda_be16(p+0x8c+i*2));c3_ui_row_value(ui,63+(int)i*24,labels[i],value,0,0);}
-        }else for(unsigned i=0;i<4;++i){unsigned id=c3_pda_be16(p+0x78+i*4);const uint8_t *d=c3_pda_entry(&m->assets,10,id,&n);
-            if(!id)snprintf(label,sizeof label,"--");else if(d)text(m,&s,c3_pda_be32(d+32),"MOVE",label,sizeof label);else snprintf(label,sizeof label,"MOVE %u",id);
+        }else for(unsigned i=0;i<4;++i){
+            /* pokemonToMenuWazaStatus reads the shown slot: a Shadow
+             * Pokemon's Shadow Rush and "????" (shadow_moves.h). */
+            unsigned own=c3_pda_be16(p+0x78+i*4),id=c3_pda_shown_move(state,p,i);const uint8_t *d=c3_pda_entry(&m->assets,10,id,&n);
+            if(!id)snprintf(label,sizeof label,"--");else if(id==C3_SHADOW_HIDDEN_MOVE)snprintf(label,sizeof label,"????");
+            else if(d)text(m,&s,c3_pda_be32(d+32),"MOVE",label,sizeof label);else snprintf(label,sizeof label,"MOVE %u",id);
             unsigned ups=p[0x7b+i*4];if(ups>3)ups=3;
-            snprintf(value,sizeof value,"%u/%u PP",p[0x7a+i*4],d?(unsigned)d[1]*(5u+ups)/5u:0);
-            c3_ui_row_value(ui,70+(int)i*32,label,id?value:"",0,0);
+            if(id!=own)snprintf(value,sizeof value,"-- PP");
+            else snprintf(value,sizeof value,"%u/%u PP",p[0x7a+i*4],d?(unsigned)d[1]*(5u+ups)/5u:0);
+            c3_ui_row_value(ui,70+(int)i*32,label,id?value:"",0,id==C3_SHADOW_HIDDEN_MOVE);
         }footer(ui,m->preview?"C-stick: rotate   B/Y: close":m->pager.more?"A: more   Y: model   B: party":"L/R: pages  X: actions  Y: model");break;
     }
     case C3_GAME_TRAINER:{

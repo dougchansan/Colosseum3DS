@@ -1,4 +1,5 @@
 #include "colosseum3ds/pda.h"
+#include "colosseum3ds/shadow_moves.h"
 #include "save_codec.h"
 #include <string.h>
 
@@ -130,6 +131,23 @@ int c3_pda_experience(const C3PdaAssets *a,const uint8_t p[312],uint32_t *progre
     if(*progress>*range)*progress=*range;
     return 1;
 }
+static uint32_t heart_initial(const C3GameState *state,const uint8_t p[312])
+{
+    size_t n=0;const uint8_t *body=c3_game_state_body(state,&n);unsigned id=c3_pda_be16(p+0xd8);
+    size_t at=0x1b014u+0x4a6u+(size_t)id*0x18u;
+    return body&&id<=0x60u&&at+2u<=n?c3_pda_be16(body+at):0u;
+}
+int c3_pda_heart(const C3GameState *state,const uint8_t p[312],C3PdaHeart *out)
+{
+    if(!p||!out||!c3_shadow_record_is_shadow(p))return 0;
+    uint32_t initial=heart_initial(state,p);int32_t dp=c3_shadow_record_dp(p);
+    C3PdaHeart h={0};h.range=(initial?initial:1u)*100u;h.progress=dp<0?0u:(uint32_t)dp;
+    if(h.progress>h.range)h.progress=h.range;
+    h.state=c3_pda_be16(p+0xe8)==0x3e?2:1;h.level=(uint8_t)c3_shadow_level(1,dp,initial);
+    *out=h;return 1;
+}
+uint16_t c3_pda_shown_move(const C3GameState *state,const uint8_t p[312],unsigned slot)
+{return p&&slot<4?c3_shadow_record_move(p,slot,c3_shadow_record_is_shadow(p)?heart_initial(state,p):0u):0;}
 static int flag(const C3GameState *state,unsigned id,uint32_t *value)
 {*value=0;return !id||c3_game_state_get_flag(state,id,value);}
 int c3_pda_memo_caught(const C3PdaAssets *a,const C3GameState *state,unsigned id,int *caught)
