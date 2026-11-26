@@ -19,6 +19,7 @@
 #define MAX_WAYPOINTS 64u /* Phenac actor 24 allocates 36 points (bank 013E0E00 fn 34). */
 
 typedef enum { W_NONE, W_SECONDS, W_TASK, W_MOTION, W_MOVE, W_CAMERA,
+               W_ASIDE, /* native E8: the follower steps aside */
                W_CAMERA_MOVE, W_FADE, W_MESSAGE, W_CHOICE, W_BATTLE, W_NAME, W_ITEM, W_DOOR, W_SHOP, W_MENU_FLOOR, W_JINGLE, W_DIALOG,
                W_RELIVE, W_FALL, W_ITEM_MENU, W_OBJECT, W_HEAL, W_LIFT } Wait;
 typedef struct {
@@ -105,6 +106,9 @@ typedef struct {
     struct { uint32_t pos, cmd, value; int party, stage; float timer, partner_target[3]; } lift;
     int lift_party;
     struct { int on, party; uint32_t pos; float offset[2][3]; } ride;
+    /* Native E8 (fn_801C7730): the follower's walk aside, its second
+     * (axis) spot and the 3-second wait of the current attempt. */
+    struct { int stage, has_alt; float timer, alt[3]; } aside;
     /* Native 53 mode 0 (fn_801D0DB0): the ball models the scene loaded and
      * the catch ball each shows, then the running sequence's state. */
     C3Title *heal_models[C3_HEAL_BALL_SLOTS];uint8_t heal_bound[C3_HEAL_BALL_SLOTS];uint32_t heal_model_count;
@@ -759,6 +763,118 @@ static int lift_native(Impl *s,RunTask *t,const uint32_t a[],uint32_t *value)
         if(cmd&0x40){s->lift.stage=5;t->wait=W_LIFT;return 2;}
         return 1;}
     }
+}
+/* ---- Native E8: fn_801C7730 (gs_range_801C766C.c). Before a person walks
+ * up to Wes (the sight trainers call it right after B1), the follower walks
+ * out of the corridor between Wes and that person. Lengths are original
+ * units x map scale (lbl_8047E100..E11C: 1, 20, .5, pi/4, 8, 0, 4, 3). */
+typedef struct { int index, blocked; float pos[3], distance; } AsideSpot;
+static float aside_distance(const float a[3],const float b[3])
+{return sqrtf((a[0]-b[0])*(a[0]-b[0])+(a[1]-b[1])*(a[1]-b[1])+(a[2]-b[2])*(a[2]-b[2]));}
+/* fn_8018D680: point within `width` across segment a..b and within its half
+ * length along it, measured from the midpoint in a frame turned about +Y by
+ * the segment heading (C_QUATRotAxisRad, then GSvecTransformQuat). Retail
+ * turns by +heading, which mirrors the box about z for a diagonal segment;
+ * kept as retail does it. */
+static int aside_between(const float a[3],const float b[3],const float point[3],float width)
+{
+    float mid[3],d[3];for(unsigned i=0;i<3;++i){mid[i]=(a[i]+b[i])*.5f;d[i]=point[i]-mid[i];}
+    float heading=atan2f(b[0]-a[0],b[2]-a[2]),c=cosf(heading),s=sinf(heading);
+    float across=d[0]*c+d[2]*s,along=d[2]*c-d[0]*s;
+    return width>=fabsf(across)&&aside_distance(mid,b)>=fabsf(along);
+}
+/* fieldSegmentBlocked: a segment of 20 or more is tested as two halves. */
+static int aside_blocked(const float from[3],const float to[3],const float center[3],float width,float scale)
+{
+    if(aside_distance(from,to)<20.0f*scale)return aside_between(from,to,center,width);
+    float mid[3];for(unsigned i=0;i<3;++i)mid[i]=(from[i]+to[i])*.5f;
+    return aside_between(from,mid,center,width)||aside_between(mid,to,center,width);
+}
+/* fieldPlaneCrossed: whether start..end crosses the plane through Wes that
+ * holds the Wes-person line and the person's point raised to height 1. */
+static int aside_crossed(const float hero[3],const float other[3],const float start[3],const float end[3],float scale)
+{
+    float d0[3],d1[3],n[3],dir[3],l0=0,l1=0;
+    for(unsigned i=0;i<3;++i){d0[i]=hero[i]-other[i];d1[i]=hero[i]-(i==1?1.0f*scale:other[i]);l0+=d0[i]*d0[i];l1+=d1[i]*d1[i];}
+    l0=sqrtf(l0);l1=sqrtf(l1);for(unsigned i=0;i<3;++i){d0[i]/=l0;d1[i]/=l1;dir[i]=end[i]-start[i];}
+    n[0]=d0[1]*d1[2]-d0[2]*d1[1];n[1]=d0[2]*d1[0]-d0[0]*d1[2];n[2]=d0[0]*d1[1]-d0[1]*d1[0];
+    float den=n[0]*dir[0]+n[1]*dir[1]+n[2]*dir[2];
+    if(den==0)return 0; /* GScolsys2UtilGetCpPlaneLine: parallel */
+    float t=(n[0]*(hero[0]-start[0])+n[1]*(hero[1]-start[1])+n[2]*(hero[2]-start[2]))/den;
+    return !(t<0||t>1);
+}
+/* fieldBuildRing: eight spots 8 around center (x cos, z sin of i x 45
+ * degrees), blocked when fn_8010F320 (player walls along center..spot,
+ * radius 4) hits; here the field's wall sweep, which also refuses a spot
+ * with no floor. Sorted by distance from origin (qsort with
+ * _fnDistanceSortFunc); equal distances keep ring order. */
+static void aside_ring(Impl *s,AsideSpot ring[8],const float center[3],const float origin[3])
+{
+    const float sc=s->map->scale;
+    for(int i=0;i<8;++i){AsideSpot *e=ring+i;float angle=(float)i*.78539819f;
+        e->index=i;e->pos[0]=center[0]+8.0f*sc*(float)cos(angle);e->pos[1]=center[1];e->pos[2]=center[2]+8.0f*sc*(float)sin(angle);
+        C3FieldPlayer probe=*s->hero;probe.collision_count=0;
+        memcpy(probe.position,e->pos,sizeof e->pos);memcpy(probe.proposed,e->pos,sizeof e->pos);
+        e->blocked=!c3_field_resolve_position(s->map,&probe,center)||probe.collision_count;
+        e->distance=aside_distance(e->pos,origin);
+    }
+    for(int i=1;i<8;++i)for(int j=i;j>0&&ring[j-1].distance>ring[j].distance;--j){AsideSpot k=ring[j];ring[j]=ring[j-1];ring[j-1]=k;}
+}
+/* The spot fn_801C7730 walks the follower to (keepFacing 1, fn_8018AACC);
+ * W_ASIDE then waits as fieldWaitPartnerMove does. With no spot, or no
+ * follower in the corridor, it returns at once. */
+static int aside_start(Impl *s,RunTask *t,Person *other,char *error)
+{
+    const float sc=s->map->scale,gap=4.0f*sc;Person *f=&s->partner_actor;
+    float follower[3],hero[3],person_at[3];
+    memcpy(follower,f->public.pose.position,sizeof follower);memcpy(hero,s->hero->position,sizeof hero);
+    memcpy(person_at,pose(s,other)->position,sizeof person_at);
+    /* fn_8018F5E4 radius + 1, tested with 1 + that: the corridor's half width. */
+    float width=1.0f*sc+(other->source?other->source->radius:s->map->radius)+1.0f*sc;
+    if(!aside_blocked(hero,person_at,follower,width,sc)){
+        log_line(s,"story_step_aside person=%lu follower=clear",(unsigned long)other->public.index);return 1;}
+    AsideSpot ring[8];
+    for(int pass=0;pass<2;++pass){
+        /* First the ring around Wes, then the ring around the follower,
+         * each nearest the follower first. */
+        aside_ring(s,ring,pass?follower:hero,follower);
+        for(int i=0;i<8;++i){const AsideSpot *e=ring+i;
+            if(e->blocked||aside_blocked(hero,person_at,e->pos,gap,sc)||aside_blocked(follower,e->pos,hero,gap,sc)||
+               aside_crossed(hero,person_at,follower,e->pos,sc))continue;
+            s->aside.has_alt=0;
+            /* A diagonal spot of the first ring that is not reached in
+             * 3 seconds is retried at its axis neighbour (3,5 -> 4; 1,7 -> 0). */
+            if(!pass&&(e->index&1)){
+                int wanted=e->index==3||e->index==5?4:0;
+                for(int k=0;k<8;++k)if(ring[k].index==wanted){
+                    if(!ring[k].blocked&&!aside_blocked(hero,person_at,ring[k].pos,gap,sc)){
+                        s->aside.has_alt=1;memcpy(s->aside.alt,ring[k].pos,sizeof s->aside.alt);}
+                    break;}
+            }
+            log_line(s,"story_step_aside person=%lu ring=%s spot=%d x=%.3f z=%.3f",(unsigned long)other->public.index,
+                     pass?"follower":"hero",e->index,(double)e->pos[0],(double)e->pos[2]);
+            if(!lift_walk(s,f,e->pos,error))return 0;
+            s->aside.stage=0;s->aside.timer=3.0f;t->wait=W_ASIDE;return 1;
+        }
+    }
+    log_line(s,"story_step_aside person=%lu follower=no_spot",(unsigned long)other->public.index);return 1;
+}
+/* fieldWaitPartnerMove for W_ASIDE: up to 3 s per attempt. When neither
+ * attempt arrives, fn_80187D48 turns her toward her own position, which
+ * ends the walk where she stands. */
+static int aside_wait(Impl *s,RunTask *t,float seconds,char *error)
+{
+    Person *f=&s->partner_actor;
+    if(!f->public.model||(!f->moving&&!f->turning))return resume(s,t,0,error);
+    s->aside.timer-=seconds;if(s->aside.timer>0)return 1;
+    if(!s->aside.stage&&s->aside.has_alt){
+        if(!lift_walk(s,f,s->aside.alt,error))return 0;
+        s->aside.stage=1;s->aside.timer=3.0f;return 1;
+    }
+    f->moving=f->turning=0;
+    if(!set_motion(s,f,f->source?f->source->motions[0]:0,0,1,error))return 0;
+    log_line(s,"story_step_aside follower=stopped x=%.3f z=%.3f",(double)f->public.pose.position[0],(double)f->public.pose.position[2]);
+    return resume(s,t,0,error);
 }
 static int run_native(Impl *s,RunTask *t,char *error)
 {
@@ -1726,10 +1842,14 @@ static int run_native(Impl *s,RunTask *t,char *error)
         }break;
     case 0xe8:
         /* fn_801C7730 moves the follower out of the hero-to-NPC corridor
-         * and always returns 0. Without a follower on the field it returns
-         * at once, as the original does when member 1 has no resource. */
-        if(s->partner_actor.public.model&&s->partner_actor.public.visible)
-            note_presentation(s,c->native,"follower_step_aside_unported");
+         * and always returns 0 (aside_start). Without a follower on the
+         * field it returns at once, as the original does when member 1 has
+         * no resource; so it does for a person that is not there. */
+        p=person(s,a[0],a[1]);
+        if(s->partner_actor.public.model&&s->partner_actor.public.visible&&p&&p!=&s->partner_actor&&p!=&s->hero_actor){
+            if(!aside_start(s,t,p,error))return 0;
+            if(t->wait!=W_NONE)return 1;
+        }
         break;
     case 0xb4:
         /* floorGetNextFloorID: destination of the most recent link; on
@@ -2048,6 +2168,7 @@ static int wait_task(Impl *s,RunTask *t,float seconds,uint16_t *pressed,char *er
     case W_MOVE:
         p=person(s,t->call.args[0],t->call.args[1]);if(p&&(p->moving||p->turning))return 1;
         return resume(s,t,0,error);
+    case W_ASIDE:return aside_wait(s,t,seconds,error);
     case W_CAMERA:
         if(s->view.camera_active&&s->camera_track&&s->camera_track->frames&&
            s->view.camera_seconds<(float)(s->camera_track->frame_count-1u)/s->camera_track->fps)return 1;
@@ -2152,7 +2273,7 @@ void c3_field_story_close(C3FieldStory *story)
 }
 void c3_field_story_describe_waits(const C3FieldStory *story,char *out,size_t capacity)
 {
-    static const char *const names[]={"none","seconds","task","motion","move","camera","camera_move",
+    static const char *const names[]={"none","seconds","task","motion","move","camera","aside","camera_move",
         "fade","message","choice","battle","name","item","door","shop","dialog","relive"};
     const Impl *s=story?story->impl:NULL;size_t used=0;
     if(!out||!capacity)return;

@@ -1159,6 +1159,76 @@ static void elevator_regressions(void)
     close_scene(s);free(s);c3_game_state_free(&game);CHECK(!unlink(file));CHECK(!rmdir(directory));
     puts("field-story elevator regressions passed");
 }
+/* A sight trainer walking up to Wes (Pyrite Cave fn 9-11): heroMoveInitEvent,
+ * B1 to 10 source units of (0,100), E8, then 3E waits for the trainer; 64
+ * hides it as the test's end marker. Field scale 0.1 as prepared floors. */
+static int sight_trainer_scene(Scene *s,C3GameState *game,const char *file,C3Title *rui,int partner,
+                               float rui_x,float rui_z)
+{
+    int waited=0;
+    Program code[8];memset(code,0,sizeof code);
+    native(code+3,0x20,0,NULL,1);
+    uint32_t walk[6]={29,3,0,100,bits(1.0f),1};native(code+3,0xb1,6,walk,1);
+    uint32_t who[3]={29,3,1};native(code+3,0xe8,2,who,1);native(code+3,0x3e,3,who,1);
+    uint32_t hide[2]={3,0};native(code+3,0x64,2,hide,1);native(code+3,0x21,0,NULL,1);
+    CHECK(c3_game_state_set_partner(game,partner));
+    synthetic_load(s,game,file,code,0,0,0x1000003);
+    s->map.scale=.1f;
+    s->map.walk_count=2;s->map.walk=calloc(2,sizeof(*s->map.walk));CHECK(s->map.walk);
+    {const float a[9]={-50,0,-50,50,0,-50,50,0,50},b[9]={-50,0,-50,50,0,50,-50,0,50};
+     memcpy(s->map.walk[0].vertices,a,sizeof a);memcpy(s->map.walk[1].vertices,b,sizeof b);
+     s->map.walk[0].normal[1]=s->map.walk[1].normal[1]=1;s->map.object_count=1;}
+    synthetic_model(rui);CHECK(c3_field_story_attach_partner(&s->story,rui,error));
+    memset(s->hero.position,0,sizeof s->hero.position);s->hero.yaw=0;
+    C3StoryActor *trainer=c3_field_story_actor(&s->story,3);CHECK(trainer&&trainer->visible);
+    trainer->pose.position[0]=0;trainer->pose.position[1]=0;trainer->pose.position[2]=-3.0f;trainer->pose.yaw=0;
+    C3StoryActor *follower=c3_field_story_person(&s->story,0,101);CHECK(follower&&follower->visible==partner);
+    follower->pose.position[0]=rui_x;follower->pose.position[1]=0;follower->pose.position[2]=rui_z;
+    memcpy(follower->pose.proposed,follower->pose.position,sizeof follower->pose.position);
+    CHECK(c3_field_story_enter(&s->story,error));
+    unsigned frames=0;
+    for(;frames<600&&trainer->visible;++frames){
+        char waits[512];CHECK(c3_field_story_tick(&s->story,1.0f/30.0f,0,error));
+        c3_field_story_describe_waits(&s->story,waits,sizeof waits);if(strstr(waits,":aside:"))++waited;
+    }
+    CHECK(frames<600);return waited;
+}
+static void step_aside_regressions(void)
+{
+    char directory[]="/tmp/c3-field-story-aside-XXXXXX",file[1024];CHECK(mkdtemp(directory));path(file,directory,"unit.c3s");
+    C3GameState game={0};synthetic_game(&game);Scene *s=calloc(1,sizeof(*s));C3Title rui={0};CHECK(s);
+    /* Rui stands in the corridor between Wes (0,0) and the trainer 30 away
+     * at z -3. fn_801C7730's first ring (8 around Wes, nearest her first):
+     * spot 6 (0,-0.8) lies on the corridor; spot 7 (cos 315, sin 315) x 0.8
+     * is clear of it, her walk keeps 4 from Wes and does not cross the
+     * Wes-trainer plane. She walks there before the trainer's 3E ends, and
+     * the trainer stops 10 source units (B1) in front of Wes. */
+    /* The trainer's thread waits in E8 while she walks (fieldWaitPartnerMove). */
+    CHECK(sight_trainer_scene(s,&game,file,&rui,1,.1f,-1.2f)>0);
+    const C3StoryActor *trainer=c3_field_story_actor(&s->story,3),*follower=c3_field_story_person(&s->story,0,101);
+    float spot=.8f*cosf(.78539819f*7);
+    CHECK(fabsf(follower->pose.position[0]-spot)<1e-3f&&fabsf(follower->pose.position[2]+spot)<1e-3f);
+    CHECK(fabsf(follower->pose.position[0])>.4f); /* more than 4 off the Wes-trainer line */
+    float gap=hypotf(trainer->pose.position[0]-s->hero.position[0],trainer->pose.position[2]-s->hero.position[2]);
+    CHECK(fabsf(gap-1.0f)<1e-3f&&gap>s->map.radius+.4f&&fabsf(trainer->pose.position[0])<1e-4f);
+    CHECK(s->hero.position[0]==0&&s->hero.position[2]==0);
+    close_scene(s);c3_title_close(&rui);
+    /* Rui behind Wes, away from the trainer: the corridor is clear and she
+     * stays where she is; the trainer still stops 10 in front of Wes. */
+    memset(&rui,0,sizeof rui);CHECK(!sight_trainer_scene(s,&game,file,&rui,1,.1f,1.2f));
+    trainer=c3_field_story_actor(&s->story,3);follower=c3_field_story_person(&s->story,0,101);
+    CHECK(follower->pose.position[0]==.1f&&follower->pose.position[2]==1.2f);
+    CHECK(fabsf(trainer->pose.position[2]+1.0f)<1e-3f);
+    close_scene(s);c3_title_close(&rui);
+    /* No partner on the field: E8 returns at once. */
+    memset(&rui,0,sizeof rui);CHECK(!sight_trainer_scene(s,&game,file,&rui,0,.1f,-1.2f));
+    trainer=c3_field_story_actor(&s->story,3);follower=c3_field_story_person(&s->story,0,101);
+    CHECK(follower->pose.position[0]==.1f&&follower->pose.position[2]==-1.2f);
+    CHECK(fabsf(trainer->pose.position[2]+1.0f)<1e-3f);
+    close_scene(s);c3_title_close(&rui);
+    free(s);c3_game_state_free(&game);CHECK(!unlink(file));CHECK(!rmdir(directory));
+    puts("field-story follower step-aside regressions passed");
+}
 static void pause_menu_regressions(void)
 {
     char directory[]="/tmp/c3-field-story-pause-XXXXXX",file[1024];CHECK(mkdtemp(directory));path(file,directory,"unit.c3s");
@@ -1286,6 +1356,7 @@ int main(int argc,char **argv)
     mail_regressions();
     pause_menu_regressions();
     elevator_regressions();
+    step_aside_regressions();
     if(argc==3&&!strcmp(argv[1],"--premium")){premium_regressions(argv[2]);return 0;}
     if(argc<2){puts("field-story private integration skipped: supply privately prepared boot directory");return 0;}
     trace=argc>2?fopen(argv[2],"w+"):tmpfile();CHECK(trace!=NULL);

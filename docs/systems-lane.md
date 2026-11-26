@@ -119,7 +119,15 @@ Evidence:
 
 Every prepared floor except Outskirt and its shop has a partner pack, Snagem included.
 
-Not ported: neck/head tracking (native 7E), `fn_801C7730`'s step aside (native E8), turning speed limits and walk/run blending (she uses idle, walk and run clips).
+Native E8 (`fn_801C7730`) moves her aside before a person walks up to Wes. The sight trainers call it right after B1. If she stands within that person's radius + 2 of the Wes-person segment, she walks to a spot 8 units from Wes, nearest her first; when no spot around Wes works, she tries a spot 8 units around herself. The spot must:
+
+- be reachable from its centre without hitting a wall (the port also refuses a spot with no floor under it);
+- be more than 4 from the segment;
+- be reached by a walk that keeps 4 from Wes and does not cross the vertical plane through the segment.
+
+The trainer's thread waits up to 3 s for her. A diagonal spot she has not reached by then is retried at the axis spot next to it. After that she stops where she is. The segment test keeps retail's mirrored frame for diagonal segments (see `aside_between`). Ties between spots at equal distances keep ring order (retail sorts them with qsort). Host: `test_field_story` step-aside regressions.
+
+Not ported: neck/head tracking (native 7E), turning speed limits and walk/run blending (she uses idle, walk and run clips).
 
 ## Menu floors (native 62)
 
