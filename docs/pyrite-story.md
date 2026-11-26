@@ -153,6 +153,27 @@ packs of the same floors. Commands: `tools/prepare_story.py` (and
 - Door-table close flags lock doors (`floorEventCtrlDoor` mode 0): the
   building's front door (town row 15) stays locked until `0x40A`, so the
   rooftop (town door 6) is how the chapter first reaches 4F.
+- Native D9 (`fn_801CADA8`, Duking's house main fn 8 calls it with kind 3)
+  only logged `story_gift_pokemon kind=3 status=unported`, so Plusle never
+  reached the party or the PC (playtest 2026-11-20). It is ported: the
+  heroPokemonGet* bodies (hero_pokemon.c, checked against retail
+  80130660..80130CD8) build the record in `c3_battle_pack_gift_record`
+  (pokemonCreate with the save's random generator: level-up moves,
+  experience, IVs, ability coin, then pokemonCreateRndFit with no shiny
+  personality for the gift's trainer and pokemonResetBasisStatus), and
+  `c3_battle_story_gift` adds it to the Strategy Memo and stores it as
+  heroGetPokemon does: the first free party slot, else a PC box; the
+  script gets the slot, -1 (box) or -2 (no room). Kind 3 is Plusle, level
+  13, Growl / Thunder Wave / Quick Attack / Helping Hand, Poke Ball,
+  friendship 70, trainer DUKING (message 0x12AC) ID 37149, met at 0xFE.
+  The other kinds: 1 Umbreon and 2 Espeon (the starters' records: the hero
+  as trainer, party only), 4 Ho-Oh, 5 Pikachu (item 0xCA) and 6 Celebi
+  (bonus-disc gifts with their own trainers and attest). The console binds
+  it in `field_scene.c` (battle pack species rows, P*DA names) and logs
+  `story_gift_pokemon kind=3 species=353 result=<slot> where=party|box`.
+  Tests: `tests/test_story_gift.c` (`C3_GIFT_NEWGAME`, `C3_GIFT_PACK`,
+  `C3_GIFT_PDA`) and the route's `expect_pokemon 0x161` (with a battle pack
+  from `C3_ROUTE_GIFT_PACK` or `C3_ROUTE_BATTLES`, and `C3_ROUTE_PDA`).
 
 Natives from other lanes this chapter needs: DB, BB, 3C pitch/roll and D8
 mode 1 (under), the message control table and item names (systems), D0 and

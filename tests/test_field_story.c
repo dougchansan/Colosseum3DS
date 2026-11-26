@@ -311,6 +311,13 @@ static void synthetic_machine(C3Title *model)
 }
 static int heal_restores;
 static int heal_restore(void *context){(void)context;++heal_restores;return 1;}
+/* Native D9's service stand-in: the result the scene's c3_battle_story_gift
+ * would give (tests/test_story_gift.c checks the real record). */
+typedef struct {unsigned calls;uint32_t kind;int result;unsigned where;} GiftProbe;
+static int probe_gift(void *context,uint32_t kind,uint16_t *species,unsigned *where)
+{
+    GiftProbe *probe=context;++probe->calls;probe->kind=kind;*species=0x161;*where=probe->where;return probe->result;
+}
 static void synthetic_load_at(Scene *scene,C3GameState *game,const char *file,const Program programs[8],
                            uint32_t init,uint32_t pre,uint32_t main_script,uint32_t floor)
 {
@@ -856,6 +863,23 @@ static void synthetic_regressions(void)
         CHECK(c3_field_story_enter(&s->story,error));
         CHECK(c3_field_story_tick(&s->story,0,0x100,error));
         CHECK(c3_field_story_actor(&s->story,3)->visible==inputs[i].want);close_scene(s);
+     }}
+    /* D9 (fn_801CADA8) returns the gift service's heroGetPokemon result to
+     * the script: here it is native 64's visibility of person 3, so party
+     * slot 0 hides it and -1 (a PC box) or -2 (no room) shows it. A build
+     * failure reports -2; unbound, D9 returns 1 as before the port. */
+    {static const struct {int bound,result,want;unsigned where;} gifts[]={
+        {1,0,0,0},{1,-1,1,100},{1,-2,1,0},{1,-3,1,0},{0,0,1,0}};
+     for(unsigned i=0;i<sizeof gifts/sizeof gifts[0];++i){
+        GiftProbe probe={0,0,gifts[i].result,gifts[i].where};
+        memset(code,0,sizeof code);push(code+3,0);push(code+3,0x64);push(code+3,3);
+        args[0]=3;native(code+3,0xd9,1,args,0);call_end(code+3,2,1);
+        synthetic_load(s,&game,file,code,0,0,0x1000003);
+        if(gifts[i].bound)c3_field_story_set_gift_service(&s->story,probe_gift,&probe);
+        CHECK(c3_field_story_enter(&s->story,error));CHECK(c3_field_story_tick(&s->story,0,0,error));
+        CHECK(probe.calls==(unsigned)gifts[i].bound&&(!gifts[i].bound||probe.kind==3));
+        CHECK(c3_field_story_actor(&s->story,3)->visible==gifts[i].want);
+        close_scene(s);
      }}
     /* DB directly mutates the bag once, including ABI u16 narrowing;
      * unlike 77 it neither opens a message nor waits for a jingle. */

@@ -1997,3 +1997,127 @@ int c3_battle_pack_recover_exp(const C3BattlePack *p,uint8_t r[C3_GB_POKEMON_SIZ
     }
     *out=o;return 1;
 }
+
+/* ---- gift Pokemon (fn_801CADA8) ------------------------------------------ */
+
+/* The heroPokemonGet* arguments (retail 80130660..80130CD8). moves[0] 0:
+ * pokemonCreate's level-up moves; exp 0: the level's; ot_message 0: the
+ * hero's name, ID and sex (heroCatchPokemon); attest 0: the save's, else
+ * gamedataAttestCreate(attest, 3, the save's area, its language). */
+static const struct {
+    uint16_t species; uint8_t level; uint16_t moves[4]; uint32_t exp; uint8_t friendship;
+    uint8_t place, ot_sex; uint16_t ot_message; uint32_t ot_id; int8_t sex;
+    uint8_t attest; uint16_t item; uint8_t memo, box;
+} gifts[7]={
+    {0,0,{0},0,0,0,0,0,0,0,0,0,0,0},
+    {0x0c5,26,{0x2c,0x122,0x10d,0x121},0x4a6f,0xdc,0xfe,0,0,0,0,0,0,0,0}, /* Blacky: Umbreon */
+    {0x0c4,25,{0x5d,0xd8,0x73,0x10e},0x3ff4,0xdc,0xfe,0,0,0,0,0,0,0,0},   /* Eifie: Espeon */
+    {0x161,13,{0},0,0x46,0xfe,0,0x12ac,0x911d,-1,0,0,1,1},                 /* Prasle: Plusle, DUKING */
+    {0x0fa,70,{0},0,0x46,0xff,0,0x12ad,0x2740,-1,8,0,1,1},                 /* Houou: Ho-Oh */
+    {0x019,10,{0},0,0x46,0xff,0,0x12ae,0x7991,-1,9,0xca,1,1},              /* Pikachu, holding item 0xCA */
+    {0x0fb,10,{0},0,0x46,0xff,1,0x12af,0x7991,-1,9,0,1,1},                 /* Celebi */
+};
+/* pokemonSetStatus 0x76/0x77 (LenCpy): at most ten characters, zero-filled. */
+static void gift_name(uint8_t out[0x16],const uint8_t *in)
+{
+    memset(out,0,0x16);
+    for(unsigned i=0;i<10&&(in[2*i]|in[2*i+1]);++i){out[2*i]=in[2*i];out[2*i+1]=in[2*i+1];}
+}
+/* pokemonWazaCheckValid: a move other than 0 and 0x163. */
+static int gift_move_valid(uint16_t id){return id&&id!=0x163u;}
+/* pokemonSetWazaStatus(obj, id, 1): a known move is skipped; otherwise the
+ * first free slot takes it, else the moves shift up and it takes slot 3. */
+static void gift_learn(const C3BattlePack *p,uint8_t r[C3_GB_POKEMON_SIZE],uint16_t id)
+{
+    for(unsigned k=0;k<4;++k){uint16_t have=be16(r+0x78+4*k);if(gift_move_valid(have)&&have==id)return;}
+    for(unsigned k=0;k<4;++k)if(!gift_move_valid(be16(r+0x78+4*k))){c3_battle_pack_set_move(p,r,k,id);return;}
+    memmove(r+0x78,r+0x7c,12);c3_battle_pack_set_move(p,r,3,id);
+}
+/* pokemonResetBasisStatus: the level from the experience
+ * (pokemonGetLevelFromExp), its stats and the HP raised by the maximum's
+ * increase (pokemonSetLevelBasisStatus; species 0x12F keeps 1). */
+static void gift_reset(const C3BattlePack *p,const uint8_t *s,uint8_t r[C3_GB_POKEMON_SIZE])
+{
+    unsigned level=1,nature=be32(r+4)%25u,old_max=be16(r+0x8c),shedinja=be16(r)==0x12fu;
+    while(level<100&&exp_for(p,s[0],level+1)<=be32(r+0x5c))++level;
+    r[0x60]=(uint8_t)level;
+    for(unsigned j=0;j<6;++j)
+        put16(r+0x8c+2*j,compute_stat(j,be16(s+0x84+2*j),be16(r+0xa4+2*j),be16(r+0x98+2*j),level,nature));
+    if(shedinja)put16(r+0x8c,1);
+    unsigned hp=be16(r+0x8a),max=be16(r+0x8c);
+    if(hp||!old_max){hp=shedinja?1u:(uint16_t)(hp+max-old_max);put16(r+0x8a,hp>max?max:hp);}
+}
+static uint32_t gift_random32(uint16_t (*random16)(void *),void *context)
+{
+    /* (fn_800E0C54() & 0xFFFF) | (fn_800E0C54() << 16): the right operand,
+     * the high half, is drawn first. */
+    uint32_t high=random16(context);
+    return high<<16|random16(context);
+}
+int c3_battle_pack_gift_record(const C3BattlePack *p,unsigned kind,const C3GiftHero *hero,
+                               C3GiftMessage message,void *message_context,
+                               uint16_t (*random16)(void *context),void *random_context,
+                               uint8_t r[C3_GB_POKEMON_SIZE],C3GiftInfo *info)
+{
+    if(!p||!p->bytes||kind<1||kind>6||!hero||!random16||!r)return 0;
+    const uint8_t *s=species_row(p,gifts[kind].species);
+    uint8_t text[0x16],ot_name[0x16];
+    if(!s)return 0;
+    unsigned level=gifts[kind].level,own=gifts[kind].ot_message!=0;
+    uint32_t trainer=own?gifts[kind].ot_id:hero->trainer_id;
+    if(own){if(!message||!message(message_context,gifts[kind].ot_message,text))return 0;gift_name(ot_name,text);}
+    else memcpy(ot_name,hero->name,sizeof ot_name);
+    /* pokemonInit: everything clear but the trainer sex (2), +0xD0 (0xFF)
+     * and the heart gauge (-100). */
+    memset(r,0,C3_GB_POKEMON_SIZE);
+    r[0x10]=2;r[0xd0]=0xff;put32(r+0xdc,(uint32_t)-100);
+    /* pokemonCreate */
+    put16(r,gifts[kind].species);
+    put32(r+4,gift_random32(random16,random_context));
+    if(gifts[kind].attest){r[8]=gifts[kind].attest;r[9]=3;r[10]=hero->attest[2];r[11]=hero->attest[3];}
+    else memcpy(r+8,hero->attest,4);
+    if(message&&message(message_context,be32(s+0x18),text))gift_name(r+0x2e,text);
+    else{const uint8_t *name=p->bytes+p->names_at+gifts[kind].species*C3_GB_NAME;
+        for(unsigned i=0;i<10&&i<C3_GB_NAME&&name[i];++i)put16(r + 0x2e + 2*i,name[i]);}
+    memcpy(r+0x44,r+0x2e,0x16);
+    r[0x60]=(uint8_t)level;
+    unsigned iv=random16(random_context);
+    put16(r+0xa4,iv&31u);put16(r+0xa6,(iv>>5)&31u);put16(r+0xa8,(iv>>10)&31u);
+    iv=random16(random_context);
+    put16(r+0xae,iv&31u);put16(r+0xaa,(iv>>5)&31u);put16(r+0xac,(iv>>10)&31u);
+    put32(r+0x5c,exp_for(p,s[0],level));
+    put16(r+0xb0,be16(s+8)>255u?255u:be16(s+8));
+    if(random16(random_context)&1u)r[0xcc]=s[0x33]?1:0;
+    /* pokemonOboeWaza for each level up to the gift's: that level's rows in
+     * table order, until a row without a move. */
+    for(unsigned l=1;l<=level;++l)
+        for(unsigned j=0;j<20;++j){const uint8_t *row=s+0xba+4*j;uint16_t id=be16(row+2);
+            if(row[0]!=l)continue;
+            if(!id)break;
+            if(id<p->moves)gift_learn(p,r,id);
+        }
+    gift_reset(p,s,r);
+    /* The gift's own fields (pokemonWazaCreate, pokemonCreateRndFit with
+     * no shiny personality for its trainer, experience, friendship, held
+     * item), pokemonResetBasisStatus and the catch status. */
+    if(gifts[kind].moves[0])for(unsigned k=0;k<4;++k)c3_battle_pack_set_move(p,r,k,gifts[kind].moves[k]);
+    unsigned ratio=s[2],fixed=ratio==0||ratio==254||ratio==255;
+    uint32_t pid=0;unsigned tries;
+    for(tries=0;tries<65536u;++tries){
+        pid=gift_random32(random16,random_context);
+        if(gifts[kind].sex>=0&&!fixed&&(ratio>(pid&255u)?1:0)!=(unsigned)gifts[kind].sex)continue;
+        if(((trainer>>16)^(trainer&0xffffu)^(pid>>16)^(pid&0xffffu))<8u)continue;
+        break;
+    }
+    if(tries==65536u)return 0;
+    put32(r+4,pid);
+    if(gifts[kind].exp)put32(r+0x5c,gifts[kind].exp);
+    put16(r+0xb0,gifts[kind].friendship);
+    if(gifts[kind].item)put16(r+0x88,gifts[kind].item);
+    gift_reset(p,s,r);
+    put16(r+0x0c,gifts[kind].place);r[0x0e]=r[0x60];r[0x0f]=4;
+    r[0x10]=own?gifts[kind].ot_sex:hero->sex;
+    put32(r+0x14,trainer);memcpy(r+0x18,ot_name,0x16);
+    if(info){info->species=gifts[kind].species;info->level=r[0x60];info->memo=gifts[kind].memo;info->box=gifts[kind].box;}
+    return 1;
+}

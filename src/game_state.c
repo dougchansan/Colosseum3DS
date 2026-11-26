@@ -817,6 +817,18 @@ int c3_game_state_memo_mark_seen(C3GameState *state)
         put16(p,(uint16_t)(raw&0x3fffu));}
     return was_new;
 }
+int c3_game_state_memo_add(C3GameState *state,const uint8_t record[0x138])
+{
+    GameStateImpl *s=state?state->impl:NULL;unsigned count;
+    if(!s||!record||!be16(record)||!c3_game_state_memo_count(state,&count))return -1;
+    uint16_t species=be16(record);
+    for(unsigned i=0;i<count;++i)if((be16(s->body+MEMO+4+i*12)&0x3fffu)==species)return 0;
+    if(count>=500)return -1;
+    uint8_t *p=s->body+MEMO+4+count*12;
+    put16(p,(uint16_t)(species|0x8000u));put32(p+4,be32(record+0x14));put32(p+8,be32(record+4));
+    put16(s->body+MEMO,(uint16_t)(count+1));
+    return 1;
+}
 int c3_game_state_daycare_occupied(const C3GameState *state)
 {
     const GameStateImpl *s=state?state->impl:NULL;return s?s->body[0x8168]!=0:0;

@@ -105,6 +105,9 @@ talk 7
 expect 0x415 1
 run 1200
 expect 0x417 1
+# Duking gives Wes the Plusle (native D9 kind 3, fn_801CADA8): party, else a
+# PC box; checked with C3_ROUTE_BATTLES and C3_ROUTE_PDA.
+expect_pokemon 0x161
 door 3
 talk 17
 expect 0x418 1

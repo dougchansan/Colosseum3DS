@@ -116,6 +116,7 @@ typedef struct {
              uint8_t shown[C3_HEAL_BALL_SLOTS];float at[C3_HEAL_BALL_SLOTS][3]; } heal;
     C3FieldStoryRestore restore;void *restore_context;
     C3FieldStoryRestore clear_poison;void *poison_context;
+    C3FieldStoryGift gift;void *gift_context;
     C3FieldStoryPurify purify;void *purify_context;
     C3FieldStoryPurified purified; /* the last purification, for its messages */
     uint32_t message_values[256]; /* msgctrlSetValue: one word per control byte */
@@ -1212,12 +1213,24 @@ static int run_native(Impl *s,RunTask *t,char *error)
         log_line(s,"story_resume_point floor=%03lx previous=%03lx spawn=%lu",(unsigned long)a[0],(unsigned long)a[1],(unsigned long)a[2]);
         break;
     case 0xc3:value=s->arrival_spawn;break; /* floorGetNextPosIndex: the entrance used */
-    case 0xd9:
-        /* fn_801CADA8(kind): the hero receives a gift Pokemon (1..6; 3 at
-         * floor 014). Building its party record is not ported yet: the call
-         * reports success so the story continues, and the gap is recorded. */
-        note_presentation(s,0xd9,"gift_pokemon_not_added");
-        log_line(s,"story_gift_pokemon kind=%lu status=unported",(unsigned long)a[0]);value=1;break;
+    case 0xd9:{
+        /* fn_801CADA8(kind): the hero receives a gift Pokemon (1..6; 3,
+         * Duking's Plusle, at floor 014). The scene's service builds and
+         * stores it; the script gets heroGetPokemon's result (party slot,
+         * -1 PC box, -2 no room). */
+        if(!s->gift){
+            note_presentation(s,0xd9,"gift_pokemon_no_service");
+            log_line(s,"story_gift_pokemon kind=%lu status=no_service",(unsigned long)a[0]);value=1;break;
+        }
+        uint16_t species=0;unsigned where=0;
+        int got=s->gift(s->gift_context,a[0],&species,&where);
+        if(got<-2){
+            note_presentation(s,0xd9,"gift_pokemon_not_added");
+            log_line(s,"story_gift_pokemon kind=%lu status=failed",(unsigned long)a[0]);got=-2;
+        }else if(got==-2)log_line(s,"story_gift_pokemon kind=%lu result=-2 status=no_room",(unsigned long)a[0]);
+        else log_line(s,"story_gift_pokemon kind=%lu species=%u result=%d where=%s slot=%u",(unsigned long)a[0],
+                      (unsigned)species,got,where<6?"party":"box",where);
+        value=(uint32_t)(int32_t)got;break;}
     /* fn_8018BDF4: the person's position into a script GSvec. */
     case 0xac:{
         p=person(s,a[0],a[1]);if(!p||!a[2])break;
@@ -2563,6 +2576,10 @@ void c3_field_story_set_poison_service(C3FieldStory *story,C3FieldStoryRestore c
 void c3_field_story_set_party_service(C3FieldStory *story,C3FieldStoryRestore restore,void *context)
 {
     Impl *s=story?story->impl:NULL;if(s){s->restore=restore;s->restore_context=context;}
+}
+void c3_field_story_set_gift_service(C3FieldStory *story,C3FieldStoryGift gift,void *context)
+{
+    Impl *s=story?story->impl:NULL;if(s){s->gift=gift;s->gift_context=context;}
 }
 int c3_field_story_bind_doors(C3FieldStory *story,const C3AreaDoor *rows,uint32_t count,
                               C3Title *const *models,char *error)
