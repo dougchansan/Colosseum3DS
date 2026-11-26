@@ -100,7 +100,9 @@ static int apply_snags(C3GameState *state, const C3GeneralBattle *battle, const 
         uint8_t record[C3_GB_POKEMON_SIZE], restored[C3_GB_POKEMON_SIZE];
         if (!c3_general_snag_record(pack, battle, index, &owner, gauge, battle->rng.seed ^ (0x5a6u + index), record))
             return fail(error, "The snagged Pokemon could not be created.");
+        /* pcboxAddPokemon's pokemonAllKaihuku: full HP, no condition, full PP. */
         memcpy(restored, record, sizeof restored);
+        memcpy(restored + 0x8a, restored + 0x8c, 2);
         memset(restored + 0x64, 0, 7); memset(restored + 0x6c, 0, 6);
         for (unsigned j = 0; j < 4; ++j) {
             C3GeneralMoveInfo mv; uint16_t id = rd16(restored + 0x78 + 4 * j);

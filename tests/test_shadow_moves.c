@@ -155,9 +155,46 @@ static void snag_then_battle(void)
     puts("shadow-moves: snagged FOE keeps its moves, leads with Shadow Rush and \"????\", opens with the gauge ok");
 }
 
+/* heroCatchPokemon copies the battle PokemonBios at the throw: the record
+ * keeps the HP left, the condition and the PP; fn_80213A78 zeroes HP only on
+ * the battle copy afterwards. */
+static void snag_keeps_battle_state(void)
+{
+    size_t n; uint8_t *bytes = make_shadow_pack(&n); C3BattlePack pack;
+    CHECK(c3_battle_pack_decode(&pack, bytes, n, error));
+    static C3GeneralBattle b; uint8_t party[6][0x138], copy[6][0x138]; C3GeneralRewards rw;
+    make_party(party, 1, 50, 1, 0);
+    CHECK(c3_general_battle_begin(&b, &pack, 0, party, 21, error));
+    C3GeneralMon *foe = &b.party[1][0];
+    unsigned max = foe->max_hp, left = max * 2u / 3u;
+    CHECK(max > 2 && left && left < max && (foe->hidden & 1u) && !(foe->hidden & 4u));
+    foe->hp = (uint16_t)left; foe->status = C3_GB_PARALYSIS;
+    foe->own_pp[0] = 20;   /* TACKLE behind Shadow Rush */
+    foe->pp[2] = 7;        /* the burn hit, shown as it is */
+    b.snag = 1; b.balls[1] = 1;
+    {   C3GeneralCommand c[2] = {{2, 1, 2}, {0}};
+        CHECK(c3_general_battle_turn(&b, &pack, c, error) && b.caught[0] == 1); }
+    CHECK(foe->hp == 0 && b.caught_hp[0] == left);
+    play_out(&b, &pack);
+    memcpy(copy, party, sizeof copy);
+    CHECK(c3_general_battle_writeback(&b, &pack, copy, &rw) && rw.caught_count == 1);
+    C3SnagOwner owner; memset(&owner, 0, sizeof owner); owner.trainer_id = 0x12345678u;
+    uint8_t rec[0x138];
+    CHECK(c3_general_snag_record(&pack, &b, 0, &owner, 30, 9, rec));
+    CHECK(g16(rec + 0x8a) == left && g16(rec + 0x8c) == max);
+    CHECK(g16(rec + 0x64) == 5);   /* paralysis, as the writeback stores it */
+    CHECK(rec[0x7a] == 20 && rec[0x7e] == 40 && rec[0x82] == 7);
+    /* No snag record without the HP at the throw. */
+    b.caught_hp[0] = 0; CHECK(!c3_general_snag_record(&pack, &b, 0, &owner, 30, 9, rec));
+    b.caught_hp[0] = (uint16_t)(max + 1u); CHECK(!c3_general_snag_record(&pack, &b, 0, &owner, 30, 9, rec));
+    c3_battle_pack_free(&pack); free(bytes);
+    puts("shadow-moves: snag record keeps the HP left at the throw, the condition and the PP ok");
+}
+
 int main(void)
 {
     rule();
     snag_then_battle();
+    snag_keeps_battle_state();
     return 0;
 }

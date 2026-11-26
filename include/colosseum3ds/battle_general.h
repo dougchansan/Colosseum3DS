@@ -203,10 +203,14 @@ typedef struct C3GeneralBattle {
     /* Snagging (the Snag Machine): with snag set, the hero may throw a ball
      * from balls[] (bag counts by ball item 1..12) at a Shadow Pokemon of
      * the opposing trainer. caught[] holds, per opponent party index, the
-     * ball that snagged it (0: not snagged). Never used in link battles. */
+     * ball that snagged it (0: not snagged), caught_hp[] its HP at the
+     * throw (heroCatchPokemon copies the PokemonBios before fn_80213A78
+     * sets the battle Pokemon's HP, status 0x83, to 0). Never used in link
+     * battles. */
     uint8_t snag;
     uint16_t balls[13], balls_used[13];
     uint8_t caught[C3_GB_PARTY];
+    uint16_t caught_hp[C3_GB_PARTY];
     /* The bag's Items and Berries pockets (C3GeneralBagItem). */
     uint8_t bag_count;
     C3GeneralBagItem bag[C3_GB_BAG];
@@ -293,8 +297,8 @@ void c3_general_battle_appear_checks(C3GeneralBattle *battle);
 int c3_general_battle_can_snag(const C3GeneralBattle *battle, const C3BattlePack *pack,
                                unsigned position, unsigned ball, unsigned target);
 /* The PokemonBios the hero receives for snagged opponent `index`: the
- * battle Pokemon's species, level, moves/PP, IVs, effort, held item, HP and
- * condition, catch metadata from owner, nickname = species name, and the
+ * battle Pokemon's species, level, moves/PP, IVs, effort, held item, HP at
+ * the throw and condition, catch metadata from owner, nickname = species name, and the
  * Shadow state pokemonSetDarkPokemonStatus writes (data ID +0xD8, heart
  * gauge +0xDC = gauge x 100, stored-up experience 0). The personality is
  * drawn from `seed` until it gives the trainer row's nature. */
