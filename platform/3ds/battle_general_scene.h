@@ -25,9 +25,11 @@ void c3_battle_music_end(const C3BattleMusic *music);
 /* The bottom-screen command UI, shared with the 3D battle scene
  * (battle_general_3d.c), which shows the events on the top screen. */
 /* C3_GUI_BALL is retired (the balls are the bag's second pocket); the
- * values stay as they were for the agent link's page numbers. */
+ * values stay as they were for the agent link's page numbers.
+ * C3_GUI_REPLACE (11): the forced party menu after a faint
+ * (c3_general_ui_replace). */
 typedef enum { C3_GUI_EVENTS, C3_GUI_MOVES, C3_GUI_TARGET, C3_GUI_SWITCH, C3_GUI_RESULT, C3_GUI_WAIT, C3_GUI_BALL,
-               C3_GUI_ACTION, C3_GUI_BAG, C3_GUI_BAG_PARTY, C3_GUI_BAG_MOVE } C3GeneralUiPage;
+               C3_GUI_ACTION, C3_GUI_BAG, C3_GUI_BAG_PARTY, C3_GUI_BAG_MOVE, C3_GUI_REPLACE } C3GeneralUiPage;
 /* The action menu each Pokemon's command starts on: fightMenuFightTrainer-
  * GcHeroOpenMenu's menu 0x4B (menuFightMainCtrl), items 0xB5-0xB8 in a 2x2
  * grid, FIGHT ITEMS / PKMN CALL. The entry is the menu result its SubMain
@@ -64,6 +66,8 @@ typedef struct {
      * chosen (a bag entry, or a ball id in the ball pocket). */
     unsigned bag_pocket, bag_cursor, bag_confirm, bag_choice, bag_entry;
     C3GeneralCommand commands[2];
+    /* C3_GUI_REPLACE: the party member chosen per position (255 none yet). */
+    uint8_t replace_choice[2];
     char error[C3_GB_ERROR_SIZE];
     /* Link battles (docs/link-play.md): control_mask is the side-0
      * positions (bits 0/1) this console commands, 0 meaning all; defer
@@ -78,6 +82,14 @@ typedef struct {
 /* Start choosing the hero's commands for the next turn. Returns 0 when
  * none of the controlled positions has a Pokemon able to act. */
 int c3_general_ui_commands(C3GeneralUi *ui, const C3GeneralBattle *b);
+/* After a turn that left b->replace_pending: the party menu for each
+ * pending position in order (fightMenuFightTrainerGcHeroSelectIrekae-
+ * FightPokemon with retry 0): it has no cancel (B does nothing), a fainted
+ * Pokemon or one already out or chosen is refused, and A on the last choice
+ * runs c3_general_battle_replace (c3_general_ui_press returns 1, its
+ * send-outs in b->events). The cursor starts on the first Pokemon that can
+ * go, so A alone accepts the default. Returns 0 when nothing is pending. */
+int c3_general_ui_replace(C3GeneralUi *ui, const C3GeneralBattle *b);
 /* This frame's edges that the current page may act on (call every frame,
  * before c3_general_ui_press). A page opened by c3_general_ui_commands, a
  * result page and every page a press advances ignore the buttons down when

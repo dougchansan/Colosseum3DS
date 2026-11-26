@@ -168,6 +168,8 @@ static int run(const C3BattlePack *pack, C3GeneralBattle *b, C3BattleLinkHooks *
     memset(&view, 0, sizeof view); memset(&ui, 0, sizeof ui);
     ui.page = C3_GUI_EVENTS; ui.timed_log = 1;
     if (hooks) { ui.control_mask = hooks->control_mask; ui.defer = 1; }
+    /* The hero picks each replacement; probes, link play and a CPU side 0 do not. */
+    b->choose_replace = !autoplay && !hooks && !b->info.cpu_side0 && !b->link;
     C3BattleRng local_rng; c3_battle_rng_init(&local_rng, 0x1u + (uint32_t)c3_n3ds_time_us());
     if (!stage) return -1;
     if (!c3_battle3d_index_load(&index, C3_BATTLE3D_ROOT "/index.c3n", error, sizeof error)) { free(stage); return -1; }
@@ -242,7 +244,11 @@ static int run(const C3BattlePack *pack, C3GeneralBattle *b, C3BattleLinkHooks *
                 if (!c3_battle_general_stage_submit(stage, batch, n)) { snprintf(error, sizeof error, "Invalid battle event batch."); goto done; }
                 count = n; dirty = 1;
             } else if (b->outcome != C3_GB_RUNNING) { ui.page = C3_GUI_RESULT; c3_press_gate_close(&ui.gate); dirty = 1; }
-            else {
+            else if (c3_general_ui_replace(&ui, b)) {
+                /* A fainted Pokemon's replacement: the forced party menu. */
+                dirty = 1;
+                if (trace) { fprintf(trace, "general_battle_replace_menu turn=%lu pending=%u\n", (unsigned long)b->turn, b->replace_pending); fflush(trace); }
+            } else {
                 int any = c3_general_ui_commands(&ui, b); dirty = 1;
                 /* The command phase opens only after the whole log has played
                  * (the opening's Shadow appearance included). */

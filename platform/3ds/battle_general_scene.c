@@ -217,6 +217,9 @@ void c3_general_ui_draw(const C3BattlePack *pack, const C3GeneralBattle *b, cons
     } else if (ui->page == C3_GUI_BAG_MOVE) {
         snprintf(text, sizeof text, "Restore which move's PP?");
         message = ui->error[0] ? ui->error : text;
+    } else if (ui->page == C3_GUI_REPLACE) {
+        snprintf(text, sizeof text, "Choose a Pokemon to send out.");
+        message = ui->error[0] ? ui->error : text;
     }
     c3_ui_text(s, 13, 100, 294, 2, message, C3_UI_WHITE);
     if (ui->page == C3_GUI_ACTION) {
@@ -287,6 +290,14 @@ void c3_general_ui_draw(const C3BattlePack *pack, const C3GeneralBattle *b, cons
             c3_ui_row_value(s, 148 + (int)i * 13, m->name, text, ui->cursor == i, active || !m->hp);
         }
         c3_ui_footer(s, "A: switch in  B: back");
+    } else if (ui->page == C3_GUI_REPLACE) {
+        unsigned taken = ui->replace_choice[ui->position ? 0 : 1];
+        for (unsigned i = 0; i < b->party_count[0]; ++i) {
+            const C3GeneralMon *m = &b->party[0][i];
+            snprintf(text, sizeof text, "%u/%u", m->hp, m->max_hp);
+            c3_ui_row_value(s, 148 + (int)i * 13, m->name, text, ui->cursor == i, !c3_general_battle_can_replace(b, ui->position, i, taken));
+        }
+        c3_ui_footer(s, "A: send out");
     } else if (ui->page == C3_GUI_RESULT) {
         c3_ui_footer(s, "A: continue");
     } else if (!ui->timed_log || (e && e->hold)) {
@@ -303,6 +314,29 @@ int c3_general_ui_commands(C3GeneralUi *ui, const C3GeneralBattle *b)
     open_action(ui);
     c3_press_gate_close(&ui->gate); /* the press that ended the log is not a command */
     return p >= 0;
+}
+
+/* The forced replacement's party menu for the first pending position from
+ * `from` on; the cursor on the first Pokemon that can go there. */
+static int replace_position(C3GeneralUi *ui, const C3GeneralBattle *b, unsigned from)
+{
+    for (unsigned p = from; p < b->active_count && p < 2; ++p) {
+        if (!(b->replace_pending >> p & 1u)) continue;
+        unsigned taken = ui->replace_choice[p ? 0 : 1];
+        ui->page = C3_GUI_REPLACE; ui->position = p; ui->cursor = 0;
+        for (unsigned i = 0; i < b->party_count[0]; ++i)
+            if (c3_general_battle_can_replace(b, p, i, taken)) { ui->cursor = i; break; }
+        return 1;
+    }
+    return 0;
+}
+int c3_general_ui_replace(C3GeneralUi *ui, const C3GeneralBattle *b)
+{
+    ui->replace_choice[0] = ui->replace_choice[1] = 255;
+    ui->error[0] = 0;
+    if (!replace_position(ui, b, 0)) return 0;
+    c3_press_gate_close(&ui->gate); /* the press that ended the log is not a choice */
+    return 1;
 }
 
 uint16_t c3_general_ui_input(C3GeneralUi *ui, uint16_t held, uint16_t pressed)
@@ -431,6 +465,31 @@ int c3_general_ui_press(C3GeneralUi *ui, const C3BattlePack *pack, C3GeneralBatt
             else if (active || !b->party[0][ui->cursor].hp) snprintf(ui->error, sizeof ui->error, "That Pokemon cannot battle now.");
             else { ui->commands[ui->position].kind = 1; ui->commands[ui->position].slot = (uint8_t)ui->cursor; submit = 1; }
         }
+    } else if (ui->page == C3_GUI_REPLACE) {
+        /* No cancel: B leaves the menu up (retry 0 reopens it). */
+        unsigned n = b->party_count[0] ? b->party_count[0] : 1u;
+        if (pressed & C3_PAD_UP) ui->cursor = (ui->cursor + n - 1) % n;
+        if (pressed & C3_PAD_DOWN) ui->cursor = (ui->cursor + 1) % n;
+        if (pressed & C3_PAD_A) {
+            unsigned pos = ui->position, taken = ui->replace_choice[pos ? 0 : 1];
+            if (!c3_general_battle_can_replace(b, pos, ui->cursor, taken)) {
+                snprintf(ui->error, sizeof ui->error, "That Pokemon cannot battle now.");
+                return 0;
+            }
+            ui->replace_choice[pos] = (uint8_t)ui->cursor;
+            if (replace_position(ui, b, pos + 1)) return 0;
+            char error[C3_GB_ERROR_SIZE];
+            if (!c3_general_battle_replace(b, pack, ui->replace_choice, error)) {
+                if (trace) { fprintf(trace, "general_battle_error turn=%lu error=%s\n", (unsigned long)b->turn, error); fflush(trace); }
+                c3_general_ui_replace(ui, b);
+                snprintf(ui->error, sizeof ui->error, "%s", error);
+                return 0;
+            }
+            if (trace) { fprintf(trace, "general_battle_replace turn=%lu choice=%u,%u events=%lu draws=%llu\n", (unsigned long)b->turn,
+                ui->replace_choice[0], ui->replace_choice[1], (unsigned long)b->event_count, (unsigned long long)b->rng.draws); fflush(trace); }
+            ui->page = C3_GUI_EVENTS;
+            return 1;
+        }
     }
     if (!submit) return 0;
     int p = next_position(ui, b, ui->position + 1);
@@ -462,6 +521,8 @@ int c3_battle_general_scene_run(const C3BattlePack *pack, C3GeneralBattle *b, FI
     if (trace) { fprintf(trace, "general_battle_begin encounter=%lu trainer=%s/%s active=%u hero_party=%u foe_party=%u scene=2d\n",
         (unsigned long)b->encounter, b->info.title, b->info.trainer, b->active_count, b->party_count[0], b->party_count[1]); fflush(trace); }
     int dirty = 1;
+    /* The hero picks each replacement; probes and a CPU side 0 do not. */
+    b->choose_replace = !c3_battle_general_autoplaying() && !b->info.cpu_side0 && !b->link;
     while (c3_n3ds_poll(&input)) {
 #ifdef C3_AGENT_HARNESS
         c3_agent_link_battle(b, (uint8_t)ui.page);
@@ -475,7 +536,9 @@ int c3_battle_general_scene_run(const C3BattlePack *pack, C3GeneralBattle *b, FI
                 ++event; event_start = now; dirty = 1;
                 if (event >= b->event_count) {
                     if (b->outcome != C3_GB_RUNNING) { ui.page = C3_GUI_RESULT; c3_press_gate_close(&ui.gate); }
-                    else {
+                    else if (c3_general_ui_replace(&ui, b)) {
+                        if (trace) { fprintf(trace, "general_battle_replace_menu turn=%lu pending=%u scene=2d\n", (unsigned long)b->turn, b->replace_pending); fflush(trace); }
+                    } else {
                         c3_general_ui_commands(&ui, b);
                         if (trace) { fprintf(trace, "general_battle_commands turn=%lu after_events=%lu last_kind=%u last_special=0x%x scene=2d\n", (unsigned long)b->turn,
                             (unsigned long)b->event_count, b->event_count ? (unsigned)b->events[b->event_count - 1].kind : 0u,
