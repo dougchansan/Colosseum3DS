@@ -56,7 +56,7 @@ static int loop_frame(Loop *l, uint16_t held, int gated)
 {
     C3N3dsInput in = pad_frame(&l->pad, held);
     ++l->frame;
-    if (l->ui.page == C3_GUI_EVENTS && !l->message_frames) CHECK(c3_general_ui_commands(&l->ui, l->b));
+    if (l->ui.page == C3_GUI_EVENTS && !l->message_frames && !c3_general_ui_replace(&l->ui, l->b)) CHECK(c3_general_ui_commands(&l->ui, l->b));
     uint16_t page_pressed = c3_general_ui_input(&l->ui, in.held, in.pressed);
     if (!gated) page_pressed = in.pressed;
     int r = -1;
@@ -413,7 +413,35 @@ int main(void)
     press(&l, C3_PAD_X, 1); press(&l, C3_PAD_Y, 1); press(&l, C3_PAD_L, 1);
     CHECK(l.ui.page == C3_GUI_MOVES && l.ui.position == 0 && l.ui.commands[0].kind == 0 && l.ui.commands[0].target == 0);
 
+    {   /* A faint with two in reserve: once the log ends the forced party
+         * menu opens on the first Pokemon that can go (2); B does nothing,
+         * a Pokemon already out is refused, and A sends the choice out. */
+        uint8_t four[6][0x138]; make_party(four, 1, 50, 4, 0);
+        CHECK(c3_general_battle_begin(&b, &pack, 0, four, 7, error));
+        b.choose_replace = 1; b.info.critical = 0;
+        for (unsigned i = 0; i < b.party_count[1]; ++i) b.party[1][i].hp = b.party[1][i].max_hp = 999;
+        C3GeneralMon *m = &b.party[0][b.active[0][0]]; m->hp = 1; m->status = C3_GB_POISON;
+        C3GeneralCommand c[2] = {{0, 0, 2}, {0, 0, 2}};
+        CHECK(c3_general_battle_turn(&b, &pack, c, error) && b.replace_pending == 1u && b.outcome == C3_GB_RUNNING);
+        loop_begin(&l, &b, &pack, 30);
+        press(&l, C3_PAD_A, 1); /* a press while the log plays chooses nothing */
+        idle(&l, 30, 1);
+        CHECK(l.ui.page == C3_GUI_REPLACE && l.ui.position == 0 && l.ui.cursor == 2 && b.replace_pending == 1u);
+        press(&l, C3_PAD_B, 1);
+        CHECK(l.ui.page == C3_GUI_REPLACE && l.ui.cursor == 2);
+        press(&l, C3_PAD_UP, 1);
+        CHECK(l.ui.cursor == 1);
+        press(&l, C3_PAD_A, 1);
+        CHECK(l.ui.page == C3_GUI_REPLACE && l.ui.error[0] && b.replace_pending == 1u);
+        press(&l, C3_PAD_DOWN, 1); press(&l, C3_PAD_DOWN, 1);
+        CHECK(l.ui.cursor == 3);
+        CHECK(press_result(&l, C3_PAD_A) == 1);
+        CHECK(b.replace_pending == 0 && b.active[0][0] == 3 && l.ui.page == C3_GUI_EVENTS && b.events[0].kind == C3_GB_EVENT_SWITCH);
+        idle(&l, 200, 1);
+        CHECK(l.ui.page == C3_GUI_ACTION && l.ui.position == 0);
+    }
+
     c3_battle_pack_free(&pack); free(bytes);
-    printf("battle command input: action menu, bag, one press per UI layer\n");
+    printf("battle command input: action menu, bag, replacement, one press per UI layer\n");
     return 0;
 }

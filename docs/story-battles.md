@@ -139,6 +139,56 @@ departure; the trace shows `story_battle_whiteout floor=... source=...
 flag=0e05 fade_script=05960008`. A loss without the zenmetu flag resumes the
 script with result 3, as the original does.
 
+## Replacing a fainted Pokemon
+
+The original's faint check is the battle script at 0x80378798 (opcode 0x24
+`fn_80222C44`, then the script end). The script runner `fn_80211B94` runs it
+after every move or item script (`fn_802128D0`, `fn_80211E18`) and
+`fn_8022FE80` runs it again at the end of the turn (`fn_80213270`). When
+nobody has won and a trainer has an empty slot with a healthy reserve
+(`fightFloorIsIrekaeFightOutPokemon`):
+
+- `fightFloorLoopValidFightTrainer(fn_802230BC)` asks the manual trainers
+  (the hero) first, then the AI trainers. For each of the trainer's slots in
+  order that is empty, while `fn_801F8A18` still finds a healthy reserve,
+  `fightTrainerSelectIrekaeFightPokemon` picks one and `fn_801F8F24` takes
+  it, so with one reserve for two empty slots only the first is asked and
+  the second stays empty; with none nothing is asked.
+- The hero's pick is `fightMenuFightTrainerGcHeroSelectIrekaeFightPokemon`
+  with retry 0: the party menu reopens on a cancel (no way out) and refuses
+  a Pokemon that is not valid (fainted) or has status 0xD2 (out, or already
+  chosen). Its timeout pick (`fightTrainerTimeOutSelectIrekaeFightPokemon`,
+  battle-timer modes only) is the first healthy reserve. The AI uses
+  `fightTrainerAiSelectIrekaeDasuFightPokemon`.
+- Then `fn_80222EF0` sends every choice out, out-Pokemon by out-Pokemon
+  (script 0x8037879E, from opcode 0x50 `fn_8021F24C`, which skips its own
+  menu call once status 0x119 says the choice is made). The hero
+  chooses before the foe's replacement is known or shown; there is no
+  Gen 3 "Will you switch?" shift prompt. Experience for a fainted foe is the
+  faint script's opcode 0x23 (`fn_802232F4`), before any of this.
+
+In the port (`c3_general_battle_replace`, `src/battle_general.c`) the
+turn, when a hero position is left empty with a reserve and
+`choose_replace` is set (the 2D and 3D scenes set it), ends after the
+experience with `replace_pending` (a bit per position to ask) and nobody
+sent out, the foe's replacement included. The scene opens the forced party
+menu (`C3_GUI_REPLACE`, agent feed `ui_page` 11) for each pending position
+in order: the cursor starts on the first Pokemon that can go, A sends it,
+B does nothing, a fainted Pokemon or one out or already chosen shows "That
+Pokemon cannot battle now.". The last choice runs the replacement: the
+hero's choices, then the trainer AI's pick, then the send-outs in position
+order, as a new event log. Host runners, probes, link battles and a side-0
+CPU trainer leave `choose_replace` clear and take the first healthy reserve
+(the original's timeout pick), drawing the same RNG as an explicit choice of
+that member would. Tests: `test_battle_turn_rules` (one faint with two
+reserves taking the second, both fainting, one reserve for two slots, no
+reserve, experience before the menu) and `test_battle_command_input` (the
+menu's presses).
+
+The port replaces only at the end of the turn; the original's faint check
+also runs right after each action, so a Pokemon that faints mid-turn is
+replaced before the rest of the turn's actions (see Remaining gaps).
+
 ## Snagging
 
 - Command: the bottom-screen page offers the balls (X) when the bag has
@@ -284,6 +334,7 @@ models load.
 | Encounters 0, 1, 8, 9, 521, 524 | refused (test rows, link rows, empty rosters); no story script requests them |
 | Turn rules | original order, speed, targets, damage order and end of turn for the modelled effects; the trainer AI from the original AI rows (per-move AI functions not ported); see [battle-rules-lane.md](battle-rules-lane.md) |
 | Bag in battle, escape | not offered |
+| Replacement timing | the hero picks the replacement (forced party menu), but only at the end of the turn; the original's faint check (script 0x80378798) also runs after each action's script, replacing mid-turn |
 | Move forget prompt | asked (original messages) when a battle scene has bound it; post-battle evolution is still reported, not run |
 | Hyper Mode, heart gauge drops in battle | modelled for the hero's Shadow Pokemon; the nature rate for the drops is taken as 1/1 |
 | Snag presentation | the snagged Pokemon leaves with its faint sequence; the original throw and shake effects (`fightTrainerHokakuThrowEffect`) are not drawn |

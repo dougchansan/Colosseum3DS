@@ -1581,19 +1581,76 @@ static int command_valid(C3GeneralBattle *b,const C3BattlePack *p,unsigned pos,C
     uint8_t mask=c3_general_battle_legal_moves(b,p,pos);
     return c.slot==4?!mask:c.slot<4&&(mask>>c.slot&1u);
 }
-static int replace_fainted(const C3BattlePack *p,C3GeneralBattle *b)
+/* Each fainted foe's experience (fn_802232F4, opcode 0x23 of the faint
+ * script) is shared out before anyone is replaced. award is a no-op once
+ * paid (it clears the foe's participants). */
+static void award_fainted(const C3BattlePack *p,C3GeneralBattle *b)
 {
+    for(unsigned a=0;a<b->active_count;++a){uint8_t i=b->active[1][a];
+        if(i!=NO_MON&&!b->party[1][i].hp&&!b->link&&!b->caught[i])award(p,b,i);}
+}
+/* The faint check (script 0x80378798, opcode 0x24 fn_80222C44) once nobody
+ * has won: fightFloorLoopValidFightTrainer runs fn_802230BC for the manual
+ * trainers (the hero) first, then the AI trainers; for each of its out
+ * slots in order that is empty, while fn_801F8A18 finds a healthy reserve,
+ * fightTrainerSelectIrekaeFightPokemon picks one (the hero:
+ * fightMenuFightTrainerGcHeroSelectIrekaeFightPokemon with retry 0, the
+ * party menu that reopens on cancel and refuses a fainted Pokemon or one
+ * already out or chosen, status 0xD2; the AI: fightTrainerAiSelectIrekae-
+ * DasuFightPokemon) and fn_801F8F24 takes it. Then every replacement is sent
+ * out (fn_80222EF0, script 0x8037879E). choice: the hero's pick per
+ * position, NULL for the first healthy reserve (the original's timeout pick,
+ * fightTrainerTimeOutSelectIrekaeFightPokemon). */
+static int replace_fainted(const C3BattlePack *p,C3GeneralBattle *b,const uint8_t choice[2])
+{
+    award_fainted(p,b);
     for(unsigned s=0;s<2;++s)for(unsigned a=0;a<b->active_count;++a){
         uint8_t i=b->active[s][a];
         if(i!=NO_MON&&b->party[s][i].hp)continue;
-        if(s==1&&i!=NO_MON&&!b->link&&!b->caught[i])award(p,b,i);
         const uint8_t *ai=ai_row(b,p,s);
-        int n=ai?ai_select_dasu(b,p,ai,s,NULL):next_healthy(b,s,a);
+        int n=!s&&choice&&(b->replace_pending>>a&1u)?choice[a]:ai?ai_select_dasu(b,p,ai,s,NULL):next_healthy(b,s,a);
         if(n==-2)return 0;
         b->active[s][a]=n<0?NO_MON:(uint8_t)n;
         if(n>=0){announce_send(b,s,a,&b->party[s][n]);sent_out(b,p,s,(unsigned)n);dark_check_appear(b,s*2+a);}
     }
-    mark_faced(b);return 1;
+    b->replace_pending=0;mark_faced(b);return 1;
+}
+/* The hero positions the original asks about: empty ones in slot order
+ * while a healthy reserve is left, each choice taking one. */
+static uint8_t replace_wanted(const C3GeneralBattle *b)
+{
+    unsigned left=0;uint8_t mask=0;
+    if(!b->choose_replace||b->link||b->info.cpu_side0||b->outcome!=C3_GB_RUNNING)return 0;
+    for(unsigned i=0;i<b->party_count[0];++i){int used=0;
+        for(unsigned a=0;a<b->active_count;++a)used|=b->active[0][a]==i;
+        left+=!used&&b->party[0][i].hp;}
+    for(unsigned a=0;a<b->active_count&&left;++a){uint8_t i=b->active[0][a];
+        if(i!=NO_MON&&b->party[0][i].hp)continue;
+        mask|=(uint8_t)(1u<<a);--left;}
+    return mask;
+}
+int c3_general_battle_can_replace(const C3GeneralBattle *b,unsigned pos,unsigned index,unsigned taken)
+{
+    if(!b||b->magic!=MAGIC||pos>=b->active_count||!(b->replace_pending>>pos&1u))return 0;
+    if(index>=b->party_count[0]||index==taken||!b->party[0][index].hp)return 0;
+    for(unsigned a=0;a<b->active_count;++a)if(b->active[0][a]==index)return 0;
+    return 1;
+}
+int c3_general_battle_replace(C3GeneralBattle *out,const C3BattlePack *p,const uint8_t choice[2],char *e)
+{
+    if(!out||!p||!choice||out->magic!=MAGIC||out->outcome!=C3_GB_RUNNING||!out->replace_pending)
+        return fail(e,"No replacement is waiting.");
+    for(unsigned a=0;a<out->active_count;++a){
+        if(!(out->replace_pending>>a&1u))continue;
+        unsigned other=a?0u:1u,taken=other<out->active_count&&(out->replace_pending>>other&1u)?choice[other]:NO_MON;
+        if(!c3_general_battle_can_replace(out,a,choice[a],taken))return fail(e,"That Pokemon cannot battle now.");
+    }
+    C3GeneralBattle *b=malloc(sizeof *b);if(!b)return fail(e,"Turn allocation failed.");
+    *b=*out;b->event_count=0;
+    int ok=replace_fainted(p,b,choice);
+    if(ok){*out=*b;if(e)e[0]=0;}
+    else fail(e,"Battle turn failed: random-number or table bounds.");
+    free(b);return ok;
 }
 static int order_actors(C3GeneralBattle *b,const C3BattlePack *p,const C3GeneralCommand *cmd,int use_pri,uint8_t ary[4]);
 /* fn_80213270: the side counters first (Reflect, Light Screen:
@@ -1710,6 +1767,7 @@ static int turn_core(C3GeneralBattle *out,const C3BattlePack *p,const C3GeneralC
 {
     if(!out||!p||!player||out->magic!=MAGIC||out->outcome!=C3_GB_RUNNING||out->turn>=C3_GB_MAX_TURNS)
         return fail(e,"Invalid or finished battle.");
+    if(out->replace_pending)return fail(e,"Choose the Pokemon to send out first.");
     for(unsigned pos=0;pos<4;++pos){
         if(!link&&(pos/2||out->info.cpu_side0))continue;
         if(pos%2<out->active_count&&!command_valid(out,p,pos,player[pos]))return fail(e,"Choose a usable move or a healthy Pokemon.");
@@ -1752,7 +1810,10 @@ static int turn_core(C3GeneralBattle *out,const C3BattlePack *p,const C3GeneralC
         check_outcome(b);if(b->outcome!=C3_GB_RUNNING)break;
     }
     if(b->outcome==C3_GB_RUNNING){if(!end_of_turn(b,p))goto failed;check_outcome(b);}
-    if(!replace_fainted(p,b))goto failed;
+    /* The hero's forced choice comes first: the turn stops here (after the
+     * experience) and c3_general_battle_replace finishes the replacements. */
+    if(b->turn<C3_GB_MAX_TURNS&&(b->replace_pending=replace_wanted(b)))award_fainted(p,b);
+    else if(!replace_fainted(p,b,NULL))goto failed;
     if(b->outcome==C3_GB_RUNNING&&b->turn>=C3_GB_MAX_TURNS)b->outcome=C3_GB_DRAW;
     if(b->outcome!=C3_GB_RUNNING&&b->link){
         unsigned foe=1u-b->viewer;int won=b->outcome==(b->viewer?C3_GB_LOST:C3_GB_WON);

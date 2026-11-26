@@ -82,6 +82,108 @@ static unsigned hp_lost(const C3GeneralBattle *b, unsigned pos)
     return total;
 }
 
+/* The hero's send-outs in a log: positions and party indices, in order. */
+static unsigned hero_sends(const C3GeneralBattle *b, uint8_t pos[4], uint8_t mon[4])
+{
+    unsigned n = 0;
+    for (uint32_t i = 0; i < b->event_count && n < 4; ++i) {
+        const C3GeneralEvent *e = &b->events[i];
+        if (e->kind == C3_GB_EVENT_SWITCH && e->actor < 2 && strstr(e->text, "Go, ")) { pos[n] = e->actor; mon[n] = e->mon[e->actor]; ++n; }
+    }
+    return n;
+}
+/* A hero Pokemon at `pos` faints at the end of the turn (poison at 1 HP). */
+static void doom(C3GeneralBattle *b, unsigned pos)
+{
+    C3GeneralMon *m = &b->party[0][b->active[0][pos]];
+    m->hp = 1; m->status = C3_GB_POISON;
+}
+/* fn_80222C44 / fn_802230BC: the forced replacement after a faint. */
+static void check_replacement(C3GeneralBattle *b)
+{
+    const unsigned sp[4] = {10, 20, 30, 40};
+    static C3GeneralBattle a;
+    uint8_t pos[4], mon[4];
+    {   /* One faint, two in reserve: the turn stops with position 0 pending
+         * and nobody sent out; the hero takes the second reserve (3). */
+        setup(b, 21, sp, 4); b->choose_replace = 1; doom(b, 0);
+        turn_all(b, 0, 2);
+        CHECK(b->outcome == C3_GB_RUNNING && b->replace_pending == 1u && b->active[0][0] == 0 && !b->party[0][0].hp);
+        CHECK(hero_sends(b, pos, mon) == 0);
+        C3GeneralCommand c[2] = {{0, 0, 2}, {0, 0, 2}};
+        CHECK(!c3_general_battle_turn(b, &pack, c, error) && strstr(error, "send out"));
+        CHECK(c3_general_battle_can_replace(b, 0, 2, 255) && c3_general_battle_can_replace(b, 0, 3, 255));
+        CHECK(!c3_general_battle_can_replace(b, 0, 0, 255));  /* fainted */
+        CHECK(!c3_general_battle_can_replace(b, 0, 1, 255));  /* already out */
+        CHECK(!c3_general_battle_can_replace(b, 1, 2, 255));  /* position 1 is not asked */
+        CHECK(!c3_general_battle_can_replace(b, 0, 4, 255));  /* no such member */
+        const uint8_t dead[2] = {0, 255}, out[2] = {1, 255};
+        uint32_t turn = b->turn;
+        CHECK(!c3_general_battle_replace(b, &pack, dead, error) && b->replace_pending == 1u);
+        CHECK(!c3_general_battle_replace(b, &pack, out, error) && b->replace_pending == 1u);
+        const uint8_t pick[2] = {3, 255};
+        CHECK(c3_general_battle_replace(b, &pack, pick, error));
+        CHECK(b->replace_pending == 0 && b->active[0][0] == 3 && b->active[0][1] == 1 && b->turn == turn);
+        CHECK(hero_sends(b, pos, mon) == 1 && pos[0] == 0 && mon[0] == 3 && b->events[0].kind == C3_GB_EVENT_SWITCH);
+        CHECK(!c3_general_battle_replace(b, &pack, pick, error)); /* nothing waits now */
+        turn_all(b, 0, 2);
+        CHECK(b->turn == turn + 1 && b->replace_pending == 0);
+    }
+    {   /* Choosing what the automatic path takes (the first reserve) gives
+         * the same battle as that path: same RNG, positions and HP. */
+        setup(&a, 22, sp, 4); doom(&a, 0); turn_all(&a, 0, 2);
+        CHECK(a.replace_pending == 0 && a.active[0][0] == 2);
+        setup(b, 22, sp, 4); b->choose_replace = 1; doom(b, 0); turn_all(b, 0, 2);
+        const uint8_t pick[2] = {2, 255};
+        CHECK(b->replace_pending == 1u && c3_general_battle_replace(b, &pack, pick, error));
+        CHECK(b->rng.draws == a.rng.draws && b->rng.seed == a.rng.seed && !memcmp(b->active, a.active, sizeof a.active));
+        for (unsigned i = 0; i < 4; ++i) CHECK(b->party[0][i].hp == a.party[0][i].hp && b->party[1][i].hp == a.party[1][i].hp);
+        CHECK(!strcmp(b->events[b->event_count - 1].text, a.events[a.event_count - 1].text));
+    }
+    {   /* Both faint in one turn: positions 0 then 1 are asked, each choice
+         * taking one reserve; the send-outs follow in position order. */
+        setup(b, 23, sp, 4); b->choose_replace = 1; doom(b, 0); doom(b, 1);
+        turn_all(b, 0, 2);
+        CHECK(b->replace_pending == 3u && hero_sends(b, pos, mon) == 0);
+        CHECK(c3_general_battle_can_replace(b, 1, 2, 3) && !c3_general_battle_can_replace(b, 1, 3, 3));
+        const uint8_t twice[2] = {2, 2}, pick[2] = {3, 2};
+        CHECK(!c3_general_battle_replace(b, &pack, twice, error) && b->replace_pending == 3u);
+        CHECK(c3_general_battle_replace(b, &pack, pick, error));
+        CHECK(b->active[0][0] == 3 && b->active[0][1] == 2 && b->replace_pending == 0);
+        CHECK(hero_sends(b, pos, mon) == 2 && pos[0] == 0 && mon[0] == 3 && pos[1] == 1 && mon[1] == 2);
+    }
+    {   /* Both faint with one reserve: only position 0 is asked; 1 stays empty. */
+        setup(b, 24, sp, 3); b->choose_replace = 1; doom(b, 0); doom(b, 1);
+        turn_all(b, 0, 2);
+        CHECK(b->replace_pending == 1u);
+        const uint8_t pick[2] = {2, 255};
+        CHECK(c3_general_battle_replace(b, &pack, pick, error));
+        CHECK(b->active[0][0] == 2 && b->active[0][1] == 255 && hero_sends(b, pos, mon) == 1);
+        turn_all(b, 0, 2); /* the battle goes on with one Pokemon */
+        CHECK(b->replace_pending == 0);
+    }
+    {   /* No reserve: nothing is asked and the position stays empty. */
+        setup(b, 25, sp, 2); b->choose_replace = 1; doom(b, 0);
+        turn_all(b, 0, 2);
+        CHECK(b->outcome == C3_GB_RUNNING && b->replace_pending == 0 && b->active[0][0] == 255 && b->active[0][1] == 1);
+        turn_all(b, 0, 2);
+    }
+    {   /* A foe faints the same turn: its experience is paid in the turn's
+         * log, before the menu, not with the send-outs. */
+        setup(b, 26, sp, 4); b->choose_replace = 1; doom(b, 0);
+        C3GeneralMon *foe = &b->party[1][b->active[1][0]];
+        foe->hp = 1; foe->status = C3_GB_POISON;
+        turn_all(b, 0, 2);
+        CHECK(b->replace_pending == 1u && !foe->hp);
+        int exp = 0;
+        for (uint32_t i = 0; i < b->event_count; ++i) exp |= strstr(b->events[i].text, "EXP. Points") != NULL;
+        CHECK(exp);
+        const uint8_t pick[2] = {2, 255};
+        CHECK(c3_general_battle_replace(b, &pack, pick, error));
+        for (uint32_t i = 0; i < b->event_count; ++i) CHECK(!strstr(b->events[i].text, "EXP. Points"));
+    }
+}
+
 int main(void)
 {
     size_t n; uint8_t *bytes = make_pack(2, 50, &n);
@@ -207,7 +309,8 @@ int main(void)
         CHECK(wore >= 0 && fast > wore && slow > fast);
         CHECK(b.party[1][b.active[1][1]].hp == 999 - 62);
     }
+    check_replacement(&b);
     c3_battle_pack_free(&pack); free(bytes);
-    puts("battle-turn-rules: order, priority, speed items, ties, targeting, damage and end of turn ok");
+    puts("battle-turn-rules: order, priority, speed items, ties, targeting, damage, end of turn and replacement ok");
     return 0;
 }

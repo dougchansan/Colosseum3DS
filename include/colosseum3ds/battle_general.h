@@ -226,6 +226,13 @@ typedef struct C3GeneralBattle {
      * message 0x770A instead of 0x7717). */
     char partner_name[C3_GB_NAME];
     uint8_t shadow_named;
+    /* The forced replacement (c3_general_battle_replace). choose_replace:
+     * the hero picks each fainted Pokemon's replacement from the party (the
+     * 3DS scenes set it); clear, the first healthy reserve goes, as the
+     * original's timeout pick does (host runners, probes; link battles and
+     * a side-0 CPU trainer always). replace_pending: the hero positions (bit
+     * 0/1) waiting for that choice; no other command is taken meanwhile. */
+    uint8_t choose_replace, replace_pending;
     uint32_t event_count;
     C3GeneralEvent events[C3_GB_EVENT_LIMIT];
 } C3GeneralBattle;
@@ -365,9 +372,23 @@ uint8_t c3_general_battle_legal_moves(const C3GeneralBattle *battle, const C3Bat
  * headless whole-game test also uses it for the hero). */
 int c3_general_battle_choose(C3GeneralBattle *battle, const C3BattlePack *pack,
                              unsigned position, C3GeneralCommand *command);
-/* commands[0..1] are the hero's positions 0 and 1 (ignored when empty). */
+/* commands[0..1] are the hero's positions 0 and 1 (ignored when empty).
+ * Refused while a replacement is pending. */
 int c3_general_battle_turn(C3GeneralBattle *battle, const C3BattlePack *pack,
                            const C3GeneralCommand commands[2], char *error);
+/* The replacement after a faint (src/battle_general.c, fn_80222C44 and
+ * fn_802230BC). With choose_replace set, a turn that leaves a hero position
+ * empty while a healthy reserve is left ends with replace_pending set and
+ * nobody sent out yet, the foe's replacement included: the original asks
+ * the hero first (forced party menu, no cancel), position 0 then 1, each
+ * choice taking one reserve (with one reserve for two empty positions only
+ * position 0 is asked), then the trainer AI picks, then the send-outs play.
+ * can_replace: whether party member `index` may go to pending `position`
+ * (healthy, not out, not `taken`, the other position's choice or 255).
+ * replace: choice[a] for each pending position a (others ignored); logs
+ * the send-outs as a new event list. On failure nothing changes. */
+int c3_general_battle_can_replace(const C3GeneralBattle *battle, unsigned position, unsigned index, unsigned taken);
+int c3_general_battle_replace(C3GeneralBattle *battle, const C3BattlePack *pack, const uint8_t choice[2], char *error);
 /* Experience, effort, levels (stats recomputed from IVs/EVs/nature) and
  * their level-up moves, HP, PP and the persistent status back into the party
  * records; prize money and the story result code. Shadow Pokemon bank their
