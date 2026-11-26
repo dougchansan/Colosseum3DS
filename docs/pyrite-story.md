@@ -143,6 +143,13 @@ packs of the same floors. Commands: `tools/prepare_story.py` (and
   talk function 5. The port kept that thread running during the talk, so
   both fought encounter 110 and paid out twice (playtest 2026-11-20). Every
   trainer with a sight loop had the same problem.
+- A sight trainer's loop (cave fn 9-11) is: A9 sees Wes (within 30 and
+  15 degrees of its facing), then 20, 83 and a 0.6 s wait. Then
+  B1(trainer, 0, 100, 1.0, 1) walks the trainer to 10 source units from Wes,
+  E8 moves Rui out of the corridor (playtest 2026-11-25, defect 53), and 3E
+  waits for the trainer. If A9 only fires once Wes is already within 10 (he
+  can enter the narrow cone from the side, as on Sosh's floor 0x1D at 8.9),
+  B1 stops the trainer where it stands, as in the original.
 - Door-table close flags lock doors (`floorEventCtrlDoor` mode 0): the
   building's front door (town row 15) stays locked until `0x40A`, so the
   rooftop (town door 6) is how the chapter first reaches 4F.
@@ -158,5 +165,5 @@ favour of under's, which was claimed first).
 | --- | --- | --- |
 | Gear on the console | The host route answers D0 with the gear; the console field scene does not enable the item menu yet (`c3_field_story_enable_item_menu`), so there D0 closes at once and the generator cannot be repaired | cipher lane's pause-menu work |
 | Battles | encounters 169, 170, 171, 172 (Colosseum), 101, 126, 129, 164 play on the battle engine with `C3_ROUTE_BATTLES` (the route's `expect_battle` lines); without it they are reported as skipped | `route_battle ... played=1` |
-| Optional trainers | sight-triggered trainers (town fn 18/25, building 2F/3F, cave) are not fought: the port has no trainer sight | not in the route |
+| Optional trainers | the sight trainers (town fn 18/25, building 2F/3F, cave) are fought on the console. The host route never walks into their sight, so it does not fight them | not in the route |
 | Start | the chapter starts from a Phenac save with `0x3F8` set; the Realgam visit that writes it belongs to the realgam lane | `route_shortcut flag=3f8` |
